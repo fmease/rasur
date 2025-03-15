@@ -1,30 +1,32 @@
 use std::fmt;
 
 use crate::ast;
+use crate::edition::Edition;
 use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) fn parse(tokens: Vec<Token>, source: &str) -> Result<ast::File<'_>> {
-    Parser::new(tokens, source).parse_file()
+pub(crate) fn parse(tokens: Vec<Token>, source: &str, edition: Edition) -> Result<ast::File<'_>> {
+    Parser { tokens, index: 0, source, edition }.parse_file()
 }
 
 struct Parser<'src> {
     tokens: Vec<Token>,
     index: usize,
     source: &'src str,
+    edition: Edition,
 }
 
 impl<'src> Parser<'src> {
-    fn new(tokens: Vec<Token>, source: &'src str) -> Self {
-        Self { tokens, index: 0, source }
-    }
-
     fn parse_file(&mut self) -> Result<ast::File<'src>> {
-        Ok(ast::File { items: self.parse_items(TokenKind::EndOfInput)? })
+        let attrs = self.parse_attrs(AttrStyle::Inner)?;
+        let items = self.parse_items(TokenKind::EndOfInput)?;
+
+        Ok(ast::File { attrs, items })
     }
 
+    /// Parse a sequence of items.
     fn parse_items(&mut self, terminator: TokenKind) -> Result<Vec<ast::Item<'src>>> {
         let mut items = Vec::new();
 
@@ -33,31 +35,22 @@ impl<'src> Parser<'src> {
                 break;
             }
 
-            let mut attrs = Vec::new();
-
-            while self.consume(TokenKind::Hash) {
-                self.expect(TokenKind::OpenSquareBracket)?;
-
-                let _name = attrs.push(ast::Attr { name: self.parse_common_ident()? });
-
-                self.expect(TokenKind::CloseSquareBracket)?;
-            }
+            let attrs = self.parse_attrs(AttrStyle::Outer)?;
 
             let token = self.peek();
-
             let kind = match token.kind {
                 TokenKind::Ident => match self.source(token.span) {
                     "fn" => {
                         self.advance();
-                        self.finish_parse_fn()?
+                        self.fin_parse_fn()?
                     }
                     "mod" => {
                         self.advance();
-                        self.finish_parse_mod()?
+                        self.fin_parse_mod()?
                     }
                     "struct" => {
                         self.advance();
-                        self.finish_parse_struct()?
+                        self.fin_parse_struct()?
                     }
                     _ => return Err(Error::UnexpectedToken(token.kind, ExpectedFragment::Item)),
                 },
@@ -70,18 +63,120 @@ impl<'src> Parser<'src> {
         Ok(items)
     }
 
-    fn finish_parse_fn(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn parse_attrs(&mut self, style: AttrStyle) -> Result<Vec<ast::Attr<'src>>> {
+        let mut attrs = Vec::new();
+
+        // FIXME: For kind==Inner we actually need to parse both styles and
+        //        return as soon as we find an outer one (but don't raise an
+        //        error!)
+
+        while self.consume(TokenKind::Hash) {
+            if let AttrStyle::Inner = style {
+                self.parse(TokenKind::Bang)?;
+            }
+            attrs.push(self.fin_parse_attr()?);
+        }
+
+        Ok(attrs)
+    }
+
+    fn fin_parse_attr(&mut self) -> Result<ast::Attr<'src>> {
+        self.parse(TokenKind::OpenSquareBracket)?;
+        let path = self.parse_attr_path()?;
+        let token = self.peek();
+        let kind = match token.kind {
+            TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
+            // FIXME: Admits `==`.
+            TokenKind::Equals => {
+                self.advance();
+                let expr = self.parse_expr()?;
+                ast::AttrKind::Assign(expr)
+            }
+            TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::OpenCurlyBracket => {
+                self.advance();
+                let bracket = match token.kind {
+                    TokenKind::OpenRoundBracket => ast::Bracket::Round,
+                    TokenKind::OpenSquareBracket => ast::Bracket::Square,
+                    TokenKind::OpenCurlyBracket => ast::Bracket::Curly,
+                    _ => unreachable!(),
+                };
+                let stream = self.parse_token_strean(bracket)?;
+                self.parse(match bracket {
+                    ast::Bracket::Round => TokenKind::CloseRoundBracket,
+                    ast::Bracket::Square => TokenKind::CloseSquareBracket,
+                    ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
+                })?;
+                ast::AttrKind::Call(bracket, stream)
+            }
+            kind => {
+                return Err(Error::UnexpectedToken(
+                    kind,
+                    ExpectedFragment::OneOf(Box::new([
+                        TokenKind::CloseSquareBracket,
+                        TokenKind::Equals,
+                        TokenKind::OpenRoundBracket,
+                        TokenKind::OpenSquareBracket,
+                        TokenKind::OpenCurlyBracket,
+                    ])),
+                ));
+            }
+        };
+
+        self.parse(TokenKind::CloseSquareBracket)?;
+
+        Ok(ast::Attr { path, kind })
+    }
+
+    /// Parse an attribute path.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
+    /// ```
+    fn parse_attr_path(&mut self) -> Result<ast::Path<'src>> {
+        // FIXME: Or should we move most "glued" token detection into the lexer?
+        //        We can't move everything though.
+        const DOUBLE_COLON: Glued<2, TokenKind> = Glued([TokenKind::Colon, TokenKind::Colon]);
+
+        let locality = match self.consume(DOUBLE_COLON) {
+            true => ast::PathLocality::Global,
+            false => ast::PathLocality::Local,
+        };
+
+        let mut segs = Vec::new();
+
+        segs.push(self.parse_path_seg_ident()?);
+
+        while self.consume(DOUBLE_COLON) {
+            segs.push(self.parse_path_seg_ident()?);
+        }
+
+        Ok(ast::Path { locality, segs })
+    }
+
+    /// Finish parsing a function item assuming the leading `fn` has already been parsed.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Fn ::=
+    ///     "fn" Common_Ident
+    ///     Generic_Params Params
+    ///     ("->" Ty)?
+    ///     (Block_Expr | ";")
+    /// ```
+    fn fin_parse_fn(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
         let params = self.parse_params()?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
-            let body = self.parse_expr()?;
-            self.expect(TokenKind::CloseCurlyBracket)?;
-            Some(body)
+            Some(self.fin_parse_block_expr()?)
         } else {
-            // FIXME: Should this really be inside parse_fn or rather inside parse_item?
-            self.expect(TokenKind::Semicolon)?;
+            self.parse(TokenKind::Semicolon)?;
             None
         };
         Ok(ast::ItemKind::Fn(ast::Fn {
@@ -93,19 +188,19 @@ impl<'src> Parser<'src> {
         }))
     }
 
-    fn finish_parse_mod(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_mod(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
             Some(self.parse_items(TokenKind::CloseCurlyBracket)?)
         } else {
             // FIXME: Should this really be inside parse_fn or rather inside parse_item?
-            self.expect(TokenKind::Semicolon)?;
+            self.parse(TokenKind::Semicolon)?;
             None
         };
         Ok(ast::ItemKind::Mod(ast::Mod { name, items }))
     }
 
-    fn finish_parse_struct(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_struct(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
@@ -117,7 +212,7 @@ impl<'src> Parser<'src> {
                 }
 
                 let ident = self.parse_common_ident()?;
-                self.expect(TokenKind::Colon)?;
+                self.parse(TokenKind::Colon)?;
                 let ty = self.parse_ty()?;
 
                 self.consume(TokenKind::Comma);
@@ -127,7 +222,7 @@ impl<'src> Parser<'src> {
             ast::StructBody::Normal { fields }
         } else {
             // FIXME: Should this really be inside parse_fn or rather inside parse_item?
-            self.expect(TokenKind::Semicolon)?;
+            self.parse(TokenKind::Semicolon)?;
             ast::StructBody::Unit
         };
         Ok(ast::ItemKind::Struct(ast::Struct {
@@ -142,13 +237,33 @@ impl<'src> Parser<'src> {
 
         if let TokenKind::Ident = token.kind
             && let ident = self.source(token.span)
-            && !is_reserved(ident)
+            && !is_reserved(ident, self.edition)
         {
             self.advance();
             return Ok(ident);
         }
 
-        Err(Error::UnexpectedToken(token.kind, ExpectedFragment::Token(TokenKind::Ident)))
+        Err(Error::UnexpectedToken(
+            token.kind,
+            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
+        ))
+    }
+
+    fn parse_path_seg_ident(&mut self) -> Result<&'src str> {
+        let token = self.peek();
+
+        if let TokenKind::Ident = token.kind
+            && let ident = self.source(token.span)
+            && (is_path_seg_keyword(ident) || !is_reserved(ident, self.edition))
+        {
+            self.advance();
+            return Ok(ident);
+        }
+
+        Err(Error::UnexpectedToken(
+            token.kind,
+            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
+        ))
     }
 
     fn parse_generic_params(&mut self) -> Result<Vec<ast::GenParam<'src>>> {
@@ -197,7 +312,7 @@ impl<'src> Parser<'src> {
         match token.kind {
             TokenKind::Ident
                 if let ident = self.source(token.span)
-                    && !is_reserved(ident) =>
+                    && !is_reserved(ident, self.edition) =>
             {
                 self.advance();
                 Ok(ast::Ty::Ident(ident))
@@ -210,13 +325,45 @@ impl<'src> Parser<'src> {
         if self.consume(TokenKind::Colon) { self.parse_ty().map(Some) } else { Ok(None) }
     }
 
+    /// Finish parsing a block expression assuming the leading `{` has already been parsed.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Block_Expr ::= "{" Expr* "}"
+    /// ```
+    fn fin_parse_block_expr(&mut self) -> Result<ast::Expr<'src>> {
+        // FIXME: Inner attributes.
+        // FIXME: Statements.
+
+        let expr = if self.consume(TokenKind::CloseCurlyBracket) {
+            None
+        } else {
+            let expr = self.parse_expr()?;
+            self.parse(TokenKind::CloseCurlyBracket)?;
+            Some(expr)
+        };
+
+        Ok(ast::Expr::Block(Box::new(ast::BlockExpr { expr })))
+    }
+
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         let token = self.peek();
 
         match token.kind {
+            TokenKind::NumLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                Ok(ast::Expr::NumLit(lit))
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                Ok(ast::Expr::StrLit(lit))
+            }
             TokenKind::Ident
                 if let ident = self.source(token.span)
-                    && !is_reserved(ident) =>
+                    && !is_reserved(ident, self.edition) =>
             {
                 self.advance();
                 Ok(ast::Expr::Ident(ident))
@@ -225,26 +372,95 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn consume(&mut self, kind: TokenKind) -> bool {
-        if self.peek().kind == kind {
+    fn parse_token_strean(&mut self, exp_delim: ast::Bracket) -> Result<ast::TokenStream> {
+        let mut tokens = Vec::new();
+        let mut stack = Vec::new();
+        let mut is_delimited = false;
+
+        enum Orientation {
+            Open,
+            Close,
+        }
+
+        loop {
+            let token = self.peek();
+
+            let act_delim = match token.kind {
+                TokenKind::OpenRoundBracket => Some((ast::Bracket::Round, Orientation::Open)),
+                TokenKind::OpenSquareBracket => Some((ast::Bracket::Square, Orientation::Open)),
+                TokenKind::OpenCurlyBracket => Some((ast::Bracket::Curly, Orientation::Open)),
+                TokenKind::CloseRoundBracket => Some((ast::Bracket::Round, Orientation::Close)),
+                TokenKind::CloseSquareBracket => Some((ast::Bracket::Square, Orientation::Close)),
+                TokenKind::CloseCurlyBracket => Some((ast::Bracket::Curly, Orientation::Close)),
+                TokenKind::EndOfInput => break,
+                _ => None,
+            };
+
+            if let Some((act_delim, orient)) = act_delim {
+                if stack.is_empty()
+                    && act_delim == exp_delim
+                    && let Orientation::Close = orient
+                {
+                    is_delimited = true;
+                    break;
+                }
+
+                match orient {
+                    Orientation::Open => stack.push(act_delim),
+                    Orientation::Close => {
+                        let close_delim = act_delim;
+                        match stack.pop() {
+                            Some(open_delim) if open_delim == close_delim => {}
+                            // FIXME: Better error.
+                            _ => return Err(Error::InvalidDelimiter),
+                        }
+                    }
+                }
+            }
+
+            tokens.push(token.kind);
             self.advance();
+        }
+
+        if is_delimited && stack.is_empty() {
+            Ok(tokens)
+        } else {
+            // FIXME: Better error.
+            Err(Error::InvalidDelimiter)
+        }
+    }
+
+    fn consume<S: Shape>(&mut self, shape: S) -> bool {
+        if shape.check(self) {
+            S::advance(self);
             true
         } else {
             false
         }
     }
 
-    fn expect(&mut self, kind: TokenKind) -> Result<()> {
+    // FIXME: Take S: Shape
+    fn parse(&mut self, kind: TokenKind) -> Result<()> {
         let token = self.peek();
         if token.kind == kind {
             self.advance();
             return Ok(());
         }
-        Err(Error::UnexpectedToken(token.kind, ExpectedFragment::Token(kind)))
+        Err(Error::UnexpectedToken(token.kind, ExpectedFragment::OneOf(Box::new([kind]))))
     }
 
     fn peek(&self) -> Token {
         self.tokens[self.index]
+    }
+
+    fn look_ahead(&self, amount: usize, pred: impl FnOnce(&Token) -> bool) -> bool {
+        if let Some(index) = self.index.checked_add(amount)
+            && let Some(token) = self.tokens.get(index)
+        {
+            pred(token)
+        } else {
+            false
+        }
     }
 
     fn advance(&mut self) {
@@ -256,14 +472,54 @@ impl<'src> Parser<'src> {
     }
 }
 
-fn is_reserved(ident: &str) -> bool {
-    matches!(ident, "fn")
+// FIXME: Check master if this is still up to date
+fn is_reserved(ident: &str, edition: Edition) -> bool {
+    #[rustfmt::skip]
+    fn is_used_keyword(ident: &str) -> bool {
+        matches!(
+            ident,
+            | "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern" | "false" | "fn"
+            | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move" | "mut"
+            | "pub" | "ref" | "return" | "self" | "Self" | "static" | "struct" | "super" | "trait" | "true"
+            | "type" | "unsafe" | "use" | "where" | "while"
+        )
+    }
+
+    #[rustfmt::skip]
+    fn is_unused_keyword(ident: &str) -> bool {
+        matches!(
+            ident,
+            | "abstract" | "become" | "box" | "do" | "final" | "macro" | "override" | "priv" | "typeof" | "unsized"
+            | "virtual" | "yield"
+        )
+    }
+
+    fn is_used_keyword_if(ident: &str, edition: Edition) -> bool {
+        edition >= Edition::Rust2018 && matches!(ident, "async" | "await" | "dyn")
+    }
+
+    fn is_unused_keyword_if(ident: &str, edition: Edition) -> bool {
+        edition >= Edition::Rust2018 && matches!(ident, "try")
+            || edition >= Edition::Rust2024 && matches!(ident, "gen")
+    }
+
+    ident == "_"
+        || is_used_keyword(ident)
+        || is_unused_keyword(ident)
+        || is_used_keyword_if(ident, edition)
+        || is_unused_keyword_if(ident, edition)
+}
+
+fn is_path_seg_keyword(ident: &str) -> bool {
+    matches!(ident, "_" | "self" | "Self" | "super" | "crate")
 }
 
 #[derive(Debug)]
 pub(crate) enum Error {
     #[allow(dead_code)] // used via Debug and thus Display
     UnexpectedToken(TokenKind, ExpectedFragment),
+    // FIXME: Temporary
+    InvalidDelimiter,
 }
 
 impl fmt::Display for Error {
@@ -277,8 +533,48 @@ impl std::error::Error for Error {}
 #[derive(Debug)]
 pub(crate) enum ExpectedFragment {
     #[allow(dead_code)] // used via Debug and thus Display
-    Token(TokenKind),
+    OneOf(Box<[TokenKind]>),
     Item,
     Ty,
     Expr,
+}
+
+enum AttrStyle {
+    Inner,
+    Outer,
+}
+
+trait Shape: Copy {
+    const LENGTH: usize;
+
+    fn check(self, parser: &Parser<'_>) -> bool;
+
+    fn advance(parser: &mut Parser<'_>) {
+        for _ in 0..Self::LENGTH {
+            parser.advance();
+        }
+    }
+}
+
+impl Shape for TokenKind {
+    const LENGTH: usize = 1;
+
+    fn check(self, parser: &Parser<'_>) -> bool {
+        // FIXME: This permits `==` if `=` is requested. This is not okay
+        parser.peek().kind == self
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Glued<const N: usize, T>([T; N]);
+
+impl Shape for Glued<2, TokenKind> {
+    const LENGTH: usize = 2;
+
+    fn check(self, parser: &Parser<'_>) -> bool {
+        let Self([exp0, exp1]) = self;
+        let act0 = parser.peek();
+        act0.kind == exp0
+            && parser.look_ahead(1, |act1| act1.kind == exp1 && act0.span.end == act1.span.start)
+    }
 }

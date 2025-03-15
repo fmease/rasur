@@ -1,7 +1,11 @@
 // FIXME: Create newtype for idents!
+#![expect(dead_code)] // FIXME 
+
+use crate::lexer::TokenKind;
 
 #[derive(Debug)]
 pub(crate) struct File<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) items: Vec<Item<'src>>,
 }
 
@@ -66,6 +70,14 @@ pub(crate) struct Param<'src> {
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
     Ident(&'src str),
+    NumLit(&'src str),
+    StrLit(&'src str),
+    Block(Box<BlockExpr<'src>>),
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockExpr<'src> {
+    pub(crate) expr: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
@@ -75,5 +87,34 @@ pub(crate) enum Ty<'src> {
 
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) path: Path<'src>,
+    pub(crate) kind: AttrKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum AttrKind<'src> {
+    Unit,
+    Call(Bracket, TokenStream),
+    Assign(Expr<'src>),
+}
+
+pub(crate) type TokenStream = Vec<TokenKind>;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Bracket {
+    Round,
+    Square,
+    Curly,
+}
+
+#[derive(Debug)]
+pub(crate) struct Path<'src> {
+    pub(crate) locality: PathLocality,
+    pub(crate) segs: Vec<&'src str>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PathLocality {
+    Global,
+    Local,
 }

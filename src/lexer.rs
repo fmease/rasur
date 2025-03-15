@@ -7,10 +7,11 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
-    Ident,
     Comma,
-    Colon,
     Semicolon,
+    Dot,
+    Colon,
+    Bang,
     Hyphen,
     Slash,
     Hash,
@@ -25,6 +26,10 @@ pub(crate) enum TokenKind {
     CloseAngleBracket,
     ThinArrow,
     WideArrow,
+    Ident,
+    NumLit,
+    StrLit,
+    Error,
     EndOfInput,
 }
 
@@ -57,18 +62,6 @@ impl<'src> Lexer<'src> {
 
             match char {
                 _ if char.is_whitespace() => self.advance(),
-                _ if char.is_ascii_alphabetic() => {
-                    let start = self.index();
-                    self.advance();
-
-                    while let Some(char) = self.peek()
-                        && char.is_ascii_alphanumeric()
-                    {
-                        self.advance();
-                    }
-
-                    self.add(TokenKind::Ident, start);
-                }
                 '/' => {
                     self.advance();
 
@@ -83,6 +76,41 @@ impl<'src> Lexer<'src> {
                         self.add(TokenKind::Slash, start);
                     }
                 }
+                'a'..='z' | 'A'..='Z' | '_' => {
+                    self.advance();
+
+                    while let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = self.peek() {
+                        self.advance();
+                    }
+
+                    self.add(TokenKind::Ident, start);
+                }
+                '0'..='9' => {
+                    self.advance();
+
+                    // FIXME: Float lits and suffixes
+                    while let Some('0'..='9' | '_') = self.peek() {
+                        self.advance();
+                    }
+
+                    self.add(TokenKind::NumLit, start);
+                }
+                '"' => {
+                    self.advance();
+                    let start = self.index();
+
+                    // FIXME: Escape sequences;
+                    while self.peek().is_some_and(|char| char != '"') {
+                        self.advance();
+                    }
+
+                    // FIXME: Smh. taint unterminated str lits (but don't bail out early!)
+                    self.add(TokenKind::StrLit, start);
+
+                    if let Some('"') = self.peek() {
+                        self.advance();
+                    }
+                }
                 ',' => {
                     self.advance();
                     self.add(TokenKind::Comma, start);
@@ -91,9 +119,35 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.add(TokenKind::Semicolon, start);
                 }
+                '.' => {
+                    self.advance();
+                    self.add(TokenKind::Dot, start);
+                }
                 ':' => {
                     self.advance();
                     self.add(TokenKind::Colon, start);
+                }
+                '!' => {
+                    self.advance();
+                    self.add(TokenKind::Bang, start);
+                }
+                '-' => {
+                    self.advance();
+                    if let Some('>') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::ThinArrow, start);
+                    } else {
+                        self.add(TokenKind::Hyphen, start);
+                    }
+                }
+                '=' => {
+                    self.advance();
+                    if let Some('>') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::WideArrow, start);
+                    } else {
+                        self.add(TokenKind::Equals, start);
+                    }
                 }
                 '#' => {
                     self.advance();
@@ -123,15 +177,6 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.add(TokenKind::CloseCurlyBracket, start);
                 }
-                '=' => {
-                    self.advance();
-                    if let Some('>') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::WideArrow, start);
-                    } else {
-                        self.add(TokenKind::Equals, start);
-                    }
-                }
                 '<' => {
                     self.advance();
                     self.add(TokenKind::OpenAngleBracket, start);
@@ -140,16 +185,10 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.add(TokenKind::CloseAngleBracket, start);
                 }
-                '-' => {
+                _ => {
                     self.advance();
-                    if let Some('>') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::ThinArrow, start);
-                    } else {
-                        self.add(TokenKind::Hyphen, start);
-                    }
+                    self.add(TokenKind::Error, start)
                 }
-                _ => panic!("unexpected token {char}"),
             };
         }
 

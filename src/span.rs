@@ -1,6 +1,6 @@
 use std::{fmt, ops::Range};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ByteIndex(u32);
 
 impl ByteIndex {
