@@ -1,9 +1,10 @@
 #![feature(if_let_guard)]
 #![feature(let_chains)]
 #![feature(macro_metavar_expr)]
+#![feature(iter_intersperse)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, process::ExitCode};
 
 use edition::Edition;
 
@@ -15,7 +16,14 @@ mod lexer;
 mod parser;
 mod span;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
+    match try_main() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(()) => ExitCode::FAILURE,
+    }
+}
+
+fn try_main() -> Result<(), ()> {
     let mut opts = Opts::default();
 
     let mut args = std::env::args_os().skip(1);
@@ -25,9 +33,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 b"tok" => opts.emit_tokens = true,
                 b"ast" => opts.emit_ast = true,
                 b"edition" => {
-                    let edition = args.next().ok_or("missing argument to `--edition`")?;
+                    let edition = args.next().ok_or_else(|| {
+                        eprintln!("error: missing argument to `--edition`");
+                    })?;
                     if opts.edition.is_some() {
-                        return Err(format!("flag can't be passed multiple times").into());
+                        eprintln!("error: flag can't be passed multiple times");
+                        return Err(());
                     }
                     opts.edition = Some(match edition.as_encoded_bytes() {
                         b"2015" => Edition::Rust2015,
@@ -35,21 +46,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         b"2021" => Edition::Rust2021,
                         b"2024" => Edition::Rust2024,
                         b"future" => Edition::Future,
-                        _ => return Err(format!("invalid edition `{}`", edition.display()).into()),
+                        _ => {
+                            eprintln!("error: invalid edition `{}`", edition.display());
+                            return Err(());
+                        }
                     });
                 }
-                _ => return Err(format!("unknown flag `{}`", arg.display()).into()),
+                _ => {
+                    eprintln!("error: unknown flag `{}`", arg.display());
+                    return Err(());
+                }
             }
         } else {
             if opts.path.is_some() {
-                return Err(format!("unexpected argument `{}`", arg.display()).into());
+                eprintln!("error: unexpected argument `{}`", arg.display());
+                return Err(());
             }
             opts.path = Some(PathBuf::from(arg));
         }
     }
 
-    let path = opts.path.ok_or("missing required path argument")?;
-    let source = std::fs::read_to_string(path)?;
+    let path = opts.path.ok_or_else(|| eprintln!("error: missing required path argument"))?;
+    let source = std::fs::read_to_string(&path)
+        .map_err(|error| eprintln!("error: failed to read `{}`: {error}", path.display()))?;
 
     let tokens = lexer::lex(&source);
 
@@ -58,11 +77,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         for token in &tokens {
             use std::io::Write as _;
-            writeln!(stderr, "{token:?} {:?}", &source[token.span.range()])?;
+            writeln!(stderr, "{token:?} {:?}", &source[token.span.range()]).unwrap();
         }
     }
 
-    let file = parser::parse(tokens, &source, opts.edition.unwrap_or_default())?;
+    let file = parser::parse(tokens, &source, opts.edition.unwrap_or_default())
+        .map_err(|error| error.print(&source))?;
 
     if opts.emit_ast {
         eprintln!("{file:#?}");

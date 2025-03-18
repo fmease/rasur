@@ -1,5 +1,7 @@
+use iter::PeekableCharIndices;
+
 use crate::span::{ByteIndex, Span};
-use std::{fmt, str::CharIndices};
+use std::fmt;
 
 pub(crate) fn lex(source: &str) -> Vec<Token> {
     Lexer::new(source).run()
@@ -46,14 +48,13 @@ impl fmt::Debug for Token {
 }
 
 struct Lexer<'src> {
-    chars: CharIndices<'src>,
-    peeked: Option<Option<(usize, char)>>,
+    chars: iter::PeekableCharIndices<'src>,
     tokens: Vec<Token>,
 }
 
 impl<'src> Lexer<'src> {
     fn new(source: &'src str) -> Self {
-        Self { chars: source.char_indices(), peeked: None, tokens: Vec::new() }
+        Self { chars: PeekableCharIndices::new(source), tokens: Vec::new() }
     }
 
     fn run(mut self) -> Vec<Token> {
@@ -65,15 +66,31 @@ impl<'src> Lexer<'src> {
                 '/' => {
                     self.advance();
 
-                    if let Some('/') = self.peek() {
-                        self.advance();
-
-                        // FIXME: Should we make `\n` part of the comment span? What does rustc do?
-                        while self.peek().is_some_and(|char| char != '\n') {
+                    match self.peek() {
+                        Some('/') => {
                             self.advance();
+                            while self.peek().is_some_and(|char| char != '\n') {
+                                self.advance();
+                            }
                         }
-                    } else {
-                        self.add(TokenKind::Slash, start);
+                        // FIXME: Support nested multi-line comments!
+                        // FIXME: Smh. taint unterminated m-l comments (but don't fatal!)
+                        Some('*') => {
+                            self.advance();
+
+                            // FIXME: Use next()? instead of "uncond_peek+advance"?
+                            while let Some(prev) = self.peek() {
+                                self.advance();
+
+                                if let ('*', Some('/')) = (prev, self.peek()) {
+                                    self.advance();
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {
+                            self.add(TokenKind::Slash, start);
+                        }
                     }
                 }
                 'a'..='z' | 'A'..='Z' | '_' => {
@@ -104,7 +121,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                     }
 
-                    // FIXME: Smh. taint unterminated str lits (but don't bail out early!)
+                    // FIXME: Smh. taint unterminated str lits (but don't fatal!)
                     self.add(TokenKind::StrLit, start);
 
                     if let Some('"') = self.peek() {
@@ -197,25 +214,56 @@ impl<'src> Lexer<'src> {
         self.tokens
     }
 
-    fn peek(&mut self) -> Option<char> {
-        self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
-    }
-
-    fn advance(&mut self) {
-        if self.peeked.take().is_none() {
-            self.chars.next();
-        }
-    }
-
-    fn index(&self) -> ByteIndex {
-        let index = match self.peeked {
-            Some(Some((index, _))) => index,
-            _ => self.chars.offset(),
-        };
-        ByteIndex::new(index)
-    }
-
     fn add(&mut self, kind: TokenKind, start: ByteIndex) {
         self.tokens.push(Token { kind, span: Span { start, end: self.index() } });
+    }
+}
+
+impl<'src> std::ops::Deref for Lexer<'src> {
+    type Target = PeekableCharIndices<'src>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.chars
+    }
+}
+
+impl<'src> std::ops::DerefMut for Lexer<'src> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.chars
+    }
+}
+
+mod iter {
+    use crate::span::ByteIndex;
+    use std::str::CharIndices;
+
+    // FIXME: Add explainer as to how this differs from Peekable<CharIndices<'src>>.
+    pub(super) struct PeekableCharIndices<'src> {
+        chars: CharIndices<'src>,
+        peeked: Option<Option<(usize, char)>>,
+    }
+
+    impl<'src> PeekableCharIndices<'src> {
+        pub(super) fn new(source: &'src str) -> Self {
+            Self { chars: source.char_indices(), peeked: None }
+        }
+
+        pub(super) fn peek(&mut self) -> Option<char> {
+            self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
+        }
+
+        pub(super) fn advance(&mut self) {
+            if self.peeked.take().is_none() {
+                self.chars.next();
+            }
+        }
+
+        pub(super) fn index(&self) -> ByteIndex {
+            let index = match self.peeked {
+                Some(Some((index, _))) => index,
+                _ => self.chars.offset(),
+            };
+            ByteIndex::new(index)
+        }
     }
 }

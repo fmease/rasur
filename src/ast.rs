@@ -1,7 +1,9 @@
-// FIXME: Create newtype for idents!
-#![expect(dead_code)] // FIXME 
+#![expect(dead_code)] // FIXME
 
 use crate::lexer::TokenKind;
+
+// FIXME: Create newtype for idents!
+pub type Ident<'src> = &'src str;
 
 #[derive(Debug)]
 pub(crate) struct File<'src> {
@@ -12,19 +14,34 @@ pub(crate) struct File<'src> {
 #[derive(Debug)]
 pub(crate) struct Item<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility,
     pub(crate) kind: ItemKind<'src>,
 }
 
 #[derive(Debug)]
+pub(crate) enum Visibility {
+    Inherited,
+    Public,
+}
+
+#[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
+    Enum(Enum<'src>),
     Fn(Fn<'src>),
     Mod(Mod<'src>),
     Struct(Struct<'src>),
+    Trait(Trait<'src>),
+}
+
+#[derive(Debug)]
+pub(crate) struct Enum<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Fn<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<Param<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
@@ -33,21 +50,27 @@ pub(crate) struct Fn<'src> {
 
 #[derive(Debug)]
 pub(crate) struct Mod<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: Ident<'src>,
     pub(crate) items: Option<Vec<Item<'src>>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Struct<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) body: StructBody<'src>,
 }
 
 #[derive(Debug)]
+pub(crate) struct Trait<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
+}
+
+#[derive(Debug)]
 pub(crate) enum StructBody<'src> {
     // FIXME: Better name for this
-    Normal { fields: Vec<(&'src str, Ty<'src>)> },
+    Normal { fields: Vec<(Ident<'src>, Ty<'src>)> },
     Unit,
 }
 
@@ -58,20 +81,20 @@ pub(crate) struct Generics<'src> {
 
 #[derive(Debug)]
 pub(crate) struct GenParam<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: Ident<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Param<'src> {
-    pub(crate) name: &'src str,
+    pub(crate) name: Ident<'src>,
     pub(crate) ty: Option<Ty<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
-    Ident(&'src str),
-    NumLit(&'src str),
-    StrLit(&'src str),
+    Ident(Ident<'src>),
+    NumLit(Ident<'src>),
+    StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
 }
 
@@ -82,7 +105,7 @@ pub(crate) struct BlockExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
-    Ident(&'src str),
+    Ident(Ident<'src>),
 }
 
 #[derive(Debug)]
@@ -110,7 +133,7 @@ pub(crate) enum Bracket {
 #[derive(Debug)]
 pub(crate) struct Path<'src> {
     pub(crate) locality: PathLocality,
-    pub(crate) segs: Vec<&'src str>,
+    pub(crate) segs: Vec<Ident<'src>>,
 }
 
 #[derive(Debug)]

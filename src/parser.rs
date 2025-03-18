@@ -5,7 +5,7 @@ use crate::edition::Edition;
 use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 
-pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
+pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
 
 pub(crate) fn parse(tokens: Vec<Token>, source: &str, edition: Edition) -> Result<ast::File<'_>> {
     Parser { tokens, index: 0, source, edition }.parse_file()
@@ -19,6 +19,13 @@ struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
+    /// Parse a source file.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
+    /// ```
     fn parse_file(&mut self) -> Result<ast::File<'src>> {
         let attrs = self.parse_attrs(AttrStyle::Inner)?;
         let items = self.parse_items(TokenKind::EndOfInput)?;
@@ -27,6 +34,14 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a sequence of items.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Items⟨terminator⟩ ::= Item* ⟨terminator⟩
+    /// Item ::= Attrs⟨Outer⟩ Visibility (Enum | Fn | Mod | Struct | Trait)
+    /// Visibility ::= "pub"?
+    /// ```
     fn parse_items(&mut self, terminator: TokenKind) -> Result<Vec<ast::Item<'src>>> {
         let mut items = Vec::new();
 
@@ -37,9 +52,19 @@ impl<'src> Parser<'src> {
 
             let attrs = self.parse_attrs(AttrStyle::Outer)?;
 
+            // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
+            let vis = match self.consume(Keyword("pub")) {
+                true => ast::Visibility::Public,
+                false => ast::Visibility::Inherited,
+            };
+
             let token = self.peek();
             let kind = match token.kind {
                 TokenKind::Ident => match self.source(token.span) {
+                    "enum" => {
+                        self.advance();
+                        self.fin_parse_enum()?
+                    }
                     "fn" => {
                         self.advance();
                         self.fin_parse_fn()?
@@ -52,27 +77,46 @@ impl<'src> Parser<'src> {
                         self.advance();
                         self.fin_parse_struct()?
                     }
-                    _ => return Err(Error::UnexpectedToken(token.kind, ExpectedFragment::Item)),
+                    "trait" => {
+                        self.advance();
+                        self.fin_parse_trait()?
+                    }
+                    _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
                 },
-                kind => return Err(Error::UnexpectedToken(kind, ExpectedFragment::Item)),
+                _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
             };
 
-            items.push(ast::Item { attrs, kind });
+            items.push(ast::Item { attrs, vis, kind });
         }
 
         Ok(items)
     }
 
+    /// Parse a sequence of attributes of the given style.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Attrs⟨style⟩ ::= ("#" Bang⟨style⟩ "[" Attr_Path … "]" )*
+    /// Bang⟨Outer⟩ ::= ""
+    /// Bang⟨Inner⟩ ::= "!"
+    /// ```
     fn parse_attrs(&mut self, style: AttrStyle) -> Result<Vec<ast::Attr<'src>>> {
         let mut attrs = Vec::new();
 
-        // FIXME: For kind==Inner we actually need to parse both styles and
-        //        return as soon as we find an outer one (but don't raise an
-        //        error!)
-
-        while self.consume(TokenKind::Hash) {
-            if let AttrStyle::Inner = style {
-                self.parse(TokenKind::Bang)?;
+        while self.peek().kind == TokenKind::Hash {
+            match style {
+                AttrStyle::Outer => self.advance(),
+                // We don't expect(Bang) here because the caller may want to
+                // parse outer attributes next.
+                AttrStyle::Inner => {
+                    if self.look_ahead(1, |token| token.kind == TokenKind::Bang) {
+                        self.advance();
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
             }
             attrs.push(self.fin_parse_attr()?);
         }
@@ -110,9 +154,9 @@ impl<'src> Parser<'src> {
                 })?;
                 ast::AttrKind::Call(bracket, stream)
             }
-            kind => {
-                return Err(Error::UnexpectedToken(
-                    kind,
+            _ => {
+                return Err(ParseError::UnexpectedToken(
+                    token,
                     ExpectedFragment::OneOf(Box::new([
                         TokenKind::CloseSquareBracket,
                         TokenKind::Equals,
@@ -155,6 +199,23 @@ impl<'src> Parser<'src> {
         }
 
         Ok(ast::Path { locality, segs })
+    }
+
+    /// Finish parsing an enum item assuming the leading `enum` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Enum ::= "enum" Common_Ident Generic_Params "{" "}"
+    /// ```
+    fn fin_parse_enum(&mut self) -> Result<ast::ItemKind<'src>> {
+        let name = self.parse_common_ident()?;
+        let params = self.parse_generic_params()?;
+
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.parse(TokenKind::CloseCurlyBracket)?;
+
+        Ok(ast::ItemKind::Enum(ast::Enum { name, generics: ast::Generics { params } }))
     }
 
     /// Finish parsing a function item assuming the leading `fn` has already been parsed.
@@ -200,6 +261,16 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Mod(ast::Mod { name, items }))
     }
 
+    /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Struct ::=
+    ///     "struct" Common_Ident
+    ///     Generic_Params
+    ///     ("{" (Common_Ident ":" Ty ("," | >"}"))* "}" | ";")
+    /// ```
     fn fin_parse_struct(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
@@ -215,7 +286,10 @@ impl<'src> Parser<'src> {
                 self.parse(TokenKind::Colon)?;
                 let ty = self.parse_ty()?;
 
-                self.consume(TokenKind::Comma);
+                // FIXME: Can we express that nicer?
+                if self.peek().kind != TokenKind::CloseCurlyBracket {
+                    self.parse(TokenKind::Comma)?;
+                }
 
                 fields.push((ident, ty))
             }
@@ -232,6 +306,23 @@ impl<'src> Parser<'src> {
         }))
     }
 
+    /// Finish parsing a trait item assuming the leading `trait` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Trait ::= "trait" Common_Ident Generic_Params "{" "}"
+    /// ```
+    fn fin_parse_trait(&mut self) -> Result<ast::ItemKind<'src>> {
+        let name = self.parse_common_ident()?;
+        let params = self.parse_generic_params()?;
+
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.parse(TokenKind::CloseCurlyBracket)?;
+
+        Ok(ast::ItemKind::Trait(ast::Trait { name, generics: ast::Generics { params } }))
+    }
+
     fn parse_common_ident(&mut self) -> Result<&'src str> {
         let token = self.peek();
 
@@ -243,10 +334,7 @@ impl<'src> Parser<'src> {
             return Ok(ident);
         }
 
-        Err(Error::UnexpectedToken(
-            token.kind,
-            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
-        ))
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::CommonIdent))
     }
 
     fn parse_path_seg_ident(&mut self) -> Result<&'src str> {
@@ -260,10 +348,7 @@ impl<'src> Parser<'src> {
             return Ok(ident);
         }
 
-        Err(Error::UnexpectedToken(
-            token.kind,
-            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
-        ))
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::PathSegIdent))
     }
 
     fn parse_generic_params(&mut self) -> Result<Vec<ast::GenParam<'src>>> {
@@ -308,7 +393,6 @@ impl<'src> Parser<'src> {
 
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         let token = self.peek();
-
         match token.kind {
             TokenKind::Ident
                 if let ident = self.source(token.span)
@@ -317,7 +401,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Ok(ast::Ty::Ident(ident))
             }
-            kind => return Err(Error::UnexpectedToken(kind, ExpectedFragment::Ty)),
+            _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty)),
         }
     }
 
@@ -347,6 +431,16 @@ impl<'src> Parser<'src> {
         Ok(ast::Expr::Block(Box::new(ast::BlockExpr { expr })))
     }
 
+    /// Parse an expression.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Expr ::=
+    ///     | #Num_Lit
+    ///     | #Str_Lit
+    ///     | Common_Ident
+    /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         let token = self.peek();
 
@@ -368,7 +462,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Ok(ast::Expr::Ident(ident))
             }
-            kind => return Err(Error::UnexpectedToken(kind, ExpectedFragment::Expr)),
+            _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
         }
     }
 
@@ -412,7 +506,7 @@ impl<'src> Parser<'src> {
                         match stack.pop() {
                             Some(open_delim) if open_delim == close_delim => {}
                             // FIXME: Better error.
-                            _ => return Err(Error::InvalidDelimiter),
+                            _ => return Err(ParseError::InvalidDelimiter),
                         }
                     }
                 }
@@ -426,7 +520,7 @@ impl<'src> Parser<'src> {
             Ok(tokens)
         } else {
             // FIXME: Better error.
-            Err(Error::InvalidDelimiter)
+            Err(ParseError::InvalidDelimiter)
         }
     }
 
@@ -446,7 +540,7 @@ impl<'src> Parser<'src> {
             self.advance();
             return Ok(());
         }
-        Err(Error::UnexpectedToken(token.kind, ExpectedFragment::OneOf(Box::new([kind]))))
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::OneOf(Box::new([kind]))))
     }
 
     fn peek(&self) -> Token {
@@ -514,31 +608,59 @@ fn is_path_seg_keyword(ident: &str) -> bool {
     matches!(ident, "_" | "self" | "Self" | "super" | "crate")
 }
 
-#[derive(Debug)]
-pub(crate) enum Error {
-    #[allow(dead_code)] // used via Debug and thus Display
-    UnexpectedToken(TokenKind, ExpectedFragment),
+pub(crate) enum ParseError {
+    UnexpectedToken(Token, ExpectedFragment),
     // FIXME: Temporary
     InvalidDelimiter,
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
+impl ParseError {
+    pub(crate) fn print(&self, source: &str) {
+        eprint!("error: ");
+        match self {
+            Self::UnexpectedToken(token, expected) => {
+                let found = match token.kind {
+                    TokenKind::Ident => format!("ident `{}`", &source[token.span.range()]),
+                    kind => format!("{kind:?}"),
+                };
+                eprint!("{:?}: found {found} but expected {expected}", token.span)
+            }
+            Self::InvalidDelimiter => eprint!("invalid delimiter"),
+        }
+        eprintln!();
     }
 }
 
-impl std::error::Error for Error {}
-
-#[derive(Debug)]
 pub(crate) enum ExpectedFragment {
-    #[allow(dead_code)] // used via Debug and thus Display
     OneOf(Box<[TokenKind]>),
+    CommonIdent,
+    PathSegIdent,
     Item,
     Ty,
     Expr,
 }
 
+impl fmt::Display for ExpectedFragment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::OneOf(tokens) => {
+                let tokens = tokens
+                    .iter()
+                    .map(|token| format!("{token:?}"))
+                    .intersperse_with(|| String::from(" "))
+                    .collect::<String>();
+                return write!(f, "{tokens}");
+            }
+            Self::CommonIdent => "common ident",
+            Self::PathSegIdent => "path-seg ident",
+            Self::Item => "item",
+            Self::Ty => "ty",
+            Self::Expr => "expr",
+        })
+    }
+}
+
+#[derive(PartialEq, Eq)]
 enum AttrStyle {
     Inner,
     Outer,
@@ -562,6 +684,18 @@ impl Shape for TokenKind {
     fn check(self, parser: &Parser<'_>) -> bool {
         // FIXME: This permits `==` if `=` is requested. This is not okay
         parser.peek().kind == self
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Keyword<'src>(&'src str);
+
+impl Shape for Keyword<'_> {
+    const LENGTH: usize = 1;
+
+    fn check(self, parser: &Parser<'_>) -> bool {
+        let actual = parser.peek();
+        actual.kind == TokenKind::Ident && parser.source(actual.span) == self.0
     }
 }
 
