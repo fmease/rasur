@@ -39,7 +39,8 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Items⟨terminator⟩ ::= Item* ⟨terminator⟩
-    /// Item ::= Attrs⟨Outer⟩ Visibility (Enum | Fn | Mod | Struct | Trait)
+    /// Item ::= Attrs⟨Outer⟩ Visibility
+    ///     (Const_Item | Enum_Item | Fn_Item | Mod_Item | Struct_Item | Static_Item | Trait_Item | Ty_Item)
     /// Visibility ::= "pub"?
     /// ```
     fn parse_items(&mut self, terminator: TokenKind) -> Result<Vec<ast::Item<'src>>> {
@@ -61,25 +62,50 @@ impl<'src> Parser<'src> {
             let token = self.peek();
             let kind = match token.kind {
                 TokenKind::Ident => match self.source(token.span) {
+                    "const" => {
+                        self.advance();
+                        if self.consume(Keyword("fn")) {
+                            self.fin_parse_fn_item(ast::Constness::Const)?
+                        } else {
+                            self.fin_parse_const_item()?
+                        }
+                    }
                     "enum" => {
                         self.advance();
-                        self.fin_parse_enum()?
+                        self.fin_parse_enum_item()?
                     }
                     "fn" => {
                         self.advance();
-                        self.fin_parse_fn()?
+                        self.fin_parse_fn_item(ast::Constness::Not)?
+                    }
+                    "impl" => {
+                        self.advance();
+                        self.fin_parse_impl_item()?
                     }
                     "mod" => {
                         self.advance();
-                        self.fin_parse_mod()?
+                        self.fin_parse_mod_item()?
+                    }
+                    "static" => {
+                        self.advance();
+                        self.fin_parse_static_item()?
                     }
                     "struct" => {
                         self.advance();
-                        self.fin_parse_struct()?
+                        self.fin_parse_struct_item()?
                     }
                     "trait" => {
                         self.advance();
-                        self.fin_parse_trait()?
+                        self.fin_parse_trait_item()?
+                    }
+                    "type" => {
+                        self.advance();
+                        self.fin_parse_ty_item()?
+                    }
+                    // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
+                    "union" => {
+                        self.advance();
+                        self.fin_parse_union_item()?
                     }
                     _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
                 },
@@ -201,6 +227,29 @@ impl<'src> Parser<'src> {
         Ok(ast::Path { locality, segs })
     }
 
+    /// Finish parsing a const item assuming the leading `const` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Const_item ::= "const" ("_" | Common_Ident) Generic_Params ":" Ty ("=" Expr)? ";"
+    /// ```
+    fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        // FIXME: Allow underscore
+        let name = self.parse_common_ident()?;
+        let params = self.parse_generic_params()?;
+        let ty = self.parse_ty_ann()?;
+        let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        self.parse(TokenKind::Semicolon)?;
+
+        Ok(ast::ItemKind::Const(ast::ConstItem {
+            name,
+            generics: ast::Generics { params },
+            ty,
+            body,
+        }))
+    }
+
     /// Finish parsing an enum item assuming the leading `enum` has been parsed already.
     ///
     /// # Grammar
@@ -208,14 +257,14 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Enum ::= "enum" Common_Ident Generic_Params "{" "}"
     /// ```
-    fn fin_parse_enum(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Enum(ast::Enum { name, generics: ast::Generics { params } }))
+        Ok(ast::ItemKind::Enum(ast::EnumItem { name, generics: ast::Generics { params } }))
     }
 
     /// Finish parsing a function item assuming the leading `fn` has already been parsed.
@@ -229,7 +278,7 @@ impl<'src> Parser<'src> {
     ///     ("->" Ty)?
     ///     (Block_Expr | ";")
     /// ```
-    fn fin_parse_fn(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_fn_item(&mut self, constness: ast::Constness) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
         let params = self.parse_params()?;
@@ -240,7 +289,8 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
             None
         };
-        Ok(ast::ItemKind::Fn(ast::Fn {
+        Ok(ast::ItemKind::Fn(ast::FnItem {
+            constness,
             name,
             generics: ast::Generics { params: gen_params },
             params,
@@ -249,7 +299,22 @@ impl<'src> Parser<'src> {
         }))
     }
 
-    fn fin_parse_mod(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_impl_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
+
+        let params = self.parse_generic_params()?;
+
+        // FIXME: Support "Trait_Path "for""
+
+        let ty = self.parse_ty()?;
+
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.parse(TokenKind::CloseCurlyBracket)?;
+
+        Ok(ast::ItemKind::Impl(ast::ImplItem { generics: ast::Generics { params }, ty }))
+    }
+
+    fn fin_parse_mod_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
             Some(self.parse_items(TokenKind::CloseCurlyBracket)?)
@@ -258,7 +323,15 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
             None
         };
-        Ok(ast::ItemKind::Mod(ast::Mod { name, items }))
+        Ok(ast::ItemKind::Mod(ast::ModItem { name, items }))
+    }
+
+    fn fin_parse_static_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let name = self.parse_common_ident()?;
+        let ty = self.parse_ty_ann()?;
+        let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        self.parse(TokenKind::Semicolon)?;
+        Ok(ast::ItemKind::Static(ast::StaticItem { name, ty, body }))
     }
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
@@ -271,7 +344,7 @@ impl<'src> Parser<'src> {
     ///     Generic_Params
     ///     ("{" (Common_Ident ":" Ty ("," | >"}"))* "}" | ";")
     /// ```
-    fn fin_parse_struct(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
@@ -283,8 +356,7 @@ impl<'src> Parser<'src> {
                 }
 
                 let ident = self.parse_common_ident()?;
-                self.parse(TokenKind::Colon)?;
-                let ty = self.parse_ty()?;
+                let ty = self.parse_ty_ann()?;
 
                 // FIXME: Can we express that nicer?
                 if self.peek().kind != TokenKind::CloseCurlyBracket {
@@ -299,7 +371,7 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
             ast::StructBody::Unit
         };
-        Ok(ast::ItemKind::Struct(ast::Struct {
+        Ok(ast::ItemKind::Struct(ast::StructItem {
             name,
             generics: ast::Generics { params: gen_params },
             body,
@@ -313,14 +385,33 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Trait ::= "trait" Common_Ident Generic_Params "{" "}"
     /// ```
-    fn fin_parse_trait(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_trait_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Trait(ast::Trait { name, generics: ast::Generics { params } }))
+        Ok(ast::ItemKind::Trait(ast::TraitItem { name, generics: ast::Generics { params } }))
+    }
+
+    fn fin_parse_ty_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let name = self.parse_common_ident()?;
+        let params = self.parse_generic_params()?;
+        let body = self.consume(TokenKind::Equals).then(|| self.parse_ty()).transpose()?;
+        self.parse(TokenKind::Semicolon)?;
+
+        Ok(ast::ItemKind::Ty(ast::TyItem { name, generics: ast::Generics { params }, body }))
+    }
+
+    fn fin_parse_union_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let name = self.parse_common_ident()?;
+        let params = self.parse_generic_params()?;
+
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.parse(TokenKind::CloseCurlyBracket)?;
+
+        Ok(ast::ItemKind::Union(ast::UnionItem { name, generics: ast::Generics { params } }))
     }
 
     fn parse_common_ident(&mut self) -> Result<&'src str> {
@@ -362,7 +453,10 @@ impl<'src> Parser<'src> {
 
                 let ident = self.parse_common_ident()?;
 
-                self.consume(TokenKind::Comma);
+                // FIXME: Is there a nicer way to do this?
+                if self.peek().kind != TokenKind::CloseAngleBracket {
+                    self.parse(TokenKind::Comma)?;
+                }
 
                 params.push(ast::GenParam { name: ident })
             }
@@ -382,7 +476,11 @@ impl<'src> Parser<'src> {
 
                 let ident = self.parse_common_ident()?;
                 let ty = self.parse_opt_ty_ann()?;
-                self.consume(TokenKind::Comma);
+
+                // FIXME: Is there a nicer way to do this?
+                if self.peek().kind != TokenKind::CloseRoundBracket {
+                    self.parse(TokenKind::Comma)?;
+                }
 
                 params.push(ast::Param { name: ident, ty })
             }
@@ -391,22 +489,86 @@ impl<'src> Parser<'src> {
         Ok(params)
     }
 
+    /// Parse a type.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Ty ::=
+    ///     | "_"
+    ///     | Common_Ident
+    ///     | "!"
+    ///     | "(" (Ty ("," | >")"))* ")"
+    /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         let token = self.peek();
         match token.kind {
-            TokenKind::Ident
-                if let ident = self.source(token.span)
-                    && !is_reserved(ident, self.edition) =>
-            {
+            TokenKind::Ident => match self.source(token.span) {
+                "_" => {
+                    self.advance();
+                    return Ok(ast::Ty::Inferred);
+                }
+                ident if !is_reserved(ident, self.edition) => {
+                    self.advance();
+                    return Ok(ast::Ty::Ident(ident));
+                }
+                _ => {}
+            },
+            TokenKind::Bang => {
                 self.advance();
-                Ok(ast::Ty::Ident(ident))
+                return Ok(ast::Ty::Never);
             }
-            _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty)),
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let ty = self.parse_ty()?;
+                let len =
+                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                return Ok(match len {
+                    Some(len) => ast::Ty::Array(Box::new(ty), len),
+                    None => ast::Ty::Slice(Box::new(ty)),
+                });
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                let mut tys = Vec::new();
+
+                loop {
+                    if self.consume(TokenKind::CloseRoundBracket) {
+                        break;
+                    }
+
+                    let ty = self.parse_ty()?;
+
+                    // FIXME: Is there a better way to express this?
+                    if self.peek().kind == TokenKind::CloseRoundBracket {
+                        if tys.is_empty() {
+                            // This is actually a parenthesized type, not a tuple.
+                            self.advance();
+                            return Ok(ty);
+                        }
+                    } else {
+                        self.parse(TokenKind::Comma)?;
+                    }
+
+                    tys.push(ty);
+                }
+
+                return Ok(ast::Ty::Tup(tys));
+            }
+            _ => {}
         }
+
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))
+    }
+
+    fn parse_ty_ann(&mut self) -> Result<ast::Ty<'src>> {
+        self.parse(TokenKind::Colon)?;
+        self.parse_ty()
     }
 
     fn parse_opt_ty_ann(&mut self) -> Result<Option<ast::Ty<'src>>> {
-        if self.consume(TokenKind::Colon) { self.parse_ty().map(Some) } else { Ok(None) }
+        self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()
     }
 
     /// Finish parsing a block expression assuming the leading `{` has already been parsed.
@@ -462,7 +624,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Ok(ast::Expr::Ident(ident))
             }
-            _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
+            _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
         }
     }
 

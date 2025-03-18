@@ -26,21 +26,35 @@ pub(crate) enum Visibility {
 
 #[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
-    Enum(Enum<'src>),
-    Fn(Fn<'src>),
-    Mod(Mod<'src>),
-    Struct(Struct<'src>),
-    Trait(Trait<'src>),
+    Const(ConstItem<'src>),
+    Enum(EnumItem<'src>),
+    Fn(FnItem<'src>),
+    Impl(ImplItem<'src>),
+    Mod(ModItem<'src>),
+    Static(StaticItem<'src>),
+    Struct(StructItem<'src>),
+    Trait(TraitItem<'src>),
+    Ty(TyItem<'src>),
+    Union(UnionItem<'src>),
 }
 
 #[derive(Debug)]
-pub(crate) struct Enum<'src> {
+pub(crate) struct ConstItem<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
+    pub(crate) ty: Ty<'src>,
+    pub(crate) body: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct EnumItem<'src> {
     pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Fn<'src> {
+pub(crate) struct FnItem<'src> {
+    pub(crate) constness: Constness,
     pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<Param<'src>>,
@@ -49,20 +63,52 @@ pub(crate) struct Fn<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Mod<'src> {
+pub(crate) enum Constness {
+    Const,
+    Not,
+}
+
+#[derive(Debug)]
+pub(crate) struct ImplItem<'src> {
+    pub(crate) generics: Generics<'src>,
+    pub(crate) ty: Ty<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ModItem<'src> {
     pub(crate) name: Ident<'src>,
     pub(crate) items: Option<Vec<Item<'src>>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Struct<'src> {
+pub(crate) struct StaticItem<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) ty: Ty<'src>,
+    pub(crate) body: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructItem<'src> {
     pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) body: StructBody<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Trait<'src> {
+pub(crate) struct TraitItem<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct TyItem<'src> {
+    pub(crate) name: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
+    pub(crate) body: Option<Ty<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct UnionItem<'src> {
     pub(crate) name: Ident<'src>,
     pub(crate) generics: Generics<'src>,
 }
@@ -105,7 +151,12 @@ pub(crate) struct BlockExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
+    Array(Box<Ty<'src>>, Expr<'src>),
     Ident(Ident<'src>),
+    Inferred,
+    Never,
+    Slice(Box<Ty<'src>>),
+    Tup(Vec<Ty<'src>>),
 }
 
 #[derive(Debug)]
