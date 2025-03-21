@@ -16,6 +16,10 @@ pub(crate) struct Span {
 }
 
 impl Span {
+    pub(crate) fn to(self, other: impl Into<Option<Self>>) -> Self {
+        Self { end: other.into().unwrap_or(self).end, ..self }
+    }
+
     pub(crate) fn range(self) -> Range<usize> {
         self.start.0 as usize..self.end.0 as usize
     }

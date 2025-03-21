@@ -1,14 +1,16 @@
 #![expect(dead_code)] // FIXME
 
-use crate::lexer::TokenKind;
+pub(crate) use crate::lexer::TokenKind;
+use crate::span::Span;
 
 // FIXME: Create newtype for idents!
-pub type Ident<'src> = &'src str;
+pub(crate) type Ident<'src> = &'src str;
 
 #[derive(Debug)]
 pub(crate) struct File<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) items: Vec<Item<'src>>,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug)]
@@ -16,6 +18,7 @@ pub(crate) struct Item<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) vis: Visibility,
     pub(crate) kind: ItemKind<'src>,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug)]
@@ -146,6 +149,7 @@ pub(crate) enum Expr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct BlockExpr<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) expr: Option<Expr<'src>>,
 }
 
@@ -161,8 +165,15 @@ pub(crate) enum Ty<'src> {
 
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
+    pub(crate) style: AttrStyle,
     pub(crate) path: Path<'src>,
     pub(crate) kind: AttrKind<'src>,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub(crate) enum AttrStyle {
+    Inner,
+    Outer,
 }
 
 #[derive(Debug)]

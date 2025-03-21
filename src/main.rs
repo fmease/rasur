@@ -10,7 +10,6 @@ use edition::Edition;
 
 mod ast;
 mod edition;
-#[cfg(any())] // FIXME: Progress on parser has priority atm.
 mod fmter;
 mod lexer;
 mod parser;
@@ -52,6 +51,7 @@ fn try_main() -> Result<(), ()> {
                         }
                     });
                 }
+                b"fmt" => opts.fmt = true,
                 _ => {
                     eprintln!("error: unknown flag `{}`", arg.display());
                     return Err(());
@@ -88,9 +88,10 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    // FIXME:
-    // let result = fmter::fmt(file, fmter::Cfg { ..Default::default() });
-    // println!("{result}");
+    if opts.fmt {
+        let result = fmter::fmt(file, &source, fmter::Cfg { ..Default::default() });
+        println!("{result}");
+    }
 
     Ok(())
 }
@@ -101,4 +102,5 @@ struct Opts {
     edition: Option<Edition>,
     emit_tokens: bool,
     emit_ast: bool,
+    fmt: bool,
 }
