@@ -457,7 +457,7 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Ty_Item ::= "union" Common_Ident Generic_Params "{" … "}"
+    /// Union_Item ::= "union" Common_Ident Generic_Params "{" … "}"
     /// ```
     fn fin_parse_union_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let name = self.parse_common_ident()?;
