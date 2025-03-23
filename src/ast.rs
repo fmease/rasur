@@ -39,6 +39,7 @@ pub(crate) enum ItemKind<'src> {
     Trait(TraitItem<'src>),
     Ty(TyItem<'src>),
     Union(UnionItem<'src>),
+    MacroCall(MacroCall<'src>),
 }
 
 #[derive(Debug)]
@@ -117,10 +118,24 @@ pub(crate) struct UnionItem<'src> {
 }
 
 #[derive(Debug)]
+pub(crate) struct MacroCall<'src> {
+    pub(crate) path: Path<'src>,
+    pub(crate) bracket: Bracket,
+    pub(crate) stream: TokenStream,
+}
+
+#[derive(Debug)]
 pub(crate) enum StructBody<'src> {
     // FIXME: Better name for this
-    Normal { fields: Vec<(Ident<'src>, Ty<'src>)> },
+    Normal { fields: Vec<StructField<'src>> },
     Unit,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructField<'src> {
+    pub(crate) vis: Visibility,
+    pub(crate) name: Ident<'src>,
+    pub(crate) ty: Ty<'src>,
 }
 
 #[derive(Debug)]
@@ -136,7 +151,7 @@ pub(crate) struct GenParam<'src> {
 #[derive(Debug)]
 pub(crate) struct Param<'src> {
     pub(crate) name: Ident<'src>,
-    pub(crate) ty: Option<Ty<'src>>,
+    pub(crate) ty: Ty<'src>,
 }
 
 #[derive(Debug)]
@@ -190,6 +205,12 @@ pub(crate) enum Bracket {
     Round,
     Square,
     Curly,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Orientation {
+    Open,
+    Close,
 }
 
 #[derive(Debug)]

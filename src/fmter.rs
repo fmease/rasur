@@ -13,17 +13,13 @@ impl Default for Cfg {
     }
 }
 
-macro_rules! cx {
-    ($cx:ident) => {
-        macro_rules! fmt {
-            (indent) => {
-                _ = $cx.buf.write_str(&" ".repeat($cx.indent)) // FIXME: Don't allocate extra string!
-            };
-            ($$($$arg:tt)*) => {
-                _ = $cx.buf.write_fmt(format_args!($$($$arg)*))
-            };
-        }
-    }
+macro_rules! fmt {
+    ($cx:expr, indent) => {
+        _ = $cx.buf.write_str(&" ".repeat($cx.indent)) // FIXME: Don't allocate extra string!
+    };
+    ($cx:expr, $($arg:tt)*) => {
+        _ = $cx.buf.write_fmt(format_args!($($arg)*))
+    };
 }
 
 pub(crate) fn fmt(file: ast::File<'_>, source: &str, cfg: Cfg) -> String {
@@ -65,18 +61,17 @@ impl<'src> Cx<'src> {
 
 impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         if cx.skip(&self.attrs) {
-            fmt!("{}", cx.source(self.span));
+            fmt!(cx, "{}", cx.source(self.span));
             return;
         }
 
         if !self.attrs.is_empty() {
             for attr in self.attrs {
                 attr.fmt(cx);
-                fmt!("\n");
+                fmt!(cx, "\n");
             }
-            fmt!("\n");
+            fmt!(cx, "\n");
         }
 
         let mut items = self.items.into_iter();
@@ -84,7 +79,7 @@ impl Fmt for ast::File<'_> {
             item.fmt(cx);
         }
         for item in items {
-            fmt!("\n\n");
+            fmt!(cx, "\n\n");
             item.fmt(cx);
         }
     }
@@ -92,15 +87,17 @@ impl Fmt for ast::File<'_> {
 
 impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         if cx.skip(&self.attrs) {
-            fmt!("{}", cx.source(self.span));
+            fmt!(cx, "{}", cx.source(self.span));
             return;
         }
         for attr in self.attrs {
             attr.fmt(cx);
-            fmt!("\n");
+            fmt!(cx, "\n");
         }
+
+        // FIXME: Not all items support visibility.
+        self.vis.fmt(cx);
 
         match self.kind {
             ast::ItemKind::Const(item) => item.fmt(cx),
@@ -113,265 +110,297 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Trait(item) => item.fmt(cx),
             ast::ItemKind::Ty(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
+            ast::ItemKind::MacroCall(call) => {
+                let needs_semi = matches!(call.bracket, ast::Bracket::Round);
+                call.fmt(cx);
+                if needs_semi {
+                    fmt!(cx, ";");
+                }
+            }
         }
     }
 }
 
 impl Fmt for ast::Attr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("#");
+        fmt!(cx, "#");
         if let ast::AttrStyle::Inner = self.style {
-            fmt!("!");
+            fmt!(cx, "!");
         }
-        fmt!("[");
+        fmt!(cx, "[");
         self.path.fmt(cx);
         match self.kind {
             ast::AttrKind::Unit => {}
             ast::AttrKind::Call(bracket, stream) => {
-                let (open, close) = match bracket {
-                    ast::Bracket::Round => ("(", ")"),
-                    ast::Bracket::Square => ("[", "]"),
-                    ast::Bracket::Curly => ("{", "}"),
-                };
-                fmt!("{open}");
+                bracket.fmt(ast::Orientation::Open, cx);
                 stream.fmt(cx);
-                fmt!("{close}");
+                bracket.fmt(ast::Orientation::Close, cx);
             }
             ast::AttrKind::Assign(expr) => {
-                fmt!(" = ");
+                fmt!(cx, " = ");
                 expr.fmt(cx);
             }
         }
-        fmt!("]");
+        fmt!(cx, "]");
     }
 }
 
 impl Fmt for ast::Path<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         if let ast::PathLocality::Global = self.locality {
-            fmt!("::");
+            fmt!(cx, "::");
         }
         let mut segs = self.segs.into_iter();
         if let Some(seg) = segs.next() {
-            fmt!("{seg}");
+            fmt!(cx, "{seg}");
         }
         for seg in segs {
-            fmt!("::{seg}");
+            fmt!(cx, "::{seg}");
         }
     }
 }
 
-impl Fmt for Vec<ast::TokenKind> {
+impl Fmt for ast::TokenStream {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        // FIXME
-        for token in self {
-            fmt!("{token:?}");
+        let mut tokens = self.into_iter();
+        if let Some(token) = tokens.next() {
+            token.fmt(cx);
         }
+        for token in tokens {
+            fmt!(cx, " ");
+            token.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for ast::TokenKind {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(
+            cx,
+            "{}",
+            match self {
+                Self::Bang => "!",
+                Self::CloseAngleBracket => ">",
+                Self::CloseCurlyBracket => "}",
+                Self::CloseRoundBracket => ")",
+                Self::CloseSquareBracket => "]",
+                Self::Colon => ":",
+                Self::Comma => ",",
+                Self::Dot => ".",
+                Self::EndOfInput => "",
+                Self::Equals => "=",
+                Self::Error => "/*error*/",
+                Self::Hash => "#",
+                Self::Hyphen => "-",
+                // FIXME: We need the span for the source!
+                Self::Ident => "/*ident*/",
+                // FIXME: We need the span for the source!
+                Self::NumLit => "/*num*/",
+                Self::OpenAngleBracket => "<",
+                Self::OpenCurlyBracket => "{",
+                Self::OpenRoundBracket => "(",
+                Self::OpenSquareBracket => "[",
+                Self::Plus => "+",
+                Self::Semicolon => ";",
+                Self::Slash => "/",
+                Self::Star => "*",
+                // FIXME: We need the span for the source!
+                Self::StrLit => "/*str*/",
+                Self::ThinArrow => "->",
+                Self::WideArrow => "=>",
+            }
+        )
     }
 }
 
 impl Fmt for Vec<ast::GenParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         let mut params = self.into_iter();
         if let Some(param) = params.next() {
-            fmt!("<");
-            fmt!("{},", param.name);
+            fmt!(cx, "<");
+            fmt!(cx, "{},", param.name);
             for param in params {
-                fmt!("{},", param.name);
+                fmt!(cx, "{},", param.name);
             }
-            fmt!(">");
+            fmt!(cx, ">");
         }
     }
 }
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("const ");
+        fmt!(cx, "const ");
         // FIXME
     }
 }
 
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("enum ");
+        fmt!(cx, "enum ");
         // FIXME
     }
 }
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("fn ");
-        fmt!("{}", self.name);
+        fmt!(cx, "fn ");
+        fmt!(cx, "{}", self.name);
         self.generics.params.fmt(cx);
-        if !self.params.is_empty() {
-            fmt!("(");
-            for param in self.params {
-                fmt!("{}", param.name);
-                // FIXME: Doesn't generate valid code in Rust 2015 if ty==None.
-                if let Some(ty) = param.ty {
-                    fmt!(": ");
-                    ty.fmt(cx);
-                }
-                fmt!(",");
-            }
-            fmt!(")");
+        fmt!(cx, "(");
+        for param in self.params {
+            fmt!(cx, "{}: ", param.name);
+            param.ty.fmt(cx);
+            fmt!(cx, ",");
         }
+        fmt!(cx, ")");
         if let Some(ty) = self.ret_ty {
-            fmt!(" -> ");
+            fmt!(cx, " -> ");
             ty.fmt(cx);
         }
         if let Some(body) = self.body {
-            fmt!(" ");
+            fmt!(cx, " ");
             body.fmt(cx);
         } else {
-            fmt!(";");
+            fmt!(cx, ";");
         }
     }
 }
 
 impl Fmt for ast::ImplItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("impl");
+        fmt!(cx, "impl");
         self.generics.params.fmt(cx);
-        fmt!(" ");
+        fmt!(cx, " ");
         self.ty.fmt(cx);
-        fmt!(" {{}}")
+        fmt!(cx, " {{}}")
     }
 }
 
 impl Fmt for ast::ModItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("mod {}", self.name);
+        fmt!(cx, "mod {}", self.name);
         match self.items {
             Some(items) => {
-                fmt!(" {{\n");
+                fmt!(cx, " {{\n");
                 cx.indent();
                 for item in items {
-                    fmt!(indent);
+                    fmt!(cx, indent);
                     item.fmt(cx);
                 }
                 cx.dedent();
-                fmt!(indent);
-                fmt!("}}");
+                fmt!(cx, indent);
+                fmt!(cx, "}}");
             }
-            None => fmt!(";"),
+            None => fmt!(cx, ";"),
         }
     }
 }
 
 impl Fmt for ast::StaticItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("static {}: ", self.name);
+        fmt!(cx, "static {}: ", self.name);
         self.ty.fmt(cx);
         if let Some(body) = self.body {
             body.fmt(cx);
         }
-        fmt!(";")
+        fmt!(cx, ";")
     }
 }
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("struct {}", self.name);
+        fmt!(cx, "struct {}", self.name);
         self.generics.params.fmt(cx);
         match self.body {
             ast::StructBody::Normal { fields } => {
-                fmt!(" {{\n");
+                fmt!(cx, " {{\n");
                 cx.indent();
-                for (name, ty) in fields {
-                    fmt!(indent);
-                    fmt!("{name}: ");
-                    ty.fmt(cx);
-                    fmt!(",\n");
+                for field in fields {
+                    fmt!(cx, indent);
+                    field.fmt(cx);
+                    fmt!(cx, ",\n");
                 }
                 cx.dedent();
-                fmt!(indent);
-                fmt!("}}");
+                fmt!(cx, indent);
+                fmt!(cx, "}}");
             }
-            ast::StructBody::Unit => fmt!(";"),
+            ast::StructBody::Unit => fmt!(cx, ";"),
         }
+    }
+}
+
+impl Fmt for ast::StructField<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.vis.fmt(cx);
+        fmt!(cx, "{}: ", self.name);
+        self.ty.fmt(cx);
     }
 }
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("trait {}", self.name);
+        fmt!(cx, "trait {}", self.name);
         self.generics.params.fmt(cx);
-        fmt!(" {{}}")
+        fmt!(cx, " {{}}")
     }
 }
 
 impl Fmt for ast::TyItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("type {}", self.name);
+        fmt!(cx, "type {}", self.name);
         self.generics.params.fmt(cx);
         if let Some(body) = self.body {
-            fmt!(" = ");
+            fmt!(cx, " = ");
             body.fmt(cx);
         }
-        fmt!(";")
+        fmt!(cx, ";")
     }
 }
 
 impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("union {}", self.name);
+        fmt!(cx, "union {}", self.name);
         self.generics.params.fmt(cx);
-        fmt!(" {{}}")
+        fmt!(cx, " {{}}")
     }
 }
 
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         match self {
             Self::Array(ty, expr) => {
-                fmt!("[");
+                fmt!(cx, "[");
                 ty.fmt(cx);
-                fmt!("; ");
+                fmt!(cx, "; ");
                 expr.fmt(cx);
-                fmt!("]")
+                fmt!(cx, "]")
             }
-            Self::Ident(ident) => fmt!("{ident}"),
-            Self::Inferred => fmt!("_"),
+            Self::Ident(ident) => fmt!(cx, "{ident}"),
+            Self::Inferred => fmt!(cx, "_"),
             Self::Never => todo!(),
             Self::Slice(ty) => {
-                fmt!("[");
+                fmt!(cx, "[");
                 ty.fmt(cx);
-                fmt!("]")
+                fmt!(cx, "]")
             }
             Self::Tup(tys) => {
-                fmt!("(");
+                fmt!(cx, "(");
                 let mut tys = tys.into_iter();
                 if let Some(ty) = tys.next() {
                     ty.fmt(cx);
                 }
                 match tys.next() {
                     Some(ty) => {
-                        fmt!(", ");
+                        fmt!(cx, ", ");
                         ty.fmt(cx);
                     }
-                    None => fmt!(","),
+                    None => fmt!(cx, ","),
                 }
                 for ty in tys {
-                    fmt!(", ");
+                    fmt!(cx, ", ");
                     ty.fmt(cx);
                 }
-                fmt!(")");
+                fmt!(cx, ")");
             }
         }
     }
@@ -379,33 +408,75 @@ impl Fmt for ast::Ty<'_> {
 
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
         match self {
-            Self::Block(expr) => (*expr).fmt(cx),
-            Self::Ident(ident) => fmt!("{ident}"),
-            Self::NumLit(lit) => fmt!("{lit}"),
-            Self::StrLit(lit) => fmt!("{lit}"),
+            Self::Block(expr) => expr.fmt(cx),
+            Self::Ident(ident) => fmt!(cx, "{ident}"),
+            Self::NumLit(lit) => fmt!(cx, "{lit}"),
+            Self::StrLit(lit) => fmt!(cx, "{lit}"),
         }
     }
 }
 
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        cx!(cx);
-        fmt!("{{\n");
+        fmt!(cx, "{{\n");
         cx.indent();
         for attr in self.attrs {
-            fmt!(indent);
+            fmt!(cx, indent);
             attr.fmt(cx);
-            fmt!("\n");
+            fmt!(cx, "\n");
         }
         if let Some(expr) = self.expr {
-            fmt!(indent);
+            fmt!(cx, indent);
             expr.fmt(cx);
-            fmt!("\n");
+            fmt!(cx, "\n");
         }
         cx.dedent();
-        fmt!("}}");
+        fmt!(cx, "}}");
+    }
+}
+
+impl Fmt for ast::MacroCall<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.path.fmt(cx);
+        // FIXME: Extra space after bang for curly brackets
+        fmt!(cx, "!");
+        self.bracket.fmt(ast::Orientation::Open, cx);
+        self.stream.fmt(cx);
+        self.bracket.fmt(ast::Orientation::Close, cx);
+    }
+}
+
+impl ast::Bracket {
+    fn fmt(self, orient: ast::Orientation, cx: &mut Cx<'_>) {
+        use ast::Orientation::*;
+        fmt!(
+            cx,
+            "{}",
+            match (self, orient) {
+                (Self::Round, Open) => "(",
+                (Self::Round, Close) => ")",
+                (Self::Square, Open) => "[",
+                (Self::Square, Close) => "]",
+                (Self::Curly, Open) => "{",
+                (Self::Curly, Close) => "}",
+            }
+        )
+    }
+}
+
+impl Fmt for ast::Visibility {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            ast::Visibility::Inherited => {}
+            ast::Visibility::Public => fmt!(cx, "pub "),
+        }
+    }
+}
+
+impl<T: Fmt> Fmt for Box<T> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        (*self).fmt(cx);
     }
 }
 

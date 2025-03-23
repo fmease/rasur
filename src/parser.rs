@@ -72,6 +72,7 @@ impl<'src> Parser<'src> {
     ///     | Trait_Item
     ///     | Ty_Item
     ///     | Union_Item
+    ///     | Macro_Call
     /// Visibility ::= "pub"?
     /// ```
     fn parse_item(&mut self) -> Result<ast::Item<'src>> {
@@ -80,10 +81,7 @@ impl<'src> Parser<'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
-        let vis = match self.consume(Keyword("pub")) {
-            true => ast::Visibility::Public,
-            false => ast::Visibility::Inherited,
-        };
+        let vis = self.parse_visibility();
 
         let token = self.token();
         let kind = match token.kind {
@@ -133,8 +131,10 @@ impl<'src> Parser<'src> {
                     self.advance();
                     self.fin_parse_union_item()?
                 }
+                ident if self.is_path_seg_ident(ident) => self.parse_macro_call()?,
                 _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
             },
+            _ if DOUBLE_COLON.check(self) => self.parse_macro_call()?,
             _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
         };
 
@@ -177,7 +177,7 @@ impl<'src> Parser<'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
-        let path = self.parse_attr_path()?;
+        let path = self.parse_path()?;
         let token = self.token();
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
@@ -224,18 +224,14 @@ impl<'src> Parser<'src> {
         Ok(ast::Attr { style, path, kind })
     }
 
-    /// Parse an attribute path.
+    /// Parse a path.
     ///
     /// # Grammar
     ///
     /// ```grammar
     /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
     /// ```
-    fn parse_attr_path(&mut self) -> Result<ast::Path<'src>> {
-        // FIXME: Or should we move most "glued" token detection into the lexer?
-        //        We can't move everything though.
-        const DOUBLE_COLON: Glued<2, TokenKind> = Glued([TokenKind::Colon, TokenKind::Colon]);
-
+    fn parse_path(&mut self) -> Result<ast::Path<'src>> {
         let locality = match self.consume(DOUBLE_COLON) {
             true => ast::PathLocality::Global,
             false => ast::PathLocality::Local,
@@ -396,7 +392,9 @@ impl<'src> Parser<'src> {
                     break;
                 }
 
-                let ident = self.parse_common_ident()?;
+                let vis = self.parse_visibility();
+
+                let name = self.parse_common_ident()?;
                 let ty = self.parse_ty_ann()?;
 
                 // FIXME: Can we express that nicer?
@@ -404,7 +402,7 @@ impl<'src> Parser<'src> {
                     self.parse(TokenKind::Comma)?;
                 }
 
-                fields.push((ident, ty))
+                fields.push(ast::StructField { vis, name, ty })
             }
             ast::StructBody::Normal { fields }
         } else {
@@ -469,12 +467,56 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Union(ast::UnionItem { name, generics: ast::Generics { params } }))
     }
 
+    fn parse_macro_call(&mut self) -> Result<ast::ItemKind<'src>> {
+        let path = self.parse_path()?;
+        self.parse(TokenKind::Bang)?;
+
+        let bracket = self.token();
+        let (bracket, stream) = match bracket.kind {
+            TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::OpenCurlyBracket => {
+                self.advance();
+                let bracket = match bracket.kind {
+                    TokenKind::OpenRoundBracket => ast::Bracket::Round,
+                    TokenKind::OpenSquareBracket => ast::Bracket::Square,
+                    TokenKind::OpenCurlyBracket => ast::Bracket::Curly,
+                    _ => unreachable!(),
+                };
+                let stream = self.parse_token_strean(bracket)?;
+                self.parse(match bracket {
+                    ast::Bracket::Round => TokenKind::CloseRoundBracket,
+                    ast::Bracket::Square => TokenKind::CloseSquareBracket,
+                    ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
+                })?;
+                (bracket, stream)
+            }
+            _ => {
+                return Err(ParseError::UnexpectedToken(
+                    bracket,
+                    ExpectedFragment::OneOf(Box::new([
+                        TokenKind::OpenRoundBracket,
+                        TokenKind::OpenSquareBracket,
+                        TokenKind::OpenCurlyBracket,
+                    ])),
+                ));
+            }
+        };
+
+        // FIXME: Only in Item contexts, not in exprs, pats or tys!
+        if let ast::Bracket::Round = bracket {
+            self.parse(TokenKind::Semicolon)?;
+        }
+
+        Ok(ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream }))
+    }
+
     fn parse_common_ident(&mut self) -> Result<&'src str> {
         let token = self.token();
 
         if let TokenKind::Ident = token.kind
             && let ident = self.source(token.span)
-            && !is_reserved(ident, self.edition)
+            && self.is_common_ident(ident)
         {
             self.advance();
             return Ok(ident);
@@ -483,18 +525,24 @@ impl<'src> Parser<'src> {
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::CommonIdent))
     }
 
-    fn parse_path_seg_ident(&mut self) -> Result<&'src str> {
-        let token = self.token();
+    fn is_common_ident(&self, ident: &str) -> bool {
+        !is_reserved(ident, self.edition)
+    }
 
+    fn parse_path_seg_ident(&mut self) -> Result<ast::Ident<'src>> {
+        let token = self.token();
         if let TokenKind::Ident = token.kind
             && let ident = self.source(token.span)
-            && (is_path_seg_keyword(ident) || !is_reserved(ident, self.edition))
+            && self.is_path_seg_ident(ident)
         {
             self.advance();
             return Ok(ident);
         }
-
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::PathSegIdent))
+    }
+
+    fn is_path_seg_ident(&self, ident: &str) -> bool {
+        is_path_seg_keyword(ident) || !is_reserved(ident, self.edition)
     }
 
     fn parse_generic_params(&mut self) -> Result<Vec<ast::GenParam<'src>>> {
@@ -530,7 +578,8 @@ impl<'src> Parser<'src> {
                 }
 
                 let ident = self.parse_common_ident()?;
-                let ty = self.parse_opt_ty_ann()?;
+                // FIXME: Optional if in trait and edition 2015
+                let ty = self.parse_ty_ann()?;
 
                 // FIXME: Is there a nicer way to do this?
                 if self.token().kind != TokenKind::CloseRoundBracket {
@@ -622,10 +671,6 @@ impl<'src> Parser<'src> {
         self.parse_ty()
     }
 
-    fn parse_opt_ty_ann(&mut self) -> Result<Option<ast::Ty<'src>>> {
-        self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()
-    }
-
     /// Finish parsing a block expression assuming the leading `{` has already been parsed.
     ///
     /// # Grammar
@@ -689,37 +734,36 @@ impl<'src> Parser<'src> {
         let mut stack = Vec::new();
         let mut is_delimited = false;
 
-        enum Orientation {
-            Open,
-            Close,
-        }
-
         loop {
             let token = self.token();
 
-            let act_delim = match token.kind {
-                TokenKind::OpenRoundBracket => Some((ast::Bracket::Round, Orientation::Open)),
-                TokenKind::OpenSquareBracket => Some((ast::Bracket::Square, Orientation::Open)),
-                TokenKind::OpenCurlyBracket => Some((ast::Bracket::Curly, Orientation::Open)),
-                TokenKind::CloseRoundBracket => Some((ast::Bracket::Round, Orientation::Close)),
-                TokenKind::CloseSquareBracket => Some((ast::Bracket::Square, Orientation::Close)),
-                TokenKind::CloseCurlyBracket => Some((ast::Bracket::Curly, Orientation::Close)),
-                TokenKind::EndOfInput => break,
-                _ => None,
+            let act_delim = {
+                use ast::Bracket::*;
+                use ast::Orientation::*;
+                match token.kind {
+                    TokenKind::OpenRoundBracket => Some((Round, Open)),
+                    TokenKind::OpenSquareBracket => Some((Square, Open)),
+                    TokenKind::OpenCurlyBracket => Some((Curly, Open)),
+                    TokenKind::CloseRoundBracket => Some((Round, Close)),
+                    TokenKind::CloseSquareBracket => Some((Square, Close)),
+                    TokenKind::CloseCurlyBracket => Some((Curly, Close)),
+                    TokenKind::EndOfInput => break,
+                    _ => None,
+                }
             };
 
             if let Some((act_delim, orient)) = act_delim {
                 if stack.is_empty()
                     && act_delim == exp_delim
-                    && let Orientation::Close = orient
+                    && let ast::Orientation::Close = orient
                 {
                     is_delimited = true;
                     break;
                 }
 
                 match orient {
-                    Orientation::Open => stack.push(act_delim),
-                    Orientation::Close => {
+                    ast::Orientation::Open => stack.push(act_delim),
+                    ast::Orientation::Close => {
                         let close_delim = act_delim;
                         match stack.pop() {
                             Some(open_delim) if open_delim == close_delim => {}
@@ -739,6 +783,13 @@ impl<'src> Parser<'src> {
         } else {
             // FIXME: Better error.
             Err(ParseError::InvalidDelimiter)
+        }
+    }
+
+    fn parse_visibility(&mut self) -> ast::Visibility {
+        match self.consume(Keyword("pub")) {
+            true => ast::Visibility::Public,
+            false => ast::Visibility::Inherited,
         }
     }
 
@@ -787,6 +838,10 @@ impl<'src> Parser<'src> {
         &self.source[span.range()]
     }
 }
+
+// FIXME: Or should we move most "glued" token detection into the lexer?
+//        We can't move everything though.
+const DOUBLE_COLON: Glued<2, TokenKind> = Glued([TokenKind::Colon, TokenKind::Colon]);
 
 // FIXME: Check master if this is still up to date
 fn is_reserved(ident: &str, edition: Edition) -> bool {

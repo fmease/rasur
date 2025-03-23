@@ -9,30 +9,32 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
-    Comma,
-    Semicolon,
-    Dot,
-    Colon,
     Bang,
-    Hyphen,
-    Slash,
-    Hash,
-    Equals,
-    OpenRoundBracket,
-    CloseRoundBracket,
-    OpenSquareBracket,
-    CloseSquareBracket,
-    OpenCurlyBracket,
-    CloseCurlyBracket,
-    OpenAngleBracket,
     CloseAngleBracket,
-    ThinArrow,
-    WideArrow,
+    CloseCurlyBracket,
+    CloseRoundBracket,
+    CloseSquareBracket,
+    Colon,
+    Comma,
+    Dot,
+    EndOfInput,
+    Equals,
+    Error,
+    Hash,
+    Hyphen,
     Ident,
     NumLit,
+    OpenAngleBracket,
+    OpenCurlyBracket,
+    OpenRoundBracket,
+    OpenSquareBracket,
+    Plus,
+    Semicolon,
+    Slash,
+    Star,
     StrLit,
-    Error,
-    EndOfInput,
+    ThinArrow,
+    WideArrow,
 }
 
 #[derive(Clone, Copy)]
@@ -60,12 +62,12 @@ impl<'src> Lexer<'src> {
     fn run(mut self) -> Vec<Token> {
         while let Some(char) = self.peek() {
             let start = self.index();
+            // FIXME: Use next()? instead of "uncond_peek+advance"?
+            self.advance();
 
             match char {
-                _ if char.is_whitespace() => self.advance(),
+                _ if char.is_whitespace() => {}
                 '/' => {
-                    self.advance();
-
                     match self.peek() {
                         Some('/') => {
                             self.advance();
@@ -94,8 +96,6 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 'a'..='z' | 'A'..='Z' | '_' => {
-                    self.advance();
-
                     while let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = self.peek() {
                         self.advance();
                     }
@@ -103,8 +103,6 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::Ident, start);
                 }
                 '0'..='9' => {
-                    self.advance();
-
                     // FIXME: Float lits and suffixes
                     while let Some('0'..='9' | '_') = self.peek() {
                         self.advance();
@@ -113,7 +111,6 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::NumLit, start);
                 }
                 '"' => {
-                    self.advance();
                     let start = self.index();
 
                     // FIXME: Escape sequences;
@@ -128,84 +125,41 @@ impl<'src> Lexer<'src> {
                         self.advance();
                     }
                 }
-                ',' => {
-                    self.advance();
-                    self.add(TokenKind::Comma, start);
-                }
-                ';' => {
-                    self.advance();
-                    self.add(TokenKind::Semicolon, start);
-                }
-                '.' => {
-                    self.advance();
-                    self.add(TokenKind::Dot, start);
-                }
-                ':' => {
-                    self.advance();
-                    self.add(TokenKind::Colon, start);
-                }
-                '!' => {
-                    self.advance();
-                    self.add(TokenKind::Bang, start);
-                }
+                ',' => self.add(TokenKind::Comma, start),
+                ';' => self.add(TokenKind::Semicolon, start),
+                '.' => self.add(TokenKind::Dot, start),
+                ':' => self.add(TokenKind::Colon, start),
+                '!' => self.add(TokenKind::Bang, start),
+                '+' => self.add(TokenKind::Plus, start),
+                '*' => self.add(TokenKind::Star, start),
                 '-' => {
-                    self.advance();
                     if let Some('>') = self.peek() {
                         self.advance();
+                        // FIXME: Do we actually want to do this in the lexer?
                         self.add(TokenKind::ThinArrow, start);
                     } else {
                         self.add(TokenKind::Hyphen, start);
                     }
                 }
                 '=' => {
-                    self.advance();
                     if let Some('>') = self.peek() {
                         self.advance();
+                        // FIXME: Do we actually want to do this in the lexer?
                         self.add(TokenKind::WideArrow, start);
                     } else {
                         self.add(TokenKind::Equals, start);
                     }
                 }
-                '#' => {
-                    self.advance();
-                    self.add(TokenKind::Hash, start);
-                }
-                '(' => {
-                    self.advance();
-                    self.add(TokenKind::OpenRoundBracket, start);
-                }
-                ')' => {
-                    self.advance();
-                    self.add(TokenKind::CloseRoundBracket, start);
-                }
-                '[' => {
-                    self.advance();
-                    self.add(TokenKind::OpenSquareBracket, start);
-                }
-                ']' => {
-                    self.advance();
-                    self.add(TokenKind::CloseSquareBracket, start);
-                }
-                '{' => {
-                    self.advance();
-                    self.add(TokenKind::OpenCurlyBracket, start);
-                }
-                '}' => {
-                    self.advance();
-                    self.add(TokenKind::CloseCurlyBracket, start);
-                }
-                '<' => {
-                    self.advance();
-                    self.add(TokenKind::OpenAngleBracket, start);
-                }
-                '>' => {
-                    self.advance();
-                    self.add(TokenKind::CloseAngleBracket, start);
-                }
-                _ => {
-                    self.advance();
-                    self.add(TokenKind::Error, start)
-                }
+                '#' => self.add(TokenKind::Hash, start),
+                '(' => self.add(TokenKind::OpenRoundBracket, start),
+                ')' => self.add(TokenKind::CloseRoundBracket, start),
+                '[' => self.add(TokenKind::OpenSquareBracket, start),
+                ']' => self.add(TokenKind::CloseSquareBracket, start),
+                '{' => self.add(TokenKind::OpenCurlyBracket, start),
+                '}' => self.add(TokenKind::CloseCurlyBracket, start),
+                '<' => self.add(TokenKind::OpenAngleBracket, start),
+                '>' => self.add(TokenKind::CloseAngleBracket, start),
+                _ => self.add(TokenKind::Error, start),
             };
         }
 
