@@ -1,7 +1,7 @@
 #![feature(if_let_guard)]
+#![feature(iter_intersperse)]
 #![feature(let_chains)]
 #![feature(macro_metavar_expr)]
-#![feature(iter_intersperse)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use std::{path::PathBuf, process::ExitCode};

@@ -1,5 +1,3 @@
-#![expect(dead_code)] // FIXME
-
 pub(crate) use crate::lexer::TokenKind;
 use crate::span::Span;
 
@@ -44,7 +42,7 @@ pub(crate) enum ItemKind<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ConstItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
@@ -52,14 +50,14 @@ pub(crate) struct ConstItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct EnumItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
     pub(crate) constness: Constness,
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<Param<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
@@ -80,40 +78,40 @@ pub(crate) struct ImplItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ModItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) items: Option<Vec<Item<'src>>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct StructItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) body: StructBody<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct TraitItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct TyItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) body: Option<Ty<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct UnionItem<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
 }
 
@@ -134,7 +132,7 @@ pub(crate) enum StructBody<'src> {
 #[derive(Debug)]
 pub(crate) struct StructField<'src> {
     pub(crate) vis: Visibility,
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
 }
 
@@ -145,12 +143,12 @@ pub(crate) struct Generics<'src> {
 
 #[derive(Debug)]
 pub(crate) struct GenParam<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Param<'src> {
-    pub(crate) name: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
 }
 
@@ -162,10 +160,41 @@ pub(crate) enum Expr<'src> {
     Block(Box<BlockExpr<'src>>),
 }
 
+impl Expr<'_> {
+    pub(crate) fn has_trailing_block(&self) -> bool {
+        match self {
+            Self::Block(..) => true,
+            Self::Ident(_) | Self::NumLit(_) | Self::StrLit(_) => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct BlockExpr<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) expr: Option<Expr<'src>>,
+    pub(crate) stmts: Vec<Stmt<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Stmt<'src> {
+    Item(Item<'src>),
+    Let(LetStmt<'src>),
+    Expr(Expr<'src>, Semi),
+    Empty,
+}
+
+#[derive(Debug)]
+pub(crate) enum Semi {
+    Yes,
+    No,
+}
+
+#[derive(Debug)]
+pub(crate) struct LetStmt<'src> {
+    // FIXME: Pat
+    pub(crate) binder: Ident<'src>,
+    pub(crate) ty: Option<Ty<'src>>,
+    pub(crate) body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]

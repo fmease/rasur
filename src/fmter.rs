@@ -2,6 +2,8 @@ use crate::{ast, span::Span};
 use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.
+// FIXME: The indentation setup is busted.
+//        The context should automatically push self.indent after `\n` on fmt (smh)
 
 pub(crate) struct Cfg {
     pub(crate) indent: usize,
@@ -14,10 +16,10 @@ impl Default for Cfg {
 }
 
 macro_rules! fmt {
-    ($cx:expr, indent) => {
+    ($cx:ident, indent) => {
         _ = $cx.buf.write_str(&" ".repeat($cx.indent)) // FIXME: Don't allocate extra string!
     };
-    ($cx:expr, $($arg:tt)*) => {
+    ($cx:ident, $($arg:tt)*) => {
         _ = $cx.buf.write_fmt(format_args!($($arg)*))
     };
 }
@@ -161,6 +163,7 @@ impl Fmt for ast::Path<'_> {
 }
 
 impl Fmt for ast::TokenStream {
+    // FIXME: Actually just print as is for now
     fn fmt(self, cx: &mut Cx<'_>) {
         let mut tokens = self.into_iter();
         if let Some(token) = tokens.next() {
@@ -218,9 +221,9 @@ impl Fmt for Vec<ast::GenParam<'_>> {
         let mut params = self.into_iter();
         if let Some(param) = params.next() {
             fmt!(cx, "<");
-            fmt!(cx, "{},", param.name);
+            fmt!(cx, "{},", param.binder);
             for param in params {
-                fmt!(cx, "{},", param.name);
+                fmt!(cx, "{},", param.binder);
             }
             fmt!(cx, ">");
         }
@@ -229,26 +232,37 @@ impl Fmt for Vec<ast::GenParam<'_>> {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "const ");
-        // FIXME
+        fmt!(cx, "const {}", self.binder);
+        self.generics.params.fmt(cx);
+        fmt!(cx, ": ");
+        self.ty.fmt(cx);
+        if let Some(body) = self.body {
+            fmt!(cx, " = ");
+            body.fmt(cx);
+        }
+        fmt!(cx, ";")
     }
 }
 
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "enum ");
-        // FIXME
+        fmt!(cx, "enum {}", self.binder);
+        self.generics.params.fmt(cx);
+        fmt!(cx, " {{}}");
     }
 }
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "fn ");
-        fmt!(cx, "{}", self.name);
+        match self.constness {
+            ast::Constness::Const => fmt!(cx, "const "),
+            ast::Constness::Not => {}
+        }
+        fmt!(cx, "fn {}", self.binder);
         self.generics.params.fmt(cx);
         fmt!(cx, "(");
         for param in self.params {
-            fmt!(cx, "{}: ", param.name);
+            fmt!(cx, "{}: ", param.binder);
             param.ty.fmt(cx);
             fmt!(cx, ",");
         }
@@ -278,7 +292,7 @@ impl Fmt for ast::ImplItem<'_> {
 
 impl Fmt for ast::ModItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "mod {}", self.name);
+        fmt!(cx, "mod {}", self.binder);
         match self.items {
             Some(items) => {
                 fmt!(cx, " {{\n");
@@ -298,9 +312,10 @@ impl Fmt for ast::ModItem<'_> {
 
 impl Fmt for ast::StaticItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "static {}: ", self.name);
+        fmt!(cx, "static {}: ", self.binder);
         self.ty.fmt(cx);
         if let Some(body) = self.body {
+            fmt!(cx, " = ");
             body.fmt(cx);
         }
         fmt!(cx, ";")
@@ -309,7 +324,7 @@ impl Fmt for ast::StaticItem<'_> {
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "struct {}", self.name);
+        fmt!(cx, "struct {}", self.binder);
         self.generics.params.fmt(cx);
         match self.body {
             ast::StructBody::Normal { fields } => {
@@ -332,14 +347,14 @@ impl Fmt for ast::StructItem<'_> {
 impl Fmt for ast::StructField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.vis.fmt(cx);
-        fmt!(cx, "{}: ", self.name);
+        fmt!(cx, "{}: ", self.binder);
         self.ty.fmt(cx);
     }
 }
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "trait {}", self.name);
+        fmt!(cx, "trait {}", self.binder);
         self.generics.params.fmt(cx);
         fmt!(cx, " {{}}")
     }
@@ -347,7 +362,7 @@ impl Fmt for ast::TraitItem<'_> {
 
 impl Fmt for ast::TyItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "type {}", self.name);
+        fmt!(cx, "type {}", self.binder);
         self.generics.params.fmt(cx);
         if let Some(body) = self.body {
             fmt!(cx, " = ");
@@ -359,7 +374,7 @@ impl Fmt for ast::TyItem<'_> {
 
 impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "union {}", self.name);
+        fmt!(cx, "union {}", self.binder);
         self.generics.params.fmt(cx);
         fmt!(cx, " {{}}")
     }
@@ -385,20 +400,23 @@ impl Fmt for ast::Ty<'_> {
             }
             Self::Tup(tys) => {
                 fmt!(cx, "(");
-                let mut tys = tys.into_iter();
-                if let Some(ty) = tys.next() {
-                    ty.fmt(cx);
-                }
-                match tys.next() {
-                    Some(ty) => {
+                // FIXME: Simplify!
+                if !tys.is_empty() {
+                    let mut tys = tys.into_iter();
+                    if let Some(ty) = tys.next() {
+                        ty.fmt(cx);
+                    }
+                    match tys.next() {
+                        Some(ty) => {
+                            fmt!(cx, ", ");
+                            ty.fmt(cx);
+                        }
+                        None => fmt!(cx, ","),
+                    }
+                    for ty in tys {
                         fmt!(cx, ", ");
                         ty.fmt(cx);
                     }
-                    None => fmt!(cx, ","),
-                }
-                for ty in tys {
-                    fmt!(cx, ", ");
-                    ty.fmt(cx);
                 }
                 fmt!(cx, ")");
             }
@@ -412,7 +430,7 @@ impl Fmt for ast::Expr<'_> {
             Self::Block(expr) => expr.fmt(cx),
             Self::Ident(ident) => fmt!(cx, "{ident}"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
-            Self::StrLit(lit) => fmt!(cx, "{lit}"),
+            Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
         }
     }
 }
@@ -426,9 +444,12 @@ impl Fmt for ast::BlockExpr<'_> {
             attr.fmt(cx);
             fmt!(cx, "\n");
         }
-        if let Some(expr) = self.expr {
+        for stmt in self.stmts {
+            if let ast::Stmt::Empty = stmt {
+                continue;
+            }
             fmt!(cx, indent);
-            expr.fmt(cx);
+            stmt.fmt(cx);
             fmt!(cx, "\n");
         }
         cx.dedent();
@@ -436,11 +457,45 @@ impl Fmt for ast::BlockExpr<'_> {
     }
 }
 
+impl Fmt for ast::Stmt<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Item(item) => item.fmt(cx),
+            Self::Let(stmt) => stmt.fmt(cx),
+            Self::Expr(expr, semi) => {
+                let needs_semi = matches!(semi, ast::Semi::Yes if !expr.has_trailing_block());
+                expr.fmt(cx);
+                if needs_semi {
+                    fmt!(cx, ";");
+                }
+            }
+            Self::Empty => fmt!(cx, ";"),
+        }
+    }
+}
+
+impl Fmt for ast::LetStmt<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "let {}", self.binder);
+        if let Some(ty) = self.ty {
+            fmt!(cx, ": ");
+            ty.fmt(cx);
+        }
+        if let Some(body) = self.body {
+            fmt!(cx, " = ");
+            body.fmt(cx);
+        }
+        fmt!(cx, ";");
+    }
+}
+
 impl Fmt for ast::MacroCall<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.path.fmt(cx);
-        // FIXME: Extra space after bang for curly brackets
         fmt!(cx, "!");
+        if let ast::Bracket::Curly = self.bracket {
+            fmt!(cx, " ");
+        }
         self.bracket.fmt(ast::Orientation::Open, cx);
         self.stream.fmt(cx);
         self.bracket.fmt(ast::Orientation::Close, cx);
