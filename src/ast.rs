@@ -100,12 +100,14 @@ pub(crate) struct StructItem<'src> {
 pub(crate) struct TraitItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+    pub(crate) bounds: Vec<Bound<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct TyItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+    pub(crate) bounds: Vec<Bound<'src>>,
     pub(crate) body: Option<Ty<'src>>,
 }
 
@@ -139,11 +141,28 @@ pub(crate) struct StructField<'src> {
 #[derive(Debug)]
 pub(crate) struct Generics<'src> {
     pub(crate) params: Vec<GenParam<'src>>,
+    pub(crate) preds: Vec<Predicate<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct GenParam<'src> {
     pub(crate) binder: Ident<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Predicate<'src> {
+    Trait(TraitPredicate<'src>),
+}
+
+#[derive(Debug)]
+pub(crate) struct TraitPredicate<'src> {
+    pub(crate) ty: Ty<'src>,
+    pub(crate) bounds: Vec<Bound<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Bound<'src> {
+    Trait(Path<'src>),
 }
 
 #[derive(Debug)]

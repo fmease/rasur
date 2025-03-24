@@ -216,6 +216,13 @@ impl Fmt for ast::TokenKind {
     }
 }
 
+impl Fmt for ast::Generics<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.params.fmt(cx);
+        self.preds.fmt(cx);
+    }
+}
+
 impl Fmt for Vec<ast::GenParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let mut params = self.into_iter();
@@ -230,6 +237,57 @@ impl Fmt for Vec<ast::GenParam<'_>> {
     }
 }
 
+impl Fmt for Vec<ast::Predicate<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, " where ");
+        let mut preds = self.into_iter();
+        if let Some(pred) = preds.next() {
+            pred.fmt(cx);
+        }
+        for pred in preds {
+            fmt!(cx, ", ");
+            pred.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for ast::Predicate<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Trait(pred) => {
+                pred.ty.fmt(cx);
+                fmt!(cx, ":");
+                if !pred.bounds.is_empty() {
+                    fmt!(cx, " ");
+                }
+                pred.bounds.fmt(cx);
+            }
+        }
+    }
+}
+
+impl Fmt for Vec<ast::Bound<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let mut bounds = self.into_iter();
+
+        if let Some(bound) = bounds.next() {
+            bound.fmt(cx);
+        }
+        for bound in bounds {
+            fmt!(cx, " + ");
+            bound.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for ast::Bound<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Trait(path) => path.fmt(cx),
+        }
+    }
+}
+
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "const {}", self.binder);
@@ -240,6 +298,7 @@ impl Fmt for ast::ConstItem<'_> {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
+        self.generics.preds.fmt(cx);
         fmt!(cx, ";")
     }
 }
@@ -247,7 +306,7 @@ impl Fmt for ast::ConstItem<'_> {
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "enum {}", self.binder);
-        self.generics.params.fmt(cx);
+        self.generics.fmt(cx);
         fmt!(cx, " {{}}");
     }
 }
@@ -271,6 +330,7 @@ impl Fmt for ast::FnItem<'_> {
             fmt!(cx, " -> ");
             ty.fmt(cx);
         }
+        self.generics.preds.fmt(cx);
         if let Some(body) = self.body {
             fmt!(cx, " ");
             body.fmt(cx);
@@ -286,6 +346,7 @@ impl Fmt for ast::ImplItem<'_> {
         self.generics.params.fmt(cx);
         fmt!(cx, " ");
         self.ty.fmt(cx);
+        self.generics.preds.fmt(cx);
         fmt!(cx, " {{}}")
     }
 }
@@ -325,7 +386,7 @@ impl Fmt for ast::StaticItem<'_> {
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "struct {}", self.binder);
-        self.generics.params.fmt(cx);
+        self.generics.fmt(cx);
         match self.body {
             ast::StructBody::Normal { fields } => {
                 fmt!(cx, " {{\n");
@@ -356,6 +417,11 @@ impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "trait {}", self.binder);
         self.generics.params.fmt(cx);
+        if !self.bounds.is_empty() {
+            fmt!(cx, ": ");
+            self.bounds.fmt(cx);
+        }
+        self.generics.preds.fmt(cx);
         fmt!(cx, " {{}}")
     }
 }
@@ -364,10 +430,15 @@ impl Fmt for ast::TyItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "type {}", self.binder);
         self.generics.params.fmt(cx);
+        if !self.bounds.is_empty() {
+            fmt!(cx, ": ");
+            self.bounds.fmt(cx);
+        }
         if let Some(body) = self.body {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
+        self.generics.preds.fmt(cx);
         fmt!(cx, ";")
     }
 }
@@ -375,7 +446,7 @@ impl Fmt for ast::TyItem<'_> {
 impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "union {}", self.binder);
-        self.generics.params.fmt(cx);
+        self.generics.fmt(cx);
         fmt!(cx, " {{}}")
     }
 }

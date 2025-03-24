@@ -44,10 +44,11 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Items⟨terminator⟩ ::= Item* ⟨terminator⟩
     /// ```
-    fn parse_items(&mut self, terminator: TokenKind) -> Result<Vec<ast::Item<'src>>> {
+    fn parse_items(&mut self, delim: TokenKind) -> Result<Vec<ast::Item<'src>>> {
         let mut items = Vec::new();
 
-        while !self.consume(terminator) {
+        // We look for a delimiter instead of checking `begins_item` for better diagnostics.
+        while !self.consume(delim) {
             items.push(self.parse_item()?);
         }
 
@@ -76,7 +77,7 @@ impl<'src> Parser<'src> {
     ///     | Union_Item
     /// ```
     fn parse_item(&mut self) -> Result<ast::Item<'src>> {
-        // To be kept in sync with `Self::begins_item`.
+        // NOTE: To be kept in sync with `Self::begins_item`.
 
         let start = self.token().span;
 
@@ -148,7 +149,7 @@ impl<'src> Parser<'src> {
     }
 
     fn begins_item(&self) -> bool {
-        // To be kept in sync with `Self::parse_item`.
+        // NOTE: To be kept in sync with `Self::parse_item`.
 
         if self.begins_outer_attr() || self.begins_visibility() || self.begins_path() {
             return true;
@@ -175,7 +176,7 @@ impl<'src> Parser<'src> {
     /// Bang⟨Inner⟩ ::= "!"
     /// ```
     fn parse_attrs(&mut self, style: ast::AttrStyle) -> Result<Vec<ast::Attr<'src>>> {
-        // To be kept in sync with `Self::begins_outer_attr`.
+        // NOTE: To be kept in sync with `Self::begins_outer_attr`.
         // FIXME: Parse doc comments.
 
         let mut attrs = Vec::new();
@@ -201,7 +202,8 @@ impl<'src> Parser<'src> {
     }
 
     fn begins_outer_attr(&self) -> bool {
-        // To be kept in sync with `Self::parse_attr`.
+        // NOTE: To be kept in sync with `Self::parse_attr`.
+
         self.token().kind == TokenKind::Hash
     }
 
@@ -262,7 +264,7 @@ impl<'src> Parser<'src> {
     /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
     /// ```
     fn parse_path(&mut self) -> Result<ast::Path<'src>> {
-        // To be kept in sync with `Self::begins_path`.
+        // NOTE: To be kept in sync with `Self::begins_path`.
 
         let locality = match self.consume(DOUBLE_COLON) {
             true => ast::PathLocality::Global,
@@ -270,9 +272,7 @@ impl<'src> Parser<'src> {
         };
 
         let mut segs = Vec::new();
-
         segs.push(self.parse_path_seg_ident()?);
-
         while self.consume(DOUBLE_COLON) {
             segs.push(self.parse_path_seg_ident()?);
         }
@@ -281,7 +281,7 @@ impl<'src> Parser<'src> {
     }
 
     fn begins_path(&self) -> bool {
-        // To be kept in sync with `Self::parse_path`.
+        // NOTE: To be kept in sync with `Self::parse_path`.
 
         if DOUBLE_COLON.check(self) {
             return true;
@@ -303,7 +303,13 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Const_Item ::= "const" ("_" | Common_Ident) Generic_Params ":" Ty ("=" Expr)? ";"
+    /// Const_Item ::=
+    ///     "const" ("_" | Common_Ident)
+    ///     Generic_Params
+    ///     ":" Ty
+    ///     ("=" Expr)?
+    ///     Where_Clause?
+    ///     ";"
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // FIXME: Allow underscore
@@ -311,11 +317,12 @@ impl<'src> Parser<'src> {
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_ann()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        let preds = self.parse_where_clause()?;
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Const(ast::ConstItem {
             binder,
-            generics: ast::Generics { params },
+            generics: ast::Generics { params, preds },
             ty,
             body,
         }))
@@ -326,16 +333,19 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Enum_Item ::= "enum" Common_Ident Generic_Params "{" … "}"
+    /// Enum_Item ::=
+    ///     "enum" Common_Ident
+    ///     Generics
+    ///     "{" … "}"
     /// ```
     fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let params = self.parse_generic_params()?;
+        let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Enum(ast::EnumItem { binder, generics: ast::Generics { params } }))
+        Ok(ast::ItemKind::Enum(ast::EnumItem { binder, generics }))
     }
 
     /// Finish parsing a function item assuming the leading `fn` has already been parsed.
@@ -347,6 +357,7 @@ impl<'src> Parser<'src> {
     ///     "const"? "fn" Common_Ident
     ///     Generic_Params Params
     ///     ("->" Ty)?
+    ///     Where_Clause?
     ///     (Block_Expr | ";")
     /// ```
     fn fin_parse_fn_item(&mut self, constness: ast::Constness) -> Result<ast::ItemKind<'src>> {
@@ -354,16 +365,19 @@ impl<'src> Parser<'src> {
         let gen_params = self.parse_generic_params()?;
         let params = self.parse_params()?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
+        let preds = self.parse_where_clause()?;
+
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
             Some(self.fin_parse_block_expr()?)
         } else {
             self.parse(TokenKind::Semicolon)?;
             None
         };
+
         Ok(ast::ItemKind::Fn(ast::FnItem {
             constness,
             binder,
-            generics: ast::Generics { params: gen_params },
+            generics: ast::Generics { params: gen_params, preds },
             params,
             ret_ty,
             body,
@@ -375,21 +389,22 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Impl_Item ::= "impl" …
+    /// Impl_Item ::= "impl" Generic_Params Ty Where_Clause? "{" … "}"
     /// ```
     fn fin_parse_impl_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
-
         let params = self.parse_generic_params()?;
 
         // FIXME: Support "Trait_Path "for""
 
         let ty = self.parse_ty()?;
 
+        let preds = self.parse_where_clause()?;
+
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Impl(ast::ImplItem { generics: ast::Generics { params }, ty }))
+        Ok(ast::ItemKind::Impl(ast::ImplItem { generics: ast::Generics { params, preds }, ty }))
     }
 
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
@@ -410,14 +425,24 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
             None
         };
+
         Ok(ast::ItemKind::Mod(ast::ModItem { binder, items }))
     }
 
+    /// Finish parsing a static item assuming the leading `static` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Static_Item ::= "static" Common_Ident ":" Ty ("=" Expr)? ";"
+    /// ```
     fn fin_parse_static_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        // FIXME: "mut"
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_ann()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
+
         Ok(ast::ItemKind::Static(ast::StaticItem { binder, ty, body }))
     }
 
@@ -428,24 +453,26 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Struct_Item ::=
     ///     "struct" Common_Ident
-    ///     Generic_Params
+    ///     Generics
     ///     ("{" (Struct_Field ("," | >"}"))* "}" | ";")
     /// Struct_Field ::= Visibility Common_Ident ":" Ty
     /// ```
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let gen_params = self.parse_generic_params()?;
+        let generics = self.parse_generics()?;
+        // FIXME: Unit structs (where the where clause is trailing)
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
             let mut fields = Vec::new();
 
-            while !self.consume(TokenKind::CloseCurlyBracket) {
+            const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+            while !self.consume(DELIMITER) {
                 let vis = self.parse_visibility();
 
                 let binder = self.parse_common_ident()?;
                 let ty = self.parse_ty_ann()?;
 
                 // FIXME: Can we express that nicer?
-                if self.token().kind != TokenKind::CloseCurlyBracket {
+                if self.token().kind != DELIMITER {
                     self.parse(TokenKind::Comma)?;
                 }
 
@@ -457,11 +484,8 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
             ast::StructBody::Unit
         };
-        Ok(ast::ItemKind::Struct(ast::StructItem {
-            binder,
-            generics: ast::Generics { params: gen_params },
-            body,
-        }))
+
+        Ok(ast::ItemKind::Struct(ast::StructItem { binder, generics, body }))
     }
 
     /// Finish parsing a trait item assuming the leading `trait` has been parsed already.
@@ -469,16 +493,28 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Trait_Item ::= "trait" Common_Ident Generic_Params "{" … "}"
+    /// Trait_Item ::=
+    ///     "trait" Common_Ident
+    ///     Generic_Params
+    ///     (":" Bounds)?
+    ///     Where_Clause?
+    ///     "{" … "}"
     /// ```
     fn fin_parse_trait_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
+        let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
+        let preds = self.parse_where_clause()?;
+
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Trait(ast::TraitItem { binder, generics: ast::Generics { params } }))
+        Ok(ast::ItemKind::Trait(ast::TraitItem {
+            binder,
+            generics: ast::Generics { params, preds },
+            bounds,
+        }))
     }
 
     /// Finish parsing a type item assuming the leading `type` has been parsed already.
@@ -486,15 +522,94 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Ty_Item ::= "ty" Common_Ident Generic_Params ("=" Ty)? ";"
-    /// ```
+    /// Ty_Item ::=
+    ///     "type" Common_Ident
+    ///     Generic_Params
+    ///     (":" Bounds)?
+    ///     Where_Clause?
+    ///     ("=" Ty)?
+    ///     Where_Clause?
+    ///     ";"
     fn fin_parse_ty_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
+        let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
+        // FIXME: Don't drop leading preds!
+        let _leading_preds = self.parse_where_clause()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_ty()).transpose()?;
+        let trailing_preds = self.parse_where_clause()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Ty(ast::TyItem { binder, generics: ast::Generics { params }, body }))
+        Ok(ast::ItemKind::Ty(ast::TyItem {
+            binder,
+            generics: ast::Generics { params, preds: trailing_preds },
+            bounds,
+            body,
+        }))
+    }
+
+    /// Parse a where clause.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Where_Clause ::= ("where" Predicates)?
+    /// Predicates ::= (Predicate ",")* Predicate?
+    /// Predicate ::= Ty ":" Bounds
+    /// ```
+    fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
+        let mut preds = Vec::new();
+
+        if !self.consume(Keyword("where")) {
+            return Ok(preds);
+        }
+
+        while self.begins_ty() {
+            let ty = self.parse_ty()?;
+            self.parse(TokenKind::Colon)?;
+            let bounds = self.parse_bounds()?;
+
+            preds.push(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
+
+            if !self.consume(TokenKind::Comma) {
+                break;
+            }
+        }
+
+        Ok(preds)
+    }
+
+    /// Parse a bounds annotation if available.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Bounds ::= (Bound "+")* Bound?
+    /// ```
+    fn parse_bounds(&mut self) -> Result<Vec<ast::Bound<'src>>> {
+        let mut bounds = Vec::new();
+
+        while self.begins_bound() {
+            bounds.push(self.parse_bound()?);
+
+            if !self.consume(TokenKind::Plus) {
+                break;
+            }
+        }
+
+        Ok(bounds)
+    }
+
+    fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_bound`.
+
+        Ok(ast::Bound::Trait(self.parse_path()?))
+    }
+
+    fn begins_bound(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_bound`.
+
+        self.begins_path()
     }
 
     /// Finish parsing a union item assuming the leading `union` has been parsed already.
@@ -502,16 +617,19 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Union_Item ::= "union" Common_Ident Generic_Params "{" … "}"
+    /// Union_Item ::=
+    ///     "union" Common_Ident
+    ///     Generics
+    ///     "{" … "}"
     /// ```
     fn fin_parse_union_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let params = self.parse_generic_params()?;
+        let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics: ast::Generics { params } }))
+        Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
     }
 
     fn parse_macro_call(&mut self) -> Result<ast::ItemKind<'src>> {
@@ -578,6 +696,7 @@ impl<'src> Parser<'src> {
 
     fn parse_path_seg_ident(&mut self) -> Result<ast::Ident<'src>> {
         let token = self.token();
+
         if let TokenKind::Ident = token.kind
             && let ident = self.source(token.span)
             && self.is_path_seg_ident(ident)
@@ -585,6 +704,7 @@ impl<'src> Parser<'src> {
             self.advance();
             return Ok(ident);
         }
+
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::PathSegIdent))
     }
 
@@ -592,19 +712,29 @@ impl<'src> Parser<'src> {
         is_path_seg_keyword(ident) || self.is_common_ident(ident)
     }
 
+    /// Parse generics.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Generics ::= Generic_Params Where_Clause?
+    /// ```
+    fn parse_generics(&mut self) -> Result<ast::Generics<'src>> {
+        let params = self.parse_generic_params()?;
+        let preds = self.parse_where_clause()?;
+        Ok(ast::Generics { params, preds })
+    }
+
     fn parse_generic_params(&mut self) -> Result<Vec<ast::GenParam<'src>>> {
         let mut params = Vec::new();
 
         if self.consume(TokenKind::OpenAngleBracket) {
-            loop {
-                if self.consume(TokenKind::CloseAngleBracket) {
-                    break;
-                }
-
+            const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+            while !self.consume(DELIMITER) {
                 let binder = self.parse_common_ident()?;
 
                 // FIXME: Is there a nicer way to do this?
-                if self.token().kind != TokenKind::CloseAngleBracket {
+                if self.token().kind != DELIMITER {
                     self.parse(TokenKind::Comma)?;
                 }
 
@@ -619,17 +749,14 @@ impl<'src> Parser<'src> {
         let mut params = Vec::new();
 
         if self.consume(TokenKind::OpenRoundBracket) {
-            loop {
-                if self.consume(TokenKind::CloseRoundBracket) {
-                    break;
-                }
-
+            const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+            while !self.consume(DELIMITER) {
                 let binder = self.parse_common_ident()?;
                 // FIXME: Optional if in trait and edition 2015
                 let ty = self.parse_ty_ann()?;
 
                 // FIXME: Is there a nicer way to do this?
-                if self.token().kind != TokenKind::CloseRoundBracket {
+                if self.token().kind != DELIMITER {
                     self.parse(TokenKind::Comma)?;
                 }
 
@@ -652,6 +779,8 @@ impl<'src> Parser<'src> {
     ///     | "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_ty`.
+
         let token = self.token();
         match token.kind {
             TokenKind::Ident => match self.source(token.span) {
@@ -709,6 +838,20 @@ impl<'src> Parser<'src> {
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))
     }
 
+    fn begins_ty(&self) -> bool {
+        // FIXME: To be kept in sync with `Self::parse_ty`.
+
+        let token = self.token();
+        match token.kind {
+            TokenKind::Ident => {
+                let ident = self.source(token.span);
+                ident == "_" || self.is_common_ident(ident)
+            }
+            TokenKind::Bang | TokenKind::OpenSquareBracket | TokenKind::OpenRoundBracket => true,
+            _ => false,
+        }
+    }
+
     fn parse_ty_ann(&mut self) -> Result<ast::Ty<'src>> {
         self.parse(TokenKind::Colon)?;
         self.parse_ty()
@@ -756,7 +899,7 @@ impl<'src> Parser<'src> {
             Ok(ast::Stmt::Let(ast::LetStmt { binder, ty, body }))
         } else if self.begins_expr() {
             let expr = self.parse_expr()?;
-            // FIXME: Is there are nicer way to express this?
+            // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if expr.has_trailing_block() || self.token().kind == delim {
                 match self.consume(TokenKind::Semicolon) {
                     true => ast::Semi::Yes,
@@ -791,7 +934,7 @@ impl<'src> Parser<'src> {
     ///     | Common_Ident
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
-        // To be kept in sync with `Self::begins_expr`.
+        // NOTE: To be kept in sync with `Self::begins_expr`.
 
         let token = self.token();
         match token.kind {
@@ -821,7 +964,7 @@ impl<'src> Parser<'src> {
     }
 
     fn begins_expr(&self) -> bool {
-        // To be kept in sync with `Self::parse_expr`.
+        // NOTE: To be kept in sync with `Self::parse_expr`.
 
         let token = self.token();
         match token.kind {
@@ -924,6 +1067,7 @@ impl<'src> Parser<'src> {
             self.advance();
             return Ok(());
         }
+
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::OneOf(Box::new([kind]))))
     }
 
