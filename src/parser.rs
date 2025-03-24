@@ -87,7 +87,7 @@ impl<'src> Parser<'src> {
         let vis = self.parse_visibility();
 
         let kind = if self.begins_path() {
-            self.parse_macro_call()?
+            self.parse_macro_call_item()?
         } else {
             let token = self.token();
             match token.kind {
@@ -148,10 +148,13 @@ impl<'src> Parser<'src> {
         Ok(ast::Item { attrs, vis, kind, span })
     }
 
-    fn begins_item(&self) -> bool {
+    fn begins_item(&self, macro_call: AllowMacroCall) -> bool {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
-        if self.begins_outer_attr() || self.begins_visibility() || self.begins_path() {
+        if self.begins_outer_attr()
+            || self.begins_visibility()
+            || (matches!(macro_call, AllowMacroCall::Yes) && self.begins_path())
+        {
             return true;
         }
 
@@ -219,22 +222,22 @@ impl<'src> Parser<'src> {
                 let expr = self.parse_expr()?;
                 ast::AttrKind::Assign(expr)
             }
-            TokenKind::OpenRoundBracket
-            | TokenKind::OpenSquareBracket
-            | TokenKind::OpenCurlyBracket => {
+            TokenKind::OpenRoundBracket => {
                 self.advance();
-                let bracket = match token.kind {
-                    TokenKind::OpenRoundBracket => ast::Bracket::Round,
-                    TokenKind::OpenSquareBracket => ast::Bracket::Square,
-                    TokenKind::OpenCurlyBracket => ast::Bracket::Curly,
-                    _ => unreachable!(),
-                };
-                let stream = self.parse_token_strean(bracket)?;
-                self.parse(match bracket {
-                    ast::Bracket::Round => TokenKind::CloseRoundBracket,
-                    ast::Bracket::Square => TokenKind::CloseSquareBracket,
-                    ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
-                })?;
+                let (bracket, stream) =
+                    self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
+                ast::AttrKind::Call(bracket, stream)
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let (bracket, stream) =
+                    self.fin_parse_delimited_token_stream(ast::Bracket::Square)?;
+                ast::AttrKind::Call(bracket, stream)
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                let (bracket, stream) =
+                    self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
                 ast::AttrKind::Call(bracket, stream)
             }
             _ => {
@@ -632,43 +635,11 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
     }
 
-    fn parse_macro_call(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let path = self.parse_path()?;
         self.parse(TokenKind::Bang)?;
+        let (bracket, stream) = self.parse_delimited_token_stream()?;
 
-        let bracket = self.token();
-        let (bracket, stream) = match bracket.kind {
-            TokenKind::OpenRoundBracket
-            | TokenKind::OpenSquareBracket
-            | TokenKind::OpenCurlyBracket => {
-                self.advance();
-                let bracket = match bracket.kind {
-                    TokenKind::OpenRoundBracket => ast::Bracket::Round,
-                    TokenKind::OpenSquareBracket => ast::Bracket::Square,
-                    TokenKind::OpenCurlyBracket => ast::Bracket::Curly,
-                    _ => unreachable!(),
-                };
-                let stream = self.parse_token_strean(bracket)?;
-                self.parse(match bracket {
-                    ast::Bracket::Round => TokenKind::CloseRoundBracket,
-                    ast::Bracket::Square => TokenKind::CloseSquareBracket,
-                    ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
-                })?;
-                (bracket, stream)
-            }
-            _ => {
-                return Err(ParseError::UnexpectedToken(
-                    bracket,
-                    ExpectedFragment::OneOf(Box::new([
-                        TokenKind::OpenRoundBracket,
-                        TokenKind::OpenSquareBracket,
-                        TokenKind::OpenCurlyBracket,
-                    ])),
-                ));
-            }
-        };
-
-        // FIXME: Only in Item contexts, not in exprs, pats or tys!
         if let ast::Bracket::Round = bracket {
             self.parse(TokenKind::Semicolon)?;
         }
@@ -773,80 +744,78 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Ty ::=
+    ///     | Path
     ///     | "_"
-    ///     | Common_Ident
     ///     | "!"
     ///     | "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
-        let token = self.token();
-        match token.kind {
-            TokenKind::Ident => match self.source(token.span) {
-                "_" => {
+        if self.begins_path() {
+            Ok(ast::Ty::Path(self.parse_path()?))
+        } else {
+            let token = self.token();
+            match token.kind {
+                TokenKind::Ident if let "_" = self.source(token.span) => {
                     self.advance();
-                    return Ok(ast::Ty::Inferred);
+                    Ok(ast::Ty::Inferred)
                 }
-                ident if self.is_common_ident(ident) => {
+                TokenKind::Bang => {
                     self.advance();
-                    return Ok(ast::Ty::Ident(ident));
+                    Ok(ast::Ty::Never)
                 }
-                _ => {}
-            },
-            TokenKind::Bang => {
-                self.advance();
-                return Ok(ast::Ty::Never);
-            }
-            TokenKind::OpenSquareBracket => {
-                self.advance();
-                let ty = self.parse_ty()?;
-                let len =
-                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
-                self.parse(TokenKind::CloseSquareBracket)?;
-                return Ok(match len {
-                    Some(len) => ast::Ty::Array(Box::new(ty), len),
-                    None => ast::Ty::Slice(Box::new(ty)),
-                });
-            }
-            TokenKind::OpenRoundBracket => {
-                self.advance();
-                let mut tys = Vec::new();
-
-                while !self.consume(TokenKind::CloseRoundBracket) {
+                TokenKind::OpenSquareBracket => {
+                    self.advance();
                     let ty = self.parse_ty()?;
+                    let len = self
+                        .consume(TokenKind::Semicolon)
+                        .then(|| self.parse_expr())
+                        .transpose()?;
+                    self.parse(TokenKind::CloseSquareBracket)?;
+                    Ok(match len {
+                        Some(len) => ast::Ty::Array(Box::new(ty), len),
+                        None => ast::Ty::Slice(Box::new(ty)),
+                    })
+                }
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
+                    let mut tys = Vec::new();
 
-                    // FIXME: Is there a better way to express this?
-                    if self.token().kind == TokenKind::CloseRoundBracket {
-                        if tys.is_empty() {
-                            // This is actually a parenthesized type, not a tuple.
-                            self.advance();
-                            return Ok(ty);
+                    while !self.consume(TokenKind::CloseRoundBracket) {
+                        let ty = self.parse_ty()?;
+
+                        // FIXME: Is there a better way to express this?
+                        if self.token().kind == TokenKind::CloseRoundBracket {
+                            if tys.is_empty() {
+                                // This is actually a parenthesized type, not a tuple.
+                                self.advance();
+                                return Ok(ty);
+                            }
+                        } else {
+                            self.parse(TokenKind::Comma)?;
                         }
-                    } else {
-                        self.parse(TokenKind::Comma)?;
+
+                        tys.push(ty);
                     }
 
-                    tys.push(ty);
+                    Ok(ast::Ty::Tup(tys))
                 }
-
-                return Ok(ast::Ty::Tup(tys));
+                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty)),
             }
-            _ => {}
         }
-
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))
     }
 
     fn begins_ty(&self) -> bool {
         // FIXME: To be kept in sync with `Self::parse_ty`.
 
+        if self.begins_path() {
+            return true;
+        }
+
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => {
-                let ident = self.source(token.span);
-                ident == "_" || self.is_common_ident(ident)
-            }
+            TokenKind::Ident => self.source(token.span) == "_",
             TokenKind::Bang | TokenKind::OpenSquareBracket | TokenKind::OpenRoundBracket => true,
             _ => false,
         }
@@ -881,15 +850,18 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Stmt ::=
-    ///     | Item
+    ///     | Item\Macro_Call
     ///     | Let_Stmt
     ///     | Expr ";" // FIXME: Not entirely factual
     ///     | ";"
     /// Let_Stmt ::= "let" Common_Ident (":" Ty) ("=" Expr) ";"
     /// ```
+    // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
+    //       "macro expr stmts". I think the difference only matters if we were to perform
+    //       macro expansion.
     fn parse_stmt(&mut self, delim: TokenKind) -> Result<ast::Stmt<'src>> {
         // FIXME: Outer attrs on let stmt
-        if self.begins_item() {
+        if self.begins_item(AllowMacroCall::No) {
             Ok(ast::Stmt::Item(self.parse_item()?))
         } else if self.consume(Keyword("let")) {
             let binder = self.parse_common_ident()?;
@@ -902,12 +874,12 @@ impl<'src> Parser<'src> {
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if expr.has_trailing_block() || self.token().kind == delim {
                 match self.consume(TokenKind::Semicolon) {
-                    true => ast::Semi::Yes,
-                    false => ast::Semi::No,
+                    true => ast::Semicolon::Yes,
+                    false => ast::Semicolon::No,
                 }
             } else {
                 self.parse(TokenKind::Semicolon)?;
-                ast::Semi::Yes
+                ast::Semicolon::Yes
             };
             Ok(ast::Stmt::Expr(expr, semi))
         } else {
@@ -928,55 +900,93 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Expr ::=
+    ///     | Path
+    ///     | Macro_Call
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Block_Expr
-    ///     | Common_Ident
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
-        let token = self.token();
-        match token.kind {
-            TokenKind::NumLit => {
-                let lit = self.source(token.span);
-                self.advance();
-                Ok(ast::Expr::NumLit(lit))
+        if self.begins_path() {
+            let path = self.parse_path()?;
+
+            if self.consume(TokenKind::Bang) {
+                let (bracket, stream) = self.parse_delimited_token_stream()?;
+                Ok(ast::Expr::MacroCall(ast::MacroCall { path, bracket, stream }))
+            } else {
+                Ok(ast::Expr::Path(path))
             }
-            TokenKind::StrLit => {
-                let lit = self.source(token.span);
-                self.advance();
-                Ok(ast::Expr::StrLit(lit))
+        } else {
+            let token = self.token();
+            match token.kind {
+                TokenKind::NumLit => {
+                    let lit = self.source(token.span);
+                    self.advance();
+                    Ok(ast::Expr::NumLit(lit))
+                }
+                TokenKind::StrLit => {
+                    let lit = self.source(token.span);
+                    self.advance();
+                    Ok(ast::Expr::StrLit(lit))
+                }
+                TokenKind::OpenCurlyBracket => {
+                    self.advance();
+                    self.fin_parse_block_expr()
+                }
+                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
             }
-            TokenKind::OpenCurlyBracket => {
-                self.advance();
-                self.fin_parse_block_expr()
-            }
-            TokenKind::Ident
-                if let ident = self.source(token.span)
-                    && self.is_common_ident(ident) =>
-            {
-                self.advance();
-                Ok(ast::Expr::Ident(ident))
-            }
-            _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
         }
     }
 
     fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
-        let token = self.token();
-        match token.kind {
-            TokenKind::NumLit | TokenKind::StrLit | TokenKind::OpenCurlyBracket => true,
-            TokenKind::Ident
-                if let ident = self.source(token.span)
-                    && self.is_common_ident(ident) =>
-            {
-                true
+        self.begins_path()
+            || matches!(
+                self.token().kind,
+                TokenKind::NumLit | TokenKind::StrLit | TokenKind::OpenCurlyBracket
+            )
+    }
+
+    fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {
+        let bracket = self.token();
+        match bracket.kind {
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                self.fin_parse_delimited_token_stream(ast::Bracket::Round)
             }
-            _ => false,
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                self.fin_parse_delimited_token_stream(ast::Bracket::Square)
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
+            }
+            _ => Err(ParseError::UnexpectedToken(
+                bracket,
+                ExpectedFragment::OneOf(Box::new([
+                    TokenKind::OpenRoundBracket,
+                    TokenKind::OpenSquareBracket,
+                    TokenKind::OpenCurlyBracket,
+                ])),
+            )),
         }
+    }
+
+    fn fin_parse_delimited_token_stream(
+        &mut self,
+        bracket: ast::Bracket,
+    ) -> Result<(ast::Bracket, ast::TokenStream)> {
+        let stream = self.parse_token_strean(bracket)?;
+        self.parse(match bracket {
+            ast::Bracket::Round => TokenKind::CloseRoundBracket,
+            ast::Bracket::Square => TokenKind::CloseSquareBracket,
+            ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
+        })?;
+        Ok((bracket, stream))
     }
 
     fn parse_token_strean(&mut self, exp_delim: ast::Bracket) -> Result<ast::TokenStream> {
@@ -1096,6 +1106,12 @@ impl<'src> Parser<'src> {
     fn source(&self, span: Span) -> &'src str {
         &self.source[span.range()]
     }
+}
+
+enum AllowMacroCall {
+    #[expect(dead_code)] // FIXME
+    Yes,
+    No,
 }
 
 // FIXME: Or should we move most "glued" token detection into the lexer?

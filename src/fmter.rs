@@ -113,7 +113,7 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Ty(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
             ast::ItemKind::MacroCall(call) => {
-                let needs_semi = matches!(call.bracket, ast::Bracket::Round);
+                let needs_semi = !matches!(call.bracket, ast::Bracket::Curly);
                 call.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");
@@ -239,6 +239,9 @@ impl Fmt for Vec<ast::GenParam<'_>> {
 
 impl Fmt for Vec<ast::Predicate<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        if self.is_empty() {
+            return;
+        }
         fmt!(cx, " where ");
         let mut preds = self.into_iter();
         if let Some(pred) = preds.next() {
@@ -461,7 +464,7 @@ impl Fmt for ast::Ty<'_> {
                 expr.fmt(cx);
                 fmt!(cx, "]")
             }
-            Self::Ident(ident) => fmt!(cx, "{ident}"),
+            Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
             Self::Never => todo!(),
             Self::Slice(ty) => {
@@ -499,9 +502,10 @@ impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Block(expr) => expr.fmt(cx),
-            Self::Ident(ident) => fmt!(cx, "{ident}"),
+            Self::Path(path) => path.fmt(cx),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::MacroCall(call) => call.fmt(cx),
         }
     }
 }
@@ -534,7 +538,7 @@ impl Fmt for ast::Stmt<'_> {
             Self::Item(item) => item.fmt(cx),
             Self::Let(stmt) => stmt.fmt(cx),
             Self::Expr(expr, semi) => {
-                let needs_semi = matches!(semi, ast::Semi::Yes if !expr.has_trailing_block());
+                let needs_semi = matches!(semi, ast::Semicolon::Yes if !expr.has_trailing_block());
                 expr.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");

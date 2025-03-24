@@ -173,17 +173,18 @@ pub(crate) struct Param<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
-    Ident(Ident<'src>),
+    Path(Path<'src>),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
+    MacroCall(MacroCall<'src>),
 }
 
 impl Expr<'_> {
     pub(crate) fn has_trailing_block(&self) -> bool {
         match self {
-            Self::Block(..) => true,
-            Self::Ident(_) | Self::NumLit(_) | Self::StrLit(_) => false,
+            Self::Block(..) | Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => true,
+            Self::Path(_) | Self::NumLit(_) | Self::StrLit(_) | Self::MacroCall(_) => false,
         }
     }
 }
@@ -198,12 +199,12 @@ pub(crate) struct BlockExpr<'src> {
 pub(crate) enum Stmt<'src> {
     Item(Item<'src>),
     Let(LetStmt<'src>),
-    Expr(Expr<'src>, Semi),
+    Expr(Expr<'src>, Semicolon),
     Empty,
 }
 
 #[derive(Debug)]
-pub(crate) enum Semi {
+pub(crate) enum Semicolon {
     Yes,
     No,
 }
@@ -219,7 +220,7 @@ pub(crate) struct LetStmt<'src> {
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
-    Ident(Ident<'src>),
+    Path(Path<'src>),
     Inferred,
     Never,
     Slice(Box<Ty<'src>>),
