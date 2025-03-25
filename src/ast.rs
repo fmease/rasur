@@ -11,6 +11,7 @@ pub(crate) struct File<'src> {
     pub(crate) span: Span,
 }
 
+// FIXME: Maybe represent as Item<Free>?
 #[derive(Debug)]
 pub(crate) struct Item<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
@@ -31,14 +32,14 @@ pub(crate) enum ItemKind<'src> {
     Enum(EnumItem<'src>),
     Fn(FnItem<'src>),
     Impl(ImplItem<'src>),
+    MacroCall(MacroCall<'src>),
+    MacroDef(MacroDef<'src>),
     Mod(ModItem<'src>),
     Static(StaticItem<'src>),
     Struct(StructItem<'src>),
     Trait(TraitItem<'src>),
     Ty(TyItem<'src>),
     Union(UnionItem<'src>),
-    MacroDef(MacroDef<'src>),
-    MacroCall(MacroCall<'src>),
 }
 
 #[derive(Debug)]
@@ -75,12 +76,13 @@ pub(crate) enum Constness {
 pub(crate) struct ImplItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
+    pub(crate) body: Vec<AssocItem<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct ModItem<'src> {
     pub(crate) binder: Ident<'src>,
-    pub(crate) items: Option<Vec<Item<'src>>>,
+    pub(crate) body: Option<Vec<Item<'src>>>,
 }
 
 #[derive(Debug)]
@@ -102,6 +104,24 @@ pub(crate) struct TraitItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
+    pub(crate) body: Vec<AssocItem<'src>>,
+}
+
+// FIXME: Maybe represent as Item<Assoc>?
+#[derive(Debug)]
+pub(crate) struct AssocItem<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility,
+    pub(crate) kind: AssocItemKind<'src>,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug)]
+pub(crate) enum AssocItemKind<'src> {
+    Const(ConstItem<'src>),
+    Fn(FnItem<'src>),
+    MacroCall(MacroCall<'src>),
+    Ty(TyItem<'src>),
 }
 
 #[derive(Debug)]

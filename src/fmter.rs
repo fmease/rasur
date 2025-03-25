@@ -351,14 +351,14 @@ impl Fmt for ast::ImplItem<'_> {
         fmt!(cx, " ");
         self.ty.fmt(cx);
         self.generics.preds.fmt(cx);
-        fmt!(cx, " {{}}")
+        self.body.fmt(cx);
     }
 }
 
 impl Fmt for ast::ModItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "mod {}", self.binder);
-        match self.items {
+        match self.body {
             Some(items) => {
                 fmt!(cx, " {{\n");
                 cx.indent();
@@ -426,7 +426,7 @@ impl Fmt for ast::TraitItem<'_> {
             self.bounds.fmt(cx);
         }
         self.generics.preds.fmt(cx);
-        fmt!(cx, " {{}}")
+        self.body.fmt(cx);
     }
 }
 
@@ -465,6 +465,59 @@ impl Fmt for ast::MacroDef<'_> {
         fmt!(cx, "macro_rules! {} {{ ", self.binder);
         self.stream.fmt(cx);
         fmt!(cx, " }}");
+    }
+}
+
+impl Fmt for Vec<ast::AssocItem<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, " {{");
+        if self.is_empty() {
+            fmt!(cx, "}}")
+        } else {
+            fmt!(cx, "\n");
+            cx.indent();
+            let mut items = self.into_iter();
+            if let Some(item) = items.next() {
+                fmt!(cx, indent);
+                item.fmt(cx);
+            }
+            for item in items {
+                fmt!(cx, "\n\n");
+                fmt!(cx, indent);
+                item.fmt(cx);
+            }
+            cx.dedent();
+            fmt!(cx, "\n}}");
+        }
+    }
+}
+
+impl Fmt for ast::AssocItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        if cx.skip(&self.attrs) {
+            fmt!(cx, "{}", cx.source(self.span));
+            return;
+        }
+        for attr in self.attrs {
+            attr.fmt(cx);
+            fmt!(cx, "\n");
+        }
+
+        // FIXME: Not all assoc items support visibility.
+        self.vis.fmt(cx);
+
+        match self.kind {
+            ast::AssocItemKind::Const(item) => item.fmt(cx),
+            ast::AssocItemKind::Fn(item) => item.fmt(cx),
+            ast::AssocItemKind::Ty(item) => item.fmt(cx),
+            ast::AssocItemKind::MacroCall(call) => {
+                let needs_semi = call.bracket != ast::Bracket::Curly;
+                call.fmt(cx);
+                if needs_semi {
+                    fmt!(cx, ";");
+                }
+            }
+        }
     }
 }
 

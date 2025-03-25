@@ -393,10 +393,13 @@ impl<'src> Parser<'src> {
 
         let preds = self.parse_where_clause()?;
 
-        self.parse(TokenKind::OpenCurlyBracket)?;
-        self.parse(TokenKind::CloseCurlyBracket)?;
+        let items = self.parse_delimited_assoc_items()?;
 
-        Ok(ast::ItemKind::Impl(ast::ImplItem { generics: ast::Generics { params, preds }, ty }))
+        Ok(ast::ItemKind::Impl(ast::ImplItem {
+            generics: ast::Generics { params, preds },
+            ty,
+            body: items,
+        }))
     }
 
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
@@ -418,7 +421,7 @@ impl<'src> Parser<'src> {
             None
         };
 
-        Ok(ast::ItemKind::Mod(ast::ModItem { binder, items }))
+        Ok(ast::ItemKind::Mod(ast::ModItem { binder, body: items }))
     }
 
     /// Finish parsing a static item assuming the leading `static` has been parsed already.
@@ -499,13 +502,13 @@ impl<'src> Parser<'src> {
         let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
         let preds = self.parse_where_clause()?;
 
-        self.parse(TokenKind::OpenCurlyBracket)?;
-        self.parse(TokenKind::CloseCurlyBracket)?;
+        let items = self.parse_delimited_assoc_items()?;
 
         Ok(ast::ItemKind::Trait(ast::TraitItem {
             binder,
             generics: ast::Generics { params, preds },
             bounds,
+            body: items,
         }))
     }
 
@@ -526,18 +529,38 @@ impl<'src> Parser<'src> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
         let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
-        // FIXME: Don't drop leading preds!
-        let _leading_preds = self.parse_where_clause()?;
+        let mut preds = self.parse_where_clause()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_ty()).transpose()?;
-        let trailing_preds = self.parse_where_clause()?;
+        preds.append(&mut self.parse_where_clause()?);
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Ty(ast::TyItem {
             binder,
-            generics: ast::Generics { params, preds: trailing_preds },
+            generics: ast::Generics { params, preds },
             bounds,
             body,
         }))
+    }
+
+    fn parse_delimited_assoc_items(&mut self) -> Result<Vec<ast::AssocItem<'src>>> {
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.parse_items(TokenKind::CloseCurlyBracket)?
+            .into_iter()
+            .map(|item| {
+                Ok(ast::AssocItem {
+                    attrs: item.attrs,
+                    vis: item.vis,
+                    kind: match item.kind {
+                        ast::ItemKind::Const(item) => ast::AssocItemKind::Const(item),
+                        ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
+                        ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
+                        ast::ItemKind::Ty(item) => ast::AssocItemKind::Ty(item),
+                        _ => return Err(ParseError::InvalidAssocItemKind),
+                    },
+                    span: item.span,
+                })
+            })
+            .collect()
     }
 
     /// Parse a where clause.
@@ -1200,6 +1223,7 @@ pub(crate) enum ParseError {
     UnexpectedToken(Token, ExpectedFragment),
     // FIXME: Temporary
     InvalidDelimiter,
+    InvalidAssocItemKind,
 }
 
 impl ParseError {
@@ -1214,6 +1238,7 @@ impl ParseError {
                 eprint!("{:?}: found {found} but expected {expected}", token.span)
             }
             Self::InvalidDelimiter => eprint!("invalid delimiter"),
+            Self::InvalidAssocItemKind => eprint!("invalid associated item kind"),
         }
         eprintln!();
     }
