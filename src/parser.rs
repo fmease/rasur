@@ -64,6 +64,7 @@ impl<'src> Parser<'src> {
     /// Visibility ::= "pub"?
     /// Bare_Item ::=
     ///     | Macro_Call
+    ///     | Macro_Def
     ///     | Const_Item
     ///     | Enum_Item
     ///     | Fn_Item
@@ -87,14 +88,14 @@ impl<'src> Parser<'src> {
         let vis = self.parse_visibility();
 
         let kind = if self.begins_path() {
-            self.parse_macro_call_item()?
+            self.parse_macro_item()?
         } else {
             let token = self.token();
             match token.kind {
                 TokenKind::Ident => match self.source(token.span) {
                     "const" => {
                         self.advance();
-                        if self.consume(Keyword("fn")) {
+                        if self.consume(Ident("fn")) {
                             self.fin_parse_fn_item(ast::Constness::Const)?
                         } else {
                             self.fin_parse_const_item()?
@@ -153,7 +154,7 @@ impl<'src> Parser<'src> {
 
         if self.begins_outer_attr()
             || self.begins_visibility()
-            || (matches!(macro_call, AllowMacroCall::Yes) && self.begins_path())
+            || self.begins_macro_item(macro_call)
         {
             return true;
         }
@@ -286,19 +287,7 @@ impl<'src> Parser<'src> {
     fn begins_path(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_path`.
 
-        if DOUBLE_COLON.check(self) {
-            return true;
-        }
-
-        let token = self.token();
-        if let TokenKind::Ident = token.kind
-            && let ident = self.source(token.span)
-            && self.is_path_seg_ident(ident)
-        {
-            return true;
-        }
-
-        false
+        DOUBLE_COLON.check(self) || self.is_path_seg_ident().is_some()
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -563,7 +552,7 @@ impl<'src> Parser<'src> {
     fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
 
-        if !self.consume(Keyword("where")) {
+        if !self.consume(Ident("where")) {
             return Ok(preds);
         }
 
@@ -635,52 +624,89 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
     }
 
-    fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn parse_macro_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_macro_item`.
+
         let path = self.parse_path()?;
         self.parse(TokenKind::Bang)?;
+
+        let binder = if let ast::PathLocality::Local = path.locality
+            && let ["macro_rules"] = *path.segs
+        {
+            self.consume_common_ident()
+        } else {
+            None
+        };
+
         let (bracket, stream) = self.parse_delimited_token_stream()?;
 
-        if let ast::Bracket::Round = bracket {
+        if bracket != ast::Bracket::Curly {
             self.parse(TokenKind::Semicolon)?;
         }
 
-        Ok(ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream }))
+        Ok(match binder {
+            Some(binder) => ast::ItemKind::MacroDef(ast::MacroDef {
+                binder,
+                stream,
+                style: ast::MacroDefStyle::Old,
+            }),
+            None => ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream }),
+        })
     }
 
-    fn parse_common_ident(&mut self) -> Result<&'src str> {
-        let token = self.token();
+    fn begins_macro_item(&self, macro_call: AllowMacroCall) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_macro_item`.
 
+        match macro_call {
+            AllowMacroCall::Yes => self.begins_path(),
+            AllowMacroCall::No => {
+                Ident("macro_rules").check(self)
+                    && self.look_ahead(1, |token| token.kind == TokenKind::Bang)
+                    && self.look_ahead(2, |token| self.is_common_ident(token).is_some())
+            }
+        }
+    }
+
+    fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
+        self.consume_common_ident()
+            .ok_or_else(|| ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent))
+    }
+
+    fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
+        self.is_common_ident(self.token()).inspect(|_| self.advance())
+    }
+
+    fn is_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
         if let TokenKind::Ident = token.kind
             && let ident = self.source(token.span)
-            && self.is_common_ident(ident)
+            && self.ident_is_common(ident)
         {
-            self.advance();
-            return Ok(ident);
+            return Some(ident);
         }
-
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::CommonIdent))
+        None
     }
 
-    fn is_common_ident(&self, ident: &str) -> bool {
+    fn ident_is_common(&self, ident: &str) -> bool {
         !is_reserved(ident, self.edition)
     }
 
     fn parse_path_seg_ident(&mut self) -> Result<ast::Ident<'src>> {
-        let token = self.token();
-
-        if let TokenKind::Ident = token.kind
-            && let ident = self.source(token.span)
-            && self.is_path_seg_ident(ident)
-        {
+        if let Some(ident) = self.is_path_seg_ident() {
             self.advance();
             return Ok(ident);
         }
-
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::PathSegIdent))
+        Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::PathSegIdent))
     }
 
-    fn is_path_seg_ident(&self, ident: &str) -> bool {
-        is_path_seg_keyword(ident) || self.is_common_ident(ident)
+    fn is_path_seg_ident(&self) -> Option<ast::Ident<'src>> {
+        let token = self.token();
+        if let TokenKind::Ident = token.kind
+            && let ident = self.source(token.span)
+            && (is_path_seg_keyword(ident) || self.ident_is_common(ident))
+        {
+            return Some(ident);
+        }
+        None
     }
 
     /// Parse generics.
@@ -863,7 +889,7 @@ impl<'src> Parser<'src> {
         // FIXME: Outer attrs on let stmt
         if self.begins_item(AllowMacroCall::No) {
             Ok(ast::Stmt::Item(self.parse_item()?))
-        } else if self.consume(Keyword("let")) {
+        } else if self.consume(Ident("let")) {
             let binder = self.parse_common_ident()?;
             let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
             let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
@@ -905,6 +931,7 @@ impl<'src> Parser<'src> {
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Block_Expr
+    ///     | "(" Expr ")"
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
@@ -935,6 +962,12 @@ impl<'src> Parser<'src> {
                     self.advance();
                     self.fin_parse_block_expr()
                 }
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    self.parse(TokenKind::CloseRoundBracket)?;
+                    Ok(expr)
+                }
                 _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
             }
         }
@@ -946,7 +979,10 @@ impl<'src> Parser<'src> {
         self.begins_path()
             || matches!(
                 self.token().kind,
-                TokenKind::NumLit | TokenKind::StrLit | TokenKind::OpenCurlyBracket
+                TokenKind::NumLit
+                    | TokenKind::StrLit
+                    | TokenKind::OpenRoundBracket
+                    | TokenKind::OpenCurlyBracket
             )
     }
 
@@ -1049,7 +1085,7 @@ impl<'src> Parser<'src> {
     fn parse_visibility(&mut self) -> ast::Visibility {
         // To kept in sync with `Self::begins_visibility`.
 
-        match self.consume(Keyword("pub")) {
+        match self.consume(Ident("pub")) {
             true => ast::Visibility::Public,
             false => ast::Visibility::Inherited,
         }
@@ -1058,7 +1094,7 @@ impl<'src> Parser<'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        Keyword("pub").check(self)
+        Ident("pub").check(self)
     }
 
     fn consume<S: Shape>(&mut self, shape: S) -> bool {
@@ -1089,9 +1125,9 @@ impl<'src> Parser<'src> {
         self.tokens[self.index]
     }
 
-    fn look_ahead(&self, amount: usize, pred: impl FnOnce(&Token) -> bool) -> bool {
+    fn look_ahead(&self, amount: usize, pred: impl FnOnce(Token) -> bool) -> bool {
         if let Some(index) = self.index.checked_add(amount)
-            && let Some(token) = self.tokens.get(index)
+            && let Some(&token) = self.tokens.get(index)
         {
             pred(token)
         } else {
@@ -1203,7 +1239,7 @@ impl fmt::Display for ExpectedFragment {
                 let tokens = tokens
                     .iter()
                     .map(|token| format!("{token:?}"))
-                    .intersperse_with(|| String::from(" "))
+                    .intersperse_with(|| String::from(" or "))
                     .collect::<String>();
                 return write!(f, "{tokens}");
             }
@@ -1236,9 +1272,9 @@ impl Shape for TokenKind {
 }
 
 #[derive(Clone, Copy)]
-struct Keyword<'src>(&'src str);
+struct Ident<'src>(&'src str);
 
-impl Shape for Keyword<'_> {
+impl Shape for Ident<'_> {
     const LENGTH: usize = 1;
 
     fn check(self, parser: &Parser<'_>) -> bool {

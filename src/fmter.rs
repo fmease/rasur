@@ -112,8 +112,9 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Trait(item) => item.fmt(cx),
             ast::ItemKind::Ty(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
+            ast::ItemKind::MacroDef(item) => item.fmt(cx),
             ast::ItemKind::MacroCall(call) => {
-                let needs_semi = !matches!(call.bracket, ast::Bracket::Curly);
+                let needs_semi = call.bracket != ast::Bracket::Curly;
                 call.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");
@@ -451,6 +452,19 @@ impl Fmt for ast::UnionItem<'_> {
         fmt!(cx, "union {}", self.binder);
         self.generics.fmt(cx);
         fmt!(cx, " {{}}")
+    }
+}
+
+impl Fmt for ast::MacroDef<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self.style {
+            ast::MacroDefStyle::Old => {}
+            ast::MacroDefStyle::New => todo!(), // FIXME
+        }
+
+        fmt!(cx, "macro_rules! {} {{ ", self.binder);
+        self.stream.fmt(cx);
+        fmt!(cx, " }}");
     }
 }
 

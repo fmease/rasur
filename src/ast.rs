@@ -37,6 +37,7 @@ pub(crate) enum ItemKind<'src> {
     Trait(TraitItem<'src>),
     Ty(TyItem<'src>),
     Union(UnionItem<'src>),
+    MacroDef(MacroDef<'src>),
     MacroCall(MacroCall<'src>),
 }
 
@@ -115,6 +116,22 @@ pub(crate) struct TyItem<'src> {
 pub(crate) struct UnionItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct MacroDef<'src> {
+    pub(crate) binder: Ident<'src>,
+    pub(crate) stream: TokenStream,
+    pub(crate) style: MacroDefStyle,
+}
+
+#[derive(Debug)]
+pub(crate) enum MacroDefStyle {
+    /// Macro 1.2 aka. `macro_rules!`.
+    Old,
+    /// Macro 2.0.
+    #[expect(dead_code)] // FIXME
+    New,
 }
 
 #[derive(Debug)]
