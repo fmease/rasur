@@ -349,7 +349,17 @@ impl Fmt for ast::ImplItem<'_> {
         fmt!(cx, "impl");
         self.generics.params.fmt(cx);
         fmt!(cx, " ");
-        self.ty.fmt(cx);
+        if let ast::Constness::Const = self.constness {
+            fmt!(cx, "const ");
+        }
+        if let ast::ImplPolarity::Negative = self.polarity {
+            fmt!(cx, "!");
+        }
+        if let Some(trait_ref) = self.trait_ref {
+            trait_ref.fmt(cx);
+            fmt!(cx, " for ");
+        }
+        self.self_ty.fmt(cx);
         self.generics.preds.fmt(cx);
         self.body.fmt(cx);
     }
@@ -561,6 +571,7 @@ impl Fmt for ast::Ty<'_> {
                 }
                 fmt!(cx, ")");
             }
+            Self::Error => fmt!(cx, "/*error*/"),
         }
     }
 }

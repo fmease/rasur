@@ -75,8 +75,17 @@ pub(crate) enum Constness {
 #[derive(Debug)]
 pub(crate) struct ImplItem<'src> {
     pub(crate) generics: Generics<'src>,
-    pub(crate) ty: Ty<'src>,
+    pub(crate) constness: Constness,
+    pub(crate) polarity: ImplPolarity,
+    pub(crate) trait_ref: Option<Path<'src>>,
+    pub(crate) self_ty: Ty<'src>,
     pub(crate) body: Vec<AssocItem<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum ImplPolarity {
+    Positive,
+    Negative,
 }
 
 #[derive(Debug)]
@@ -262,6 +271,7 @@ pub(crate) enum Ty<'src> {
     Never,
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
+    Error,
 }
 
 #[derive(Debug)]

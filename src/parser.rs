@@ -381,15 +381,38 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Impl_Item ::= "impl" Generic_Params Ty Where_Clause? "{" … "}"
+    /// Impl_Item ::= "impl" Generic_Params Path for Ty Where_Clause? "{" … "}"
     /// ```
     fn fin_parse_impl_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
         let params = self.parse_generic_params()?;
 
-        // FIXME: Support "Trait_Path "for""
+        let constness = match self.consume(Ident("const")) {
+            true => ast::Constness::Const,
+            false => ast::Constness::Not,
+        };
+
+        let polarity = match self.consume(TokenKind::Bang) {
+            true => ast::ImplPolarity::Negative,
+            false => ast::ImplPolarity::Positive,
+        };
 
         let ty = self.parse_ty()?;
+
+        let (trait_ref, self_ty) = if self.consume(Ident("for")) {
+            let self_ty = match self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
+                // Legacy syntax for auto trait impls.
+                true => ast::Ty::Error,
+                false => self.parse_ty()?,
+            };
+            let trait_ref = match ty {
+                ast::Ty::Path(path) => path,
+                _ => return Err(ParseError::ExpectedTraitFoundTy),
+            };
+            (Some(trait_ref), self_ty)
+        } else {
+            (None, ty)
+        };
 
         let preds = self.parse_where_clause()?;
 
@@ -397,7 +420,10 @@ impl<'src> Parser<'src> {
 
         Ok(ast::ItemKind::Impl(ast::ImplItem {
             generics: ast::Generics { params, preds },
-            ty,
+            constness,
+            polarity,
+            trait_ref,
+            self_ty,
             body: items,
         }))
     }
@@ -1224,6 +1250,7 @@ pub(crate) enum ParseError {
     // FIXME: Temporary
     InvalidDelimiter,
     InvalidAssocItemKind,
+    ExpectedTraitFoundTy,
 }
 
 impl ParseError {
@@ -1239,6 +1266,7 @@ impl ParseError {
             }
             Self::InvalidDelimiter => eprint!("invalid delimiter"),
             Self::InvalidAssocItemKind => eprint!("invalid associated item kind"),
+            Self::ExpectedTraitFoundTy => eprint!("found type expected trait"),
         }
         eprintln!();
     }
