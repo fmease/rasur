@@ -89,59 +89,59 @@ impl<'src> Parser<'src> {
 
         let kind = if self.begins_path() {
             self.parse_macro_item()?
-        } else {
-            let token = self.token();
-            match token.kind {
-                TokenKind::Ident => match self.source(token.span) {
-                    "const" => {
-                        self.advance();
-                        if self.consume(Ident("fn")) {
-                            self.fin_parse_fn_item(ast::Constness::Const)?
-                        } else {
-                            self.fin_parse_const_item()?
-                        }
+        } else if let token = self.token()
+            && let Some(ident) = self.is_ident(token)
+        {
+            match ident {
+                "const" => {
+                    self.advance();
+                    if self.consume(Ident("fn")) {
+                        self.fin_parse_fn_item(ast::Constness::Const)?
+                    } else {
+                        self.fin_parse_const_item()?
                     }
-                    "enum" => {
-                        self.advance();
-                        self.fin_parse_enum_item()?
-                    }
-                    "fn" => {
-                        self.advance();
-                        self.fin_parse_fn_item(ast::Constness::Not)?
-                    }
-                    "impl" => {
-                        self.advance();
-                        self.fin_parse_impl_item()?
-                    }
-                    "mod" => {
-                        self.advance();
-                        self.fin_parse_mod_item()?
-                    }
-                    "static" => {
-                        self.advance();
-                        self.fin_parse_static_item()?
-                    }
-                    "struct" => {
-                        self.advance();
-                        self.fin_parse_struct_item()?
-                    }
-                    "trait" => {
-                        self.advance();
-                        self.fin_parse_trait_item()?
-                    }
-                    "type" => {
-                        self.advance();
-                        self.fin_parse_ty_item()?
-                    }
-                    // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
-                    "union" => {
-                        self.advance();
-                        self.fin_parse_union_item()?
-                    }
-                    _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
-                },
+                }
+                "enum" => {
+                    self.advance();
+                    self.fin_parse_enum_item()?
+                }
+                "fn" => {
+                    self.advance();
+                    self.fin_parse_fn_item(ast::Constness::Not)?
+                }
+                "impl" => {
+                    self.advance();
+                    self.fin_parse_impl_item()?
+                }
+                "mod" => {
+                    self.advance();
+                    self.fin_parse_mod_item()?
+                }
+                "static" => {
+                    self.advance();
+                    self.fin_parse_static_item()?
+                }
+                "struct" => {
+                    self.advance();
+                    self.fin_parse_struct_item()?
+                }
+                "trait" => {
+                    self.advance();
+                    self.fin_parse_trait_item()?
+                }
+                "type" => {
+                    self.advance();
+                    self.fin_parse_ty_item()?
+                }
+                // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
+                "union" => {
+                    self.advance();
+                    self.fin_parse_union_item()?
+                }
                 _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
             }
+        } else {
+            return Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Item));
         };
 
         let span = start.to(self.prev_token().map(|token| token.span));
@@ -159,15 +159,11 @@ impl<'src> Parser<'src> {
             return true;
         }
 
-        let token = self.token();
-        if let TokenKind::Ident = token.kind {
-            let ident = self.source(token.span);
-            // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
+        // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
+        self.is_ident(self.token()).is_some_and(|ident| {
             ["const", "enum", "fn", "impl", "mod", "static", "struct", "trait", "type", "union"]
                 .contains(&ident)
-        } else {
-            false
-        }
+        })
     }
 
     /// Parse a sequence of attributes of the given style.
@@ -726,17 +722,15 @@ impl<'src> Parser<'src> {
     }
 
     fn is_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        if let TokenKind::Ident = token.kind
-            && let ident = self.source(token.span)
-            && self.ident_is_common(ident)
-        {
-            return Some(ident);
-        }
-        None
+        self.is_ident(token).filter(|ident| self.ident_is_common(ident))
     }
 
     fn ident_is_common(&self, ident: &str) -> bool {
         !is_reserved(ident, self.edition)
+    }
+
+    fn is_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+        matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
     fn parse_path_seg_ident(&mut self) -> Result<ast::Ident<'src>> {
@@ -748,14 +742,8 @@ impl<'src> Parser<'src> {
     }
 
     fn is_path_seg_ident(&self) -> Option<ast::Ident<'src>> {
-        let token = self.token();
-        if let TokenKind::Ident = token.kind
-            && let ident = self.source(token.span)
-            && (is_path_seg_keyword(ident) || self.ident_is_common(ident))
-        {
-            return Some(ident);
-        }
-        None
+        self.is_ident(self.token())
+            .filter(|ident| is_path_seg_keyword(ident) || self.ident_is_common(ident))
     }
 
     /// Parse generics.
@@ -771,20 +759,58 @@ impl<'src> Parser<'src> {
         Ok(ast::Generics { params, preds })
     }
 
-    fn parse_generic_params(&mut self) -> Result<Vec<ast::GenParam<'src>>> {
+    fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
         let mut params = Vec::new();
 
         if self.consume(TokenKind::OpenAngleBracket) {
             const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+            // FIXME: This is so hideously structured! We need better primitives!
             while !self.consume(DELIMITER) {
-                let binder = self.parse_common_ident()?;
+                let token = self.token();
+                // FIXME: The first condition should be Glued(Apo, CommonIdent)
+                let (binder, kind) = if token.kind == TokenKind::Apostrophe
+                    && let Some(lifetime) = self.look_ahead(1, |ident| {
+                        self.is_ident(ident).filter(|_| token.touches(ident)).filter(|&ident| {
+                            ident == "_" || ident == "static" || self.ident_is_common(ident)
+                        })
+                    }) {
+                    self.advance();
+                    self.advance();
+                    // FIXME: Outlives-bounds
+                    (lifetime, ast::GenericParamKind::Lifetime)
+                } else {
+                    match self.is_ident(token) {
+                        Some("const") => {
+                            self.advance();
+                            let binder = self.parse_common_ident()?;
+                            let ty = self.parse_ty_ann()?;
+                            (binder, ast::GenericParamKind::Const(ty))
+                        }
+                        Some(ident) if self.ident_is_common(ident) => {
+                            self.advance();
+                            let bounds = if self.consume(TokenKind::Colon) {
+                                self.parse_bounds()?
+                            } else {
+                                Vec::new()
+                            };
+                            (ident, ast::GenericParamKind::Ty(bounds))
+                        }
+                        _ => {
+                            // FIXME: OneOf(Comma, ClosingAngleBracket, …)
+                            return Err(ParseError::UnexpectedToken(
+                                token,
+                                ExpectedFragment::GenericParam,
+                            ));
+                        }
+                    }
+                };
 
                 // FIXME: Is there a nicer way to do this?
                 if self.token().kind != DELIMITER {
                     self.parse(TokenKind::Comma)?;
                 }
 
-                params.push(ast::GenParam { binder })
+                params.push(ast::GenericParam { binder, kind })
             }
         }
 
@@ -1174,13 +1200,13 @@ impl<'src> Parser<'src> {
         self.tokens[self.index]
     }
 
-    fn look_ahead(&self, amount: usize, pred: impl FnOnce(Token) -> bool) -> bool {
+    fn look_ahead<T: Default>(&self, amount: usize, pred: impl FnOnce(Token) -> T) -> T {
         if let Some(index) = self.index.checked_add(amount)
             && let Some(&token) = self.tokens.get(index)
         {
             pred(token)
         } else {
-            false
+            T::default()
         }
     }
 
@@ -1275,6 +1301,7 @@ impl ParseError {
 pub(crate) enum ExpectedFragment {
     CommonIdent,
     Expr,
+    GenericParam,
     Item,
     OneOf(Box<[TokenKind]>),
     PathSegIdent,
@@ -1287,6 +1314,7 @@ impl fmt::Display for ExpectedFragment {
         f.write_str(match self {
             Self::CommonIdent => "identifier",
             Self::Expr => "expression",
+            Self::GenericParam => "generic parameter",
             Self::Item => "item",
             Self::OneOf(tokens) => {
                 let tokens = tokens
@@ -1343,9 +1371,9 @@ impl Shape for Glued<2, TokenKind> {
     const LENGTH: usize = 2;
 
     fn check(self, parser: &Parser<'_>) -> bool {
-        let Self([exp0, exp1]) = self;
-        let act0 = parser.token();
-        act0.kind == exp0
-            && parser.look_ahead(1, |act1| act1.kind == exp1 && act0.span.end == act1.span.start)
+        let Self([expected0, expected1]) = self;
+        let actual0 = parser.token();
+        actual0.kind == expected0
+            && parser.look_ahead(1, |actual1| actual1.kind == expected1 && actual0.touches(actual1))
     }
 }

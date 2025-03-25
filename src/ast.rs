@@ -186,13 +186,21 @@ pub(crate) struct StructField<'src> {
 
 #[derive(Debug)]
 pub(crate) struct Generics<'src> {
-    pub(crate) params: Vec<GenParam<'src>>,
+    pub(crate) params: Vec<GenericParam<'src>>,
     pub(crate) preds: Vec<Predicate<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct GenParam<'src> {
+pub(crate) struct GenericParam<'src> {
     pub(crate) binder: Ident<'src>,
+    pub(crate) kind: GenericParamKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum GenericParamKind<'src> {
+    Ty(Vec<Bound<'src>>),
+    Const(Ty<'src>),
+    Lifetime,
 }
 
 #[derive(Debug)]

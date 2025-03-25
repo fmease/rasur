@@ -183,6 +183,7 @@ impl Fmt for ast::TokenKind {
             cx,
             "{}",
             match self {
+                Self::Apostrophe => "'",
                 Self::Bang => "!",
                 Self::CloseAngleBracket => ">",
                 Self::CloseCurlyBracket => "}",
@@ -224,16 +225,36 @@ impl Fmt for ast::Generics<'_> {
     }
 }
 
-impl Fmt for Vec<ast::GenParam<'_>> {
+impl Fmt for Vec<ast::GenericParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let mut params = self.into_iter();
         if let Some(param) = params.next() {
             fmt!(cx, "<");
-            fmt!(cx, "{},", param.binder);
+            param.fmt(cx);
             for param in params {
-                fmt!(cx, "{},", param.binder);
+                fmt!(cx, ", ");
+                param.fmt(cx);
             }
             fmt!(cx, ">");
+        }
+    }
+}
+
+impl Fmt for ast::GenericParam<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self.kind {
+            ast::GenericParamKind::Ty(bounds) => {
+                fmt!(cx, "{}", self.binder);
+                if !bounds.is_empty() {
+                    fmt!(cx, ": ");
+                    bounds.fmt(cx);
+                }
+            }
+            ast::GenericParamKind::Const(ty) => {
+                fmt!(cx, "const {}: ", self.binder);
+                ty.fmt(cx);
+            }
+            ast::GenericParamKind::Lifetime => fmt!(cx, "'{}", self.binder),
         }
     }
 }

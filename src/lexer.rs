@@ -9,6 +9,7 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
+    Apostrophe,
     Bang,
     CloseAngleBracket,
     CloseCurlyBracket,
@@ -41,6 +42,12 @@ pub(crate) enum TokenKind {
 pub(crate) struct Token {
     pub(crate) kind: TokenKind,
     pub(crate) span: Span,
+}
+
+impl Token {
+    pub(crate) fn touches(self, other: Self) -> bool {
+        self.span.end == other.span.start
+    }
 }
 
 impl fmt::Debug for Token {
@@ -159,6 +166,8 @@ impl<'src> Lexer<'src> {
                 '}' => self.add(TokenKind::CloseCurlyBracket, start),
                 '<' => self.add(TokenKind::OpenAngleBracket, start),
                 '>' => self.add(TokenKind::CloseAngleBracket, start),
+                // FIXME: Character literals (without breaking lifetimes).
+                '\'' => self.add(TokenKind::Apostrophe, start),
                 _ => self.add(TokenKind::Error, start),
             };
         }
