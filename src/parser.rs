@@ -149,13 +149,10 @@ impl<'src> Parser<'src> {
         Ok(ast::Item { attrs, vis, kind, span })
     }
 
-    fn begins_item(&self, macro_call: AllowMacroCall) -> bool {
+    fn begins_item(&self, policy: MacroCallPolicy) -> bool {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
-        if self.begins_outer_attr()
-            || self.begins_visibility()
-            || self.begins_macro_item(macro_call)
-        {
+        if self.begins_outer_attr() || self.begins_visibility() || self.begins_macro_item(policy) {
             return true;
         }
 
@@ -209,7 +206,7 @@ impl<'src> Parser<'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
-        let path = self.parse_path()?;
+        let path = self.parse_path::<ParsePathArgsNo>()?;
         let token = self.token();
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
@@ -263,21 +260,21 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
     /// ```
-    fn parse_path(&mut self) -> Result<ast::Path<'src>> {
+    fn parse_path<A: ParsePathArgs>(&mut self) -> Result<ast::Path<'src, A::Output<'src>>> {
         // NOTE: To be kept in sync with `Self::begins_path`.
 
-        let locality = match self.consume(DOUBLE_COLON) {
-            true => ast::PathLocality::Global,
-            false => ast::PathLocality::Local,
+        let hook = match self.consume(DOUBLE_COLON) {
+            true => ast::PathHook::Global,
+            false => ast::PathHook::Local,
         };
 
         let mut segs = Vec::new();
-        segs.push(self.parse_path_seg_ident()?);
+        segs.push(self.parse_path_seg_ident::<A>()?);
         while self.consume(DOUBLE_COLON) {
-            segs.push(self.parse_path_seg_ident()?);
+            segs.push(self.parse_path_seg_ident::<A>()?);
         }
 
-        Ok(ast::Path { locality, segs })
+        Ok(ast::Path { hook, segs })
     }
 
     fn begins_path(&self) -> bool {
@@ -640,7 +637,7 @@ impl<'src> Parser<'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        Ok(ast::Bound::Trait(self.parse_path()?))
+        Ok(ast::Bound::Trait(self.parse_path::<ParsePathArgsYes>()?))
     }
 
     fn begins_bound(&self) -> bool {
@@ -672,11 +669,11 @@ impl<'src> Parser<'src> {
     fn parse_macro_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path()?;
+        let path = self.parse_path::<ParsePathArgsNo>()?;
         self.parse(TokenKind::Bang)?;
 
-        let binder = if let ast::PathLocality::Local = path.locality
-            && let ["macro_rules"] = *path.segs
+        let binder = if let ast::PathHook::Local = path.hook
+            && let [ast::PathSeg { ident: "macro_rules", args: () }] = *path.segs
         {
             self.consume_common_ident()
         } else {
@@ -699,12 +696,12 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn begins_macro_item(&self, macro_call: AllowMacroCall) -> bool {
+    fn begins_macro_item(&self, policy: MacroCallPolicy) -> bool {
         // NOTE: To be kept in sync with `Self::parse_macro_item`.
 
-        match macro_call {
-            AllowMacroCall::Yes => self.begins_path(),
-            AllowMacroCall::No => {
+        match policy {
+            MacroCallPolicy::Allowed => self.begins_path(),
+            MacroCallPolicy::Forbidden => {
                 Ident("macro_rules").check(self)
                     && self.look_ahead(1, |token| token.kind == TokenKind::Bang)
                     && self.look_ahead(2, |token| self.is_common_ident(token).is_some())
@@ -733,12 +730,15 @@ impl<'src> Parser<'src> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
-    fn parse_path_seg_ident(&mut self) -> Result<ast::Ident<'src>> {
-        if let Some(ident) = self.is_path_seg_ident() {
-            self.advance();
-            return Ok(ident);
-        }
-        Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::PathSegIdent))
+    fn parse_path_seg_ident<A: ParsePathArgs>(
+        &mut self,
+    ) -> Result<ast::PathSeg<'src, A::Output<'src>>> {
+        let ident = self.is_path_seg_ident().ok_or_else(|| {
+            ParseError::UnexpectedToken(self.token(), ExpectedFragment::PathSegIdent)
+        })?;
+        self.advance();
+        let args = A::parse(self)?;
+        Ok(ast::PathSeg { ident, args })
     }
 
     fn is_path_seg_ident(&self) -> Option<ast::Ident<'src>> {
@@ -847,6 +847,7 @@ impl<'src> Parser<'src> {
     /// Ty ::=
     ///     | Path
     ///     | "_"
+    ///     | "fn" "(" ")" ("->" Ty)?
     ///     | "!"
     ///     | "(" (Ty ("," | >")"))* ")"
     /// ```
@@ -854,57 +855,74 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
         if self.begins_path() {
-            Ok(ast::Ty::Path(self.parse_path()?))
-        } else {
-            let token = self.token();
-            match token.kind {
-                TokenKind::Ident if let "_" = self.source(token.span) => {
+            return Ok(ast::Ty::Path(self.parse_path::<ParsePathArgsYes>()?));
+        }
+
+        let token = self.token();
+        if let Some(ident) = self.is_ident(token) {
+            match ident {
+                "_" => {
                     self.advance();
-                    Ok(ast::Ty::Inferred)
+                    return Ok(ast::Ty::Inferred);
                 }
-                TokenKind::Bang => {
+                "fn" => {
                     self.advance();
-                    Ok(ast::Ty::Never)
-                }
-                TokenKind::OpenSquareBracket => {
-                    self.advance();
-                    let ty = self.parse_ty()?;
-                    let len = self
-                        .consume(TokenKind::Semicolon)
-                        .then(|| self.parse_expr())
+                    self.parse(TokenKind::OpenRoundBracket)?;
+                    // FIXME: Parse type params (opt name)
+                    self.parse(TokenKind::CloseRoundBracket)?;
+                    let ret_ty = self
+                        .consume(TokenKind::ThinArrow)
+                        .then(|| self.parse_ty().map(Box::new))
                         .transpose()?;
-                    self.parse(TokenKind::CloseSquareBracket)?;
-                    Ok(match len {
-                        Some(len) => ast::Ty::Array(Box::new(ty), len),
-                        None => ast::Ty::Slice(Box::new(ty)),
-                    })
+                    return Ok(ast::Ty::FnPtr((), ret_ty));
                 }
-                TokenKind::OpenRoundBracket => {
-                    self.advance();
-                    let mut tys = Vec::new();
-
-                    while !self.consume(TokenKind::CloseRoundBracket) {
-                        let ty = self.parse_ty()?;
-
-                        // FIXME: Is there a better way to express this?
-                        if self.token().kind == TokenKind::CloseRoundBracket {
-                            if tys.is_empty() {
-                                // This is actually a parenthesized type, not a tuple.
-                                self.advance();
-                                return Ok(ty);
-                            }
-                        } else {
-                            self.parse(TokenKind::Comma)?;
-                        }
-
-                        tys.push(ty);
-                    }
-
-                    Ok(ast::Ty::Tup(tys))
-                }
-                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty)),
+                _ => {}
             }
         }
+
+        match token.kind {
+            TokenKind::Bang => {
+                self.advance();
+                return Ok(ast::Ty::Never);
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let ty = self.parse_ty()?;
+                let len =
+                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                return Ok(match len {
+                    Some(len) => ast::Ty::Array(Box::new(ty), len),
+                    None => ast::Ty::Slice(Box::new(ty)),
+                });
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                let mut tys = Vec::new();
+
+                while !self.consume(TokenKind::CloseRoundBracket) {
+                    let ty = self.parse_ty()?;
+
+                    // FIXME: Is there a better way to express this?
+                    if self.token().kind == TokenKind::CloseRoundBracket {
+                        if tys.is_empty() {
+                            // This is actually a parenthesized type, not a tuple.
+                            self.advance();
+                            return Ok(ty);
+                        }
+                    } else {
+                        self.parse(TokenKind::Comma)?;
+                    }
+
+                    tys.push(ty);
+                }
+
+                return Ok(ast::Ty::Tup(tys));
+            }
+            _ => {}
+        }
+
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))
     }
 
     fn begins_ty(&self) -> bool {
@@ -962,7 +980,7 @@ impl<'src> Parser<'src> {
     //       macro expansion.
     fn parse_stmt(&mut self, delim: TokenKind) -> Result<ast::Stmt<'src>> {
         // FIXME: Outer attrs on let stmt
-        if self.begins_item(AllowMacroCall::No) {
+        if self.begins_item(MacroCallPolicy::Forbidden) {
             Ok(ast::Stmt::Item(self.parse_item()?))
         } else if self.consume(Ident("let")) {
             let binder = self.parse_common_ident()?;
@@ -1012,7 +1030,8 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
         if self.begins_path() {
-            let path = self.parse_path()?;
+            // FIXME: gen args disamb only
+            let path = self.parse_path::<ParsePathArgsYes>()?;
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -1219,10 +1238,42 @@ impl<'src> Parser<'src> {
     }
 }
 
-enum AllowMacroCall {
+enum MacroCallPolicy {
     #[expect(dead_code)] // FIXME
-    Yes,
-    No,
+    Allowed,
+    Forbidden,
+}
+
+trait ParsePathArgs {
+    type Output<'src>;
+
+    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Output<'src>>;
+}
+
+// FIXME: Add one for `::<` only
+
+enum ParsePathArgsYes {} // FIXME: Temp name
+enum ParsePathArgsNo {} // FIXME: Temp name
+
+impl ParsePathArgs for ParsePathArgsNo {
+    type Output<'src> = ();
+
+    fn parse<'src>(_: &mut Parser<'src>) -> Result<Self::Output<'src>> {
+        Ok(())
+    }
+}
+
+impl ParsePathArgs for ParsePathArgsYes {
+    type Output<'src> = Vec<ast::GenericArg<'src>>;
+
+    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Output<'src>> {
+        let mut args = Vec::new();
+        if parser.consume(TokenKind::OpenAngleBracket) {
+            // FIXME: Args
+            parser.parse(TokenKind::CloseAngleBracket)?;
+        }
+        Ok(args)
+    }
 }
 
 // FIXME: Or should we move most "glued" token detection into the lexer?

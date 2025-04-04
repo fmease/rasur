@@ -32,7 +32,7 @@ pub(crate) enum ItemKind<'src> {
     Enum(EnumItem<'src>),
     Fn(FnItem<'src>),
     Impl(ImplItem<'src>),
-    MacroCall(MacroCall<'src>),
+    MacroCall(MacroCall<'src, ()>),
     MacroDef(MacroDef<'src>),
     Mod(ModItem<'src>),
     Static(StaticItem<'src>),
@@ -77,7 +77,7 @@ pub(crate) struct ImplItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) constness: Constness,
     pub(crate) polarity: ImplPolarity,
-    pub(crate) trait_ref: Option<Path<'src>>,
+    pub(crate) trait_ref: Option<Path<'src, Vec<GenericArg<'src>>>>,
     pub(crate) self_ty: Ty<'src>,
     pub(crate) body: Vec<AssocItem<'src>>,
 }
@@ -129,7 +129,7 @@ pub(crate) struct AssocItem<'src> {
 pub(crate) enum AssocItemKind<'src> {
     Const(ConstItem<'src>),
     Fn(FnItem<'src>),
-    MacroCall(MacroCall<'src>),
+    MacroCall(MacroCall<'src, ()>),
     Ty(TyItem<'src>),
 }
 
@@ -164,8 +164,8 @@ pub(crate) enum MacroDefStyle {
 }
 
 #[derive(Debug)]
-pub(crate) struct MacroCall<'src> {
-    pub(crate) path: Path<'src>,
+pub(crate) struct MacroCall<'src, A> {
+    pub(crate) path: Path<'src, A>,
     pub(crate) bracket: Bracket,
     pub(crate) stream: TokenStream,
 }
@@ -204,6 +204,13 @@ pub(crate) enum GenericParamKind<'src> {
 }
 
 #[derive(Debug)]
+pub(crate) enum GenericArg<'src> {
+    Ty(Ty<'src>),
+    Const,
+    Lifetime,
+}
+
+#[derive(Debug)]
 pub(crate) enum Predicate<'src> {
     Trait(TraitPredicate<'src>),
 }
@@ -216,7 +223,7 @@ pub(crate) struct TraitPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Trait(Path<'src>),
+    Trait(Path<'src, Vec<GenericArg<'src>>>),
 }
 
 #[derive(Debug)]
@@ -227,11 +234,11 @@ pub(crate) struct Param<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
-    Path(Path<'src>),
+    Path(Path<'src, Vec<GenericArg<'src>>>),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
-    MacroCall(MacroCall<'src>),
+    MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
 impl Expr<'_> {
@@ -274,18 +281,19 @@ pub(crate) struct LetStmt<'src> {
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
-    Path(Path<'src>),
+    Error,
+    FnPtr((), Option<Box<Ty<'src>>>),
     Inferred,
     Never,
+    Path(Path<'src, Vec<GenericArg<'src>>>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
-    Error,
 }
 
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
     pub(crate) style: AttrStyle,
-    pub(crate) path: Path<'src>,
+    pub(crate) path: Path<'src, ()>,
     pub(crate) kind: AttrKind<'src>,
 }
 
@@ -318,13 +326,19 @@ pub(crate) enum Orientation {
 }
 
 #[derive(Debug)]
-pub(crate) struct Path<'src> {
-    pub(crate) locality: PathLocality,
-    pub(crate) segs: Vec<Ident<'src>>,
+pub(crate) struct Path<'src, A> {
+    pub(crate) hook: PathHook,
+    pub(crate) segs: Vec<PathSeg<'src, A>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum PathLocality {
+pub(crate) enum PathHook {
     Global,
     Local,
+}
+
+#[derive(Debug)]
+pub(crate) struct PathSeg<'src, A> {
+    pub(crate) ident: Ident<'src>,
+    pub(crate) args: A,
 }

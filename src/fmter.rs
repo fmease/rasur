@@ -54,8 +54,14 @@ impl<'src> Cx<'src> {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Make tool mod config'able: "rasur"|"rustfmt"|both
         attrs.iter().any(|attr| {
-            matches!(attr.path.locality, ast::PathLocality::Local)
-                && attr.path.segs == ["rustfmt", "skip"]
+            matches!(attr.path.hook, ast::PathHook::Local)
+                && matches!(
+                    &*attr.path.segs,
+                    [
+                        ast::PathSeg { ident: "rustfmt", args: () },
+                        ast::PathSeg { ident: "skip", args: () }
+                    ]
+                )
                 && matches!(attr.kind, ast::AttrKind::Unit)
         })
     }
@@ -148,18 +154,26 @@ impl Fmt for ast::Attr<'_> {
     }
 }
 
-impl Fmt for ast::Path<'_> {
+impl<A> Fmt for ast::Path<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if let ast::PathLocality::Global = self.locality {
+        if let ast::PathHook::Global = self.hook {
             fmt!(cx, "::");
         }
         let mut segs = self.segs.into_iter();
         if let Some(seg) = segs.next() {
-            fmt!(cx, "{seg}");
+            seg.fmt(cx);
         }
         for seg in segs {
-            fmt!(cx, "::{seg}");
+            fmt!(cx, "::");
+            seg.fmt(cx);
         }
+    }
+}
+
+impl<A> Fmt for ast::PathSeg<'_, A> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        // FIXME: Print generic args.
+        fmt!(cx, "{}", self.ident);
     }
 }
 
@@ -562,8 +576,15 @@ impl Fmt for ast::Ty<'_> {
                 expr.fmt(cx);
                 fmt!(cx, "]")
             }
-            Self::Path(path) => path.fmt(cx),
+            Self::FnPtr((), ret_ty) => {
+                fmt!(cx, "fn()");
+                if let Some(ret_ty) = ret_ty {
+                    fmt!(cx, " -> ");
+                    ret_ty.fmt(cx);
+                }
+            }
             Self::Inferred => fmt!(cx, "_"),
+            Self::Path(path) => path.fmt(cx),
             Self::Never => todo!(),
             Self::Slice(ty) => {
                 fmt!(cx, "[");
@@ -663,7 +684,7 @@ impl Fmt for ast::LetStmt<'_> {
     }
 }
 
-impl Fmt for ast::MacroCall<'_> {
+impl<A> Fmt for ast::MacroCall<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.path.fmt(cx);
         fmt!(cx, "!");
