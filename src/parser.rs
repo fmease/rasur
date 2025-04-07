@@ -67,6 +67,7 @@ impl<'src> Parser<'src> {
     ///     | Macro_Def
     ///     | Const_Item
     ///     | Enum_Item
+    ///     | Extern_Block_Item
     ///     | Fn_Item
     ///     | Impl_Item
     ///     | Mod_Item
@@ -104,6 +105,10 @@ impl<'src> Parser<'src> {
                 "enum" => {
                     self.advance();
                     self.fin_parse_enum_item()?
+                }
+                "extern" => {
+                    self.advance();
+                    self.fin_parse_extern_block_item()?
                 }
                 "fn" => {
                     self.advance();
@@ -158,8 +163,11 @@ impl<'src> Parser<'src> {
 
         // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
         self.is_ident(self.token()).is_some_and(|ident| {
-            ["const", "enum", "fn", "impl", "mod", "static", "struct", "trait", "type", "union"]
-                .contains(&ident)
+            [
+                "const", "enum", "extern", "fn", "impl", "mod", "static", "struct", "trait",
+                "type", "union",
+            ]
+            .contains(&ident)
         })
     }
 
@@ -331,6 +339,36 @@ impl<'src> Parser<'src> {
         self.parse(TokenKind::CloseCurlyBracket)?;
 
         Ok(ast::ItemKind::Enum(ast::EnumItem { binder, generics }))
+    }
+
+    /// Finish parsing an extern block item assuming the leading `extern` has been parsed already.
+    ///
+    /// # Grammar
+    fn fin_parse_extern_block_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let token = self.token();
+        let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
+
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        let items = self
+            .parse_items(TokenKind::CloseCurlyBracket)?
+            .into_iter()
+            .map(|item| {
+                Ok(ast::ExternItem {
+                    attrs: item.attrs,
+                    vis: item.vis,
+                    kind: match item.kind {
+                        ast::ItemKind::Static(item) => ast::ExternItemKind::Static(item),
+                        ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
+                        ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
+                        ast::ItemKind::Ty(item) => ast::ExternItemKind::Ty(item),
+                        _ => return Err(ParseError::InvalidExternItemKind),
+                    },
+                    span: item.span,
+                })
+            })
+            .collect::<Result<_>>()?;
+
+        Ok(ast::ItemKind::ExternBlock(ast::ExternBlockItem { abi, body: items }))
     }
 
     /// Finish parsing a function item assuming the leading `fn` has already been parsed.
@@ -1267,7 +1305,7 @@ impl ParsePathArgs for ParsePathArgsYes {
     type Output<'src> = Vec<ast::GenericArg<'src>>;
 
     fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Output<'src>> {
-        let mut args = Vec::new();
+        let args = Vec::new();
         if parser.consume(TokenKind::OpenAngleBracket) {
             // FIXME: Args
             parser.parse(TokenKind::CloseAngleBracket)?;
@@ -1327,6 +1365,7 @@ pub(crate) enum ParseError {
     // FIXME: Temporary
     InvalidDelimiter,
     InvalidAssocItemKind,
+    InvalidExternItemKind,
     ExpectedTraitFoundTy,
 }
 
@@ -1343,6 +1382,7 @@ impl ParseError {
             }
             Self::InvalidDelimiter => eprint!("invalid delimiter"),
             Self::InvalidAssocItemKind => eprint!("invalid associated item kind"),
+            Self::InvalidExternItemKind => eprint!("invalid extern item kind"),
             Self::ExpectedTraitFoundTy => eprint!("found type expected trait"),
         }
         eprintln!();

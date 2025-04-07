@@ -82,14 +82,7 @@ impl Fmt for ast::File<'_> {
             fmt!(cx, "\n");
         }
 
-        let mut items = self.items.into_iter();
-        if let Some(item) = items.next() {
-            item.fmt(cx);
-        }
-        for item in items {
-            fmt!(cx, "\n\n");
-            item.fmt(cx);
-        }
+        (self.items, "\n\n").fmt(cx);
     }
 }
 
@@ -110,6 +103,7 @@ impl Fmt for ast::Item<'_> {
         match self.kind {
             ast::ItemKind::Const(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
+            ast::ItemKind::ExternBlock(item) => item.fmt(cx),
             ast::ItemKind::Fn(item) => item.fmt(cx),
             ast::ItemKind::Impl(item) => item.fmt(cx),
             ast::ItemKind::Mod(item) => item.fmt(cx),
@@ -141,9 +135,9 @@ impl Fmt for ast::Attr<'_> {
         match self.kind {
             ast::AttrKind::Unit => {}
             ast::AttrKind::Call(bracket, stream) => {
-                bracket.fmt(ast::Orientation::Open, cx);
+                (bracket, ast::Orientation::Open).fmt(cx);
                 stream.fmt(cx);
-                bracket.fmt(ast::Orientation::Close, cx);
+                (bracket, ast::Orientation::Close).fmt(cx);
             }
             ast::AttrKind::Assign(expr) => {
                 fmt!(cx, " = ");
@@ -159,14 +153,7 @@ impl<A> Fmt for ast::Path<'_, A> {
         if let ast::PathHook::Global = self.hook {
             fmt!(cx, "::");
         }
-        let mut segs = self.segs.into_iter();
-        if let Some(seg) = segs.next() {
-            seg.fmt(cx);
-        }
-        for seg in segs {
-            fmt!(cx, "::");
-            seg.fmt(cx);
-        }
+        (self.segs, "::").fmt(cx);
     }
 }
 
@@ -180,14 +167,7 @@ impl<A> Fmt for ast::PathSeg<'_, A> {
 impl Fmt for ast::TokenStream {
     // FIXME: Actually just print as is for now
     fn fmt(self, cx: &mut Cx<'_>) {
-        let mut tokens = self.into_iter();
-        if let Some(token) = tokens.next() {
-            token.fmt(cx);
-        }
-        for token in tokens {
-            fmt!(cx, " ");
-            token.fmt(cx);
-        }
+        (self, " ").fmt(cx);
     }
 }
 
@@ -241,14 +221,9 @@ impl Fmt for ast::Generics<'_> {
 
 impl Fmt for Vec<ast::GenericParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let mut params = self.into_iter();
-        if let Some(param) = params.next() {
+        if !self.is_empty() {
             fmt!(cx, "<");
-            param.fmt(cx);
-            for param in params {
-                fmt!(cx, ", ");
-                param.fmt(cx);
-            }
+            (self, ", ").fmt(cx);
             fmt!(cx, ">");
         }
     }
@@ -279,14 +254,7 @@ impl Fmt for Vec<ast::Predicate<'_>> {
             return;
         }
         fmt!(cx, " where ");
-        let mut preds = self.into_iter();
-        if let Some(pred) = preds.next() {
-            pred.fmt(cx);
-        }
-        for pred in preds {
-            fmt!(cx, ", ");
-            pred.fmt(cx);
-        }
+        (self, ", ").fmt(cx);
     }
 }
 
@@ -307,15 +275,7 @@ impl Fmt for ast::Predicate<'_> {
 
 impl Fmt for Vec<ast::Bound<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let mut bounds = self.into_iter();
-
-        if let Some(bound) = bounds.next() {
-            bound.fmt(cx);
-        }
-        for bound in bounds {
-            fmt!(cx, " + ");
-            bound.fmt(cx);
-        }
+        (self, " + ").fmt(cx);
     }
 }
 
@@ -350,6 +310,57 @@ impl Fmt for ast::EnumItem<'_> {
     }
 }
 
+impl Fmt for ast::ExternBlockItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "extern {:?}", self.abi.unwrap_or("C"));
+        self.body.fmt(cx);
+    }
+}
+
+impl Fmt for Vec<ast::ExternItem<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, " {{");
+        if self.is_empty() {
+            fmt!(cx, "}}")
+        } else {
+            fmt!(cx, "\n");
+            cx.indent();
+            (self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
+            cx.dedent();
+            fmt!(cx, "\n}}");
+        }
+    }
+}
+
+impl Fmt for ast::ExternItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        if cx.skip(&self.attrs) {
+            fmt!(cx, "{}", cx.source(self.span));
+            return;
+        }
+        for attr in self.attrs {
+            attr.fmt(cx);
+            fmt!(cx, "\n");
+        }
+
+        // FIXME: Not all assoc items support visibility.
+        self.vis.fmt(cx);
+
+        match self.kind {
+            ast::ExternItemKind::Fn(item) => item.fmt(cx),
+            ast::ExternItemKind::Static(item) => item.fmt(cx),
+            ast::ExternItemKind::Ty(item) => item.fmt(cx),
+            ast::ExternItemKind::MacroCall(call) => {
+                let needs_semi = call.bracket != ast::Bracket::Curly;
+                call.fmt(cx);
+                if needs_semi {
+                    fmt!(cx, ";");
+                }
+            }
+        }
+    }
+}
+
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self.constness {
@@ -358,13 +369,7 @@ impl Fmt for ast::FnItem<'_> {
         }
         fmt!(cx, "fn {}", self.binder);
         self.generics.params.fmt(cx);
-        fmt!(cx, "(");
-        for param in self.params {
-            fmt!(cx, "{}: ", param.binder);
-            param.ty.fmt(cx);
-            fmt!(cx, ",");
-        }
-        fmt!(cx, ")");
+        self.params.fmt(cx);
         if let Some(ty) = self.ret_ty {
             fmt!(cx, " -> ");
             ty.fmt(cx);
@@ -376,6 +381,21 @@ impl Fmt for ast::FnItem<'_> {
         } else {
             fmt!(cx, ";");
         }
+    }
+}
+
+impl Fmt for Vec<ast::Param<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "(");
+        (self, ", ").fmt(cx);
+        fmt!(cx, ")");
+    }
+}
+
+impl Fmt for ast::Param<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "{}: ", self.binder);
+        self.ty.fmt(cx);
     }
 }
 
@@ -521,16 +541,7 @@ impl Fmt for Vec<ast::AssocItem<'_>> {
         } else {
             fmt!(cx, "\n");
             cx.indent();
-            let mut items = self.into_iter();
-            if let Some(item) = items.next() {
-                fmt!(cx, indent);
-                item.fmt(cx);
-            }
-            for item in items {
-                fmt!(cx, "\n\n");
-                fmt!(cx, indent);
-                item.fmt(cx);
-            }
+            (self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
             cx.dedent();
             fmt!(cx, "\n}}");
         }
@@ -691,27 +702,25 @@ impl<A> Fmt for ast::MacroCall<'_, A> {
         if let ast::Bracket::Curly = self.bracket {
             fmt!(cx, " ");
         }
-        self.bracket.fmt(ast::Orientation::Open, cx);
+        (self.bracket, ast::Orientation::Open).fmt(cx);
         self.stream.fmt(cx);
-        self.bracket.fmt(ast::Orientation::Close, cx);
+        (self.bracket, ast::Orientation::Close).fmt(cx);
     }
 }
 
-impl ast::Bracket {
-    fn fmt(self, orient: ast::Orientation, cx: &mut Cx<'_>) {
+impl Fmt for (ast::Bracket, ast::Orientation) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        use ast::Bracket::*;
         use ast::Orientation::*;
-        fmt!(
-            cx,
-            "{}",
-            match (self, orient) {
-                (Self::Round, Open) => "(",
-                (Self::Round, Close) => ")",
-                (Self::Square, Open) => "[",
-                (Self::Square, Close) => "]",
-                (Self::Curly, Open) => "{",
-                (Self::Curly, Close) => "}",
-            }
-        )
+        let fmt = match self {
+            (Round, Open) => "(",
+            (Round, Close) => ")",
+            (Square, Open) => "[",
+            (Square, Close) => "]",
+            (Curly, Open) => "{",
+            (Curly, Close) => "}",
+        };
+        fmt!(cx, "{fmt}")
     }
 }
 
@@ -720,6 +729,20 @@ impl Fmt for ast::Visibility {
         match self {
             ast::Visibility::Inherited => {}
             ast::Visibility::Public => fmt!(cx, "pub "),
+        }
+    }
+}
+
+impl<T: Fmt> Fmt for (Vec<T>, &str) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let (elems, sep) = self;
+        let mut elems = elems.into_iter();
+        if let Some(elem) = elems.next() {
+            elem.fmt(cx);
+        }
+        for elem in elems {
+            fmt!(cx, "{sep}");
+            elem.fmt(cx);
         }
     }
 }

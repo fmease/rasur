@@ -30,6 +30,7 @@ pub(crate) enum Visibility {
 pub(crate) enum ItemKind<'src> {
     Const(ConstItem<'src>),
     Enum(EnumItem<'src>),
+    ExternBlock(ExternBlockItem<'src>),
     Fn(FnItem<'src>),
     Impl(ImplItem<'src>),
     MacroCall(MacroCall<'src, ()>),
@@ -54,6 +55,29 @@ pub(crate) struct ConstItem<'src> {
 pub(crate) struct EnumItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ExternBlockItem<'src> {
+    pub(crate) abi: Option<&'src str>,
+    pub(crate) body: Vec<ExternItem<'src>>,
+}
+
+// FIXME: Maybe represent as Item<Extern>?
+#[derive(Debug)]
+pub(crate) struct ExternItem<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility,
+    pub(crate) kind: ExternItemKind<'src>,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug)]
+pub(crate) enum ExternItemKind<'src> {
+    Fn(FnItem<'src>),
+    MacroCall(MacroCall<'src, ()>),
+    Static(StaticItem<'src>),
+    Ty(TyItem<'src>),
 }
 
 #[derive(Debug)]
@@ -204,6 +228,7 @@ pub(crate) enum GenericParamKind<'src> {
 }
 
 #[derive(Debug)]
+#[expect(dead_code)] // FIXME
 pub(crate) enum GenericArg<'src> {
     Ty(Ty<'src>),
     Const,
