@@ -619,7 +619,7 @@ impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Path(path) => path.fmt(cx),
-            Self::Underscore => fmt!(cx, "_"),
+            Self::Wildcard => fmt!(cx, "_"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
             Self::Block(expr) => expr.fmt(cx),

@@ -264,7 +264,7 @@ pub(crate) enum Expr<'src> {
     StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
-    Underscore,
+    Wildcard,
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
@@ -276,7 +276,7 @@ impl Expr<'_> {
             | Self::NumLit(_)
             | Self::StrLit(_)
             | Self::Tup(_)
-            | Self::Underscore
+            | Self::Wildcard
             | Self::MacroCall(_) => false,
         }
     }

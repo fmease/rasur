@@ -955,8 +955,8 @@ impl<'src> Parser<'src> {
         }
 
         let token = self.token();
-        if let Some(ident) = self.is_ident(token) {
-            match ident {
+        match token.kind {
+            TokenKind::Ident => match self.source(token.span) {
                 "_" => {
                     self.advance();
                     return Ok(ast::Ty::Inferred);
@@ -973,10 +973,7 @@ impl<'src> Parser<'src> {
                     return Ok(ast::Ty::FnPtr((), ret_ty));
                 }
                 _ => {}
-            }
-        }
-
-        match token.kind {
+            },
             TokenKind::Bang => {
                 self.advance();
                 return Ok(ast::Ty::Never);
@@ -1012,7 +1009,7 @@ impl<'src> Parser<'src> {
 
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => self.source(token.span) == "_",
+            TokenKind::Ident => matches!(self.source(token.span), "_" | "fn"),
             TokenKind::Bang | TokenKind::OpenSquareBracket | TokenKind::OpenRoundBracket => true,
             _ => false,
         }
@@ -1099,12 +1096,12 @@ impl<'src> Parser<'src> {
     /// Expr ::=
     ///     | Path
     ///     | Macro_Call
+    ///     | Wildcard_Expr
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Block_Expr
     ///     | Paren_Or_Tuple_Expr
-    ///     | Underscore_Expr
-    /// Underscore_Expr ::= "_"
+    /// Wildcard_Expr ::= "_"
     /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
@@ -1116,53 +1113,61 @@ impl<'src> Parser<'src> {
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
-                Ok(ast::Expr::MacroCall(ast::MacroCall { path, bracket, stream }))
-            } else {
-                Ok(ast::Expr::Path(path))
+                return Ok(ast::Expr::MacroCall(ast::MacroCall { path, bracket, stream }));
             }
-        } else {
-            let token = self.token();
-            match token.kind {
-                TokenKind::NumLit => {
-                    let lit = self.source(token.span);
-                    self.advance();
-                    Ok(ast::Expr::NumLit(lit))
-                }
-                TokenKind::StrLit => {
-                    let lit = self.source(token.span);
-                    self.advance();
-                    Ok(ast::Expr::StrLit(lit))
-                }
-                TokenKind::OpenCurlyBracket => {
-                    self.advance();
-                    self.fin_parse_block_expr()
-                }
-                TokenKind::OpenRoundBracket => {
-                    self.advance();
 
-                    self.fin_parse_parenthesized_or_tuple(Self::parse_expr, ast::Expr::Tup)
-                }
-                _ if let Some("_") = self.is_ident(token) => {
-                    self.advance();
-                    Ok(ast::Expr::Underscore)
-                }
-                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
-            }
+            return Ok(ast::Expr::Path(path));
         }
+
+        let token = self.token();
+        match token.kind {
+            TokenKind::Ident => match self.source(token.span) {
+                "_" => {
+                    self.advance();
+                    return Ok(ast::Expr::Wildcard);
+                }
+                _ => {}
+            },
+            TokenKind::NumLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Expr::NumLit(lit));
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Expr::StrLit(lit));
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                return self.fin_parse_block_expr();
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                return self.fin_parse_parenthesized_or_tuple(Self::parse_expr, ast::Expr::Tup);
+            }
+            _ => {}
+        }
+
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))
     }
 
     fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
-        self.begins_path()
-            || matches!(
-                self.token().kind,
-                TokenKind::NumLit
-                    | TokenKind::StrLit
-                    | TokenKind::OpenRoundBracket
-                    | TokenKind::OpenCurlyBracket
-            )
-            || self.is_ident(self.token()).is_some_and(|ident| ident == "_")
+        if self.begins_path() {
+            return true;
+        }
+
+        let token = self.token();
+        match token.kind {
+            TokenKind::Ident => matches!(self.source(token.span), "_"),
+            TokenKind::NumLit
+            | TokenKind::StrLit
+            | TokenKind::OpenRoundBracket
+            | TokenKind::OpenCurlyBracket => true,
+            _ => false,
+        }
     }
 
     /// Parse a pattern.
@@ -1172,10 +1177,11 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Pat ::=
     ///     | Path
+    ///     | Macro_Call
+    ///     | Wildcard_Pat
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Paren_Or_Tup_Pat
-    ///     | Wildcard_Pat
     /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// Wildcard_Pat ::= "_"
     /// ```
@@ -1186,35 +1192,39 @@ impl<'src> Parser<'src> {
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
-                Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }))
-            } else {
-                Ok(ast::Pat::Path(path))
+                return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
             }
-        } else {
-            let token = self.token();
-            match token.kind {
-                TokenKind::NumLit => {
-                    let lit = self.source(token.span);
-                    self.advance();
-                    Ok(ast::Pat::NumLit(lit))
-                }
-                TokenKind::StrLit => {
-                    let lit = self.source(token.span);
-                    self.advance();
-                    Ok(ast::Pat::StrLit(lit))
-                }
-                TokenKind::OpenRoundBracket => {
-                    self.advance();
 
-                    self.fin_parse_parenthesized_or_tuple(Self::parse_pat, ast::Pat::Tup)
-                }
-                _ if let Some("_") = self.is_ident(token) => {
-                    self.advance();
-                    Ok(ast::Pat::Wildcard)
-                }
-                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat)),
-            }
+            return Ok(ast::Pat::Path(path));
         }
+
+        let token = self.token();
+        match token.kind {
+            TokenKind::Ident => match self.source(token.span) {
+                "_" => {
+                    self.advance();
+                    return Ok(ast::Pat::Wildcard);
+                }
+                _ => {}
+            },
+            TokenKind::NumLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Pat::NumLit(lit));
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Pat::StrLit(lit));
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                return self.fin_parse_parenthesized_or_tuple(Self::parse_pat, ast::Pat::Tup);
+            }
+            _ => {}
+        }
+
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat))
     }
 
     fn fin_parse_parenthesized_or_tuple<T>(
