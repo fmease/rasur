@@ -302,7 +302,7 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Const_Item ::=
-    ///     "const" ("_" | Common_Ident)
+    ///     "const" (Common_Ident | "_")
     ///     Generic_Params
     ///     ":" Ty
     ///     ("=" Expr)?
@@ -383,7 +383,7 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Fn_Item ::=
     ///     "const"? "fn" Common_Ident
-    ///     Generic_Params Params
+    ///     Generic_Params Fn_Params
     ///     ("->" Ty)?
     ///     Where_Clause?
     ///     (Block_Expr | ";")
@@ -391,7 +391,7 @@ impl<'src> Parser<'src> {
     fn fin_parse_fn_item(&mut self, constness: ast::Constness) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
-        let params = self.parse_params()?;
+        let params = self.parse_fn_params()?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
         let preds = self.parse_where_clause()?;
 
@@ -886,23 +886,30 @@ impl<'src> Parser<'src> {
         Ok(params)
     }
 
-    fn parse_params(&mut self) -> Result<Vec<ast::Param<'src>>> {
+    /// Parse function parameters.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Fn_Params ::= "(" … ")"
+    /// Fn_Param ::= Pat ":" Ty
+    /// ```
+    fn parse_fn_params(&mut self) -> Result<Vec<ast::Param<'src>>> {
         let mut params = Vec::new();
 
-        if self.consume(TokenKind::OpenRoundBracket) {
-            const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-            while !self.consume(DELIMITER) {
-                let binder = self.parse_common_ident()?;
-                // FIXME: Optional if in trait and edition 2015
-                let ty = self.parse_ty_ann()?;
+        self.parse(TokenKind::OpenRoundBracket)?;
+        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        while !self.consume(DELIMITER) {
+            let pat = self.parse_pat()?;
+            // FIXME: Optional if in trait and edition 2015
+            let ty = self.parse_ty_ann()?;
 
-                // FIXME: Is there a nicer way to do this?
-                if self.token().kind != DELIMITER {
-                    self.parse(TokenKind::Comma)?;
-                }
-
-                params.push(ast::Param { binder, ty })
+            // FIXME: Is there a nicer way to do this?
+            if self.token().kind != DELIMITER {
+                self.parse(TokenKind::Comma)?;
             }
+
+            params.push(ast::Param { pat, ty })
         }
 
         Ok(params)
@@ -915,10 +922,14 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Ty ::=
     ///     | Path
-    ///     | "_"
-    ///     | "fn" "(" ")" ("->" Ty)?
-    ///     | "!"
-    ///     | "(" (Ty ("," | >")"))* ")"
+    ///     | Inferred_Ty
+    ///     | Fn_Ptr_Ty
+    ///     | Never_Ty
+    ///     | Group_Or_Tuple_Ty
+    /// Inferred_Ty ::= "_"
+    /// Fn_Ptr_Ty ::= "fn" "(" ")" ("->" Ty)?
+    /// Never_Ty ::= "!"
+    /// Group_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
@@ -1042,7 +1053,7 @@ impl<'src> Parser<'src> {
     ///     | Let_Stmt
     ///     | Expr ";" // FIXME: Not entirely factual
     ///     | ";"
-    /// Let_Stmt ::= "let" Common_Ident (":" Ty) ("=" Expr) ";"
+    /// Let_Stmt ::= "let" Pat (":" Ty) ("=" Expr) ";"
     /// ```
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
@@ -1052,11 +1063,11 @@ impl<'src> Parser<'src> {
         if self.begins_item(MacroCallPolicy::Forbidden) {
             Ok(ast::Stmt::Item(self.parse_item()?))
         } else if self.consume(Ident("let")) {
-            let binder = self.parse_common_ident()?;
+            let pat = self.parse_pat()?;
             let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
             let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
             self.parse(TokenKind::Semicolon)?;
-            Ok(ast::Stmt::Let(ast::LetStmt { binder, ty, body }))
+            Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }))
         } else if self.begins_expr() {
             let expr = self.parse_expr()?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
@@ -1093,7 +1104,10 @@ impl<'src> Parser<'src> {
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Block_Expr
-    ///     | "(" Expr ")"
+    ///     | Group_Expr
+    ///     | Underscore_Expr
+    /// Underscore_Expr ::= "_"
+    /// Group_Expr ::= "(" Expr ")"
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
@@ -1131,6 +1145,10 @@ impl<'src> Parser<'src> {
                     self.parse(TokenKind::CloseRoundBracket)?;
                     Ok(expr)
                 }
+                _ if let Some("_") = self.is_ident(token) => {
+                    self.advance();
+                    Ok(ast::Expr::Underscore)
+                }
                 _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr)),
             }
         }
@@ -1147,6 +1165,56 @@ impl<'src> Parser<'src> {
                     | TokenKind::OpenRoundBracket
                     | TokenKind::OpenCurlyBracket
             )
+            || self.is_ident(self.token()).is_some_and(|ident| ident == "_")
+    }
+
+    /// Parse a pattern.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Pat ::=
+    ///     | Path
+    ///     | Wildcard_Pat
+    /// Wildcard_Pat ::= "_"
+    /// ```
+    fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
+        if self.begins_path() {
+            // FIXME: gen args disamb only
+            let path = self.parse_path::<ParsePathArgsYes>()?;
+
+            if self.consume(TokenKind::Bang) {
+                let (bracket, stream) = self.parse_delimited_token_stream()?;
+                Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }))
+            } else {
+                Ok(ast::Pat::Path(path))
+            }
+        } else {
+            let token = self.token();
+            match token.kind {
+                TokenKind::NumLit => {
+                    let lit = self.source(token.span);
+                    self.advance();
+                    Ok(ast::Pat::NumLit(lit))
+                }
+                TokenKind::StrLit => {
+                    let lit = self.source(token.span);
+                    self.advance();
+                    Ok(ast::Pat::StrLit(lit))
+                }
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
+                    let pat = self.parse_pat()?;
+                    self.parse(TokenKind::CloseRoundBracket)?;
+                    Ok(pat)
+                }
+                _ if let Some("_") = self.is_ident(token) => {
+                    self.advance();
+                    Ok(ast::Pat::Wildcard)
+                }
+                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat)),
+            }
+        }
     }
 
     fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {
@@ -1429,6 +1497,7 @@ pub(crate) enum ExpectedFragment {
     PathSegIdent,
     Stmt,
     Ty,
+    Pat,
 }
 
 impl fmt::Display for ExpectedFragment {
@@ -1449,6 +1518,7 @@ impl fmt::Display for ExpectedFragment {
             Self::PathSegIdent => "path segment",
             Self::Stmt => "statement",
             Self::Ty => "type",
+            Self::Pat => "pattern",
         })
     }
 }

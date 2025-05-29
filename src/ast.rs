@@ -253,7 +253,7 @@ pub(crate) enum Bound<'src> {
 
 #[derive(Debug)]
 pub(crate) struct Param<'src> {
-    pub(crate) binder: Ident<'src>,
+    pub(crate) pat: Pat<'src>,
     pub(crate) ty: Ty<'src>,
 }
 
@@ -263,6 +263,7 @@ pub(crate) enum Expr<'src> {
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
+    Underscore,
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
@@ -270,7 +271,11 @@ impl Expr<'_> {
     pub(crate) fn has_trailing_block(&self) -> bool {
         match self {
             Self::Block(..) | Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => true,
-            Self::Path(_) | Self::NumLit(_) | Self::StrLit(_) | Self::MacroCall(_) => false,
+            Self::Path(_)
+            | Self::NumLit(_)
+            | Self::StrLit(_)
+            | Self::Underscore
+            | Self::MacroCall(_) => false,
         }
     }
 }
@@ -297,10 +302,18 @@ pub(crate) enum Semicolon {
 
 #[derive(Debug)]
 pub(crate) struct LetStmt<'src> {
-    // FIXME: Pat
-    pub(crate) binder: Ident<'src>,
+    pub(crate) pat: Pat<'src>,
     pub(crate) ty: Option<Ty<'src>>,
     pub(crate) body: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Pat<'src> {
+    Path(Path<'src, Vec<GenericArg<'src>>>),
+    NumLit(Ident<'src>),
+    StrLit(Ident<'src>),
+    Wildcard,
+    MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
 #[derive(Debug)]

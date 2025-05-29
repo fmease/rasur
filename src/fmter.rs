@@ -394,7 +394,8 @@ impl Fmt for Vec<ast::Param<'_>> {
 
 impl Fmt for ast::Param<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "{}: ", self.binder);
+        self.pat.fmt(cx);
+        fmt!(cx, ": ");
         self.ty.fmt(cx);
     }
 }
@@ -642,6 +643,19 @@ impl Fmt for ast::Expr<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::Underscore => fmt!(cx, "_"),
+            Self::MacroCall(call) => call.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for ast::Pat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Path(path) => path.fmt(cx),
+            Self::NumLit(lit) => fmt!(cx, "{lit}"),
+            Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::Wildcard => fmt!(cx, "_"),
             Self::MacroCall(call) => call.fmt(cx),
         }
     }
@@ -688,7 +702,8 @@ impl Fmt for ast::Stmt<'_> {
 
 impl Fmt for ast::LetStmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "let {}", self.binder);
+        fmt!(cx, "let ");
+        self.pat.fmt(cx);
         if let Some(ty) = self.ty {
             fmt!(cx, ": ");
             ty.fmt(cx);
