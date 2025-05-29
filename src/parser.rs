@@ -63,13 +63,14 @@ impl<'src> Parser<'src> {
     /// Item ::= Attrs⟨Outer⟩ Visibility Bare_Item
     /// Visibility ::= "pub"?
     /// Bare_Item ::=
-    ///     | Macro_Call
-    ///     | Macro_Def
+    ///     | Macro_Call // FIXME
+    ///     | Macro_Def // FIXME
     ///     | Const_Item
     ///     | Enum_Item
     ///     | Extern_Block_Item
     ///     | Fn_Item
     ///     | Impl_Item
+    ///     | Macro_Def // FIXME
     ///     | Mod_Item
     ///     | Static_Item
     ///     | Struct_Item
@@ -89,7 +90,7 @@ impl<'src> Parser<'src> {
         let vis = self.parse_visibility();
 
         let kind = if self.begins_path() {
-            self.parse_macro_item()?
+            self.parse_macro_call_item()?
         } else if let token = self.token()
             && let Some(ident) = self.is_ident(token)
         {
@@ -117,6 +118,10 @@ impl<'src> Parser<'src> {
                 "impl" => {
                     self.advance();
                     self.fin_parse_impl_item()?
+                }
+                "macro" => {
+                    self.advance();
+                    self.fin_parse_macro_def()?
                 }
                 "mod" => {
                     self.advance();
@@ -164,8 +169,8 @@ impl<'src> Parser<'src> {
         // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
         self.is_ident(self.token()).is_some_and(|ident| {
             [
-                "const", "enum", "extern", "fn", "impl", "mod", "static", "struct", "trait",
-                "type", "union",
+                "const", "enum", "extern", "fn", "impl", "macro", "mod", "static", "struct",
+                "trait", "type", "union",
             ]
             .contains(&ident)
         })
@@ -459,6 +464,31 @@ impl<'src> Parser<'src> {
         }))
     }
 
+    /// Finish parsing a macro (2.0) definition assuming the leading `macro` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Macro_Def ::= "macro" Common_Ident ("(" Token_Stream ")")? "{" Token_Stream "}"
+    /// ```
+    fn fin_parse_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
+        let binder = self.parse_common_ident()?;
+        let params = if self.consume(TokenKind::OpenRoundBracket) {
+            let (_, params) = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
+            Some(params)
+        } else {
+            None
+        };
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        let (_, body) = self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
+        Ok(ast::ItemKind::MacroDef(ast::MacroDef {
+            binder,
+            params,
+            body,
+            style: ast::MacroDefStyle::New,
+        }))
+    }
+
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
     ///
     /// # Grammar
@@ -704,7 +734,7 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
     }
 
-    fn parse_macro_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
         let path = self.parse_path::<ParsePathArgsNo>()?;
@@ -718,7 +748,7 @@ impl<'src> Parser<'src> {
             None
         };
 
-        let (bracket, stream) = self.parse_delimited_token_stream()?;
+        let (bracket, body) = self.parse_delimited_token_stream()?;
 
         if bracket != ast::Bracket::Curly {
             self.parse(TokenKind::Semicolon)?;
@@ -727,10 +757,11 @@ impl<'src> Parser<'src> {
         Ok(match binder {
             Some(binder) => ast::ItemKind::MacroDef(ast::MacroDef {
                 binder,
-                stream,
+                params: None,
+                body,
                 style: ast::MacroDefStyle::Old,
             }),
-            None => ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream }),
+            None => ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream: body }),
         })
     }
 

@@ -522,13 +522,19 @@ impl Fmt for ast::UnionItem<'_> {
 
 impl Fmt for ast::MacroDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self.style {
-            ast::MacroDefStyle::Old => {}
-            ast::MacroDefStyle::New => todo!(), // FIXME
-        }
+        let prefix = match self.style {
+            ast::MacroDefStyle::Old => "macro_rules!",
+            ast::MacroDefStyle::New => "macro",
+        };
 
-        fmt!(cx, "macro_rules! {} {{ ", self.binder);
-        self.stream.fmt(cx);
+        fmt!(cx, "{prefix} {}", self.binder);
+        if let Some(params) = self.params {
+            fmt!(cx, "(");
+            params.fmt(cx);
+            fmt!(cx, ")");
+        }
+        fmt!(cx, " {{ ");
+        self.body.fmt(cx);
         fmt!(cx, " }}");
     }
 }

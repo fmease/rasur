@@ -174,7 +174,8 @@ pub(crate) struct UnionItem<'src> {
 #[derive(Debug)]
 pub(crate) struct MacroDef<'src> {
     pub(crate) binder: Ident<'src>,
-    pub(crate) stream: TokenStream,
+    pub(crate) params: Option<TokenStream>,
+    pub(crate) body: TokenStream,
     pub(crate) style: MacroDefStyle,
 }
 
@@ -183,7 +184,6 @@ pub(crate) enum MacroDefStyle {
     /// Macro 1.2 aka. `macro_rules!`.
     Old,
     /// Macro 2.0.
-    #[expect(dead_code)] // FIXME
     New,
 }
 
