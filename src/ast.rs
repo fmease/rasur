@@ -27,6 +27,12 @@ pub(crate) enum Visibility {
 }
 
 #[derive(Debug)]
+pub(crate) enum Mutability {
+    Mut,
+    Imm,
+}
+
+#[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
     Const(ConstItem<'src>),
     Enum(EnumItem<'src>),
@@ -323,13 +329,19 @@ pub(crate) enum Pat<'src> {
 pub(crate) enum Ty<'src> {
     Never,
     Inferred,
+    ImplTrait,
+    DynTrait,
     Path(Path<'src, Vec<GenericArg<'src>>>),
     FnPtr((), Option<Box<Ty<'src>>>),
+    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
     Error,
 }
+
+#[derive(Debug)]
+pub(crate) struct Lifetime<'src>(pub(crate) Ident<'src>);
 
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {

@@ -207,6 +207,8 @@ impl Fmt for ast::TokenKind {
                 Self::StrLit => "/*str*/",
                 Self::ThinArrow => "->",
                 Self::WideArrow => "=>",
+                Self::Ampersand => "&",
+                Self::Pipe => "|",
             }
         )
     }
@@ -243,7 +245,7 @@ impl Fmt for ast::GenericParam<'_> {
                 fmt!(cx, "const {}: ", self.binder);
                 ty.fmt(cx);
             }
-            ast::GenericParamKind::Lifetime => fmt!(cx, "'{}", self.binder),
+            ast::GenericParamKind::Lifetime => ast::Lifetime(self.binder).fmt(cx),
         }
     }
 }
@@ -587,13 +589,8 @@ impl Fmt for ast::AssocItem<'_> {
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Array(ty, expr) => {
-                fmt!(cx, "[");
-                ty.fmt(cx);
-                fmt!(cx, "; ");
-                expr.fmt(cx);
-                fmt!(cx, "]")
-            }
+            Self::Path(path) => path.fmt(cx),
+            Self::Inferred => fmt!(cx, "_"),
             Self::FnPtr((), ret_ty) => {
                 fmt!(cx, "fn()");
                 if let Some(ret_ty) = ret_ty {
@@ -601,9 +598,29 @@ impl Fmt for ast::Ty<'_> {
                     ret_ty.fmt(cx);
                 }
             }
-            Self::Inferred => fmt!(cx, "_"),
-            Self::Path(path) => path.fmt(cx),
-            Self::Never => todo!(),
+            Self::Ref(lt, mut_, ty) => {
+                fmt!(cx, "&");
+                if let Some(lt) = lt {
+                    lt.fmt(cx);
+                    fmt!(cx, " ");
+                }
+                match mut_ {
+                    ast::Mutability::Mut => fmt!(cx, "mut "),
+                    ast::Mutability::Imm => {}
+                }
+                ty.fmt(cx);
+            }
+            Self::Never => fmt!(cx, "!"),
+            // FIXME: In Rust 2015 if `bounds.is_empty()`, you need to render it as `r#dyn`.
+            Self::DynTrait => fmt!(cx, "dyn"),
+            Self::ImplTrait => fmt!(cx, "impl"),
+            Self::Array(ty, expr) => {
+                fmt!(cx, "[");
+                ty.fmt(cx);
+                fmt!(cx, "; ");
+                expr.fmt(cx);
+                fmt!(cx, "]")
+            }
             Self::Slice(ty) => {
                 fmt!(cx, "[");
                 ty.fmt(cx);
@@ -612,6 +629,13 @@ impl Fmt for ast::Ty<'_> {
             Self::Tup(tys) => Tup(tys).fmt(cx),
             Self::Error => fmt!(cx, "/*error*/"),
         }
+    }
+}
+
+impl Fmt for ast::Lifetime<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(lt) = self;
+        fmt!(cx, "'{lt}");
     }
 }
 

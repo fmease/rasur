@@ -831,6 +831,20 @@ impl<'src> Parser<'src> {
             .filter(|ident| is_path_seg_keyword(ident) || self.ident_is_common(ident))
     }
 
+    fn consume_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
+        let apo = self.token();
+        if apo.kind == TokenKind::Apostrophe
+            && let Some(ident) =
+                self.look_ahead(1, |ident| self.is_ident(ident).filter(|_| apo.touches(ident)))
+            && (ident == "_" || ident == "static" || self.ident_is_common(ident))
+        {
+            self.advance(); // Apostrophe
+            self.advance(); // Ident
+            return Some(ast::Lifetime(ident));
+        }
+        None
+    }
+
     /// Parse generics.
     ///
     /// # Grammar
@@ -852,16 +866,10 @@ impl<'src> Parser<'src> {
             // FIXME: This is so hideously structured! We need better primitives!
             while !self.consume(DELIMITER) {
                 let token = self.token();
-                // FIXME: The first condition should be Glued(Apo, CommonIdent)
-                let (binder, kind) = if token.kind == TokenKind::Apostrophe
-                    && let Some(lifetime) = self.look_ahead(1, |ident| {
-                        self.is_ident(ident).filter(|_| token.touches(ident)).filter(|&ident| {
-                            ident == "_" || ident == "static" || self.ident_is_common(ident)
-                        })
-                    }) {
-                    self.advance();
-                    self.advance();
+                let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = self.consume_lifetime()
+                {
                     // FIXME: Outlives-bounds
+                    // FIXME: `'a+` (bare trait object type with leading lifetime)
                     (lifetime, ast::GenericParamKind::Lifetime)
                 } else {
                     match self.is_ident(token) {
@@ -907,7 +915,7 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Fn_Params ::= "(" … ")"
+    /// Fn_Params ::= "(" (Fn_Param ("," | >")"))* ")"
     /// Fn_Param ::= Pat ":" Ty
     /// ```
     fn parse_fn_params(&mut self) -> Result<Vec<ast::Param<'src>>> {
@@ -939,12 +947,16 @@ impl<'src> Parser<'src> {
     /// Ty ::=
     ///     | Path
     ///     | Inferred_Ty
+    ///     | Dyn_Trait_Ty
     ///     | Fn_Ptr_Ty
+    ///     | Impl_Trait_Ty
     ///     | Never_Ty
+    ///     | Ref_Ty
     ///     | Paren_Or_Tuple_Ty
     /// Inferred_Ty ::= "_"
     /// Fn_Ptr_Ty ::= "fn" "(" ")" ("->" Ty)?
     /// Never_Ty ::= "!"
+    /// Ref_Ty ::= "&" Lifetime? "mut"? Ty
     /// Paren_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
@@ -961,6 +973,12 @@ impl<'src> Parser<'src> {
                     self.advance();
                     return Ok(ast::Ty::Inferred);
                 }
+                // In Rust 2015, we would have already taken `parse_path`, so all is good.
+                "dyn" => {
+                    self.advance();
+                    // FIXME: Actually parse the bounds.
+                    return Ok(ast::Ty::DynTrait);
+                }
                 "fn" => {
                     self.advance();
                     self.parse(TokenKind::OpenRoundBracket)?;
@@ -972,11 +990,23 @@ impl<'src> Parser<'src> {
                         .transpose()?;
                     return Ok(ast::Ty::FnPtr((), ret_ty));
                 }
+                "impl" => {
+                    self.advance();
+                    // FIXME: Actually parse the bounds.
+                    return Ok(ast::Ty::ImplTrait);
+                }
                 _ => {}
             },
             TokenKind::Bang => {
                 self.advance();
                 return Ok(ast::Ty::Never);
+            }
+            TokenKind::Ampersand => {
+                self.advance();
+                let lt = self.consume_lifetime();
+                let mut_ = self.parse_mutability();
+                let ty = self.parse_ty()?;
+                return Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)));
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
@@ -1009,8 +1039,11 @@ impl<'src> Parser<'src> {
 
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => matches!(self.source(token.span), "_" | "fn"),
-            TokenKind::Bang | TokenKind::OpenSquareBracket | TokenKind::OpenRoundBracket => true,
+            TokenKind::Ident => matches!(self.source(token.span), "_" | "dyn" | "fn" | "impl"),
+            TokenKind::Bang
+            | TokenKind::Ampersand
+            | TokenKind::OpenSquareBracket
+            | TokenKind::OpenRoundBracket => true,
             _ => false,
         }
     }
@@ -1364,6 +1397,13 @@ impl<'src> Parser<'src> {
         // To kept in sync with `Self::parse_visibility`.
 
         Ident("pub").check(self)
+    }
+
+    fn parse_mutability(&mut self) -> ast::Mutability {
+        match self.consume(Ident("mut")) {
+            true => ast::Mutability::Mut,
+            false => ast::Mutability::Imm,
+        }
     }
 
     fn consume<S: Shape>(&mut self, shape: S) -> bool {

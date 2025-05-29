@@ -9,6 +9,7 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
+    Ampersand,
     Apostrophe,
     Bang,
     CloseAngleBracket,
@@ -29,6 +30,7 @@ pub(crate) enum TokenKind {
     OpenCurlyBracket,
     OpenRoundBracket,
     OpenSquareBracket,
+    Pipe,
     Plus,
     Semicolon,
     Slash,
@@ -158,6 +160,8 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 '#' => self.add(TokenKind::Hash, start),
+                '&' => self.add(TokenKind::Ampersand, start),
+                '|' => self.add(TokenKind::Pipe, start),
                 '(' => self.add(TokenKind::OpenRoundBracket, start),
                 ')' => self.add(TokenKind::CloseRoundBracket, start),
                 '[' => self.add(TokenKind::OpenSquareBracket, start),
