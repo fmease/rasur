@@ -82,7 +82,7 @@ impl Fmt for ast::File<'_> {
             fmt!(cx, "\n");
         }
 
-        (self.items, "\n\n").fmt(cx);
+        Punctuated::new(self.items, "\n\n").fmt(cx);
     }
 }
 
@@ -153,7 +153,7 @@ impl<A> Fmt for ast::Path<'_, A> {
         if let ast::PathHook::Global = self.hook {
             fmt!(cx, "::");
         }
-        (self.segs, "::").fmt(cx);
+        Punctuated::new(self.segs, "::").fmt(cx);
     }
 }
 
@@ -167,7 +167,7 @@ impl<A> Fmt for ast::PathSeg<'_, A> {
 impl Fmt for ast::TokenStream {
     // FIXME: Actually just print as is for now
     fn fmt(self, cx: &mut Cx<'_>) {
-        (self, " ").fmt(cx);
+        Punctuated::new(self, " ").fmt(cx);
     }
 }
 
@@ -223,7 +223,7 @@ impl Fmt for Vec<ast::GenericParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         if !self.is_empty() {
             fmt!(cx, "<");
-            (self, ", ").fmt(cx);
+            Punctuated::new(self, ", ").fmt(cx);
             fmt!(cx, ">");
         }
     }
@@ -254,7 +254,7 @@ impl Fmt for Vec<ast::Predicate<'_>> {
             return;
         }
         fmt!(cx, " where ");
-        (self, ", ").fmt(cx);
+        Punctuated::new(self, ", ").fmt(cx);
     }
 }
 
@@ -275,7 +275,7 @@ impl Fmt for ast::Predicate<'_> {
 
 impl Fmt for Vec<ast::Bound<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        (self, " + ").fmt(cx);
+        Punctuated::new(self, " + ").fmt(cx);
     }
 }
 
@@ -325,7 +325,7 @@ impl Fmt for Vec<ast::ExternItem<'_>> {
         } else {
             fmt!(cx, "\n");
             cx.indent();
-            (self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
+            Punctuated::new(self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
             cx.dedent();
             fmt!(cx, "\n}}");
         }
@@ -387,7 +387,7 @@ impl Fmt for ast::FnItem<'_> {
 impl Fmt for Vec<ast::Param<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "(");
-        (self, ", ").fmt(cx);
+        Punctuated::new(self, ", ").fmt(cx);
         fmt!(cx, ")");
     }
 }
@@ -548,7 +548,7 @@ impl Fmt for Vec<ast::AssocItem<'_>> {
         } else {
             fmt!(cx, "\n");
             cx.indent();
-            (self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
+            Punctuated::new(self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
             cx.dedent();
             fmt!(cx, "\n}}");
         }
@@ -609,28 +609,7 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
                 fmt!(cx, "]")
             }
-            Self::Tup(tys) => {
-                fmt!(cx, "(");
-                // FIXME: Simplify!
-                if !tys.is_empty() {
-                    let mut tys = tys.into_iter();
-                    if let Some(ty) = tys.next() {
-                        ty.fmt(cx);
-                    }
-                    match tys.next() {
-                        Some(ty) => {
-                            fmt!(cx, ", ");
-                            ty.fmt(cx);
-                        }
-                        None => fmt!(cx, ","),
-                    }
-                    for ty in tys {
-                        fmt!(cx, ", ");
-                        ty.fmt(cx);
-                    }
-                }
-                fmt!(cx, ")");
-            }
+            Self::Tup(tys) => Tup(tys).fmt(cx),
             Self::Error => fmt!(cx, "/*error*/"),
         }
     }
@@ -639,11 +618,12 @@ impl Fmt for ast::Ty<'_> {
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Block(expr) => expr.fmt(cx),
             Self::Path(path) => path.fmt(cx),
+            Self::Underscore => fmt!(cx, "_"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
-            Self::Underscore => fmt!(cx, "_"),
+            Self::Block(expr) => expr.fmt(cx),
+            Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
         }
     }
@@ -656,6 +636,7 @@ impl Fmt for ast::Pat<'_> {
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
             Self::Wildcard => fmt!(cx, "_"),
+            Self::Tup(pats) => Tup(pats).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
         }
     }
@@ -754,17 +735,56 @@ impl Fmt for ast::Visibility {
     }
 }
 
-impl<T: Fmt> Fmt for (Vec<T>, &str) {
+struct Punctuated<T> {
+    nodes: Vec<T>,
+    sep: &'static str,
+}
+
+impl<T> Punctuated<T> {
+    fn new(nodes: Vec<T>, sep: &'static str) -> Self {
+        Self { nodes, sep }
+    }
+}
+
+impl<T: Fmt> Fmt for Punctuated<T> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let (elems, sep) = self;
-        let mut elems = elems.into_iter();
-        if let Some(elem) = elems.next() {
-            elem.fmt(cx);
+        let Self { nodes, sep } = self;
+        let mut nodes = nodes.into_iter();
+        if let Some(node) = nodes.next() {
+            node.fmt(cx);
         }
-        for elem in elems {
+        for node in nodes {
             fmt!(cx, "{sep}");
-            elem.fmt(cx);
+            node.fmt(cx);
         }
+    }
+}
+
+struct Tup<T>(Vec<T>);
+
+impl<T: Fmt> Fmt for Tup<T> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(nodes) = self;
+        fmt!(cx, "(");
+        // FIXME: Simplify!
+        if !nodes.is_empty() {
+            let mut nodes = nodes.into_iter();
+            if let Some(node) = nodes.next() {
+                node.fmt(cx);
+            }
+            match nodes.next() {
+                Some(node) => {
+                    fmt!(cx, ", ");
+                    node.fmt(cx);
+                }
+                None => fmt!(cx, ","),
+            }
+            for node in nodes {
+                fmt!(cx, ", ");
+                node.fmt(cx);
+            }
+        }
+        fmt!(cx, ")");
     }
 }
 

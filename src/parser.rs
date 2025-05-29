@@ -78,6 +78,7 @@ impl<'src> Parser<'src> {
     ///     | Trait_Item
     ///     | Ty_Item
     ///     | Union_Item
+    ///     | Use_Item
     /// ```
     fn parse_item(&mut self) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
@@ -148,6 +149,10 @@ impl<'src> Parser<'src> {
                     self.advance();
                     self.fin_parse_union_item()?
                 }
+                "use" => {
+                    self.advance();
+                    self.fin_parse_use_item()?
+                }
                 _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
             }
         } else {
@@ -170,7 +175,7 @@ impl<'src> Parser<'src> {
         self.is_ident(self.token()).is_some_and(|ident| {
             [
                 "const", "enum", "extern", "fn", "impl", "macro", "mod", "static", "struct",
-                "trait", "type", "union",
+                "trait", "type", "union", "use",
             ]
             .contains(&ident)
         })
@@ -734,6 +739,17 @@ impl<'src> Parser<'src> {
         Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
     }
 
+    /// Finish parsing a use-item assuming the leading `use` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Use_Item ::= "use" …
+    /// ```
+    fn fin_parse_use_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        todo!()
+    }
+
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
@@ -925,11 +941,11 @@ impl<'src> Parser<'src> {
     ///     | Inferred_Ty
     ///     | Fn_Ptr_Ty
     ///     | Never_Ty
-    ///     | Group_Or_Tuple_Ty
+    ///     | Paren_Or_Tuple_Ty
     /// Inferred_Ty ::= "_"
     /// Fn_Ptr_Ty ::= "fn" "(" ")" ("->" Ty)?
     /// Never_Ty ::= "!"
-    /// Group_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
+    /// Paren_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
@@ -978,26 +994,8 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                let mut tys = Vec::new();
 
-                while !self.consume(TokenKind::CloseRoundBracket) {
-                    let ty = self.parse_ty()?;
-
-                    // FIXME: Is there a better way to express this?
-                    if self.token().kind == TokenKind::CloseRoundBracket {
-                        if tys.is_empty() {
-                            // This is actually a parenthesized type, not a tuple.
-                            self.advance();
-                            return Ok(ty);
-                        }
-                    } else {
-                        self.parse(TokenKind::Comma)?;
-                    }
-
-                    tys.push(ty);
-                }
-
-                return Ok(ast::Ty::Tup(tys));
+                return self.fin_parse_parenthesized_or_tuple(Self::parse_ty, ast::Ty::Tup);
             }
             _ => {}
         }
@@ -1104,10 +1102,10 @@ impl<'src> Parser<'src> {
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Block_Expr
-    ///     | Group_Expr
+    ///     | Paren_Or_Tuple_Expr
     ///     | Underscore_Expr
     /// Underscore_Expr ::= "_"
-    /// Group_Expr ::= "(" Expr ")"
+    /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
@@ -1141,9 +1139,8 @@ impl<'src> Parser<'src> {
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
-                    let expr = self.parse_expr()?;
-                    self.parse(TokenKind::CloseRoundBracket)?;
-                    Ok(expr)
+
+                    self.fin_parse_parenthesized_or_tuple(Self::parse_expr, ast::Expr::Tup)
                 }
                 _ if let Some("_") = self.is_ident(token) => {
                     self.advance();
@@ -1175,7 +1172,11 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Pat ::=
     ///     | Path
+    ///     | #Num_Lit
+    ///     | #Str_Lit
+    ///     | Paren_Or_Tup_Pat
     ///     | Wildcard_Pat
+    /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// Wildcard_Pat ::= "_"
     /// ```
     fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
@@ -1204,9 +1205,8 @@ impl<'src> Parser<'src> {
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
-                    let pat = self.parse_pat()?;
-                    self.parse(TokenKind::CloseRoundBracket)?;
-                    Ok(pat)
+
+                    self.fin_parse_parenthesized_or_tuple(Self::parse_pat, ast::Pat::Tup)
                 }
                 _ if let Some("_") = self.is_ident(token) => {
                     self.advance();
@@ -1215,6 +1215,34 @@ impl<'src> Parser<'src> {
                 _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat)),
             }
         }
+    }
+
+    fn fin_parse_parenthesized_or_tuple<T>(
+        &mut self,
+        parse: impl Fn(&mut Self) -> Result<T>,
+        tuple: impl FnOnce(Vec<T>) -> T,
+    ) -> Result<T> {
+        let mut nodes = Vec::new();
+
+        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        while !self.consume(DELIMITER) {
+            let node = parse(self)?;
+
+            // FIXME: Is there a better way to express this?
+            if self.token().kind == DELIMITER {
+                if nodes.is_empty() {
+                    // This is actually a parenthesized node, not a tuple.
+                    self.advance();
+                    return Ok(node);
+                }
+            } else {
+                self.parse(TokenKind::Comma)?;
+            }
+
+            nodes.push(node);
+        }
+
+        Ok(tuple(nodes))
     }
 
     fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {

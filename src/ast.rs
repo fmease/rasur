@@ -263,6 +263,7 @@ pub(crate) enum Expr<'src> {
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Block(Box<BlockExpr<'src>>),
+    Tup(Vec<Expr<'src>>),
     Underscore,
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
@@ -274,6 +275,7 @@ impl Expr<'_> {
             Self::Path(_)
             | Self::NumLit(_)
             | Self::StrLit(_)
+            | Self::Tup(_)
             | Self::Underscore
             | Self::MacroCall(_) => false,
         }
@@ -313,19 +315,20 @@ pub(crate) enum Pat<'src> {
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Wildcard,
+    Tup(Vec<Pat<'src>>),
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
-    Array(Box<Ty<'src>>, Expr<'src>),
-    Error,
-    FnPtr((), Option<Box<Ty<'src>>>),
-    Inferred,
     Never,
+    Inferred,
     Path(Path<'src, Vec<GenericArg<'src>>>),
+    FnPtr((), Option<Box<Ty<'src>>>),
+    Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
+    Error,
 }
 
 #[derive(Debug)]
