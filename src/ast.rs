@@ -267,6 +267,7 @@ pub(crate) struct Param<'src> {
 pub(crate) enum Expr<'src> {
     Path(Path<'src, Vec<GenericArg<'src>>>),
     Wildcard,
+    Match { scrutinee: Box<Expr<'src>>, arms: Vec<MatchArm<'src>> },
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Borrow(Mutability, Box<Expr<'src>>),
@@ -276,9 +277,13 @@ pub(crate) enum Expr<'src> {
 }
 
 impl Expr<'_> {
-    pub(crate) fn has_trailing_block(&self) -> bool {
+    pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
-            Self::Block(..) | Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => true,
+            Self::Match { .. } | Self::Block(..) => true,
+            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
+                TrailingBlockMode::Normal => true,
+                TrailingBlockMode::Match => false,
+            },
             Self::Path(_)
             | Self::Wildcard
             | Self::NumLit(_)
@@ -288,6 +293,18 @@ impl Expr<'_> {
             | Self::MacroCall(_) => false,
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum TrailingBlockMode {
+    Normal,
+    Match,
+}
+
+#[derive(Debug)]
+pub(crate) struct MatchArm<'src> {
+    pub(crate) pat: Pat<'src>,
+    pub(crate) body: Expr<'src>,
 }
 
 #[derive(Debug)]

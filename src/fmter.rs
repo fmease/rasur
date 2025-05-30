@@ -638,8 +638,35 @@ impl Fmt for ast::Expr<'_> {
         match self {
             Self::Path(path) => path.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
+            Self::Match { scrutinee, arms } => {
+                let is_non_empty = !arms.is_empty();
+
+                fmt!(cx, "match ");
+                scrutinee.fmt(cx);
+                fmt!(cx, " {{");
+                cx.indent();
+                if is_non_empty {
+                    fmt!(cx, "\n");
+                }
+                for arm in arms {
+                    let needs_comma = !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
+
+                    fmt!(cx, indent);
+                    arm.fmt(cx);
+                    if needs_comma {
+                        fmt!(cx, ",");
+                    }
+                    fmt!(cx, "\n");
+                }
+                cx.dedent();
+                if is_non_empty {
+                    // Because we added a trailing line break above.
+                    fmt!(cx, indent);
+                }
+                fmt!(cx, "}}");
+            }
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
-            Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");
                 match mut_ {
@@ -652,6 +679,14 @@ impl Fmt for ast::Expr<'_> {
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
         }
+    }
+}
+
+impl Fmt for ast::MatchArm<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.pat.fmt(cx);
+        fmt!(cx, " => ");
+        self.body.fmt(cx);
     }
 }
 
@@ -678,6 +713,8 @@ impl Fmt for ast::Pat<'_> {
 
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let is_non_empty = !self.attrs.is_empty() || !self.stmts.is_empty();
+
         fmt!(cx, "{{\n");
         cx.indent();
         for attr in self.attrs {
@@ -694,6 +731,12 @@ impl Fmt for ast::BlockExpr<'_> {
             fmt!(cx, "\n");
         }
         cx.dedent();
+
+        if is_non_empty {
+            // Because we added a trailing line break above.
+            fmt!(cx, indent);
+        }
+
         fmt!(cx, "}}");
     }
 }
@@ -704,7 +747,7 @@ impl Fmt for ast::Stmt<'_> {
             Self::Item(item) => item.fmt(cx),
             Self::Let(stmt) => stmt.fmt(cx),
             Self::Expr(expr, semi) => {
-                let needs_semi = matches!(semi, ast::Semicolon::Yes if !expr.has_trailing_block());
+                let needs_semi = matches!(semi, ast::Semicolon::Yes if !expr.has_trailing_block(ast::TrailingBlockMode::Normal));
                 expr.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");

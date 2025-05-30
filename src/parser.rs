@@ -1065,8 +1065,9 @@ impl<'src> Parser<'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let mut stmts = Vec::new();
 
-        while !self.consume(TokenKind::CloseCurlyBracket) {
-            stmts.push(self.parse_stmt(TokenKind::CloseCurlyBracket)?);
+        const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+        while !self.consume(DELIMITER) {
+            stmts.push(self.parse_stmt(DELIMITER)?);
         }
 
         Ok(ast::Expr::Block(Box::new(ast::BlockExpr { attrs, stmts })))
@@ -1087,7 +1088,7 @@ impl<'src> Parser<'src> {
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
     //       macro expansion.
-    fn parse_stmt(&mut self, delim: TokenKind) -> Result<ast::Stmt<'src>> {
+    fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         // FIXME: Outer attrs on let stmt
         if self.begins_item(MacroCallPolicy::Forbidden) {
             Ok(ast::Stmt::Item(self.parse_item()?))
@@ -1100,7 +1101,9 @@ impl<'src> Parser<'src> {
         } else if self.begins_expr() {
             let expr = self.parse_expr()?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
-            let semi = if expr.has_trailing_block() || self.token().kind == delim {
+            let semi = if expr.has_trailing_block(ast::TrailingBlockMode::Normal)
+                || self.token().kind == delimiter
+            {
                 match self.consume(TokenKind::Semicolon) {
                     true => ast::Semicolon::Yes,
                     false => ast::Semicolon::No,
@@ -1131,12 +1134,15 @@ impl<'src> Parser<'src> {
     ///     | Path
     ///     | Macro_Call
     ///     | Wildcard_Expr
+    ///     | Match_Expr
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Borrow_Expr
     ///     | Block_Expr
     ///     | Paren_Or_Tuple_Expr
     /// Wildcard_Expr ::= "_"
+    /// # FIXME: Doesn't include trailing-block logic
+    /// Match_Expr ::= "match" Expr "{" (Pat "=>" Expr ("," | >"}"))* "}"
     /// Borrow_Expr ::= "&" "mut"? Expr
     /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
@@ -1161,6 +1167,34 @@ impl<'src> Parser<'src> {
                 "_" => {
                     self.advance();
                     return Ok(ast::Expr::Wildcard);
+                }
+                "match" => {
+                    self.advance();
+
+                    let scrutinee = self.parse_expr()?;
+                    let mut arms = Vec::new();
+
+                    self.parse(TokenKind::OpenCurlyBracket)?;
+
+                    const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+                    while !self.consume(DELIMITER) {
+                        let pat = self.parse_pat()?;
+                        self.parse(TokenKind::WideArrow)?;
+
+                        let body = self.parse_expr()?;
+
+                        if body.has_trailing_block(ast::TrailingBlockMode::Match)
+                            || self.token().kind == DELIMITER
+                        {
+                            self.consume(TokenKind::Comma);
+                        } else {
+                            self.parse(TokenKind::Comma)?;
+                        };
+
+                        arms.push(ast::MatchArm { pat, body })
+                    }
+
+                    return Ok(ast::Expr::Match { scrutinee: Box::new(scrutinee), arms });
                 }
                 _ => {}
             },
@@ -1203,7 +1237,7 @@ impl<'src> Parser<'src> {
 
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => matches!(self.source(token.span), "_"),
+            TokenKind::Ident => matches!(self.source(token.span), "_" | "match"),
             TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::Ampersand
@@ -1224,9 +1258,11 @@ impl<'src> Parser<'src> {
     ///     | Wildcard_Pat
     ///     | #Num_Lit
     ///     | #Str_Lit
+    ///     | Borrow_Pat
     ///     | Paren_Or_Tup_Pat
-    /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// Wildcard_Pat ::= "_"
+    /// Borrow_Pat ::= "&" "mut"? Pat
+    /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// ```
     fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
         if self.begins_path() {
@@ -1567,7 +1603,7 @@ impl ParseError {
         eprint!("error: ");
         match self {
             Self::UnexpectedToken(token, expected) => {
-                let found = token.to_diag_str(source);
+                let found = token.to_diag_str(Some(source));
                 eprint!("{:?}: found {found} but expected {expected}", token.span)
             }
             Self::InvalidDelimiter => eprint!("invalid delimiter"),
@@ -1580,41 +1616,51 @@ impl ParseError {
 }
 
 impl Token {
-    fn to_diag_str(self, source: &str) -> Cow<'static, str> {
-        Cow::Borrowed(match self.kind {
-            TokenKind::Ampersand => "`&`",
-            TokenKind::Apostrophe => "`'`",
-            TokenKind::Bang => "`!`",
-            TokenKind::CloseAngleBracket => "`>`",
-            TokenKind::CloseCurlyBracket => "`}`",
-            TokenKind::CloseRoundBracket => "`)`",
-            TokenKind::CloseSquareBracket => "`]`",
-            TokenKind::Colon => "`:`",
-            TokenKind::Comma => "`,`",
-            TokenKind::Dot => "`.`",
-            TokenKind::EndOfInput => "end of input",
-            TokenKind::Equals => "`=`",
-            // FIXME: Say "`{source}` (U+NNNN)" on invalid tokens.
-            TokenKind::Error => "error",
-            TokenKind::Hash => "`#`",
-            TokenKind::Hyphen => "-",
-            TokenKind::Ident => {
-                return Cow::Owned(format!("identifier `{}`", &source[self.span.range()]));
+    fn to_diag_str(self, source: Option<&str>) -> Cow<'static, str> {
+        // FIXME: Say "`{source}` (U+NNNN)" on TokenKind::Error | invalid tokens.
+        match (self.kind, source) {
+            (TokenKind::Ident, Some(source)) => {
+                let ident = &source[self.span.range()];
+                return Cow::Owned(format!("identifier `{ident}`"));
             }
-            TokenKind::NumLit => "number literal",
-            TokenKind::OpenAngleBracket => "`<`",
-            TokenKind::OpenCurlyBracket => "`{`",
-            TokenKind::OpenRoundBracket => "`(`",
-            TokenKind::OpenSquareBracket => "`[`",
-            TokenKind::Pipe => "`|`",
-            TokenKind::Plus => "`+`",
-            TokenKind::Semicolon => "`;`",
-            TokenKind::Slash => "`/`",
-            TokenKind::Star => "`*`",
-            TokenKind::StrLit => "string literal",
-            TokenKind::ThinArrow => "`->`",
-            TokenKind::WideArrow => "`=>`",
-        })
+            _ => Cow::Borrowed(self.kind.to_diag_str()),
+        }
+    }
+}
+
+impl TokenKind {
+    fn to_diag_str(self) -> &'static str {
+        match self {
+            Self::Ampersand => "`&`",
+            Self::Apostrophe => "`'`",
+            Self::Bang => "`!`",
+            Self::CloseAngleBracket => "`>`",
+            Self::CloseCurlyBracket => "`}`",
+            Self::CloseRoundBracket => "`)`",
+            Self::CloseSquareBracket => "`]`",
+            Self::Colon => "`:`",
+            Self::Comma => "`,`",
+            Self::Dot => "`.`",
+            Self::EndOfInput => "end of input",
+            Self::Equals => "`=`",
+            Self::Error => "error",
+            Self::Hash => "`#`",
+            Self::Hyphen => "-",
+            Self::Ident => "identifier",
+            Self::NumLit => "number literal",
+            Self::OpenAngleBracket => "`<`",
+            Self::OpenCurlyBracket => "`{`",
+            Self::OpenRoundBracket => "`(`",
+            Self::OpenSquareBracket => "`[`",
+            Self::Pipe => "`|`",
+            Self::Plus => "`+`",
+            Self::Semicolon => "`;`",
+            Self::Slash => "`/`",
+            Self::Star => "`*`",
+            Self::StrLit => "string literal",
+            Self::ThinArrow => "`->`",
+            Self::WideArrow => "`=>`",
+        }
     }
 }
 
@@ -1640,8 +1686,8 @@ impl fmt::Display for ExpectedFragment {
             Self::OneOf(tokens) => {
                 let tokens = tokens
                     .iter()
-                    .map(|token| format!("{token:?}"))
-                    .intersperse_with(|| String::from(" or "))
+                    .map(|token| token.to_diag_str())
+                    .intersperse(" or ")
                     .collect::<String>();
                 return write!(f, "{tokens}");
             }
