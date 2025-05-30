@@ -1,0 +1,56 @@
+use super::{ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, TokenKind};
+use crate::ast;
+
+impl<'src> Parser<'src> {
+    /// Parse a statement.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Stmt ::=
+    ///     | Item\Macro_Call
+    ///     | Let_Stmt
+    ///     | Expr ";" // FIXME: Not entirely factual
+    ///     | ";"
+    /// Let_Stmt ::= "let" Pat (":" Ty) ("=" Expr) ";"
+    /// ```
+    // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
+    //       "macro expr stmts". I think the difference only matters if we were to perform
+    //       macro expansion.
+    pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
+        // FIXME: Outer attrs on let stmt
+        if self.begins_item(MacroCallPolicy::Forbidden) {
+            Ok(ast::Stmt::Item(self.parse_item()?))
+        } else if self.consume(Ident("let")) {
+            let pat = self.parse_pat()?;
+            let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
+            let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+            self.parse(TokenKind::Semicolon)?;
+            Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }))
+        } else if self.begins_expr() {
+            let expr = self.parse_expr()?;
+            // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
+            let semi = if expr.has_trailing_block(ast::TrailingBlockMode::Normal)
+                || self.token().kind == delimiter
+            {
+                match self.consume(TokenKind::Semicolon) {
+                    true => ast::Semicolon::Yes,
+                    false => ast::Semicolon::No,
+                }
+            } else {
+                self.parse(TokenKind::Semicolon)?;
+                ast::Semicolon::Yes
+            };
+            Ok(ast::Stmt::Expr(expr, semi))
+        } else {
+            let token = self.token();
+            match token.kind {
+                TokenKind::Semicolon => {
+                    self.advance();
+                    Ok(ast::Stmt::Empty)
+                }
+                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Stmt)),
+            }
+        }
+    }
+}
