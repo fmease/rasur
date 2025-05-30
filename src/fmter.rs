@@ -195,7 +195,7 @@ impl Fmt for ast::Token {
             ast::TokenKind::Plus => "+",
             ast::TokenKind::Semicolon => ";",
             ast::TokenKind::Slash => "/",
-            ast::TokenKind::Star => "*",
+            ast::TokenKind::Asterisk => "*",
             ast::TokenKind::ThinArrow => "->",
             ast::TokenKind::WideArrow => "=>",
             ast::TokenKind::Ampersand => "&",
@@ -676,10 +676,30 @@ impl Fmt for ast::Ty<'_> {
                 }
                 ty.fmt(cx);
             }
+            Self::Ptr(mut_, ty) => {
+                fmt!(cx, "*");
+                match mut_ {
+                    ast::Mutability::Mut => fmt!(cx, "mut "),
+                    ast::Mutability::Imm => fmt!(cx, "const "),
+                }
+                ty.fmt(cx);
+            }
             Self::Never => fmt!(cx, "!"),
             // FIXME: In Rust 2015 if `bounds.is_empty()`, you need to render it as `r#dyn`.
-            Self::DynTrait => fmt!(cx, "dyn"),
-            Self::ImplTrait => fmt!(cx, "impl"),
+            Self::DynTrait(bounds) => {
+                fmt!(cx, "dyn");
+                if !bounds.is_empty() {
+                    fmt!(cx, " ");
+                }
+                bounds.fmt(cx);
+            }
+            Self::ImplTrait(bounds) => {
+                fmt!(cx, "impl");
+                if !bounds.is_empty() {
+                    fmt!(cx, " ");
+                }
+                bounds.fmt(cx);
+            }
             Self::Array(ty, expr) => {
                 fmt!(cx, "[");
                 ty.fmt(cx);

@@ -1105,11 +1105,15 @@ impl<'src> Parser<'src> {
     ///     | Impl_Trait_Ty
     ///     | Never_Ty
     ///     | Ref_Ty
+    ///     | Ptr_Ty
     ///     | Paren_Or_Tuple_Ty
     /// Inferred_Ty ::= "_"
+    /// Dyn_Trait_Ty ::= "dyn" Bounds
     /// Fn_Ptr_Ty ::= "fn" "(" ")" ("->" Ty)?
+    /// Impl_Trait_Ty ::= "impl" Bounds
     /// Never_Ty ::= "!"
     /// Ref_Ty ::= "&" Lifetime? "mut"? Ty
+    /// Ptr_Ty ::= "*" ("const" | "mut") Ty
     /// Paren_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
     /// ```
     fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
@@ -1129,8 +1133,8 @@ impl<'src> Parser<'src> {
                 // In Rust 2015, we would have already taken `parse_path`, so all is good.
                 "dyn" => {
                     self.advance();
-                    // FIXME: Actually parse the bounds.
-                    return Ok(ast::Ty::DynTrait);
+                    let bounds = self.parse_bounds()?;
+                    return Ok(ast::Ty::DynTrait(bounds));
                 }
                 "fn" => {
                     self.advance();
@@ -1145,8 +1149,8 @@ impl<'src> Parser<'src> {
                 }
                 "impl" => {
                     self.advance();
-                    // FIXME: Actually parse the bounds.
-                    return Ok(ast::Ty::ImplTrait);
+                    let bounds = self.parse_bounds()?;
+                    return Ok(ast::Ty::ImplTrait(bounds));
                 }
                 _ => {}
             },
@@ -1160,6 +1164,29 @@ impl<'src> Parser<'src> {
                 let mut_ = self.parse_mutability();
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)));
+            }
+            TokenKind::Asterisk => {
+                self.advance();
+                let token = self.token();
+                let mut_ = match self.as_ident(token) {
+                    Some("mut") => {
+                        self.advance();
+                        ast::Mutability::Mut
+                    }
+                    Some("const") => {
+                        self.advance();
+                        ast::Mutability::Imm
+                    }
+                    _ => {
+                        return Err(ParseError::UnexpectedToken(
+                            token,
+                            // FIXME: Proper fragment
+                            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
+                        ));
+                    }
+                };
+                let ty = self.parse_ty()?;
+                return Ok(ast::Ty::Ptr(mut_, Box::new(ty)));
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
@@ -1195,6 +1222,7 @@ impl<'src> Parser<'src> {
             TokenKind::Ident => matches!(self.source(token.span), "_" | "dyn" | "fn" | "impl"),
             TokenKind::Bang
             | TokenKind::Ampersand
+            | TokenKind::Asterisk
             | TokenKind::OpenSquareBracket
             | TokenKind::OpenRoundBracket => true,
             _ => false,
@@ -1803,7 +1831,7 @@ impl TokenKind {
             Self::Plus => "`+`",
             Self::Semicolon => "`;`",
             Self::Slash => "`/`",
-            Self::Star => "`*`",
+            Self::Asterisk => "`*`",
             Self::StrLit => "string literal",
             Self::ThinArrow => "`->`",
             Self::WideArrow => "`=>`",

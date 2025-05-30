@@ -35,7 +35,7 @@ pub(crate) enum TokenKind {
     Plus,
     Semicolon,
     Slash,
-    Star,
+    Asterisk,
     StrLit,
     ThinArrow,
     WideArrow,
@@ -140,7 +140,7 @@ impl<'src> Lexer<'src> {
                 '!' => self.add(TokenKind::Bang, start),
                 '?' => self.add(TokenKind::QuestionMark, start),
                 '+' => self.add(TokenKind::Plus, start),
-                '*' => self.add(TokenKind::Star, start),
+                '*' => self.add(TokenKind::Asterisk, start),
                 '-' => {
                     if let Some('>') = self.peek() {
                         self.advance();
