@@ -243,8 +243,7 @@ pub(crate) enum GenericParamKind<'src> {
 #[derive(Debug)]
 pub(crate) enum GenericArg<'src> {
     Ty(Ty<'src>),
-    #[expect(dead_code)] // FIXME
-    Const,
+    Const(Expr<'src>),
     Lifetime(Lifetime<'src>),
 }
 

@@ -1053,6 +1053,9 @@ impl<'src> Parser<'src> {
                     ast::GenericArg::Ty(ty)
                 } else if let Some(lt) = self.consume_lifetime() {
                     ast::GenericArg::Lifetime(lt)
+                } else if self.begins_const_arg() {
+                    let expr = self.parse_expr()?;
+                    ast::GenericArg::Const(expr)
                 } else {
                     return Err(ParseError::UnexpectedToken(
                         self.token(),
@@ -1069,6 +1072,17 @@ impl<'src> Parser<'src> {
             Ok(Some(args))
         } else {
             Ok(None)
+        }
+    }
+
+    fn begins_const_arg(&self) -> bool {
+        let token = self.token();
+
+        // FIXME: Leading dash (unary minus)
+        match token.kind {
+            TokenKind::OpenCurlyBracket | TokenKind::StrLit | TokenKind::NumLit => true,
+            TokenKind::Ident => matches!(self.source(token.span), "false" | "true"),
+            _ => false,
         }
     }
 
@@ -1557,6 +1571,7 @@ impl<'src> Parser<'src> {
         let mut nodes = Vec::new();
 
         const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
         while !self.consume(DELIMITER) {
             let node = parse(self)?;
 
@@ -1568,7 +1583,7 @@ impl<'src> Parser<'src> {
                     return Ok(node);
                 }
             } else {
-                self.parse(TokenKind::Comma)?;
+                self.parse(SEPARATOR)?;
             }
 
             nodes.push(node);

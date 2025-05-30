@@ -301,7 +301,7 @@ impl Fmt for ast::GenericArg<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             ast::GenericArg::Ty(ty) => ty.fmt(cx),
-            ast::GenericArg::Const => todo!(), // FIXME
+            ast::GenericArg::Const(expr) => expr.fmt(cx),
             ast::GenericArg::Lifetime(lt) => lt.fmt(cx),
         }
     }
