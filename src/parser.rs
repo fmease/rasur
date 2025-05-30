@@ -1338,7 +1338,9 @@ impl<'src> Parser<'src> {
     ///     | Wildcard_Expr
     ///     | Bool_Expr
     ///     | If_Expr
+    ///     | Loop_Expr
     ///     | Match_Expr
+    ///     | While_Expr
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Borrow_Expr
@@ -1346,9 +1348,11 @@ impl<'src> Parser<'src> {
     ///     | Paren_Or_Tuple_Expr
     /// Wildcard_Expr ::= "_"
     /// Bool_Expr ::= "false" | "true"
-    /// If_Expr ::= "if" Expr__ Block_Expr
+    /// If_Expr ::= "if" Expr__ Block_Expr ("else" (Block_Expr | If_Expr))?
+    /// Loop_Expr ::= "loop" Block_Expr
     /// # FIXME: Doesn't include trailing-block logic
-    /// Match_Expr ::= "match" Expr "{" (Pat "=>" Expr ("," | >"}"))* "}"
+    /// Match_Expr ::= "match" Expr__ "{" (Pat "=>" Expr ("," | >"}"))* "}"
+    /// While_Expr ::= "while" Expr__ "Block_Expr
     /// Borrow_Expr ::= "&" "mut"? Expr
     /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
@@ -1413,6 +1417,14 @@ impl<'src> Parser<'src> {
                         alternate,
                     })));
                 }
+                "loop" => {
+                    self.advance();
+
+                    self.parse(TokenKind::OpenCurlyBracket)?;
+                    let body = self.fin_parse_block_expr()?;
+
+                    return Ok(ast::Expr::Loop(Box::new(body)));
+                }
                 "match" => {
                     self.advance();
 
@@ -1445,6 +1457,19 @@ impl<'src> Parser<'src> {
                 "true" => {
                     self.advance();
                     return Ok(ast::Expr::BoolLit(true));
+                }
+                "while" => {
+                    self.advance();
+                    // FIXME: Add Restriction::StructLit
+                    // FIXME: Permit let-exprs
+                    let condition = self.parse_expr()?;
+                    self.parse(TokenKind::OpenCurlyBracket)?;
+                    let body = self.fin_parse_block_expr()?;
+
+                    return Ok(ast::Expr::While {
+                        condition: Box::new(condition),
+                        body: Box::new(body),
+                    });
                 }
                 _ => {}
             },
@@ -1488,7 +1513,7 @@ impl<'src> Parser<'src> {
         let token = self.token();
         match token.kind {
             TokenKind::Ident => {
-                matches!(self.source(token.span), "_" | "false" | "if" | "match" | "true")
+                matches!(self.source(token.span), "_" | "false" | "if" | "match" | "true" | "while")
             }
             TokenKind::NumLit
             | TokenKind::StrLit

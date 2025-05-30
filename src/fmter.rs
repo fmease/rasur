@@ -801,6 +801,10 @@ impl Fmt for ast::Expr<'_> {
                     alternate.fmt(cx);
                 }
             }
+            Self::Loop(body) => {
+                fmt!(cx, "loop ");
+                body.fmt(cx);
+            }
             Self::Match { scrutinee, arms } => {
                 let is_non_empty = !arms.is_empty();
 
@@ -827,6 +831,12 @@ impl Fmt for ast::Expr<'_> {
                     fmt!(cx, indent);
                 }
                 fmt!(cx, "}}");
+            }
+            Self::While { condition, body } => {
+                fmt!(cx, "while ");
+                condition.fmt(cx);
+                fmt!(cx, " ");
+                body.fmt(cx);
             }
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),

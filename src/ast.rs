@@ -300,7 +300,9 @@ pub(crate) enum Expr<'src> {
     Path(Path<'src, GenericArgs::DisambiguatedOnly>),
     Wildcard,
     If(Box<IfExpr<'src>>),
+    Loop(Box<Expr<'src>>),
     Match { scrutinee: Box<Expr<'src>>, arms: Vec<MatchArm<'src>> },
+    While { condition: Box<Expr<'src>>, body: Box<Expr<'src>> },
     BoolLit(bool),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
@@ -313,7 +315,11 @@ pub(crate) enum Expr<'src> {
 impl Expr<'_> {
     pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
-            Self::If(_) | Self::Match { .. } | Self::Block(..) => true,
+            Self::If(_)
+            | Self::Loop { .. }
+            | Self::Match { .. }
+            | Self::While { .. }
+            | Self::Block(..) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
                 TrailingBlockMode::Normal => true,
                 TrailingBlockMode::Match => false,
