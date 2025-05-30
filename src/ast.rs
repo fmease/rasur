@@ -303,6 +303,8 @@ pub(crate) struct FnParam<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
+    UnOp(UnOp, Box<Expr<'src>>),
+    BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Wildcard,
     If(Box<IfExpr<'src>>),
@@ -330,7 +332,9 @@ impl Expr<'_> {
                 TrailingBlockMode::Normal => true,
                 TrailingBlockMode::Match => false,
             },
-            Self::Path(_)
+            Self::UnOp(..)
+            | Self::BinOp(..)
+            | Self::Path(_)
             | Self::Wildcard
             | Self::BoolLit(_)
             | Self::NumLit(_)
@@ -340,6 +344,28 @@ impl Expr<'_> {
             | Self::MacroCall(_) => false,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum UnOp {
+    Deref,
+    Neg,
+    Not,
+    Try,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BinOp {
+    Add,
+    And,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Div,
+    Mul,
+    Or,
+    Rem,
+    Sub,
 }
 
 #[derive(Debug)]

@@ -1,6 +1,5 @@
-use iter::PeekableCharIndices;
-
 use crate::span::{ByteIndex, Span};
+use iter::PeekableCharIndices;
 use std::fmt;
 
 pub(crate) fn lex(source: &str) -> Vec<Token> {
@@ -11,8 +10,9 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 pub(crate) enum TokenKind {
     Ampersand,
     Apostrophe,
+    Asterisk,
     Bang,
-    QuestionMark,
+    Caret,
     CloseAngleBracket,
     CloseCurlyBracket,
     CloseRoundBracket,
@@ -31,11 +31,12 @@ pub(crate) enum TokenKind {
     OpenCurlyBracket,
     OpenRoundBracket,
     OpenSquareBracket,
+    Percent,
     Pipe,
     Plus,
+    QuestionMark,
     Semicolon,
     Slash,
-    Asterisk,
     StrLit,
     ThinArrow,
     WideArrow,
@@ -162,6 +163,8 @@ impl<'src> Lexer<'src> {
                 '#' => self.add(TokenKind::Hash, start),
                 '&' => self.add(TokenKind::Ampersand, start),
                 '|' => self.add(TokenKind::Pipe, start),
+                '%' => self.add(TokenKind::Percent, start),
+                '^' => self.add(TokenKind::Caret, start),
                 '(' => self.add(TokenKind::OpenRoundBracket, start),
                 ')' => self.add(TokenKind::CloseRoundBracket, start),
                 '[' => self.add(TokenKind::OpenSquareBracket, start),

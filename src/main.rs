@@ -5,9 +5,8 @@
 #![feature(macro_metavar_expr)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
-use std::{path::PathBuf, process::ExitCode};
-
 use edition::Edition;
+use std::{path::PathBuf, process::ExitCode};
 
 mod ast;
 mod edition;

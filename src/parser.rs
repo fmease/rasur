@@ -1,10 +1,9 @@
-use std::borrow::Cow;
-use std::fmt;
-
 use crate::ast;
 use crate::edition::Edition;
 use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
+use std::borrow::Cow;
+use std::fmt;
 
 mod attr;
 mod expr;
@@ -269,6 +268,10 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn is_glued_to(&self, this: Token, kind: TokenKind) -> bool {
+        self.look_ahead(1, |other| other.kind == kind && this.touches(other))
+    }
+
     fn advance(&mut self) {
         self.index += 1;
     }
@@ -402,6 +405,8 @@ impl TokenKind {
             Self::Semicolon => "`;`",
             Self::Slash => "`/`",
             Self::Asterisk => "`*`",
+            Self::Percent => "`%`",
+            Self::Caret => "`^`",
             Self::StrLit => "string literal",
             Self::ThinArrow => "`->`",
             Self::WideArrow => "`=>`",

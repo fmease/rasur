@@ -172,6 +172,8 @@ impl Fmt for ast::Token {
             ast::TokenKind::WideArrow => "=>",
             ast::TokenKind::Ampersand => "&",
             ast::TokenKind::Pipe => "|",
+            ast::TokenKind::Percent => "%",
+            ast::TokenKind::Caret => "^",
             ast::TokenKind::Ident
             | ast::TokenKind::NumLit
             | ast::TokenKind::StrLit
@@ -427,6 +429,26 @@ impl Fmt for ast::Lifetime<'_> {
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
+            Self::UnOp(op @ ast::UnOp::Try, expr) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, "){}", op.symbol());
+            }
+            Self::UnOp(op, expr) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "{}(", op.symbol());
+                expr.fmt(cx);
+                fmt!(cx, ")");
+            }
+            Self::BinOp(op, left, right) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
+                left.fmt(cx);
+                fmt!(cx, ") {} (", op.symbol());
+                right.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::Path(path) => path.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
             Self::If(expr) => {
@@ -490,6 +512,34 @@ impl Fmt for ast::Expr<'_> {
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
+        }
+    }
+}
+
+impl ast::UnOp {
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Deref => "*",
+            Self::Neg => "-",
+            Self::Not => "!",
+            Self::Try => "?",
+        }
+    }
+}
+
+impl ast::BinOp {
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::And => "&&",
+            Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitXor => "^",
+            Self::Div => "/",
+            Self::Mul => "*",
+            Self::Or => "||",
+            Self::Rem => "%",
+            Self::Sub => "-",
         }
     }
 }
