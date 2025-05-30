@@ -264,30 +264,50 @@ impl Fmt for ast::GenericParam<'_> {
     }
 }
 
-trait FmtGenericArgs: ast::GenericArgs::Kind {
+trait FmtGenericArgs: ast::GenericArgsPolicy::Kind {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>);
 }
 
-impl FmtGenericArgs for ast::GenericArgs::Disallowed {
+impl FmtGenericArgs for ast::GenericArgsPolicy::Disallowed {
     fn fmt((): Self::Args<'_>, _: &mut Cx<'_>) {}
 }
 
-impl FmtGenericArgs for ast::GenericArgs::Allowed {
+impl FmtGenericArgs for ast::GenericArgsPolicy::Allowed {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
         args.fmt(cx);
     }
 }
 
-impl FmtGenericArgs for ast::GenericArgs::DisambiguatedOnly {
+impl FmtGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
-        if args.as_ref().is_some_and(|args| !args.is_empty()) {
+        if args.as_ref().is_some_and(|args| match args {
+            ast::GenericArgs::Angle(args) => !args.is_empty(),
+            ast::GenericArgs::Paren { .. } => true,
+        }) {
             fmt!(cx, "::");
         }
         args.fmt(cx);
     }
 }
 
-impl Fmt for Vec<ast::GenericArg<'_>> {
+impl Fmt for ast::GenericArgs<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Angle(args) => args.fmt(cx),
+            Self::Paren { inputs, output } => {
+                fmt!(cx, "(");
+                Punctuated::new(inputs, ", ").fmt(cx);
+                fmt!(cx, ")");
+                if let Some(output) = output {
+                    fmt!(cx, " -> ");
+                    output.fmt(cx);
+                }
+            }
+        }
+    }
+}
+
+impl Fmt for Vec<ast::AngleGenericArg<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         if !self.is_empty() {
             fmt!(cx, "<");
@@ -297,12 +317,12 @@ impl Fmt for Vec<ast::GenericArg<'_>> {
     }
 }
 
-impl Fmt for ast::GenericArg<'_> {
+impl Fmt for ast::AngleGenericArg<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            ast::GenericArg::Ty(ty) => ty.fmt(cx),
-            ast::GenericArg::Const(expr) => expr.fmt(cx),
-            ast::GenericArg::Lifetime(lt) => lt.fmt(cx),
+            ast::AngleGenericArg::Ty(ty) => ty.fmt(cx),
+            ast::AngleGenericArg::Const(expr) => expr.fmt(cx),
+            ast::AngleGenericArg::Lifetime(lt) => lt.fmt(cx),
         }
     }
 }

@@ -39,7 +39,7 @@ pub(crate) enum ItemKind<'src> {
     ExternBlock(ExternBlockItem<'src>),
     Fn(FnItem<'src>),
     Impl(ImplItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgs::Disallowed>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
     MacroDef(MacroDef<'src>),
     Mod(ModItem<'src>),
     Static(StaticItem<'src>),
@@ -82,7 +82,7 @@ pub(crate) struct ExternItem<'src> {
 #[derive(Debug)]
 pub(crate) enum ExternItemKind<'src> {
     Fn(FnItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgs::Disallowed>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
     Static(StaticItem<'src>),
     Ty(TyItem<'src>),
 }
@@ -108,7 +108,7 @@ pub(crate) struct ImplItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) constness: Constness,
     pub(crate) polarity: ImplPolarity,
-    pub(crate) trait_ref: Option<Path<'src, GenericArgs::Allowed>>,
+    pub(crate) trait_ref: Option<Path<'src, GenericArgsPolicy::Allowed>>,
     pub(crate) self_ty: Ty<'src>,
     pub(crate) body: Vec<AssocItem<'src>>,
 }
@@ -161,7 +161,7 @@ pub(crate) struct AssocItem<'src> {
 pub(crate) enum AssocItemKind<'src> {
     Const(ConstItem<'src>),
     Fn(FnItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgs::Disallowed>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
     Ty(TyItem<'src>),
 }
 
@@ -181,7 +181,7 @@ pub(crate) struct UnionItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct UseItem<'src> {
-    pub(crate) path: Path<'src, GenericArgs::Disallowed>,
+    pub(crate) path: Path<'src, GenericArgsPolicy::Disallowed>,
 }
 
 #[derive(Debug)]
@@ -201,7 +201,7 @@ pub(crate) enum MacroDefStyle {
 }
 
 #[derive(Debug)]
-pub(crate) struct MacroCall<'src, A: GenericArgs::Kind> {
+pub(crate) struct MacroCall<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) path: Path<'src, A>,
     pub(crate) bracket: Bracket,
     pub(crate) stream: TokenStream,
@@ -241,7 +241,13 @@ pub(crate) enum GenericParamKind<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) enum GenericArg<'src> {
+pub(crate) enum GenericArgs<'src> {
+    Angle(Vec<AngleGenericArg<'src>>),
+    Paren { inputs: Vec<Ty<'src>>, output: Option<Ty<'src>> },
+}
+
+#[derive(Debug)]
+pub(crate) enum AngleGenericArg<'src> {
     Ty(Ty<'src>),
     Const(Expr<'src>),
     Lifetime(Lifetime<'src>),
@@ -267,7 +273,7 @@ pub(crate) struct OutlivesPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Trait(TraitBoundModifiers, Path<'src, GenericArgs::Allowed>),
+    Trait(TraitBoundModifiers, Path<'src, GenericArgsPolicy::Allowed>),
     Outlives(Lifetime<'src>),
 }
 
@@ -297,7 +303,7 @@ pub(crate) struct FnParam<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
-    Path(Path<'src, GenericArgs::DisambiguatedOnly>),
+    Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Wildcard,
     If(Box<IfExpr<'src>>),
     Loop(Box<Expr<'src>>),
@@ -309,7 +315,7 @@ pub(crate) enum Expr<'src> {
     Borrow(Mutability, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
-    MacroCall(MacroCall<'src, GenericArgs::DisambiguatedOnly>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
 }
 
 impl Expr<'_> {
@@ -384,12 +390,12 @@ pub(crate) struct LetStmt<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
-    Path(Path<'src, GenericArgs::DisambiguatedOnly>),
+    Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Wildcard,
     Tup(Vec<Pat<'src>>),
-    MacroCall(MacroCall<'src, GenericArgs::DisambiguatedOnly>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Borrow(Mutability, Box<Pat<'src>>),
 }
 
@@ -400,7 +406,7 @@ pub(crate) enum Ty<'src> {
     DynTrait(Vec<Bound<'src>>),
     FnPtr((), Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
-    Path(Path<'src, GenericArgs::Allowed>),
+    Path(Path<'src, GenericArgsPolicy::Allowed>),
     Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
     Ptr(Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
@@ -415,7 +421,7 @@ pub(crate) struct Lifetime<'src>(pub(crate) Ident<'src>);
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
     pub(crate) style: AttrStyle,
-    pub(crate) path: Path<'src, GenericArgs::Disallowed>,
+    pub(crate) path: Path<'src, GenericArgsPolicy::Disallowed>,
     pub(crate) kind: AttrKind<'src>,
 }
 
@@ -448,7 +454,7 @@ pub(crate) enum Orientation {
 }
 
 #[derive(Debug)]
-pub(crate) struct Path<'src, A: GenericArgs::Kind> {
+pub(crate) struct Path<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) hook: PathHook,
     pub(crate) segs: Vec<PathSeg<'src, A>>,
 }
@@ -460,13 +466,13 @@ pub(crate) enum PathHook {
 }
 
 #[derive(Debug)]
-pub(crate) struct PathSeg<'src, A: GenericArgs::Kind> {
+pub(crate) struct PathSeg<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) ident: Ident<'src>,
     pub(crate) args: A::Args<'src>,
 }
 
 #[expect(non_snake_case)]
-pub(crate) mod GenericArgs {
+pub(crate) mod GenericArgsPolicy {
     #[derive(Debug)]
     pub(crate) enum Disallowed {}
     #[derive(Debug)]
@@ -479,7 +485,7 @@ pub(crate) mod GenericArgs {
     }
 
     impl Kind for Allowed {
-        type Args<'src> = Option<Vec<super::GenericArg<'src>>>;
+        type Args<'src> = Option<super::GenericArgs<'src>>;
     }
 
     impl Kind for DisambiguatedOnly {

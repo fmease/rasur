@@ -225,7 +225,7 @@ impl<'src> Parser<'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
-        let path = self.parse_path::<ast::GenericArgs::Disallowed>()?;
+        let path = self.parse_path::<ast::GenericArgsPolicy::Disallowed>()?;
         let token = self.token();
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
@@ -752,7 +752,7 @@ impl<'src> Parser<'src> {
         let mods = self.parse_trait_bound_modifiers();
 
         if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgs::Allowed>()?;
+            let path = self.parse_path::<ast::GenericArgsPolicy::Allowed>()?;
             return Ok(ast::Bound::Trait(mods, path));
         }
 
@@ -849,7 +849,7 @@ impl<'src> Parser<'src> {
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path::<ast::GenericArgs::Disallowed>()?;
+        let path = self.parse_path::<ast::GenericArgsPolicy::Disallowed>()?;
         self.parse(TokenKind::Bang)?;
 
         let binder = if let ast::PathHook::Local = path.hook
@@ -1025,54 +1025,86 @@ impl<'src> Parser<'src> {
     fn parse_generic_args(
         &mut self,
         reqs_disamb: RequiresDisambiguation,
-    ) -> Result<Option<Vec<ast::GenericArg<'src>>>> {
+    ) -> Result<Option<ast::GenericArgs<'src>>> {
         // FIXME: Support parenthesized args
 
         let disambiguated = if DOUBLE_COLON.check(self)
-            && self
-                .look_ahead(DoubleColon::LENGTH, |token| token.kind == TokenKind::OpenAngleBracket)
-        {
+            && self.look_ahead(DoubleColon::LENGTH, |token| {
+                matches!(token.kind, TokenKind::OpenAngleBracket | TokenKind::OpenRoundBracket)
+            }) {
             DoubleColon::advance(self);
             true
         } else {
             false
         };
 
-        if (disambiguated || matches!(reqs_disamb, RequiresDisambiguation::No))
-            && self.consume(TokenKind::OpenAngleBracket)
-        {
-            let mut args = Vec::new();
+        if disambiguated || matches!(reqs_disamb, RequiresDisambiguation::No) {
+            let token = self.token();
+            match token.kind {
+                TokenKind::OpenAngleBracket => {
+                    self.advance();
 
-            const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
-            const SEPARATOR: TokenKind = TokenKind::Comma;
-            while !self.consume(DELIMITER) {
-                // FIXME: Parse const args
-                // FIXME: Parse assoc item constraints
-                args.push(if self.begins_ty() {
-                    let ty = self.parse_ty()?;
-                    ast::GenericArg::Ty(ty)
-                } else if let Some(lt) = self.consume_lifetime() {
-                    ast::GenericArg::Lifetime(lt)
-                } else if self.begins_const_arg() {
-                    let expr = self.parse_expr()?;
-                    ast::GenericArg::Const(expr)
-                } else {
-                    return Err(ParseError::UnexpectedToken(
-                        self.token(),
-                        one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
-                    ));
-                });
+                    let mut args = Vec::new();
 
-                // FIXME: Is there a better way to express this?
-                if self.token().kind != DELIMITER {
-                    self.parse(SEPARATOR)?;
+                    const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+                    const SEPARATOR: TokenKind = TokenKind::Comma;
+                    while !self.consume(DELIMITER) {
+                        // FIXME: Parse const args
+                        // FIXME: Parse assoc item constraints
+                        args.push(if self.begins_ty() {
+                            let ty = self.parse_ty()?;
+                            ast::AngleGenericArg::Ty(ty)
+                        } else if let Some(lt) = self.consume_lifetime() {
+                            ast::AngleGenericArg::Lifetime(lt)
+                        } else if self.begins_const_arg() {
+                            let expr = self.parse_expr()?;
+                            ast::AngleGenericArg::Const(expr)
+                        } else {
+                            return Err(ParseError::UnexpectedToken(
+                                self.token(),
+                                one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
+                            ));
+                        });
+
+                        // FIXME: Is there a better way to express this?
+                        if self.token().kind != DELIMITER {
+                            self.parse(SEPARATOR)?;
+                        }
+                    }
+
+                    return Ok(Some(ast::GenericArgs::Angle(args)));
                 }
-            }
+                // FIXME: Support RTN
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
 
-            Ok(Some(args))
-        } else {
-            Ok(None)
+                    let mut inputs = Vec::new();
+
+                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                    const SEPARATOR: TokenKind = TokenKind::Comma;
+                    while !self.consume(DELIMITER) {
+                        inputs.push(self.parse_ty()?);
+
+                        // FIXME: Is there a better way to express this?
+                        if self.token().kind != DELIMITER {
+                            self.parse(SEPARATOR)?;
+                        }
+                    }
+
+                    // FIXME: And don't parse it if it isn't RTN
+                    let output = if self.consume(TokenKind::ThinArrow) {
+                        Some(self.parse_ty()?)
+                    } else {
+                        None
+                    };
+
+                    return Ok(Some(ast::GenericArgs::Paren { inputs, output }));
+                }
+                _ => {}
+            }
         }
+
+        Ok(None)
     }
 
     fn begins_const_arg(&self) -> bool {
@@ -1143,7 +1175,7 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
         if self.begins_path() {
-            return Ok(ast::Ty::Path(self.parse_path::<ast::GenericArgs::Allowed>()?));
+            return Ok(ast::Ty::Path(self.parse_path::<ast::GenericArgsPolicy::Allowed>()?));
         }
 
         let token = self.token();
@@ -1360,7 +1392,7 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
         if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgs::DisambiguatedOnly>()?;
+            let path = self.parse_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -1543,7 +1575,7 @@ impl<'src> Parser<'src> {
     /// ```
     fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
         if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgs::DisambiguatedOnly>()?;
+            let path = self.parse_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -1786,23 +1818,23 @@ enum MacroCallPolicy {
     Forbidden,
 }
 
-trait ParseGenericArgs: ast::GenericArgs::Kind {
+trait ParseGenericArgs: ast::GenericArgsPolicy::Kind {
     fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>>;
 }
 
-impl ParseGenericArgs for ast::GenericArgs::Disallowed {
+impl ParseGenericArgs for ast::GenericArgsPolicy::Disallowed {
     fn parse<'src>(_: &mut Parser<'src>) -> Result<Self::Args<'src>> {
         Ok(())
     }
 }
 
-impl ParseGenericArgs for ast::GenericArgs::Allowed {
+impl ParseGenericArgs for ast::GenericArgsPolicy::Allowed {
     fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>> {
         parser.parse_generic_args(RequiresDisambiguation::No)
     }
 }
 
-impl ParseGenericArgs for ast::GenericArgs::DisambiguatedOnly {
+impl ParseGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
     fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>> {
         parser.parse_generic_args(RequiresDisambiguation::Yes)
     }
