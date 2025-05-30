@@ -839,7 +839,11 @@ impl<'src> Parser<'src> {
     /// Use_Item ::= "use" …
     /// ```
     fn fin_parse_use_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        todo!()
+        // FIXME: Actually parse a use-tree.
+        let path = self.parse_path()?;
+        self.parse(TokenKind::Semicolon)?;
+
+        Ok(ast::ItemKind::Use(ast::UseItem { path }))
     }
 
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {

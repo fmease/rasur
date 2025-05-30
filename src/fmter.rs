@@ -116,6 +116,7 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Trait(item) => item.fmt(cx),
             ast::ItemKind::Ty(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
+            ast::ItemKind::Use(item) => item.fmt(cx),
             ast::ItemKind::MacroDef(item) => item.fmt(cx),
             ast::ItemKind::MacroCall(call) => {
                 let needs_semi = call.bracket != ast::Bracket::Curly;
@@ -633,6 +634,15 @@ impl Fmt for ast::UnionItem<'_> {
         fmt!(cx, "union {binder}");
         generics.fmt(cx);
         fmt!(cx, " {{}}")
+    }
+}
+
+impl Fmt for ast::UseItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path } = self;
+        fmt!(cx, "use ");
+        path.fmt(cx);
+        fmt!(cx, ";");
     }
 }
 

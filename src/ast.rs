@@ -47,6 +47,7 @@ pub(crate) enum ItemKind<'src> {
     Trait(TraitItem<'src>),
     Ty(TyItem<'src>),
     Union(UnionItem<'src>),
+    Use(UseItem<'src>),
 }
 
 #[derive(Debug)]
@@ -176,6 +177,11 @@ pub(crate) struct TyItem<'src> {
 pub(crate) struct UnionItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct UseItem<'src> {
+    pub(crate) path: Path<'src, GenericArgs::Disallowed>,
 }
 
 #[derive(Debug)]
