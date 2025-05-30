@@ -120,19 +120,17 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::NumLit, start);
                 }
                 '"' => {
-                    let start = self.index();
-
                     // FIXME: Escape sequences;
                     while self.peek().is_some_and(|char| char != '"') {
                         self.advance();
                     }
 
-                    // FIXME: Smh. taint unterminated str lits (but don't fatal!)
-                    self.add(TokenKind::StrLit, start);
-
                     if let Some('"') = self.peek() {
                         self.advance();
                     }
+
+                    // FIXME: Smh. taint unterminated str lits (but don't fatal!)
+                    self.add(TokenKind::StrLit, start);
                 }
                 ',' => self.add(TokenKind::Comma, start),
                 ';' => self.add(TokenKind::Semicolon, start),

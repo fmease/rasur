@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt;
 
 use crate::ast;
@@ -1132,9 +1133,11 @@ impl<'src> Parser<'src> {
     ///     | Wildcard_Expr
     ///     | #Num_Lit
     ///     | #Str_Lit
+    ///     | Borrow_Expr
     ///     | Block_Expr
     ///     | Paren_Or_Tuple_Expr
     /// Wildcard_Expr ::= "_"
+    /// Borrow_Expr ::= "&" "mut"? Expr
     /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
     fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
@@ -1171,6 +1174,12 @@ impl<'src> Parser<'src> {
                 self.advance();
                 return Ok(ast::Expr::StrLit(lit));
             }
+            TokenKind::Ampersand => {
+                self.advance();
+                let mut_ = self.parse_mutability();
+                let expr = self.parse_expr()?;
+                return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
+            }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
                 return self.fin_parse_block_expr();
@@ -1197,6 +1206,7 @@ impl<'src> Parser<'src> {
             TokenKind::Ident => matches!(self.source(token.span), "_"),
             TokenKind::NumLit
             | TokenKind::StrLit
+            | TokenKind::Ampersand
             | TokenKind::OpenRoundBracket
             | TokenKind::OpenCurlyBracket => true,
             _ => false,
@@ -1249,6 +1259,12 @@ impl<'src> Parser<'src> {
                 let lit = self.source(token.span);
                 self.advance();
                 return Ok(ast::Pat::StrLit(lit));
+            }
+            TokenKind::Ampersand => {
+                self.advance();
+                let mut_ = self.parse_mutability();
+                let pat = self.parse_pat()?;
+                return Ok(ast::Pat::Borrow(mut_, Box::new(pat)));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -1372,7 +1388,7 @@ impl<'src> Parser<'src> {
                 }
             }
 
-            tokens.push(token.kind);
+            tokens.push(token);
             self.advance();
         }
 
@@ -1551,10 +1567,7 @@ impl ParseError {
         eprint!("error: ");
         match self {
             Self::UnexpectedToken(token, expected) => {
-                let found = match token.kind {
-                    TokenKind::Ident => format!("ident `{}`", &source[token.span.range()]),
-                    kind => format!("{kind:?}"),
-                };
+                let found = token.to_diag_str(source);
                 eprint!("{:?}: found {found} but expected {expected}", token.span)
             }
             Self::InvalidDelimiter => eprint!("invalid delimiter"),
@@ -1563,6 +1576,45 @@ impl ParseError {
             Self::ExpectedTraitFoundTy => eprint!("found type expected trait"),
         }
         eprintln!();
+    }
+}
+
+impl Token {
+    fn to_diag_str(self, source: &str) -> Cow<'static, str> {
+        Cow::Borrowed(match self.kind {
+            TokenKind::Ampersand => "`&`",
+            TokenKind::Apostrophe => "`'`",
+            TokenKind::Bang => "`!`",
+            TokenKind::CloseAngleBracket => "`>`",
+            TokenKind::CloseCurlyBracket => "`}`",
+            TokenKind::CloseRoundBracket => "`)`",
+            TokenKind::CloseSquareBracket => "`]`",
+            TokenKind::Colon => "`:`",
+            TokenKind::Comma => "`,`",
+            TokenKind::Dot => "`.`",
+            TokenKind::EndOfInput => "end of input",
+            TokenKind::Equals => "`=`",
+            // FIXME: Say "`{source}` (U+NNNN)" on invalid tokens.
+            TokenKind::Error => "error",
+            TokenKind::Hash => "`#`",
+            TokenKind::Hyphen => "-",
+            TokenKind::Ident => {
+                return Cow::Owned(format!("identifier `{}`", &source[self.span.range()]));
+            }
+            TokenKind::NumLit => "number literal",
+            TokenKind::OpenAngleBracket => "`<`",
+            TokenKind::OpenCurlyBracket => "`{`",
+            TokenKind::OpenRoundBracket => "`(`",
+            TokenKind::OpenSquareBracket => "`[`",
+            TokenKind::Pipe => "`|`",
+            TokenKind::Plus => "`+`",
+            TokenKind::Semicolon => "`;`",
+            TokenKind::Slash => "`/`",
+            TokenKind::Star => "`*`",
+            TokenKind::StrLit => "string literal",
+            TokenKind::ThinArrow => "`->`",
+            TokenKind::WideArrow => "`=>`",
+        })
     }
 }
 

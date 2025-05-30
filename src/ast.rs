@@ -1,4 +1,4 @@
-pub(crate) use crate::lexer::TokenKind;
+pub(crate) use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 
 // FIXME: Create newtype for idents!
@@ -266,11 +266,12 @@ pub(crate) struct Param<'src> {
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
     Path(Path<'src, Vec<GenericArg<'src>>>),
+    Wildcard,
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
+    Borrow(Mutability, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
-    Wildcard,
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
 }
 
@@ -279,10 +280,11 @@ impl Expr<'_> {
         match self {
             Self::Block(..) | Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => true,
             Self::Path(_)
+            | Self::Wildcard
             | Self::NumLit(_)
             | Self::StrLit(_)
+            | Self::Borrow(..)
             | Self::Tup(_)
-            | Self::Wildcard
             | Self::MacroCall(_) => false,
         }
     }
@@ -323,6 +325,7 @@ pub(crate) enum Pat<'src> {
     Wildcard,
     Tup(Vec<Pat<'src>>),
     MacroCall(MacroCall<'src, Vec<GenericArg<'src>>>),
+    Borrow(Mutability, Box<Pat<'src>>),
 }
 
 #[derive(Debug)]
@@ -363,7 +366,7 @@ pub(crate) enum AttrKind<'src> {
     Assign(Expr<'src>),
 }
 
-pub(crate) type TokenStream = Vec<TokenKind>;
+pub(crate) type TokenStream = Vec<Token>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Bracket {

@@ -171,46 +171,40 @@ impl Fmt for ast::TokenStream {
     }
 }
 
-impl Fmt for ast::TokenKind {
+impl Fmt for ast::Token {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(
-            cx,
-            "{}",
-            match self {
-                Self::Apostrophe => "'",
-                Self::Bang => "!",
-                Self::CloseAngleBracket => ">",
-                Self::CloseCurlyBracket => "}",
-                Self::CloseRoundBracket => ")",
-                Self::CloseSquareBracket => "]",
-                Self::Colon => ":",
-                Self::Comma => ",",
-                Self::Dot => ".",
-                Self::EndOfInput => "",
-                Self::Equals => "=",
-                Self::Error => "/*error*/",
-                Self::Hash => "#",
-                Self::Hyphen => "-",
-                // FIXME: We need the span for the source!
-                Self::Ident => "/*ident*/",
-                // FIXME: We need the span for the source!
-                Self::NumLit => "/*num*/",
-                Self::OpenAngleBracket => "<",
-                Self::OpenCurlyBracket => "{",
-                Self::OpenRoundBracket => "(",
-                Self::OpenSquareBracket => "[",
-                Self::Plus => "+",
-                Self::Semicolon => ";",
-                Self::Slash => "/",
-                Self::Star => "*",
-                // FIXME: We need the span for the source!
-                Self::StrLit => "/*str*/",
-                Self::ThinArrow => "->",
-                Self::WideArrow => "=>",
-                Self::Ampersand => "&",
-                Self::Pipe => "|",
-            }
-        )
+        let str = match self.kind {
+            ast::TokenKind::Apostrophe => "'",
+            ast::TokenKind::Bang => "!",
+            ast::TokenKind::CloseAngleBracket => ">",
+            ast::TokenKind::CloseCurlyBracket => "}",
+            ast::TokenKind::CloseRoundBracket => ")",
+            ast::TokenKind::CloseSquareBracket => "]",
+            ast::TokenKind::Colon => ":",
+            ast::TokenKind::Comma => ",",
+            ast::TokenKind::Dot => ".",
+            ast::TokenKind::EndOfInput => "",
+            ast::TokenKind::Equals => "=",
+            ast::TokenKind::Hash => "#",
+            ast::TokenKind::Hyphen => "-",
+            ast::TokenKind::OpenAngleBracket => "<",
+            ast::TokenKind::OpenCurlyBracket => "{",
+            ast::TokenKind::OpenRoundBracket => "(",
+            ast::TokenKind::OpenSquareBracket => "[",
+            ast::TokenKind::Plus => "+",
+            ast::TokenKind::Semicolon => ";",
+            ast::TokenKind::Slash => "/",
+            ast::TokenKind::Star => "*",
+            ast::TokenKind::ThinArrow => "->",
+            ast::TokenKind::WideArrow => "=>",
+            ast::TokenKind::Ampersand => "&",
+            ast::TokenKind::Pipe => "|",
+            ast::TokenKind::Ident
+            | ast::TokenKind::NumLit
+            | ast::TokenKind::StrLit
+            | ast::TokenKind::Error => cx.source(self.span),
+        };
+        fmt!(cx, "{str}")
     }
 }
 
@@ -646,6 +640,14 @@ impl Fmt for ast::Expr<'_> {
             Self::Wildcard => fmt!(cx, "_"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::Borrow(mut_, expr) => {
+                fmt!(cx, "&");
+                match mut_ {
+                    ast::Mutability::Mut => fmt!(cx, "mut "),
+                    ast::Mutability::Imm => {}
+                }
+                expr.fmt(cx);
+            }
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
@@ -657,9 +659,17 @@ impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Path(path) => path.fmt(cx),
+            Self::Wildcard => fmt!(cx, "_"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
-            Self::Wildcard => fmt!(cx, "_"),
+            Self::Borrow(mut_, pat) => {
+                fmt!(cx, "&");
+                match mut_ {
+                    ast::Mutability::Mut => fmt!(cx, "mut "),
+                    ast::Mutability::Imm => {}
+                }
+                pat.fmt(cx);
+            }
             Self::Tup(pats) => Tup(pats).fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
         }
