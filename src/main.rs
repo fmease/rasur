@@ -1,3 +1,4 @@
+#![feature(decl_macro)]
 #![feature(if_let_guard)]
 #![feature(iter_intersperse)]
 #![feature(let_chains)]

@@ -730,6 +730,16 @@ impl Fmt for ast::Expr<'_> {
         match self {
             Self::Path(path) => path.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
+            Self::If(expr) => {
+                fmt!(cx, "if ");
+                expr.condition.fmt(cx);
+                fmt!(cx, " ");
+                expr.consequent.fmt(cx);
+                if let Some(alternate) = expr.alternate {
+                    fmt!(cx, " else ");
+                    alternate.fmt(cx);
+                }
+            }
             Self::Match { scrutinee, arms } => {
                 let is_non_empty = !arms.is_empty();
 
@@ -757,6 +767,7 @@ impl Fmt for ast::Expr<'_> {
                 }
                 fmt!(cx, "}}");
             }
+            Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::Borrow(mut_, expr) => {
@@ -805,9 +816,12 @@ impl Fmt for ast::Pat<'_> {
 
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let is_non_empty = !self.attrs.is_empty() || !self.stmts.is_empty();
+        let is_non_empty = !self.is_empty();
 
-        fmt!(cx, "{{\n");
+        fmt!(cx, "{{");
+        if is_non_empty {
+            fmt!(cx, "\n");
+        }
         cx.indent();
         for attr in self.attrs {
             fmt!(cx, indent);

@@ -256,13 +256,13 @@ impl<'src> Parser<'src> {
             _ => {
                 return Err(ParseError::UnexpectedToken(
                     token,
-                    ExpectedFragment::OneOf(Box::new([
+                    one_of![
                         TokenKind::CloseSquareBracket,
                         TokenKind::Equals,
                         TokenKind::OpenRoundBracket,
                         TokenKind::OpenSquareBracket,
                         TokenKind::OpenCurlyBracket,
-                    ])),
+                    ],
                 ));
             }
         };
@@ -321,8 +321,10 @@ impl<'src> Parser<'src> {
             .filter(|&ident| ident == "_" || self.ident_is_common(ident))
             .inspect(|_| self.advance())
             .ok_or_else(|| {
-                // FIXME: Wrong ExpectedFragment
-                ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent)
+                ParseError::UnexpectedToken(
+                    self.token(),
+                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw("_")],
+                )
             })?;
 
         let params = self.parse_generic_params()?;
@@ -964,6 +966,7 @@ impl<'src> Parser<'src> {
 
         if self.consume(TokenKind::OpenAngleBracket) {
             const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+            const SEPARATOR: TokenKind = TokenKind::Comma;
             // FIXME: This is so hideously structured! We need better primitives!
             while !self.consume(DELIMITER) {
                 let token = self.token();
@@ -993,10 +996,9 @@ impl<'src> Parser<'src> {
                             (ident, ast::GenericParamKind::Ty(bounds))
                         }
                         _ => {
-                            // FIXME: OneOf(Comma, ClosingAngleBracket, …)
                             return Err(ParseError::UnexpectedToken(
                                 token,
-                                ExpectedFragment::GenericParam,
+                                one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
                             ));
                         }
                     }
@@ -1004,7 +1006,7 @@ impl<'src> Parser<'src> {
 
                 // FIXME: Is there a nicer way to do this?
                 if self.token().kind != DELIMITER {
-                    self.parse(TokenKind::Comma)?;
+                    self.parse(SEPARATOR)?;
                 }
 
                 params.push(ast::GenericParam { binder, kind })
@@ -1036,6 +1038,7 @@ impl<'src> Parser<'src> {
             let mut args = Vec::new();
 
             const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+            const SEPARATOR: TokenKind = TokenKind::Comma;
             while !self.consume(DELIMITER) {
                 // FIXME: Parse const args
                 // FIXME: Parse assoc item constraints
@@ -1047,13 +1050,13 @@ impl<'src> Parser<'src> {
                 } else {
                     return Err(ParseError::UnexpectedToken(
                         self.token(),
-                        ExpectedFragment::GenericArg,
+                        one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
                     ));
                 });
 
                 // FIXME: Is there a better way to express this?
                 if self.token().kind != DELIMITER {
-                    self.parse(TokenKind::Comma)?;
+                    self.parse(SEPARATOR)?;
                 }
             }
 
@@ -1180,8 +1183,7 @@ impl<'src> Parser<'src> {
                     _ => {
                         return Err(ParseError::UnexpectedToken(
                             token,
-                            // FIXME: Proper fragment
-                            ExpectedFragment::OneOf(Box::new([TokenKind::Ident])),
+                            one_of![ExpectedFragment::Raw("mut"), ExpectedFragment::Raw("const")],
                         ));
                     }
                 };
@@ -1314,6 +1316,8 @@ impl<'src> Parser<'src> {
     ///     | Path
     ///     | Macro_Call
     ///     | Wildcard_Expr
+    ///     | Bool_Expr
+    ///     | If_Expr
     ///     | Match_Expr
     ///     | #Num_Lit
     ///     | #Str_Lit
@@ -1321,6 +1325,8 @@ impl<'src> Parser<'src> {
     ///     | Block_Expr
     ///     | Paren_Or_Tuple_Expr
     /// Wildcard_Expr ::= "_"
+    /// Bool_Expr ::= "false" | "true"
+    /// If_Expr ::= "if" Expr__ Block_Expr
     /// # FIXME: Doesn't include trailing-block logic
     /// Match_Expr ::= "match" Expr "{" (Pat "=>" Expr ("," | >"}"))* "}"
     /// Borrow_Expr ::= "&" "mut"? Expr
@@ -1347,9 +1353,50 @@ impl<'src> Parser<'src> {
                     self.advance();
                     return Ok(ast::Expr::Wildcard);
                 }
+                "false" => {
+                    self.advance();
+                    return Ok(ast::Expr::BoolLit(false));
+                }
+                "if" => {
+                    self.advance();
+
+                    // FIXME: Add Restriction::StructLit
+                    // FIXME: Permit let-exprs
+                    let condition = self.parse_expr()?;
+                    self.parse(TokenKind::OpenCurlyBracket)?;
+                    let consequent = self.fin_parse_block_expr()?;
+
+                    let alternate = if self.consume(Ident("else")) {
+                        let token = self.token();
+                        match token.kind {
+                            TokenKind::OpenCurlyBracket => {}
+                            TokenKind::Ident if let "if" = self.source(token.span) => {}
+                            _ => {
+                                return Err(ParseError::UnexpectedToken(
+                                    token,
+                                    one_of![
+                                        TokenKind::OpenCurlyBracket,
+                                        ExpectedFragment::Raw("if")
+                                    ],
+                                ));
+                            }
+                        }
+
+                        Some(self.parse_expr()?)
+                    } else {
+                        None
+                    };
+
+                    return Ok(ast::Expr::If(Box::new(ast::IfExpr {
+                        condition,
+                        consequent,
+                        alternate,
+                    })));
+                }
                 "match" => {
                     self.advance();
 
+                    // FIXME: Add Restriction::StructLit
                     let scrutinee = self.parse_expr()?;
                     let mut arms = Vec::new();
 
@@ -1374,6 +1421,10 @@ impl<'src> Parser<'src> {
                     }
 
                     return Ok(ast::Expr::Match { scrutinee: Box::new(scrutinee), arms });
+                }
+                "true" => {
+                    self.advance();
+                    return Ok(ast::Expr::BoolLit(true));
                 }
                 _ => {}
             },
@@ -1416,7 +1467,9 @@ impl<'src> Parser<'src> {
 
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => matches!(self.source(token.span), "_" | "match"),
+            TokenKind::Ident => {
+                matches!(self.source(token.span), "_" | "false" | "if" | "match" | "true")
+            }
             TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::Ampersand
@@ -1535,11 +1588,11 @@ impl<'src> Parser<'src> {
             }
             _ => Err(ParseError::UnexpectedToken(
                 bracket,
-                ExpectedFragment::OneOf(Box::new([
+                one_of![
                     TokenKind::OpenRoundBracket,
                     TokenKind::OpenSquareBracket,
                     TokenKind::OpenCurlyBracket,
-                ])),
+                ],
             )),
         }
     }
@@ -1839,25 +1892,39 @@ impl TokenKind {
     }
 }
 
+macro one_of($( $frag:expr ),+ $(,)?) {
+    ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
+}
+
 pub(crate) enum ExpectedFragment {
+    Raw(&'static str),
+    Token(TokenKind),
     Bound,
-    Predicate,
     CommonIdent,
     Expr,
-    GenericParam,
     GenericArg,
-    Item,
-    OneOf(Box<[TokenKind]>),
+    GenericParam,
     Glued(Box<[TokenKind]>),
+    Item,
+    OneOf(Box<[Self]>),
+    Pat,
     PathSegIdent,
+    Predicate,
     Stmt,
     Ty,
-    Pat,
+}
+
+impl From<TokenKind> for ExpectedFragment {
+    fn from(token: TokenKind) -> Self {
+        Self::Token(token)
+    }
 }
 
 impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Raw(frag) => return write!(f, "`{frag}`"),
+            Self::Token(token) => token.to_diag_str(),
             Self::Bound => "bound",
             Self::Predicate => "predicate",
             Self::CommonIdent => "identifier",
@@ -1865,13 +1932,13 @@ impl fmt::Display for ExpectedFragment {
             Self::GenericParam => "generic parameter",
             Self::GenericArg => "generic argument",
             Self::Item => "item",
-            Self::OneOf(tokens) => {
-                let tokens = tokens
+            Self::OneOf(frags) => {
+                let frags = frags
                     .iter()
-                    .map(|token| token.to_diag_str())
-                    .intersperse(" or ")
+                    .map(|frag| Cow::Owned(frag.to_string()))
+                    .intersperse(Cow::Borrowed(" or "))
                     .collect::<String>();
-                return write!(f, "{tokens}");
+                return write!(f, "{frags}");
             }
             // FIXME: render properly
             Self::Glued(tokens) => return write!(f, "{tokens:?}"),
@@ -1906,14 +1973,14 @@ impl Shape for TokenKind {
     }
 
     fn fragment(self) -> ExpectedFragment {
-        ExpectedFragment::OneOf(Box::new([self]))
+        self.into()
     }
 }
 
 #[derive(Clone, Copy)]
-struct Ident<'src>(&'src str);
+struct Ident(&'static str);
 
-impl Shape for Ident<'_> {
+impl Shape for Ident {
     const LENGTH: usize = 1;
 
     fn check(self, parser: &Parser<'_>) -> bool {
@@ -1922,8 +1989,7 @@ impl Shape for Ident<'_> {
     }
 
     fn fragment(self) -> ExpectedFragment {
-        // FIXME: Better fragment
-        ExpectedFragment::OneOf(Box::new([TokenKind::Ident]))
+        ExpectedFragment::Raw(self.0)
     }
 }
 
