@@ -225,7 +225,7 @@ impl<'src> Parser<'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
-        let path = self.parse_path::<ParsePathArgsNo>()?;
+        let path = self.parse_path::<ast::GenericArgs::Disallowed>()?;
         let token = self.token();
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
@@ -279,7 +279,7 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
     /// ```
-    fn parse_path<A: ParsePathArgs>(&mut self) -> Result<ast::Path<'src, A::Output<'src>>> {
+    fn parse_path<A: ParseGenericArgs>(&mut self) -> Result<ast::Path<'src, A>> {
         // NOTE: To be kept in sync with `Self::begins_path`.
 
         let hook = match self.consume(DOUBLE_COLON) {
@@ -288,9 +288,9 @@ impl<'src> Parser<'src> {
         };
 
         let mut segs = Vec::new();
-        segs.push(self.parse_path_seg_ident::<A>()?);
+        segs.push(self.parse_path_seg::<A>()?);
         while self.consume(DOUBLE_COLON) {
-            segs.push(self.parse_path_seg_ident::<A>()?);
+            segs.push(self.parse_path_seg::<A>()?);
         }
 
         Ok(ast::Path { hook, segs })
@@ -316,8 +316,15 @@ impl<'src> Parser<'src> {
     ///     ";"
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        // FIXME: Allow underscore
-        let binder = self.parse_common_ident()?;
+        let binder = self
+            .is_ident(self.token())
+            .filter(|&ident| ident == "_" || self.ident_is_common(ident))
+            .inspect(|_| self.advance())
+            .ok_or_else(|| {
+                // FIXME: Wrong ExpectedFragment
+                ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent)
+            })?;
+
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_ann()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
@@ -711,7 +718,7 @@ impl<'src> Parser<'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        Ok(ast::Bound::Trait(self.parse_path::<ParsePathArgsYes>()?))
+        Ok(ast::Bound::Trait(self.parse_path::<ast::GenericArgs::Allowed>()?))
     }
 
     fn begins_bound(&self) -> bool {
@@ -754,7 +761,7 @@ impl<'src> Parser<'src> {
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path::<ParsePathArgsNo>()?;
+        let path = self.parse_path::<ast::GenericArgs::Disallowed>()?;
         self.parse(TokenKind::Bang)?;
 
         let binder = if let ast::PathHook::Local = path.hook
@@ -816,13 +823,10 @@ impl<'src> Parser<'src> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
-    fn parse_path_seg_ident<A: ParsePathArgs>(
-        &mut self,
-    ) -> Result<ast::PathSeg<'src, A::Output<'src>>> {
-        let ident = self.is_path_seg_ident().ok_or_else(|| {
+    fn parse_path_seg<A: ParseGenericArgs>(&mut self) -> Result<ast::PathSeg<'src, A>> {
+        let ident = self.is_path_seg_ident().inspect(|_| self.advance()).ok_or_else(|| {
             ParseError::UnexpectedToken(self.token(), ExpectedFragment::PathSegIdent)
         })?;
-        self.advance();
         let args = A::parse(self)?;
         Ok(ast::PathSeg { ident, args })
     }
@@ -911,6 +915,55 @@ impl<'src> Parser<'src> {
         Ok(params)
     }
 
+    fn parse_generic_args(
+        &mut self,
+        reqs_disamb: RequiresDisambiguation,
+    ) -> Result<Option<Vec<ast::GenericArg<'src>>>> {
+        // FIXME: Support parenthesized args
+
+        let disambiguated = if DOUBLE_COLON.check(self)
+            && self
+                .look_ahead(DoubleColon::LENGTH, |token| token.kind == TokenKind::OpenAngleBracket)
+        {
+            DoubleColon::advance(self);
+            true
+        } else {
+            false
+        };
+
+        if (disambiguated || matches!(reqs_disamb, RequiresDisambiguation::No))
+            && self.consume(TokenKind::OpenAngleBracket)
+        {
+            let mut args = Vec::new();
+
+            const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+            while !self.consume(DELIMITER) {
+                // FIXME: Parse const args
+                // FIXME: Parse assoc item constraints
+                args.push(if self.begins_ty() {
+                    let ty = self.parse_ty()?;
+                    ast::GenericArg::Ty(ty)
+                } else if let Some(lt) = self.consume_lifetime() {
+                    ast::GenericArg::Lifetime(lt)
+                } else {
+                    return Err(ParseError::UnexpectedToken(
+                        self.token(),
+                        ExpectedFragment::GenericArg,
+                    ));
+                });
+
+                // FIXME: Is there a better way to express this?
+                if self.token().kind != DELIMITER {
+                    self.parse(TokenKind::Comma)?;
+                }
+            }
+
+            Ok(Some(args))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Parse function parameters.
     ///
     /// # Grammar
@@ -964,7 +1017,7 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
         if self.begins_path() {
-            return Ok(ast::Ty::Path(self.parse_path::<ParsePathArgsYes>()?));
+            return Ok(ast::Ty::Path(self.parse_path::<ast::GenericArgs::Allowed>()?));
         }
 
         let token = self.token();
@@ -1150,8 +1203,7 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
         if self.begins_path() {
-            // FIXME: gen args disamb only
-            let path = self.parse_path::<ParsePathArgsYes>()?;
+            let path = self.parse_path::<ast::GenericArgs::DisambiguatedOnly>()?;
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -1266,8 +1318,7 @@ impl<'src> Parser<'src> {
     /// ```
     fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
         if self.begins_path() {
-            // FIXME: gen args disamb only
-            let path = self.parse_path::<ParsePathArgsYes>()?;
+            let path = self.parse_path::<ast::GenericArgs::DisambiguatedOnly>()?;
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -1467,15 +1518,13 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // FIXME: Take S: Shape
-    fn parse(&mut self, kind: TokenKind) -> Result<()> {
-        let token = self.token();
-        if token.kind == kind {
+    fn parse<S: Shape>(&mut self, shape: S) -> Result<()> {
+        if shape.check(self) {
             self.advance();
             return Ok(());
         }
 
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::OneOf(Box::new([kind]))))
+        Err(ParseError::UnexpectedToken(self.token(), shape.fragment()))
     }
 
     fn prev_token(&self) -> Option<Token> {
@@ -1511,41 +1560,37 @@ enum MacroCallPolicy {
     Forbidden,
 }
 
-trait ParsePathArgs {
-    type Output<'src>;
-
-    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Output<'src>>;
+trait ParseGenericArgs: ast::GenericArgs::Kind {
+    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>>;
 }
 
-// FIXME: Add one for `::<` only
-
-enum ParsePathArgsYes {} // FIXME: Temp name
-enum ParsePathArgsNo {} // FIXME: Temp name
-
-impl ParsePathArgs for ParsePathArgsNo {
-    type Output<'src> = ();
-
-    fn parse<'src>(_: &mut Parser<'src>) -> Result<Self::Output<'src>> {
+impl ParseGenericArgs for ast::GenericArgs::Disallowed {
+    fn parse<'src>(_: &mut Parser<'src>) -> Result<Self::Args<'src>> {
         Ok(())
     }
 }
 
-impl ParsePathArgs for ParsePathArgsYes {
-    type Output<'src> = Vec<ast::GenericArg<'src>>;
-
-    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Output<'src>> {
-        let args = Vec::new();
-        if parser.consume(TokenKind::OpenAngleBracket) {
-            // FIXME: Args
-            parser.parse(TokenKind::CloseAngleBracket)?;
-        }
-        Ok(args)
+impl ParseGenericArgs for ast::GenericArgs::Allowed {
+    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>> {
+        parser.parse_generic_args(RequiresDisambiguation::No)
     }
+}
+
+impl ParseGenericArgs for ast::GenericArgs::DisambiguatedOnly {
+    fn parse<'src>(parser: &mut Parser<'src>) -> Result<Self::Args<'src>> {
+        parser.parse_generic_args(RequiresDisambiguation::Yes)
+    }
+}
+
+enum RequiresDisambiguation {
+    No,
+    Yes,
 }
 
 // FIXME: Or should we move most "glued" token detection into the lexer?
 //        We can't move everything though.
-const DOUBLE_COLON: Glued<2, TokenKind> = Glued([TokenKind::Colon, TokenKind::Colon]);
+type DoubleColon = Glued<2, TokenKind>;
+const DOUBLE_COLON: DoubleColon = Glued([TokenKind::Colon, TokenKind::Colon]);
 
 // FIXME: Check master if this is still up to date
 fn is_reserved(ident: &str, edition: Edition) -> bool {
@@ -1668,8 +1713,10 @@ pub(crate) enum ExpectedFragment {
     CommonIdent,
     Expr,
     GenericParam,
+    GenericArg,
     Item,
     OneOf(Box<[TokenKind]>),
+    Glued(Box<[TokenKind]>),
     PathSegIdent,
     Stmt,
     Ty,
@@ -1682,6 +1729,7 @@ impl fmt::Display for ExpectedFragment {
             Self::CommonIdent => "identifier",
             Self::Expr => "expression",
             Self::GenericParam => "generic parameter",
+            Self::GenericArg => "generic argument",
             Self::Item => "item",
             Self::OneOf(tokens) => {
                 let tokens = tokens
@@ -1691,6 +1739,8 @@ impl fmt::Display for ExpectedFragment {
                     .collect::<String>();
                 return write!(f, "{tokens}");
             }
+            // FIXME: render properly
+            Self::Glued(tokens) => return write!(f, "{tokens:?}"),
             Self::PathSegIdent => "path segment",
             Self::Stmt => "statement",
             Self::Ty => "type",
@@ -1703,6 +1753,8 @@ trait Shape: Copy {
     const LENGTH: usize;
 
     fn check(self, parser: &Parser<'_>) -> bool;
+
+    fn fragment(self) -> ExpectedFragment;
 
     fn advance(parser: &mut Parser<'_>) {
         for _ in 0..Self::LENGTH {
@@ -1718,6 +1770,10 @@ impl Shape for TokenKind {
         // FIXME: This permits `==` if `=` is requested. This is not okay
         parser.token().kind == self
     }
+
+    fn fragment(self) -> ExpectedFragment {
+        ExpectedFragment::OneOf(Box::new([self]))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1729,6 +1785,11 @@ impl Shape for Ident<'_> {
     fn check(self, parser: &Parser<'_>) -> bool {
         let actual = parser.token();
         actual.kind == TokenKind::Ident && parser.source(actual.span) == self.0
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        // FIXME: Better fragment
+        ExpectedFragment::OneOf(Box::new([TokenKind::Ident]))
     }
 }
 
@@ -1743,5 +1804,9 @@ impl Shape for Glued<2, TokenKind> {
         let actual0 = parser.token();
         actual0.kind == expected0
             && parser.look_ahead(1, |actual1| actual1.kind == expected1 && actual0.touches(actual1))
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        ExpectedFragment::Glued(Box::new(self.0))
     }
 }

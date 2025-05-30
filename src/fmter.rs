@@ -148,7 +148,7 @@ impl Fmt for ast::Attr<'_> {
     }
 }
 
-impl<A> Fmt for ast::Path<'_, A> {
+impl<'src, A: FmtGenericArgs> Fmt for ast::Path<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         if let ast::PathHook::Global = self.hook {
             fmt!(cx, "::");
@@ -157,10 +157,10 @@ impl<A> Fmt for ast::Path<'_, A> {
     }
 }
 
-impl<A> Fmt for ast::PathSeg<'_, A> {
+impl<'src, A: FmtGenericArgs> Fmt for ast::PathSeg<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        // FIXME: Print generic args.
         fmt!(cx, "{}", self.ident);
+        A::fmt(self.args, cx);
     }
 }
 
@@ -240,6 +240,49 @@ impl Fmt for ast::GenericParam<'_> {
                 ty.fmt(cx);
             }
             ast::GenericParamKind::Lifetime => ast::Lifetime(self.binder).fmt(cx),
+        }
+    }
+}
+
+trait FmtGenericArgs: ast::GenericArgs::Kind {
+    fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>);
+}
+
+impl FmtGenericArgs for ast::GenericArgs::Disallowed {
+    fn fmt((): Self::Args<'_>, _: &mut Cx<'_>) {}
+}
+
+impl FmtGenericArgs for ast::GenericArgs::Allowed {
+    fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
+        args.fmt(cx);
+    }
+}
+
+impl FmtGenericArgs for ast::GenericArgs::DisambiguatedOnly {
+    fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
+        if args.as_ref().is_some_and(|args| !args.is_empty()) {
+            fmt!(cx, "::");
+        }
+        args.fmt(cx);
+    }
+}
+
+impl Fmt for Vec<ast::GenericArg<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        if !self.is_empty() {
+            fmt!(cx, "<");
+            Punctuated::new(self, ", ").fmt(cx);
+            fmt!(cx, ">");
+        }
+    }
+}
+
+impl Fmt for ast::GenericArg<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            ast::GenericArg::Ty(ty) => ty.fmt(cx),
+            ast::GenericArg::Const => todo!(), // FIXME
+            ast::GenericArg::Lifetime(lt) => lt.fmt(cx),
         }
     }
 }
@@ -774,7 +817,7 @@ impl Fmt for ast::LetStmt<'_> {
     }
 }
 
-impl<A> Fmt for ast::MacroCall<'_, A> {
+impl<'src, A: FmtGenericArgs> Fmt for ast::MacroCall<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.path.fmt(cx);
         fmt!(cx, "!");
@@ -868,6 +911,14 @@ impl<T: Fmt> Fmt for Tup<T> {
 impl<T: Fmt> Fmt for Box<T> {
     fn fmt(self, cx: &mut Cx<'_>) {
         (*self).fmt(cx);
+    }
+}
+
+impl<T: Fmt> Fmt for Option<T> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        if let Some(this) = self {
+            this.fmt(cx);
+        }
     }
 }
 
