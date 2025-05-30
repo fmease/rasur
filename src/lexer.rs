@@ -12,6 +12,7 @@ pub(crate) enum TokenKind {
     Ampersand,
     Apostrophe,
     Bang,
+    QuestionMark,
     CloseAngleBracket,
     CloseCurlyBracket,
     CloseRoundBracket,
@@ -137,6 +138,7 @@ impl<'src> Lexer<'src> {
                 '.' => self.add(TokenKind::Dot, start),
                 ':' => self.add(TokenKind::Colon, start),
                 '!' => self.add(TokenKind::Bang, start),
+                '?' => self.add(TokenKind::QuestionMark, start),
                 '+' => self.add(TokenKind::Plus, start),
                 '*' => self.add(TokenKind::Star, start),
                 '-' => {

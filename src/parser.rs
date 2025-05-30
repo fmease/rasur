@@ -94,7 +94,7 @@ impl<'src> Parser<'src> {
         let kind = if self.begins_path() {
             self.parse_macro_call_item()?
         } else if let token = self.token()
-            && let Some(ident) = self.is_ident(token)
+            && let Some(ident) = self.as_ident(token)
         {
             match ident {
                 "const" => {
@@ -173,7 +173,7 @@ impl<'src> Parser<'src> {
         }
 
         // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
-        self.is_ident(self.token()).is_some_and(|ident| {
+        self.as_ident(self.token()).is_some_and(|ident| {
             [
                 "const", "enum", "extern", "fn", "impl", "macro", "mod", "static", "struct",
                 "trait", "type", "union", "use",
@@ -317,7 +317,7 @@ impl<'src> Parser<'src> {
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self
-            .is_ident(self.token())
+            .as_ident(self.token())
             .filter(|&ident| ident == "_" || self.ident_is_common(ident))
             .inspect(|_| self.advance())
             .ok_or_else(|| {
@@ -669,8 +669,10 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Where_Clause ::= ("where" Predicates)?
+    /// # FIXME: Traling comma
     /// Predicates ::= (Predicate ",")* Predicate?
-    /// Predicate ::= Ty ":" Bounds
+    /// Predicate ::=
+    ///     | Ty ":" Bounds
     /// ```
     fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
@@ -679,12 +681,8 @@ impl<'src> Parser<'src> {
             return Ok(preds);
         }
 
-        while self.begins_ty() {
-            let ty = self.parse_ty()?;
-            self.parse(TokenKind::Colon)?;
-            let bounds = self.parse_bounds()?;
-
-            preds.push(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
+        while self.begins_predicate() {
+            preds.push(self.parse_predicate()?);
 
             if !self.consume(TokenKind::Comma) {
                 break;
@@ -692,6 +690,32 @@ impl<'src> Parser<'src> {
         }
 
         Ok(preds)
+    }
+
+    fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_predicate`.
+
+        // FIXME: for<>
+
+        if self.begins_ty() {
+            let ty = self.parse_ty()?;
+            self.parse(TokenKind::Colon)?;
+            let bounds = self.parse_bounds()?;
+            return Ok(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
+        }
+        if let Some(lt) = self.consume_lifetime() {
+            self.parse(TokenKind::Colon)?;
+            let bounds = self.parse_outlives_bounds()?;
+            return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
+        }
+
+        Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Predicate))
+    }
+
+    fn begins_predicate(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_predicate`.
+
+        self.begins_ty() || self.as_lifetime().is_some()
     }
 
     /// Parse a bounds annotation if available.
@@ -718,13 +742,69 @@ impl<'src> Parser<'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        Ok(ast::Bound::Trait(self.parse_path::<ast::GenericArgs::Allowed>()?))
+        // FIXME: Bound modifiers
+        // FIXME: for<>
+
+        let mods = self.parse_trait_bound_modifiers();
+
+        if self.begins_path() {
+            let path = self.parse_path::<ast::GenericArgs::Allowed>()?;
+            return Ok(ast::Bound::Trait(mods, path));
+        }
+
+        let token = self.token();
+        if let Some(lt) = self.consume_lifetime() {
+            if let ast::TraitBoundModifiers::NONE = mods {
+                return Ok(ast::Bound::Outlives(lt));
+            }
+            return Err(ParseError::ModifierOnOutlivesBound);
+        }
+
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Bound))
     }
 
     fn begins_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        self.begins_path()
+        self.begins_trait_bound_modifiers() || self.begins_path() || self.as_lifetime().is_some()
+    }
+
+    fn parse_trait_bound_modifiers(&mut self) -> ast::TraitBoundModifiers {
+        // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
+
+        let polarity = match self.token().kind {
+            TokenKind::Bang => {
+                self.advance();
+                ast::BoundPolarity::Negative
+            }
+            TokenKind::QuestionMark => {
+                self.advance();
+                ast::BoundPolarity::Maybe
+            }
+            _ => ast::BoundPolarity::Positive,
+        };
+
+        ast::TraitBoundModifiers { polarity }
+    }
+
+    fn begins_trait_bound_modifiers(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
+
+        matches!(self.token().kind, TokenKind::Bang | TokenKind::QuestionMark)
+    }
+
+    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
+        let mut bounds = Vec::new();
+
+        while let Some(lt) = self.consume_lifetime() {
+            bounds.push(lt);
+
+            if !self.consume(TokenKind::Plus) {
+                break;
+            }
+        }
+
+        Ok(bounds)
     }
 
     /// Finish parsing a union item assuming the leading `union` has been parsed already.
@@ -797,7 +877,7 @@ impl<'src> Parser<'src> {
             MacroCallPolicy::Forbidden => {
                 Ident("macro_rules").check(self)
                     && self.look_ahead(1, |token| token.kind == TokenKind::Bang)
-                    && self.look_ahead(2, |token| self.is_common_ident(token).is_some())
+                    && self.look_ahead(2, |token| self.as_common_ident(token).is_some())
             }
         }
     }
@@ -808,18 +888,18 @@ impl<'src> Parser<'src> {
     }
 
     fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
-        self.is_common_ident(self.token()).inspect(|_| self.advance())
+        self.as_common_ident(self.token()).inspect(|_| self.advance())
     }
 
-    fn is_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        self.is_ident(token).filter(|ident| self.ident_is_common(ident))
+    fn as_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+        self.as_ident(token).filter(|ident| self.ident_is_common(ident))
     }
 
     fn ident_is_common(&self, ident: &str) -> bool {
         !is_reserved(ident, self.edition)
     }
 
-    fn is_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+    fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
@@ -832,22 +912,27 @@ impl<'src> Parser<'src> {
     }
 
     fn is_path_seg_ident(&self) -> Option<ast::Ident<'src>> {
-        self.is_ident(self.token())
+        self.as_ident(self.token())
             .filter(|ident| is_path_seg_keyword(ident) || self.ident_is_common(ident))
     }
 
-    fn consume_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
+    fn as_lifetime(&self) -> Option<ast::Lifetime<'src>> {
         let apo = self.token();
         if apo.kind == TokenKind::Apostrophe
             && let Some(ident) =
-                self.look_ahead(1, |ident| self.is_ident(ident).filter(|_| apo.touches(ident)))
+                self.look_ahead(1, |ident| self.as_ident(ident).filter(|_| apo.touches(ident)))
             && (ident == "_" || ident == "static" || self.ident_is_common(ident))
         {
-            self.advance(); // Apostrophe
-            self.advance(); // Ident
             return Some(ast::Lifetime(ident));
         }
         None
+    }
+
+    fn consume_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
+        self.as_lifetime().inspect(|_| {
+            self.advance(); // Apostrophe
+            self.advance(); // Ident
+        })
     }
 
     /// Parse generics.
@@ -863,6 +948,17 @@ impl<'src> Parser<'src> {
         Ok(ast::Generics { params, preds })
     }
 
+    /// Parse a list of generic parameters.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Generic_Params ::= "<" (Generic_Param ("," | >">"))* ">"
+    /// Generic_Param ::=
+    ///     | Lifetime
+    ///     | "const" Common_Ident ":" Type
+    ///     | Common_Ident (":" Bounds)?
+    /// ```
     fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
         let mut params = Vec::new();
 
@@ -873,11 +969,14 @@ impl<'src> Parser<'src> {
                 let token = self.token();
                 let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = self.consume_lifetime()
                 {
-                    // FIXME: Outlives-bounds
-                    // FIXME: `'a+` (bare trait object type with leading lifetime)
-                    (lifetime, ast::GenericParamKind::Lifetime)
+                    let bounds = if self.consume(TokenKind::Colon) {
+                        self.parse_outlives_bounds()?
+                    } else {
+                        Vec::new()
+                    };
+                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
                 } else {
-                    match self.is_ident(token) {
+                    match self.as_ident(token) {
                         Some("const") => {
                             self.advance();
                             let binder = self.parse_common_ident()?;
@@ -1641,6 +1740,7 @@ pub(crate) enum ParseError {
     InvalidAssocItemKind,
     InvalidExternItemKind,
     ExpectedTraitFoundTy,
+    ModifierOnOutlivesBound,
 }
 
 impl ParseError {
@@ -1655,6 +1755,7 @@ impl ParseError {
             Self::InvalidAssocItemKind => eprint!("invalid associated item kind"),
             Self::InvalidExternItemKind => eprint!("invalid extern item kind"),
             Self::ExpectedTraitFoundTy => eprint!("found type expected trait"),
+            Self::ModifierOnOutlivesBound => eprint!("only trait bounds may have modifiers"),
         }
         eprintln!();
     }
@@ -1679,6 +1780,7 @@ impl TokenKind {
             Self::Ampersand => "`&`",
             Self::Apostrophe => "`'`",
             Self::Bang => "`!`",
+            Self::QuestionMark => "`?`",
             Self::CloseAngleBracket => "`>`",
             Self::CloseCurlyBracket => "`}`",
             Self::CloseRoundBracket => "`)`",
@@ -1710,6 +1812,8 @@ impl TokenKind {
 }
 
 pub(crate) enum ExpectedFragment {
+    Bound,
+    Predicate,
     CommonIdent,
     Expr,
     GenericParam,
@@ -1726,6 +1830,8 @@ pub(crate) enum ExpectedFragment {
 impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Bound => "bound",
+            Self::Predicate => "predicate",
             Self::CommonIdent => "identifier",
             Self::Expr => "expression",
             Self::GenericParam => "generic parameter",

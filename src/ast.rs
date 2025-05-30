@@ -230,7 +230,7 @@ pub(crate) struct GenericParam<'src> {
 pub(crate) enum GenericParamKind<'src> {
     Ty(Vec<Bound<'src>>),
     Const(Ty<'src>),
-    Lifetime,
+    Lifetime(Vec<Lifetime<'src>>),
 }
 
 #[derive(Debug)]
@@ -244,6 +244,7 @@ pub(crate) enum GenericArg<'src> {
 #[derive(Debug)]
 pub(crate) enum Predicate<'src> {
     Trait(TraitPredicate<'src>),
+    Outlives(OutlivesPredicate<'src>),
 }
 
 #[derive(Debug)]
@@ -253,8 +254,33 @@ pub(crate) struct TraitPredicate<'src> {
 }
 
 #[derive(Debug)]
+pub(crate) struct OutlivesPredicate<'src> {
+    pub(crate) lt: Lifetime<'src>,
+    pub(crate) bounds: Vec<Lifetime<'src>>,
+}
+
+#[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Trait(Path<'src, GenericArgs::Allowed>),
+    Trait(TraitBoundModifiers, Path<'src, GenericArgs::Allowed>),
+    Outlives(Lifetime<'src>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TraitBoundModifiers {
+    pub(crate) polarity: BoundPolarity,
+    // constness
+    // asyncness
+}
+
+impl TraitBoundModifiers {
+    pub(crate) const NONE: Self = Self { polarity: BoundPolarity::Positive };
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum BoundPolarity {
+    Positive,
+    Negative,
+    Maybe,
 }
 
 #[derive(Debug)]

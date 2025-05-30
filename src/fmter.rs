@@ -176,6 +176,7 @@ impl Fmt for ast::Token {
         let str = match self.kind {
             ast::TokenKind::Apostrophe => "'",
             ast::TokenKind::Bang => "!",
+            ast::TokenKind::QuestionMark => "?",
             ast::TokenKind::CloseAngleBracket => ">",
             ast::TokenKind::CloseCurlyBracket => "}",
             ast::TokenKind::CloseRoundBracket => ")",
@@ -239,7 +240,13 @@ impl Fmt for ast::GenericParam<'_> {
                 fmt!(cx, "const {}: ", self.binder);
                 ty.fmt(cx);
             }
-            ast::GenericParamKind::Lifetime => ast::Lifetime(self.binder).fmt(cx),
+            ast::GenericParamKind::Lifetime(bounds) => {
+                ast::Lifetime(self.binder).fmt(cx);
+                if !bounds.is_empty() {
+                    fmt!(cx, ": ");
+                    Punctuated::new(bounds, " + ").fmt(cx);
+                }
+            }
         }
     }
 }
@@ -308,6 +315,14 @@ impl Fmt for ast::Predicate<'_> {
                 }
                 pred.bounds.fmt(cx);
             }
+            Self::Outlives(pred) => {
+                pred.lt.fmt(cx);
+                fmt!(cx, ":");
+                if !pred.bounds.is_empty() {
+                    fmt!(cx, " ");
+                }
+                Punctuated::new(pred.bounds, " + ").fmt(cx);
+            }
         }
     }
 }
@@ -321,7 +336,21 @@ impl Fmt for Vec<ast::Bound<'_>> {
 impl Fmt for ast::Bound<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Trait(path) => path.fmt(cx),
+            Self::Trait(mods, path) => {
+                mods.fmt(cx);
+                path.fmt(cx)
+            }
+            Self::Outlives(lt) => lt.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for ast::TraitBoundModifiers {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self.polarity {
+            ast::BoundPolarity::Positive => {}
+            ast::BoundPolarity::Negative => fmt!(cx, "!"),
+            ast::BoundPolarity::Maybe => fmt!(cx, "?"),
         }
     }
 }
