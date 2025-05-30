@@ -69,38 +69,42 @@ impl<'src> Cx<'src> {
 
 impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if cx.skip(&self.attrs) {
-            fmt!(cx, "{}", cx.source(self.span));
+        let Self { attrs, items, span } = self;
+
+        if cx.skip(&attrs) {
+            fmt!(cx, "{}", cx.source(span));
             return;
         }
 
-        if !self.attrs.is_empty() {
-            for attr in self.attrs {
+        if !attrs.is_empty() {
+            for attr in attrs {
                 attr.fmt(cx);
                 fmt!(cx, "\n");
             }
             fmt!(cx, "\n");
         }
 
-        Punctuated::new(self.items, "\n\n").fmt(cx);
+        Punctuated::new(items, "\n\n").fmt(cx);
     }
 }
 
 impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if cx.skip(&self.attrs) {
-            fmt!(cx, "{}", cx.source(self.span));
+        let Self { attrs, vis, kind, span } = self;
+
+        if cx.skip(&attrs) {
+            fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in self.attrs {
+        for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, "\n");
         }
 
         // FIXME: Not all items support visibility.
-        self.vis.fmt(cx);
+        vis.fmt(cx);
 
-        match self.kind {
+        match kind {
             ast::ItemKind::Const(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
             ast::ItemKind::ExternBlock(item) => item.fmt(cx),
@@ -126,13 +130,15 @@ impl Fmt for ast::Item<'_> {
 
 impl Fmt for ast::Attr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { style, path, kind } = self;
+
         fmt!(cx, "#");
-        if let ast::AttrStyle::Inner = self.style {
+        if let ast::AttrStyle::Inner = style {
             fmt!(cx, "!");
         }
         fmt!(cx, "[");
-        self.path.fmt(cx);
-        match self.kind {
+        path.fmt(cx);
+        match kind {
             ast::AttrKind::Unit => {}
             ast::AttrKind::Call(bracket, stream) => {
                 (bracket, ast::Orientation::Open).fmt(cx);
@@ -150,17 +156,21 @@ impl Fmt for ast::Attr<'_> {
 
 impl<'src, A: FmtGenericArgs> Fmt for ast::Path<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if let ast::PathHook::Global = self.hook {
+        let Self { hook, segs } = self;
+
+        if let ast::PathHook::Global = hook {
             fmt!(cx, "::");
         }
-        Punctuated::new(self.segs, "::").fmt(cx);
+        Punctuated::new(segs, "::").fmt(cx);
     }
 }
 
 impl<'src, A: FmtGenericArgs> Fmt for ast::PathSeg<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "{}", self.ident);
-        A::fmt(self.args, cx);
+        let Self { ident, args } = self;
+
+        fmt!(cx, "{ident}");
+        A::fmt(args, cx);
     }
 }
 
@@ -211,8 +221,10 @@ impl Fmt for ast::Token {
 
 impl Fmt for ast::Generics<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        self.params.fmt(cx);
-        self.preds.fmt(cx);
+        let Self { params, preds } = self;
+
+        params.fmt(cx);
+        preds.fmt(cx);
     }
 }
 
@@ -347,7 +359,9 @@ impl Fmt for ast::Bound<'_> {
 
 impl Fmt for ast::TraitBoundModifiers {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self.polarity {
+        let Self { polarity } = self;
+
+        match polarity {
             ast::BoundPolarity::Positive => {}
             ast::BoundPolarity::Negative => fmt!(cx, "!"),
             ast::BoundPolarity::Maybe => fmt!(cx, "?"),
@@ -357,31 +371,37 @@ impl Fmt for ast::TraitBoundModifiers {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "const {}", self.binder);
-        self.generics.params.fmt(cx);
+        let Self { binder, generics, ty, body } = self;
+
+        fmt!(cx, "const {binder}");
+        generics.params.fmt(cx);
         fmt!(cx, ": ");
-        self.ty.fmt(cx);
-        if let Some(body) = self.body {
+        ty.fmt(cx);
+        if let Some(body) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
-        self.generics.preds.fmt(cx);
+        generics.preds.fmt(cx);
         fmt!(cx, ";")
     }
 }
 
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "enum {}", self.binder);
-        self.generics.fmt(cx);
+        let Self { binder, generics } = self;
+
+        fmt!(cx, "enum {binder}");
+        generics.fmt(cx);
         fmt!(cx, " {{}}");
     }
 }
 
 impl Fmt for ast::ExternBlockItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "extern {:?}", self.abi.unwrap_or("C"));
-        self.body.fmt(cx);
+        let Self { abi, body } = self;
+
+        fmt!(cx, "extern {:?}", abi.unwrap_or("C"));
+        body.fmt(cx);
     }
 }
 
@@ -402,19 +422,21 @@ impl Fmt for Vec<ast::ExternItem<'_>> {
 
 impl Fmt for ast::ExternItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if cx.skip(&self.attrs) {
-            fmt!(cx, "{}", cx.source(self.span));
+        let Self { attrs, vis, kind, span } = self;
+
+        if cx.skip(&attrs) {
+            fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in self.attrs {
+        for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, "\n");
         }
 
         // FIXME: Not all assoc items support visibility.
-        self.vis.fmt(cx);
+        vis.fmt(cx);
 
-        match self.kind {
+        match kind {
             ast::ExternItemKind::Fn(item) => item.fmt(cx),
             ast::ExternItemKind::Static(item) => item.fmt(cx),
             ast::ExternItemKind::Ty(item) => item.fmt(cx),
@@ -431,19 +453,21 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self.constness {
+        let Self { constness, binder, generics, params, ret_ty, body } = self;
+
+        match constness {
             ast::Constness::Const => fmt!(cx, "const "),
             ast::Constness::Not => {}
         }
-        fmt!(cx, "fn {}", self.binder);
-        self.generics.params.fmt(cx);
-        self.params.fmt(cx);
-        if let Some(ty) = self.ret_ty {
+        fmt!(cx, "fn {binder}");
+        generics.params.fmt(cx);
+        params.fmt(cx);
+        if let Some(ty) = ret_ty {
             fmt!(cx, " -> ");
             ty.fmt(cx);
         }
-        self.generics.preds.fmt(cx);
-        if let Some(body) = self.body {
+        generics.preds.fmt(cx);
+        if let Some(body) = body {
             fmt!(cx, " ");
             body.fmt(cx);
         } else {
@@ -452,7 +476,7 @@ impl Fmt for ast::FnItem<'_> {
     }
 }
 
-impl Fmt for Vec<ast::Param<'_>> {
+impl Fmt for Vec<ast::FnParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "(");
         Punctuated::new(self, ", ").fmt(cx);
@@ -460,39 +484,45 @@ impl Fmt for Vec<ast::Param<'_>> {
     }
 }
 
-impl Fmt for ast::Param<'_> {
+impl Fmt for ast::FnParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        self.pat.fmt(cx);
+        let Self { pat, ty } = self;
+
+        pat.fmt(cx);
         fmt!(cx, ": ");
-        self.ty.fmt(cx);
+        ty.fmt(cx);
     }
 }
 
 impl Fmt for ast::ImplItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { generics, constness, polarity, trait_ref, self_ty, body } = self;
+
         fmt!(cx, "impl");
-        self.generics.params.fmt(cx);
+        generics.params.fmt(cx);
         fmt!(cx, " ");
-        if let ast::Constness::Const = self.constness {
+        if let ast::Constness::Const = constness {
             fmt!(cx, "const ");
         }
-        if let ast::ImplPolarity::Negative = self.polarity {
+        if let ast::ImplPolarity::Negative = polarity {
             fmt!(cx, "!");
         }
-        if let Some(trait_ref) = self.trait_ref {
+        if let Some(trait_ref) = trait_ref {
             trait_ref.fmt(cx);
             fmt!(cx, " for ");
         }
-        self.self_ty.fmt(cx);
-        self.generics.preds.fmt(cx);
-        self.body.fmt(cx);
+        self_ty.fmt(cx);
+        generics.preds.fmt(cx);
+        body.fmt(cx);
     }
 }
 
 impl Fmt for ast::ModItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "mod {}", self.binder);
-        match self.body {
+        let Self { binder, body } = self;
+
+        fmt!(cx, "mod {binder}");
+        match body {
             Some(items) => {
                 fmt!(cx, " {{\n");
                 cx.indent();
@@ -511,9 +541,16 @@ impl Fmt for ast::ModItem<'_> {
 
 impl Fmt for ast::StaticItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "static {}: ", self.binder);
-        self.ty.fmt(cx);
-        if let Some(body) = self.body {
+        let Self { mut_, binder, ty, body } = self;
+
+        fmt!(cx, "static ");
+        match mut_ {
+            ast::Mutability::Mut => fmt!(cx, "mut "),
+            ast::Mutability::Imm => {}
+        }
+        fmt!(cx, "{binder}: ");
+        ty.fmt(cx);
+        if let Some(body) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
@@ -523,9 +560,11 @@ impl Fmt for ast::StaticItem<'_> {
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "struct {}", self.binder);
-        self.generics.fmt(cx);
-        match self.body {
+        let Self { binder, generics, body } = self;
+
+        fmt!(cx, "struct {binder}");
+        generics.fmt(cx);
+        match body {
             ast::StructBody::Normal { fields } => {
                 fmt!(cx, " {{\n");
                 cx.indent();
@@ -545,65 +584,75 @@ impl Fmt for ast::StructItem<'_> {
 
 impl Fmt for ast::StructField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        self.vis.fmt(cx);
-        fmt!(cx, "{}: ", self.binder);
-        self.ty.fmt(cx);
+        let Self { vis, binder, ty } = self;
+
+        vis.fmt(cx);
+        fmt!(cx, "{binder}: ");
+        ty.fmt(cx);
     }
 }
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "trait {}", self.binder);
-        self.generics.params.fmt(cx);
-        if !self.bounds.is_empty() {
+        let Self { binder, generics, bounds, body } = self;
+
+        fmt!(cx, "trait {binder}");
+        generics.params.fmt(cx);
+        if !bounds.is_empty() {
             fmt!(cx, ": ");
-            self.bounds.fmt(cx);
+            bounds.fmt(cx);
         }
-        self.generics.preds.fmt(cx);
-        self.body.fmt(cx);
+        generics.preds.fmt(cx);
+        body.fmt(cx);
     }
 }
 
 impl Fmt for ast::TyItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "type {}", self.binder);
-        self.generics.params.fmt(cx);
-        if !self.bounds.is_empty() {
+        let Self { binder, generics, bounds, body } = self;
+
+        fmt!(cx, "type {binder}");
+        generics.params.fmt(cx);
+        if !bounds.is_empty() {
             fmt!(cx, ": ");
-            self.bounds.fmt(cx);
+            bounds.fmt(cx);
         }
-        if let Some(body) = self.body {
+        if let Some(body) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
-        self.generics.preds.fmt(cx);
+        generics.preds.fmt(cx);
         fmt!(cx, ";")
     }
 }
 
 impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "union {}", self.binder);
-        self.generics.fmt(cx);
+        let Self { binder, generics } = self;
+
+        fmt!(cx, "union {binder}");
+        generics.fmt(cx);
         fmt!(cx, " {{}}")
     }
 }
 
 impl Fmt for ast::MacroDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let prefix = match self.style {
+        let Self { binder, params, body, style } = self;
+
+        let prefix = match style {
             ast::MacroDefStyle::Old => "macro_rules!",
             ast::MacroDefStyle::New => "macro",
         };
 
-        fmt!(cx, "{prefix} {}", self.binder);
-        if let Some(params) = self.params {
+        fmt!(cx, "{prefix} {binder}");
+        if let Some(params) = params {
             fmt!(cx, "(");
             params.fmt(cx);
             fmt!(cx, ")");
         }
         fmt!(cx, " {{ ");
-        self.body.fmt(cx);
+        body.fmt(cx);
         fmt!(cx, " }}");
     }
 }
@@ -625,19 +674,21 @@ impl Fmt for Vec<ast::AssocItem<'_>> {
 
 impl Fmt for ast::AssocItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if cx.skip(&self.attrs) {
-            fmt!(cx, "{}", cx.source(self.span));
+        let Self { attrs, vis, kind, span } = self;
+
+        if cx.skip(&attrs) {
+            fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in self.attrs {
+        for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, "\n");
         }
 
         // FIXME: Not all assoc items support visibility.
-        self.vis.fmt(cx);
+        vis.fmt(cx);
 
-        match self.kind {
+        match kind {
             ast::AssocItemKind::Const(item) => item.fmt(cx),
             ast::AssocItemKind::Fn(item) => item.fmt(cx),
             ast::AssocItemKind::Ty(item) => item.fmt(cx),
@@ -787,9 +838,11 @@ impl Fmt for ast::Expr<'_> {
 
 impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        self.pat.fmt(cx);
+        let Self { pat, body } = self;
+
+        pat.fmt(cx);
         fmt!(cx, " => ");
-        self.body.fmt(cx);
+        body.fmt(cx);
     }
 }
 
@@ -816,19 +869,20 @@ impl Fmt for ast::Pat<'_> {
 
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let is_non_empty = !self.is_empty();
+        let Self { attrs, stmts } = self;
+        let is_non_empty = !attrs.is_empty() || !stmts.is_empty();
 
         fmt!(cx, "{{");
         if is_non_empty {
             fmt!(cx, "\n");
         }
         cx.indent();
-        for attr in self.attrs {
+        for attr in attrs {
             fmt!(cx, indent);
             attr.fmt(cx);
             fmt!(cx, "\n");
         }
-        for stmt in self.stmts {
+        for stmt in stmts {
             if let ast::Stmt::Empty = stmt {
                 continue;
             }
@@ -866,13 +920,15 @@ impl Fmt for ast::Stmt<'_> {
 
 impl Fmt for ast::LetStmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { pat, ty, body } = self;
+
         fmt!(cx, "let ");
-        self.pat.fmt(cx);
-        if let Some(ty) = self.ty {
+        pat.fmt(cx);
+        if let Some(ty) = ty {
             fmt!(cx, ": ");
             ty.fmt(cx);
         }
-        if let Some(body) = self.body {
+        if let Some(body) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
@@ -882,14 +938,16 @@ impl Fmt for ast::LetStmt<'_> {
 
 impl<'src, A: FmtGenericArgs> Fmt for ast::MacroCall<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        self.path.fmt(cx);
+        let Self { path, bracket, stream } = self;
+
+        path.fmt(cx);
         fmt!(cx, "!");
-        if let ast::Bracket::Curly = self.bracket {
+        if let ast::Bracket::Curly = bracket {
             fmt!(cx, " ");
         }
-        (self.bracket, ast::Orientation::Open).fmt(cx);
-        self.stream.fmt(cx);
-        (self.bracket, ast::Orientation::Close).fmt(cx);
+        (bracket, ast::Orientation::Open).fmt(cx);
+        stream.fmt(cx);
+        (bracket, ast::Orientation::Close).fmt(cx);
     }
 }
 

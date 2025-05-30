@@ -531,16 +531,16 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Static_Item ::= "static" Common_Ident ":" Ty ("=" Expr)? ";"
+    /// Static_Item ::= "static" "mut"? Common_Ident ":" Ty ("=" Expr)? ";"
     /// ```
     fn fin_parse_static_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        // FIXME: "mut"
+        let mut_ = self.parse_mutability();
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_ann()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Static(ast::StaticItem { binder, ty, body }))
+        Ok(ast::ItemKind::Static(ast::StaticItem { mut_, binder, ty, body }))
     }
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
@@ -646,6 +646,8 @@ impl<'src> Parser<'src> {
 
     fn parse_delimited_assoc_items(&mut self) -> Result<Vec<ast::AssocItem<'src>>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
+        // FIXME: Smh. merge with outer attrs?
+        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         self.parse_items(TokenKind::CloseCurlyBracket)?
             .into_iter()
             .map(|item| {
@@ -1074,7 +1076,7 @@ impl<'src> Parser<'src> {
     /// Fn_Params ::= "(" (Fn_Param ("," | >")"))* ")"
     /// Fn_Param ::= Pat ":" Ty
     /// ```
-    fn parse_fn_params(&mut self) -> Result<Vec<ast::Param<'src>>> {
+    fn parse_fn_params(&mut self) -> Result<Vec<ast::FnParam<'src>>> {
         let mut params = Vec::new();
 
         self.parse(TokenKind::OpenRoundBracket)?;
@@ -1089,7 +1091,7 @@ impl<'src> Parser<'src> {
                 self.parse(TokenKind::Comma)?;
             }
 
-            params.push(ast::Param { pat, ty })
+            params.push(ast::FnParam { pat, ty })
         }
 
         Ok(params)

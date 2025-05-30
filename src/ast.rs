@@ -91,7 +91,7 @@ pub(crate) struct FnItem<'src> {
     pub(crate) constness: Constness,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
-    pub(crate) params: Vec<Param<'src>>,
+    pub(crate) params: Vec<FnParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
     pub(crate) body: Option<Expr<'src>>,
 }
@@ -126,6 +126,7 @@ pub(crate) struct ModItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
+    pub(crate) mut_: Mutability,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
@@ -284,7 +285,7 @@ pub(crate) enum BoundPolarity {
 }
 
 #[derive(Debug)]
-pub(crate) struct Param<'src> {
+pub(crate) struct FnParam<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Ty<'src>,
 }
@@ -347,12 +348,6 @@ pub(crate) struct MatchArm<'src> {
 pub(crate) struct BlockExpr<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) stmts: Vec<Stmt<'src>>,
-}
-
-impl BlockExpr<'_> {
-    pub(crate) fn is_empty(&self) -> bool {
-        self.attrs.is_empty() && self.stmts.is_empty()
-    }
 }
 
 #[derive(Debug)]
