@@ -58,74 +58,114 @@ impl<'src> Parser<'src> {
         // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
         let vis = self.parse_visibility();
 
-        let kind = if self.begins_path() {
-            self.parse_macro_call_item()?
-        } else if let token = self.token()
-            && let Some(ident) = self.as_ident(token)
-        {
-            match ident {
-                "const" => {
-                    self.advance();
-                    if self.consume(Ident("fn")) {
-                        self.fin_parse_fn_item(ast::Constness::Const)?
-                    } else {
-                        self.fin_parse_const_item()?
-                    }
-                }
-                "enum" => {
-                    self.advance();
-                    self.fin_parse_enum_item()?
-                }
-                "extern" => {
-                    self.advance();
-                    self.fin_parse_extern_block_item()?
-                }
-                "fn" => {
-                    self.advance();
-                    self.fin_parse_fn_item(ast::Constness::Not)?
-                }
-                "impl" => {
-                    self.advance();
-                    self.fin_parse_impl_item()?
-                }
-                "macro" => {
-                    self.advance();
-                    self.fin_parse_macro_def()?
-                }
-                "mod" => {
-                    self.advance();
-                    self.fin_parse_mod_item()?
-                }
-                "static" => {
-                    self.advance();
-                    self.fin_parse_static_item()?
-                }
-                "struct" => {
-                    self.advance();
-                    self.fin_parse_struct_item()?
-                }
-                "trait" => {
-                    self.advance();
-                    self.fin_parse_trait_item()?
-                }
-                "type" => {
-                    self.advance();
-                    self.fin_parse_ty_item()?
-                }
-                // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
-                "union" => {
-                    self.advance();
-                    self.fin_parse_union_item()?
-                }
-                "use" => {
-                    self.advance();
-                    self.fin_parse_use_item()?
-                }
-                _ => return Err(ParseError::UnexpectedToken(token, ExpectedFragment::Item)),
+        let kind = 'kind: {
+            if self.begins_path() {
+                break 'kind self.parse_macro_call_item();
             }
-        } else {
-            return Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Item));
-        };
+
+            let token = self.token();
+            if let Some(ident) = self.as_ident(token) {
+                match ident {
+                    "const" => {
+                        self.advance();
+                        break 'kind if self.consume(Ident("fn")) {
+                            self.fin_parse_fn_item(ast::Constness::Const, ast::Externness::Not)
+                        } else {
+                            self.fin_parse_const_item()
+                        };
+                    }
+                    "enum" => {
+                        self.advance();
+                        break 'kind self.fin_parse_enum_item();
+                    }
+                    "extern" => {
+                        self.advance();
+
+                        let token = self.token();
+                        let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
+
+                        let token = self.token();
+                        match token.kind {
+                            TokenKind::OpenCurlyBracket => {
+                                self.advance();
+                                break 'kind self.fin_parse_extern_block_item(abi);
+                            }
+                            TokenKind::Ident => match self.source(token.span) {
+                                "crate" => {
+                                    self.advance();
+
+                                    break 'kind self.fin_parse_extern_crate_item();
+                                }
+                                "fn" => {
+                                    self.advance();
+
+                                    break 'kind self.fin_parse_fn_item(
+                                        ast::Constness::Not,
+                                        ast::Externness::Extern(abi),
+                                    );
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        };
+
+                        break 'kind Err(ParseError::UnexpectedToken(
+                            token,
+                            one_of![
+                                TokenKind::OpenCurlyBracket,
+                                ExpectedFragment::Raw("crate"),
+                                ExpectedFragment::Raw("fn")
+                            ],
+                        ));
+                    }
+                    "fn" => {
+                        self.advance();
+                        break 'kind self
+                            .fin_parse_fn_item(ast::Constness::Not, ast::Externness::Not);
+                    }
+                    "impl" => {
+                        self.advance();
+                        break 'kind self.fin_parse_impl_item();
+                    }
+                    "macro" => {
+                        self.advance();
+                        break 'kind self.fin_parse_macro_def();
+                    }
+                    "mod" => {
+                        self.advance();
+                        break 'kind self.fin_parse_mod_item();
+                    }
+                    "static" => {
+                        self.advance();
+                        break 'kind self.fin_parse_static_item();
+                    }
+                    "struct" => {
+                        self.advance();
+                        break 'kind self.fin_parse_struct_item();
+                    }
+                    "trait" => {
+                        self.advance();
+                        break 'kind self.fin_parse_trait_item();
+                    }
+                    "type" => {
+                        self.advance();
+                        break 'kind self.fin_parse_ty_item();
+                    }
+                    // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
+                    "union" => {
+                        self.advance();
+                        break 'kind self.fin_parse_union_item();
+                    }
+                    "use" => {
+                        self.advance();
+                        break 'kind self.fin_parse_use_item();
+                    }
+                    _ => {}
+                }
+            }
+
+            Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Item))
+        }?;
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
@@ -163,29 +203,19 @@ impl<'src> Parser<'src> {
     ///     ";"
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self
-            .as_ident(self.token())
-            .filter(|&ident| ident == "_" || self.ident_is_common(ident))
-            .inspect(|_| self.advance())
-            .ok_or_else(|| {
-                ParseError::UnexpectedToken(
-                    self.token(),
-                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw("_")],
-                )
-            })?;
-
+        let binder = self.parse_ident_if_common_or("_")?;
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
         let preds = self.parse_where_clause()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Const(ast::ConstItem {
+        Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
             binder,
             generics: ast::Generics { params, preds },
             ty,
             body,
-        }))
+        })))
     }
 
     /// Finish parsing an enumeration item assuming the leading `enum` has been parsed already.
@@ -205,17 +235,20 @@ impl<'src> Parser<'src> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Enum(ast::EnumItem { binder, generics }))
+        Ok(ast::ItemKind::Enum(Box::new(ast::EnumItem { binder, generics })))
     }
 
-    /// Finish parsing an extern block item assuming the leading `extern` has been parsed already.
+    /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit? "{"` has been parsed already.
     ///
     /// # Grammar
-    fn fin_parse_extern_block_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let token = self.token();
-        let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
-
-        self.parse(TokenKind::OpenCurlyBracket)?;
+    ///
+    /// ```grammar
+    /// Extern_Block_Item ::= "extern" #Str_Lit? "{" … "}"
+    /// ```
+    fn fin_parse_extern_block_item(
+        &mut self,
+        abi: Option<&'src str>,
+    ) -> Result<ast::ItemKind<'src>> {
         let items = self
             .parse_items(TokenKind::CloseCurlyBracket)?
             .into_iter()
@@ -235,22 +268,43 @@ impl<'src> Parser<'src> {
             })
             .collect::<Result<_>>()?;
 
-        Ok(ast::ItemKind::ExternBlock(ast::ExternBlockItem { abi, body: items }))
+        Ok(ast::ItemKind::ExternBlock(Box::new(ast::ExternBlockItem { abi, body: items })))
     }
 
-    /// Finish parsing a function item assuming the leading `fn` has already been parsed.
+    /// Finish parsing an extern crate item assuming the leading `extern crate` has been parsed already.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Extern_Crate_Item ::= "extern crate" (Common_Ident | "self") ("as" Common_Ident) ";"
+    /// ```
+    fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let target = self.parse_ident_if_common_or("self")?;
+        let binder = self.consume(Ident("as")).then(|| self.parse_common_ident()).transpose()?;
+
+        self.parse(TokenKind::Semicolon)?;
+
+        Ok(ast::ItemKind::ExternCrate(Box::new(ast::ExternCrateItem { target, binder })))
+    }
+
+    /// Finish parsing a function item assuming the leading `Fn_Modifiers "fn"` has already been parsed.
     ///
     /// # Grammar
     ///
     /// ```grammar
     /// Fn_Item ::=
-    ///     "const"? "fn" Common_Ident
+    ///     Fn_Modifiers "fn" Common_Ident
     ///     Generic_Params Fn_Params
     ///     ("->" Ty)?
     ///     Where_Clause?
     ///     (Block_Expr | ";")
+    /// Fn_Modifiers ::= "const"? ("extern" #Str_Lit)?
     /// ```
-    fn fin_parse_fn_item(&mut self, constness: ast::Constness) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_fn_item(
+        &mut self,
+        constness: ast::Constness,
+        externness: ast::Externness<'src>,
+    ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
         let params = self.parse_fn_params()?;
@@ -264,14 +318,15 @@ impl<'src> Parser<'src> {
             None
         };
 
-        Ok(ast::ItemKind::Fn(ast::FnItem {
+        Ok(ast::ItemKind::Fn(Box::new(ast::FnItem {
             constness,
+            externness,
             binder,
             generics: ast::Generics { params: gen_params, preds },
             params,
             ret_ty,
             body,
-        }))
+        })))
     }
 
     /// Parse function parameters.
@@ -345,14 +400,14 @@ impl<'src> Parser<'src> {
 
         let items = self.parse_delimited_assoc_items()?;
 
-        Ok(ast::ItemKind::Impl(ast::ImplItem {
+        Ok(ast::ItemKind::Impl(Box::new(ast::ImplItem {
             generics: ast::Generics { params, preds },
             constness,
             polarity,
             trait_ref,
             self_ty,
             body: items,
-        }))
+        })))
     }
 
     /// Finish parsing a macro (2.0) definition assuming the leading `macro` has been parsed already.
@@ -372,12 +427,12 @@ impl<'src> Parser<'src> {
         };
         self.parse(TokenKind::OpenCurlyBracket)?;
         let (_, body) = self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
-        Ok(ast::ItemKind::MacroDef(ast::MacroDef {
+        Ok(ast::ItemKind::MacroDef(Box::new(ast::MacroDef {
             binder,
             params,
             body,
             style: ast::MacroDefStyle::New,
-        }))
+        })))
     }
 
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
@@ -399,7 +454,7 @@ impl<'src> Parser<'src> {
             None
         };
 
-        Ok(ast::ItemKind::Mod(ast::ModItem { binder, body: items }))
+        Ok(ast::ItemKind::Mod(Box::new(ast::ModItem { binder, body: items })))
     }
 
     /// Finish parsing a static item assuming the leading `static` has been parsed already.
@@ -416,7 +471,7 @@ impl<'src> Parser<'src> {
         let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Static(ast::StaticItem { mut_, binder, ty, body }))
+        Ok(ast::ItemKind::Static(Box::new(ast::StaticItem { mut_, binder, ty, body })))
     }
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
@@ -458,7 +513,7 @@ impl<'src> Parser<'src> {
             ast::StructBody::Unit
         };
 
-        Ok(ast::ItemKind::Struct(ast::StructItem { binder, generics, body }))
+        Ok(ast::ItemKind::Struct(Box::new(ast::StructItem { binder, generics, body })))
     }
 
     /// Finish parsing a trait item assuming the leading `trait` has been parsed already.
@@ -482,12 +537,12 @@ impl<'src> Parser<'src> {
 
         let items = self.parse_delimited_assoc_items()?;
 
-        Ok(ast::ItemKind::Trait(ast::TraitItem {
+        Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
             binder,
             generics: ast::Generics { params, preds },
             bounds,
             body: items,
-        }))
+        })))
     }
 
     /// Finish parsing a type item assuming the leading `type` has been parsed already.
@@ -512,12 +567,12 @@ impl<'src> Parser<'src> {
         preds.append(&mut self.parse_where_clause()?);
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Ty(ast::TyItem {
+        Ok(ast::ItemKind::Ty(Box::new(ast::TyItem {
             binder,
             generics: ast::Generics { params, preds },
             bounds,
             body,
-        }))
+        })))
     }
 
     /// Finish parsing a union item assuming the leading `union` has been parsed already.
@@ -537,7 +592,7 @@ impl<'src> Parser<'src> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Union(ast::UnionItem { binder, generics }))
+        Ok(ast::ItemKind::Union(Box::new(ast::UnionItem { binder, generics })))
     }
 
     /// Finish parsing a use-item assuming the leading `use` has been parsed already.
@@ -552,7 +607,7 @@ impl<'src> Parser<'src> {
         let path = self.parse_path()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Use(ast::UseItem { path }))
+        Ok(ast::ItemKind::Use(Box::new(ast::UseItem { path })))
     }
 
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
@@ -575,14 +630,15 @@ impl<'src> Parser<'src> {
             self.parse(TokenKind::Semicolon)?;
         }
 
-        Ok(match binder {
-            Some(binder) => ast::ItemKind::MacroDef(ast::MacroDef {
+        Ok(if let Some(binder) = binder {
+            ast::ItemKind::MacroDef(Box::new(ast::MacroDef {
                 binder,
                 params: None,
                 body,
                 style: ast::MacroDefStyle::Old,
-            }),
-            None => ast::ItemKind::MacroCall(ast::MacroCall { path, bracket, stream: body }),
+            }))
+        } else {
+            ast::ItemKind::MacroCall(Box::new(ast::MacroCall { path, bracket, stream: body }))
         })
     }
 

@@ -27,27 +27,28 @@ pub(crate) enum Visibility {
 }
 
 #[derive(Debug)]
-pub(crate) enum Mutability {
-    Mut,
-    Imm,
+pub(crate) enum Mutable {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
-    Const(ConstItem<'src>),
-    Enum(EnumItem<'src>),
-    ExternBlock(ExternBlockItem<'src>),
-    Fn(FnItem<'src>),
-    Impl(ImplItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
-    MacroDef(MacroDef<'src>),
-    Mod(ModItem<'src>),
-    Static(StaticItem<'src>),
-    Struct(StructItem<'src>),
-    Trait(TraitItem<'src>),
-    Ty(TyItem<'src>),
-    Union(UnionItem<'src>),
-    Use(UseItem<'src>),
+    Const(Box<ConstItem<'src>>),
+    Enum(Box<EnumItem<'src>>),
+    ExternBlock(Box<ExternBlockItem<'src>>),
+    ExternCrate(Box<ExternCrateItem<'src>>),
+    Fn(Box<FnItem<'src>>),
+    Impl(Box<ImplItem<'src>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    MacroDef(Box<MacroDef<'src>>),
+    Mod(Box<ModItem<'src>>),
+    Static(Box<StaticItem<'src>>),
+    Struct(Box<StructItem<'src>>),
+    Trait(Box<TraitItem<'src>>),
+    Ty(Box<TyItem<'src>>),
+    Union(Box<UnionItem<'src>>),
+    Use(Box<UseItem<'src>>),
 }
 
 #[derive(Debug)]
@@ -70,6 +71,12 @@ pub(crate) struct ExternBlockItem<'src> {
     pub(crate) body: Vec<ExternItem<'src>>,
 }
 
+#[derive(Debug)]
+pub(crate) struct ExternCrateItem<'src> {
+    pub(crate) target: Ident<'src>,
+    pub(crate) binder: Option<Ident<'src>>,
+}
+
 // FIXME: Maybe represent as Item<Extern>?
 #[derive(Debug)]
 pub(crate) struct ExternItem<'src> {
@@ -81,15 +88,16 @@ pub(crate) struct ExternItem<'src> {
 
 #[derive(Debug)]
 pub(crate) enum ExternItemKind<'src> {
-    Fn(FnItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
-    Static(StaticItem<'src>),
-    Ty(TyItem<'src>),
+    Fn(Box<FnItem<'src>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    Static(Box<StaticItem<'src>>),
+    Ty(Box<TyItem<'src>>),
 }
 
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
     pub(crate) constness: Constness,
+    pub(crate) externness: Externness<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<FnParam<'src>>,
@@ -100,6 +108,12 @@ pub(crate) struct FnItem<'src> {
 #[derive(Debug)]
 pub(crate) enum Constness {
     Const,
+    Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum Externness<'src> {
+    Extern(Option<&'src str>),
     Not,
 }
 
@@ -127,7 +141,7 @@ pub(crate) struct ModItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
-    pub(crate) mut_: Mutability,
+    pub(crate) mut_: Mutable,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
@@ -159,10 +173,10 @@ pub(crate) struct AssocItem<'src> {
 
 #[derive(Debug)]
 pub(crate) enum AssocItemKind<'src> {
-    Const(ConstItem<'src>),
-    Fn(FnItem<'src>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::Disallowed>),
-    Ty(TyItem<'src>),
+    Const(Box<ConstItem<'src>>),
+    Fn(Box<FnItem<'src>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    Ty(Box<TyItem<'src>>),
 }
 
 #[derive(Debug)]
@@ -314,7 +328,7 @@ pub(crate) enum Expr<'src> {
     BoolLit(bool),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
-    Borrow(Mutability, Box<Expr<'src>>),
+    Borrow(Mutable, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
@@ -422,7 +436,7 @@ pub(crate) enum Pat<'src> {
     Wildcard,
     Tup(Vec<Pat<'src>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
-    Borrow(Mutability, Box<Pat<'src>>),
+    Borrow(Mutable, Box<Pat<'src>>),
 }
 
 #[derive(Debug)]
@@ -433,8 +447,8 @@ pub(crate) enum Ty<'src> {
     FnPtr((), Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
     Path(Path<'src, GenericArgsPolicy::Allowed>),
-    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
-    Ptr(Mutability, Box<Ty<'src>>),
+    Ref(Option<Lifetime<'src>>, Mutable, Box<Ty<'src>>),
+    Ptr(Mutable, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),

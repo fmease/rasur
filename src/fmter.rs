@@ -372,16 +372,16 @@ impl Fmt for ast::Ty<'_> {
                     fmt!(cx, " ");
                 }
                 match mut_ {
-                    ast::Mutability::Mut => fmt!(cx, "mut "),
-                    ast::Mutability::Imm => {}
+                    ast::Mutable::Yes => fmt!(cx, "mut "),
+                    ast::Mutable::No => {}
                 }
                 ty.fmt(cx);
             }
             Self::Ptr(mut_, ty) => {
                 fmt!(cx, "*");
                 match mut_ {
-                    ast::Mutability::Mut => fmt!(cx, "mut "),
-                    ast::Mutability::Imm => fmt!(cx, "const "),
+                    ast::Mutable::Yes => fmt!(cx, "mut "),
+                    ast::Mutable::No => fmt!(cx, "const "),
                 }
                 ty.fmt(cx);
             }
@@ -502,10 +502,11 @@ impl Fmt for ast::Expr<'_> {
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::Borrow(mut_, expr) => {
+                // FIXME: Doesn't consider precedence!
                 fmt!(cx, "&");
                 match mut_ {
-                    ast::Mutability::Mut => fmt!(cx, "mut "),
-                    ast::Mutability::Imm => {}
+                    ast::Mutable::Yes => fmt!(cx, "mut "),
+                    ast::Mutable::No => {}
                 }
                 expr.fmt(cx);
             }
@@ -564,8 +565,8 @@ impl Fmt for ast::Pat<'_> {
             Self::Borrow(mut_, pat) => {
                 fmt!(cx, "&");
                 match mut_ {
-                    ast::Mutability::Mut => fmt!(cx, "mut "),
-                    ast::Mutability::Imm => {}
+                    ast::Mutable::Yes => fmt!(cx, "mut "),
+                    ast::Mutable::No => {}
                 }
                 pat.fmt(cx);
             }

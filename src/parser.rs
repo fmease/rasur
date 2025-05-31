@@ -45,6 +45,19 @@ impl<'src> Parser<'src> {
         Ok(ast::File { attrs, items, span })
     }
 
+    fn parse_ident_if_common_or(&mut self, exception: &'static str) -> Result<ast::Ident<'src>> {
+        let token = self.token();
+        self.as_ident(token)
+            .filter(|&ident| ident == exception || self.ident_is_common(ident))
+            .inspect(|_| self.advance())
+            .ok_or_else(|| {
+                ParseError::UnexpectedToken(
+                    token,
+                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
+                )
+            })
+    }
+
     fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         self.consume_common_ident()
             .ok_or_else(|| ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent))
@@ -225,10 +238,10 @@ impl<'src> Parser<'src> {
         Ident("pub").check(self)
     }
 
-    fn parse_mutability(&mut self) -> ast::Mutability {
+    fn parse_mutability(&mut self) -> ast::Mutable {
         match self.consume(Ident("mut")) {
-            true => ast::Mutability::Mut,
-            false => ast::Mutability::Imm,
+            true => ast::Mutable::Yes,
+            false => ast::Mutable::No,
         }
     }
 
@@ -243,7 +256,7 @@ impl<'src> Parser<'src> {
 
     fn parse<S: Shape>(&mut self, shape: S) -> Result<()> {
         if shape.check(self) {
-            self.advance();
+            S::advance(self);
             return Ok(());
         }
 

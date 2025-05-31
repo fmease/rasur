@@ -21,6 +21,7 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Const(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
             ast::ItemKind::ExternBlock(item) => item.fmt(cx),
+            ast::ItemKind::ExternCrate(item) => item.fmt(cx),
             ast::ItemKind::Fn(item) => item.fmt(cx),
             ast::ItemKind::Impl(item) => item.fmt(cx),
             ast::ItemKind::Mod(item) => item.fmt(cx),
@@ -73,8 +74,20 @@ impl Fmt for ast::ExternBlockItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { abi, body } = self;
 
-        fmt!(cx, "extern {:?}", abi.unwrap_or("C"));
+        fmt!(cx, "extern {}", abi.unwrap_or(r#""C""#));
         body.fmt(cx);
+    }
+}
+
+impl Fmt for ast::ExternCrateItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { target, binder } = self;
+
+        fmt!(cx, "extern crate {target}");
+        if let Some(binder) = binder {
+            fmt!(cx, " as {binder}");
+        }
+        fmt!(cx, ";");
     }
 }
 
@@ -126,12 +139,20 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, binder, generics, params, ret_ty, body } = self;
+        let Self { constness, externness, binder, generics, params, ret_ty, body } = self;
 
         match constness {
             ast::Constness::Const => fmt!(cx, "const "),
             ast::Constness::Not => {}
         }
+
+        match externness {
+            ast::Externness::Extern(abi) => {
+                fmt!(cx, "extern {} ", abi.unwrap_or(r#""C""#));
+            }
+            ast::Externness::Not => {}
+        }
+
         fmt!(cx, "fn {binder}");
         generics.params.fmt(cx);
         params.fmt(cx);
@@ -218,8 +239,8 @@ impl Fmt for ast::StaticItem<'_> {
 
         fmt!(cx, "static ");
         match mut_ {
-            ast::Mutability::Mut => fmt!(cx, "mut "),
-            ast::Mutability::Imm => {}
+            ast::Mutable::Yes => fmt!(cx, "mut "),
+            ast::Mutable::No => {}
         }
         fmt!(cx, "{binder}: ");
         ty.fmt(cx);
