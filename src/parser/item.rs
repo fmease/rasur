@@ -600,25 +600,23 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Use_Item ::= "use" …
+    /// Use_Item ::= "use" Use_Path_Tree ";"
+    /// Use_Path_Tree ::= …
     /// ```
     fn fin_parse_use_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        // FIXME: Actually parse a use-tree.
-        let path = self.parse_path()?;
+        let tree = self.parse_path_tree()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Use(Box::new(ast::UseItem { path })))
+        Ok(ast::ItemKind::Use(Box::new(ast::UseItem { tree })))
     }
 
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path::<ast::GenericArgsPolicy::Disallowed>()?;
+        let path = self.parse_path::<ast::GenericArgsPolicy::Forbidden>()?;
         self.parse(TokenKind::Bang)?;
 
-        let binder = if let ast::PathHook::Local = path.hook
-            && let [ast::PathSeg { ident: "macro_rules", args: () }] = *path.segs
-        {
+        let binder = if let [ast::PathSeg { ident: "macro_rules", args: () }] = *path.segs {
             self.consume_common_ident()
         } else {
             None

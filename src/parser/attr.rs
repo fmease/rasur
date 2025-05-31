@@ -45,7 +45,7 @@ impl<'src> Parser<'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
-        let path = self.parse_path::<ast::GenericArgsPolicy::Disallowed>()?;
+        let path = self.parse_path::<ast::GenericArgsPolicy::Forbidden>()?;
         let token = self.token();
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,

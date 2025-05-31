@@ -56,15 +56,13 @@ impl<'src> Cx<'src> {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Make tool mod config'able: "rasur"|"rustfmt"|both
         attrs.iter().any(|attr| {
-            matches!(attr.path.hook, ast::PathHook::Local)
-                && matches!(
-                    &*attr.path.segs,
-                    [
-                        ast::PathSeg { ident: "rustfmt", args: () },
-                        ast::PathSeg { ident: "skip", args: () }
-                    ]
-                )
-                && matches!(attr.kind, ast::AttrKind::Unit)
+            matches!(
+                &*attr.path.segs,
+                [
+                    ast::PathSeg { ident: "rustfmt", args: () },
+                    ast::PathSeg { ident: "skip", args: () }
+                ]
+            ) && matches!(attr.kind, ast::AttrKind::Unit)
         })
     }
 }
@@ -118,11 +116,7 @@ impl Fmt for ast::Attr<'_> {
 
 impl<'src, A: FmtGenericArgs> Fmt for ast::Path<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { hook, segs } = self;
-
-        if let ast::PathHook::Global = hook {
-            fmt!(cx, "::");
-        }
+        let Self { segs } = self;
         Punctuated::new(segs, "::").fmt(cx);
     }
 }
@@ -231,7 +225,7 @@ trait FmtGenericArgs: ast::GenericArgsPolicy::Kind {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>);
 }
 
-impl FmtGenericArgs for ast::GenericArgsPolicy::Disallowed {
+impl FmtGenericArgs for ast::GenericArgsPolicy::Forbidden {
     fn fmt((): Self::Args<'_>, _: &mut Cx<'_>) {}
 }
 

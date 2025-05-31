@@ -40,7 +40,7 @@ pub(crate) enum ItemKind<'src> {
     ExternCrate(Box<ExternCrateItem<'src>>),
     Fn(Box<FnItem<'src>>),
     Impl(Box<ImplItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
     MacroDef(Box<MacroDef<'src>>),
     Mod(Box<ModItem<'src>>),
     Static(Box<StaticItem<'src>>),
@@ -89,7 +89,7 @@ pub(crate) struct ExternItem<'src> {
 #[derive(Debug)]
 pub(crate) enum ExternItemKind<'src> {
     Fn(Box<FnItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
     Static(Box<StaticItem<'src>>),
     Ty(Box<TyItem<'src>>),
 }
@@ -175,7 +175,7 @@ pub(crate) struct AssocItem<'src> {
 pub(crate) enum AssocItemKind<'src> {
     Const(Box<ConstItem<'src>>),
     Fn(Box<FnItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Disallowed>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
     Ty(Box<TyItem<'src>>),
 }
 
@@ -195,7 +195,20 @@ pub(crate) struct UnionItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct UseItem<'src> {
-    pub(crate) path: Path<'src, GenericArgsPolicy::Disallowed>,
+    pub(crate) tree: PathTree<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PathTree<'src> {
+    pub(crate) path: Path<'src, GenericArgsPolicy::Forbidden>,
+    pub(crate) kind: PathTreeKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PathTreeKind<'src> {
+    Global,
+    Stump(Option<Ident<'src>>),
+    Branch(Vec<PathTree<'src>>),
 }
 
 #[derive(Debug)]
@@ -461,7 +474,7 @@ pub(crate) struct Lifetime<'src>(pub(crate) Ident<'src>);
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
     pub(crate) style: AttrStyle,
-    pub(crate) path: Path<'src, GenericArgsPolicy::Disallowed>,
+    pub(crate) path: Path<'src, GenericArgsPolicy::Forbidden>,
     pub(crate) kind: AttrKind<'src>,
 }
 
@@ -495,14 +508,7 @@ pub(crate) enum Orientation {
 
 #[derive(Debug)]
 pub(crate) struct Path<'src, A: GenericArgsPolicy::Kind> {
-    pub(crate) hook: PathHook,
     pub(crate) segs: Vec<PathSeg<'src, A>>,
-}
-
-#[derive(Debug)]
-pub(crate) enum PathHook {
-    Global,
-    Local,
 }
 
 #[derive(Debug)]
@@ -514,14 +520,14 @@ pub(crate) struct PathSeg<'src, A: GenericArgsPolicy::Kind> {
 #[expect(non_snake_case)]
 pub(crate) mod GenericArgsPolicy {
     #[derive(Debug)]
-    pub(crate) enum Disallowed {}
+    pub(crate) enum Forbidden {}
     #[derive(Debug)]
     pub(crate) enum Allowed {}
     #[derive(Debug)]
     pub(crate) enum DisambiguatedOnly {}
 
     pub(crate) trait Kind {
-        type Args<'src>: std::fmt::Debug;
+        type Args<'src>: Default + std::fmt::Debug;
     }
 
     impl Kind for Allowed {
@@ -532,7 +538,7 @@ pub(crate) mod GenericArgsPolicy {
         type Args<'src> = <Allowed as Kind>::Args<'src>;
     }
 
-    impl Kind for Disallowed {
+    impl Kind for Forbidden {
         type Args<'src> = ();
     }
 }

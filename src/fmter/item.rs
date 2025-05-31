@@ -332,10 +332,32 @@ impl Fmt for ast::UnionItem<'_> {
 
 impl Fmt for ast::UseItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { path } = self;
+        let Self { tree } = self;
         fmt!(cx, "use ");
-        path.fmt(cx);
+        tree.fmt(cx);
         fmt!(cx, ";");
+    }
+}
+
+impl Fmt for ast::PathTree<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path, kind } = self;
+        let is_non_empty = !path.segs.is_empty();
+        path.fmt(cx);
+        // FIXME: ugly af
+        if is_non_empty && !(matches!(kind, ast::PathTreeKind::Stump(_))) {
+            fmt!(cx, "::");
+        }
+        match kind {
+            ast::PathTreeKind::Global => fmt!(cx, "*"),
+            ast::PathTreeKind::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
+            ast::PathTreeKind::Stump(None) => {}
+            ast::PathTreeKind::Branch(trees) => {
+                fmt!(cx, "{{");
+                Punctuated::new(trees, ", ").fmt(cx);
+                fmt!(cx, "}}");
+            }
+        }
     }
 }
 
