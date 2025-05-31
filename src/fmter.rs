@@ -237,11 +237,14 @@ impl FmtGenericArgs for ast::GenericArgsPolicy::Allowed {
 
 impl FmtGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
-        if args.as_ref().is_some_and(|args| match args {
-            ast::GenericArgs::Angle(args) => !args.is_empty(),
-            ast::GenericArgs::Paren { .. } => true,
-        }) {
-            fmt!(cx, "::");
+        if let Some(args) = &args {
+            let is_non_empty = match args {
+                ast::GenericArgs::Angle(args) => args.is_empty(),
+                ast::GenericArgs::Paren { .. } | ast::GenericArgs::ParenElided => true,
+            };
+            if is_non_empty {
+                fmt!(cx, "::");
+            }
         }
         args.fmt(cx);
     }
@@ -260,6 +263,7 @@ impl Fmt for ast::GenericArgs<'_> {
                     output.fmt(cx);
                 }
             }
+            Self::ParenElided => fmt!(cx, "(..)"),
         }
     }
 }

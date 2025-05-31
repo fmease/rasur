@@ -271,6 +271,7 @@ pub(crate) enum GenericParamKind<'src> {
 pub(crate) enum GenericArgs<'src> {
     Angle(Vec<AngleGenericArg<'src>>),
     Paren { inputs: Vec<Ty<'src>>, output: Option<Ty<'src>> },
+    ParenElided,
 }
 
 #[derive(Debug)]

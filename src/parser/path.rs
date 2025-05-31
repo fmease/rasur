@@ -2,7 +2,10 @@ use super::{
     DOUBLE_COLON, DoubleColon, ExpectedFragment, Ident, ParseError, Parser, Result, Shape as _,
     TokenKind, is_path_seg_keyword,
 };
-use crate::{ast, parser::one_of};
+use crate::{
+    ast,
+    parser::{Glued, one_of},
+};
 
 impl<'src> Parser<'src> {
     /// Parse a path.
@@ -101,9 +104,14 @@ impl<'src> Parser<'src> {
 
                     return Ok(Some(ast::GenericArgs::Angle(args)));
                 }
-                // FIXME: Support RTN
                 TokenKind::OpenRoundBracket => {
                     self.advance();
+
+                    if self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
+                        self.parse(TokenKind::CloseRoundBracket)?;
+
+                        return Ok(Some(ast::GenericArgs::ParenElided));
+                    }
 
                     let mut inputs = Vec::new();
 
@@ -118,7 +126,6 @@ impl<'src> Parser<'src> {
                         }
                     }
 
-                    // FIXME: And don't parse it if it isn't RTN
                     let output = if self.consume(TokenKind::ThinArrow) {
                         Some(self.parse_ty()?)
                     } else {

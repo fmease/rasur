@@ -344,15 +344,20 @@ impl Fmt for ast::PathTree<'_> {
         let Self { path, kind } = self;
         let is_non_empty = !path.segs.is_empty();
         path.fmt(cx);
-        // FIXME: ugly af
-        if is_non_empty && !(matches!(kind, ast::PathTreeKind::Stump(_))) {
+        if is_non_empty && !matches!(kind, ast::PathTreeKind::Stump(_)) {
             fmt!(cx, "::");
         }
-        match kind {
-            ast::PathTreeKind::Global => fmt!(cx, "*"),
-            ast::PathTreeKind::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
-            ast::PathTreeKind::Stump(None) => {}
-            ast::PathTreeKind::Branch(trees) => {
+        kind.fmt(cx);
+    }
+}
+
+impl Fmt for ast::PathTreeKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Global => fmt!(cx, "*"),
+            Self::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
+            Self::Stump(None) => {}
+            Self::Branch(trees) => {
                 fmt!(cx, "{{");
                 Punctuated::new(trees, ", ").fmt(cx);
                 fmt!(cx, "}}");
