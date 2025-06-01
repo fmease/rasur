@@ -21,7 +21,7 @@ impl<'src> Parser<'src> {
         let mut path = ast::Path { segs: Vec::new() };
 
         if self.consume(DOUBLE_COLON) {
-            path.segs.push(ast::PathSeg { ident: "", args: Default::default() });
+            path.segs.push(ast::PathSeg::ident(""));
         }
 
         path.segs.push(self.parse_path_seg::<A>()?);
@@ -182,7 +182,7 @@ impl<'src> Parser<'src> {
         let mut path = ast::Path { segs: Vec::new() };
 
         if self.consume(DOUBLE_COLON) {
-            path.segs.push(ast::PathSeg { ident: "", args: Default::default() });
+            path.segs.push(ast::PathSeg::ident(""));
         }
 
         match self.parse_path_tree_kind(&mut path)? {
@@ -228,7 +228,7 @@ impl<'src> Parser<'src> {
             }
             _ if let Some(ident) = self.as_path_seg_ident() => {
                 self.advance();
-                path.segs.push(ast::PathSeg { ident, args: () });
+                path.segs.push(ast::PathSeg::ident(ident));
                 let binder =
                     self.consume(Ident("as")).then(|| self.parse_common_ident()).transpose()?;
                 ast::PathTreeKind::Stump(binder)

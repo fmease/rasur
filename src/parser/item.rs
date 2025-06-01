@@ -56,7 +56,7 @@ impl<'src> Parser<'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
-        let vis = self.parse_visibility();
+        let vis = self.parse_visibility()?;
 
         let kind = 'kind: {
             if self.begins_path() {
@@ -494,7 +494,7 @@ impl<'src> Parser<'src> {
 
             const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
             while !self.consume(DELIMITER) {
-                let vis = self.parse_visibility();
+                let vis = self.parse_visibility()?;
 
                 let binder = self.parse_common_ident()?;
                 let ty = self.parse_ty_annotation()?;

@@ -15,14 +15,15 @@ pub(crate) struct File<'src> {
 #[derive(Debug)]
 pub(crate) struct Item<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility,
+    pub(crate) vis: Visibility<'src>,
     pub(crate) kind: ItemKind<'src>,
     pub(crate) span: Span,
 }
 
 #[derive(Debug)]
-pub(crate) enum Visibility {
+pub(crate) enum Visibility<'src> {
     Inherited,
+    Restricted(Path<'src, GenericArgsPolicy::Forbidden>),
     Public,
 }
 
@@ -81,7 +82,7 @@ pub(crate) struct ExternCrateItem<'src> {
 #[derive(Debug)]
 pub(crate) struct ExternItem<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility,
+    pub(crate) vis: Visibility<'src>,
     pub(crate) kind: ExternItemKind<'src>,
     pub(crate) span: Span,
 }
@@ -166,7 +167,7 @@ pub(crate) struct TraitItem<'src> {
 #[derive(Debug)]
 pub(crate) struct AssocItem<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility,
+    pub(crate) vis: Visibility<'src>,
     pub(crate) kind: AssocItemKind<'src>,
     pub(crate) span: Span,
 }
@@ -243,7 +244,7 @@ pub(crate) enum StructBody<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructField<'src> {
-    pub(crate) vis: Visibility,
+    pub(crate) vis: Visibility<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
 }
@@ -552,10 +553,22 @@ pub(crate) struct Path<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) segs: Vec<PathSeg<'src, A>>,
 }
 
+impl<'src, A: GenericArgsPolicy::Kind> Path<'src, A> {
+    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+        Self { segs: vec![PathSeg::ident(ident)] }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct PathSeg<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) ident: Ident<'src>,
     pub(crate) args: A::Args<'src>,
+}
+
+impl<'src, A: GenericArgsPolicy::Kind> PathSeg<'src, A> {
+    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+        Self { ident, args: Default::default() }
+    }
 }
 
 #[expect(non_snake_case)]
