@@ -281,9 +281,51 @@ impl Fmt for Vec<ast::AngleGenericArg<'_>> {
 impl Fmt for ast::AngleGenericArg<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            ast::AngleGenericArg::Ty(ty) => ty.fmt(cx),
-            ast::AngleGenericArg::Const(expr) => expr.fmt(cx),
-            ast::AngleGenericArg::Lifetime(lt) => lt.fmt(cx),
+            Self::Argument(arg) => arg.fmt(cx),
+            Self::Constraint(constraint) => constraint.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for ast::GenericArg<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Ty(ty) => ty.fmt(cx),
+            Self::Const(expr) => expr.fmt(cx),
+            Self::Lifetime(lt) => lt.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for ast::AssocItemConstraint<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { ident, args, kind } = self;
+        fmt!(cx, "{ident}");
+        args.fmt(cx);
+        kind.fmt(cx);
+    }
+}
+
+impl Fmt for ast::AssocItemConstraintKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Equality(term) => {
+                fmt!(cx, " = ");
+                term.fmt(cx);
+            }
+            Self::Bound(bounds) => {
+                fmt!(cx, ": ");
+                bounds.fmt(cx);
+            }
+        }
+    }
+}
+
+impl Fmt for ast::Term<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Ty(ty) => ty.fmt(cx),
+            Self::Const(expr) => expr.fmt(cx),
         }
     }
 }
@@ -412,6 +454,11 @@ impl Fmt for ast::Ty<'_> {
                 fmt!(cx, "]")
             }
             Self::Tup(tys) => Tup(tys).fmt(cx),
+            Self::Group(ty) => {
+                fmt!(cx, "(");
+                ty.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::Error => fmt!(cx, "/*error*/"),
         }
     }
@@ -510,6 +557,11 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
+            Self::Group(expr) => {
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::MacroCall(call) => call.fmt(cx),
         }
     }
@@ -569,6 +621,11 @@ impl Fmt for ast::Pat<'_> {
                 pat.fmt(cx);
             }
             Self::Tup(pats) => Tup(pats).fmt(cx),
+            Self::Group(pat) => {
+                fmt!(cx, "(");
+                pat.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::MacroCall(call) => call.fmt(cx),
         }
     }

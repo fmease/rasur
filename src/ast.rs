@@ -276,9 +276,34 @@ pub(crate) enum GenericArgs<'src> {
 
 #[derive(Debug)]
 pub(crate) enum AngleGenericArg<'src> {
+    Argument(GenericArg<'src>),
+    Constraint(AssocItemConstraint<'src>),
+}
+
+#[derive(Debug)]
+pub(crate) enum GenericArg<'src> {
     Ty(Ty<'src>),
     Const(Expr<'src>),
     Lifetime(Lifetime<'src>),
+}
+
+#[derive(Debug)]
+pub(crate) struct AssocItemConstraint<'src> {
+    pub(crate) ident: Ident<'src>,
+    pub(crate) args: Option<GenericArgs<'src>>,
+    pub(crate) kind: AssocItemConstraintKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum AssocItemConstraintKind<'src> {
+    Equality(Term<'src>),
+    Bound(Vec<Bound<'src>>),
+}
+
+#[derive(Debug)]
+pub(crate) enum Term<'src> {
+    Ty(Ty<'src>),
+    Const(Expr<'src>),
 }
 
 #[derive(Debug)]
@@ -345,6 +370,7 @@ pub(crate) enum Expr<'src> {
     Borrow(Mutable, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
+    Group(Box<Expr<'src>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
 }
 
@@ -369,6 +395,7 @@ impl Expr<'_> {
             | Self::StrLit(_)
             | Self::Borrow(..)
             | Self::Tup(_)
+            | Self::Group(_)
             | Self::MacroCall(_) => false,
         }
     }
@@ -449,8 +476,9 @@ pub(crate) enum Pat<'src> {
     StrLit(Ident<'src>),
     Wildcard,
     Tup(Vec<Pat<'src>>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Borrow(Mutable, Box<Pat<'src>>),
+    Group(Box<Pat<'src>>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
 }
 
 #[derive(Debug)]
@@ -466,6 +494,7 @@ pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
+    Group(Box<Ty<'src>>),
     Error,
 }
 

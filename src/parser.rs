@@ -98,9 +98,10 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn fin_parse_parenthesized_or_tuple<T>(
+    fn fin_parse_group_or_tuple<T>(
         &mut self,
         parse: impl Fn(&mut Self) -> Result<T>,
+        group: impl FnOnce(Box<T>) -> T,
         tuple: impl FnOnce(Vec<T>) -> T,
     ) -> Result<T> {
         let mut nodes = Vec::new();
@@ -113,9 +114,9 @@ impl<'src> Parser<'src> {
             // FIXME: Is there a better way to express this?
             if self.token().kind == DELIMITER {
                 if nodes.is_empty() {
-                    // This is actually a parenthesized node, not a tuple.
+                    // This is actually a group, not a tuple.
                     self.advance();
-                    return Ok(node);
+                    return Ok(group(Box::new(node)));
                 }
             } else {
                 self.parse(SEPARATOR)?;
@@ -447,6 +448,7 @@ pub(crate) enum ExpectedFragment {
     Predicate,
     Stmt,
     Ty,
+    Term,
 }
 
 impl From<TokenKind> for ExpectedFragment {
@@ -481,6 +483,7 @@ impl fmt::Display for ExpectedFragment {
             Self::Stmt => "statement",
             Self::Ty => "type",
             Self::Pat => "pattern",
+            Self::Term => "type or const argument",
         })
     }
 }

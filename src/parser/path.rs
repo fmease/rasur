@@ -56,8 +56,6 @@ impl<'src> Parser<'src> {
         &mut self,
         requires_disambiguation: RequiresDisambiguation,
     ) -> Result<Option<ast::GenericArgs<'src>>> {
-        // FIXME: Support parenthesized args
-
         let disambiguated = if DOUBLE_COLON.check(self)
             && self.look_ahead(DoubleColon::LENGTH, |token| {
                 matches!(token.kind, TokenKind::OpenAngleBracket | TokenKind::OpenRoundBracket)
@@ -69,76 +67,104 @@ impl<'src> Parser<'src> {
         };
 
         if disambiguated || requires_disambiguation == RequiresDisambiguation::No {
-            let token = self.token();
-            match token.kind {
+            return Ok(match self.token().kind {
                 TokenKind::OpenAngleBracket => {
                     self.advance();
-
-                    let mut args = Vec::new();
-
-                    const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
-                    const SEPARATOR: TokenKind = TokenKind::Comma;
-                    while !self.consume(DELIMITER) {
-                        // FIXME: Parse const args
-                        // FIXME: Parse assoc item constraints
-                        args.push(if self.begins_ty() {
-                            let ty = self.parse_ty()?;
-                            ast::AngleGenericArg::Ty(ty)
-                        } else if let Some(lt) = self.consume_lifetime() {
-                            ast::AngleGenericArg::Lifetime(lt)
-                        } else if self.begins_const_arg() {
-                            let expr = self.parse_expr()?;
-                            ast::AngleGenericArg::Const(expr)
-                        } else {
-                            return Err(ParseError::UnexpectedToken(
-                                self.token(),
-                                one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
-                            ));
-                        });
-
-                        // FIXME: Is there a better way to express this?
-                        if self.token().kind != DELIMITER {
-                            self.parse(SEPARATOR)?;
-                        }
-                    }
-
-                    return Ok(Some(ast::GenericArgs::Angle(args)));
+                    Some(self.fin_parse_angle_generic_args()?)
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
-
-                    if self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
-                        self.parse(TokenKind::CloseRoundBracket)?;
-
-                        return Ok(Some(ast::GenericArgs::ParenElided));
-                    }
-
-                    let mut inputs = Vec::new();
-
-                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-                    const SEPARATOR: TokenKind = TokenKind::Comma;
-                    while !self.consume(DELIMITER) {
-                        inputs.push(self.parse_ty()?);
-
-                        // FIXME: Is there a better way to express this?
-                        if self.token().kind != DELIMITER {
-                            self.parse(SEPARATOR)?;
-                        }
-                    }
-
-                    let output = if self.consume(TokenKind::ThinArrow) {
-                        Some(self.parse_ty()?)
-                    } else {
-                        None
-                    };
-
-                    return Ok(Some(ast::GenericArgs::Paren { inputs, output }));
+                    Some(self.fin_parse_paren_generic_args()?)
                 }
-                _ => {}
-            }
+                _ => None,
+            });
         }
 
         Ok(None)
+    }
+
+    fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
+        let mut args = Vec::new();
+
+        const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        while !self.consume(DELIMITER) {
+            let mut arg = if self.begins_ty() {
+                let ty = self.parse_ty()?;
+                ast::GenericArg::Ty(ty)
+            } else if let Some(lt) = self.consume_lifetime() {
+                ast::GenericArg::Lifetime(lt)
+            } else if self.begins_const_arg() {
+                let expr = self.parse_expr()?;
+                ast::GenericArg::Const(expr)
+            } else {
+                return Err(ParseError::UnexpectedToken(
+                    self.token(),
+                    one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
+                ));
+            };
+
+            let token = self.token();
+            let arg = if let TokenKind::Colon | TokenKind::Equals = token.kind
+                && let Some((ident, args)) = extract_assoc_item_seg(&mut arg)
+            {
+                self.advance();
+
+                let kind = match token.kind {
+                    TokenKind::Colon => ast::AssocItemConstraintKind::Bound(self.parse_bounds()?),
+                    TokenKind::Equals => ast::AssocItemConstraintKind::Equality(self.parse_term()?),
+                    _ => unreachable!(),
+                };
+
+                ast::AngleGenericArg::Constraint(ast::AssocItemConstraint { ident, args, kind })
+            } else {
+                ast::AngleGenericArg::Argument(arg)
+            };
+
+            args.push(arg);
+
+            // FIXME: Is there a better way to express this?
+            if self.token().kind != DELIMITER {
+                self.parse(SEPARATOR)?;
+            }
+        }
+
+        Ok(ast::GenericArgs::Angle(args))
+    }
+
+    fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
+        if self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
+            self.parse(TokenKind::CloseRoundBracket)?;
+
+            return Ok(ast::GenericArgs::ParenElided);
+        }
+
+        let mut inputs = Vec::new();
+
+        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        while !self.consume(DELIMITER) {
+            inputs.push(self.parse_ty()?);
+
+            // FIXME: Is there a better way to express this?
+            if self.token().kind != DELIMITER {
+                self.parse(SEPARATOR)?;
+            }
+        }
+
+        let output = if self.consume(TokenKind::ThinArrow) { Some(self.parse_ty()?) } else { None };
+
+        Ok(ast::GenericArgs::Paren { inputs, output })
+    }
+
+    fn parse_term(&mut self) -> Result<ast::Term<'src>> {
+        if self.begins_ty() {
+            Ok(ast::Term::Ty(self.parse_ty()?))
+        } else if self.begins_const_arg() {
+            Ok(ast::Term::Const(self.parse_expr()?))
+        } else {
+            Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Term))
+        }
     }
 
     fn begins_const_arg(&self) -> bool {
@@ -248,4 +274,17 @@ impl ParseGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
 enum RequiresDisambiguation {
     Yes,
     No,
+}
+
+fn extract_assoc_item_seg<'src>(
+    arg: &mut ast::GenericArg<'src>,
+) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
+    if let ast::GenericArg::Ty(ty) = arg
+        && let ast::Ty::Path(ast::Path { segs }) = ty
+        && let [seg] = segs.as_mut_slice()
+    {
+        Some((seg.ident, seg.args.take()))
+    } else {
+        None
+    }
 }

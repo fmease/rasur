@@ -281,7 +281,11 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_parenthesized_or_tuple(Self::parse_expr, ast::Expr::Tup);
+                return self.fin_parse_group_or_tuple(
+                    Self::parse_expr,
+                    ast::Expr::Group,
+                    ast::Expr::Tup,
+                );
             }
             _ => {}
         }
