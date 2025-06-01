@@ -11,7 +11,7 @@ impl Fmt for ast::Item<'_> {
         }
         for attr in attrs {
             attr.fmt(cx);
-            fmt!(cx, "\n");
+            cx.line_break();
         }
 
         // FIXME: Not all items support visibility.
@@ -67,15 +67,21 @@ impl Fmt for ast::EnumItem<'_> {
         fmt!(cx, "enum {binder}");
         generics.fmt(cx);
 
-        fmt!(cx, " {{\n");
-        cx.indent();
-        for variant in variants {
-            fmt!(cx, indent);
-            variant.fmt(cx);
-            fmt!(cx, ",\n");
+        fmt!(cx, " {{");
+        if !variants.is_empty() {
+            cx.indent();
+            cx.line_break();
+            let mut variants = variants.into_iter().peekable();
+            while let Some(variant) = variants.next() {
+                variant.fmt(cx);
+                fmt!(cx, ",");
+                if variants.peek().is_some() {
+                    cx.line_break();
+                }
+            }
+            cx.dedent();
+            cx.line_break();
         }
-        cx.dedent();
-        fmt!(cx, indent);
         fmt!(cx, "}}");
     }
 }
@@ -87,7 +93,7 @@ impl Fmt for ast::EnumVariant<'_> {
         // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
         for attr in attrs {
             attr.fmt(cx);
-            fmt!(cx, "\n");
+            cx.line_break();
         }
         fmt!(cx, "{binder}");
     }
@@ -117,15 +123,20 @@ impl Fmt for ast::ExternCrateItem<'_> {
 impl Fmt for Vec<ast::ExternItem<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, " {{");
-        if self.is_empty() {
-            fmt!(cx, "}}")
-        } else {
-            fmt!(cx, "\n");
+        if !self.is_empty() {
             cx.indent();
-            Punctuated::new(self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
+            cx.line_break();
+            let mut items = self.into_iter().peekable();
+            while let Some(item) = items.next() {
+                item.fmt(cx);
+                if items.peek().is_some() {
+                    cx.line_break();
+                }
+            }
             cx.dedent();
-            fmt!(cx, "\n}}");
+            cx.line_break();
         }
+        fmt!(cx, "}}");
     }
 }
 
@@ -139,7 +150,7 @@ impl Fmt for ast::ExternItem<'_> {
         }
         for attr in attrs {
             attr.fmt(cx);
-            fmt!(cx, "\n");
+            cx.line_break();
         }
 
         // FIXME: Not all assoc items support visibility.
@@ -241,14 +252,20 @@ impl Fmt for ast::ModItem<'_> {
         fmt!(cx, "mod {binder}");
         match body {
             Some(items) => {
-                fmt!(cx, " {{\n");
-                cx.indent();
-                for item in items {
-                    fmt!(cx, indent);
-                    item.fmt(cx);
+                fmt!(cx, " {{");
+                if !items.is_empty() {
+                    cx.indent();
+                    cx.line_break();
+                    let mut items = items.into_iter().peekable();
+                    while let Some(item) = items.next() {
+                        item.fmt(cx);
+                        if items.peek().is_some() {
+                            cx.line_break();
+                        }
+                    }
+                    cx.dedent();
+                    cx.line_break();
                 }
-                cx.dedent();
-                fmt!(cx, indent);
                 fmt!(cx, "}}");
             }
             None => fmt!(cx, ";"),
@@ -283,15 +300,21 @@ impl Fmt for ast::StructItem<'_> {
         generics.fmt(cx);
         match body {
             ast::StructBody::Normal { fields } => {
-                fmt!(cx, " {{\n");
-                cx.indent();
-                for field in fields {
-                    fmt!(cx, indent);
-                    field.fmt(cx);
-                    fmt!(cx, ",\n");
+                fmt!(cx, " {{");
+                if !fields.is_empty() {
+                    cx.indent();
+                    cx.line_break();
+                    let mut fields = fields.into_iter().peekable();
+                    while let Some(field) = fields.next() {
+                        field.fmt(cx);
+                        fmt!(cx, ",");
+                        if fields.peek().is_some() {
+                            cx.line_break();
+                        }
+                    }
+                    cx.dedent();
+                    cx.line_break();
                 }
-                cx.dedent();
-                fmt!(cx, indent);
                 fmt!(cx, "}}");
             }
             ast::StructBody::Unit => fmt!(cx, ";"),
@@ -413,15 +436,20 @@ impl Fmt for ast::MacroDef<'_> {
 impl Fmt for Vec<ast::AssocItem<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, " {{");
-        if self.is_empty() {
-            fmt!(cx, "}}")
-        } else {
-            fmt!(cx, "\n");
+        if !self.is_empty() {
             cx.indent();
-            Punctuated::new(self, "\n\n").fmt(cx); // FIXME: doesn't indent elems
+            cx.line_break();
+            let mut items = self.into_iter().peekable();
+            while let Some(item) = items.next() {
+                item.fmt(cx);
+                if items.peek().is_some() {
+                    cx.line_break();
+                }
+            }
             cx.dedent();
-            fmt!(cx, "\n}}");
+            cx.line_break();
         }
+        fmt!(cx, "}}");
     }
 }
 
@@ -435,7 +463,7 @@ impl Fmt for ast::AssocItem<'_> {
         }
         for attr in attrs {
             attr.fmt(cx);
-            fmt!(cx, "\n");
+            cx.line_break();
         }
 
         // FIXME: Not all assoc items support visibility.

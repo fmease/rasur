@@ -88,7 +88,7 @@ fn try_main() -> Result<(), ()> {
     }
 
     if opts.fmt {
-        let result = fmter::fmt(file, &source, fmter::Cfg { ..Default::default() });
+        let result = fmter::fmt(file, &source, fmter::Cfg::default());
         println!("{result}");
     }
 

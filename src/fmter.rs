@@ -5,7 +5,6 @@ mod item;
 
 // FIXME: Reproduce comments.
 // FIXME: The indentation setup is busted.
-//        The context should automatically push self.indent after `\n` on fmt (smh)
 
 pub(crate) struct Cfg {
     pub(crate) indent: usize,
@@ -17,26 +16,21 @@ impl Default for Cfg {
     }
 }
 
-macro fmt {
-    ($cx:ident, indent) => {
-        _ = $cx.buf.write_str(&" ".repeat($cx.indent)) // FIXME: Don't allocate extra string!
-    },
-    ($cx:ident, $($arg:tt)*) => {
-        _ = $cx.buf.write_fmt(format_args!($($arg)*))
-    },
+macro fmt($cx:ident, $($arg:tt)*) {
+    _ = $cx.output.write_fmt(format_args!($($arg)*))
 }
 
 pub(crate) fn fmt(file: ast::File<'_>, source: &str, cfg: Cfg) -> String {
-    let mut cx = Cx { cfg, source, indent: 0, buf: String::with_capacity(source.len()) };
+    let mut cx = Cx { cfg, source, indent: 0, output: String::with_capacity(source.len()) };
     file.fmt(&mut cx);
-    cx.buf
+    cx.output
 }
 
 struct Cx<'src> {
     cfg: Cfg,
     source: &'src str,
     indent: usize,
-    buf: String,
+    output: String,
 }
 
 impl<'src> Cx<'src> {
@@ -52,9 +46,15 @@ impl<'src> Cx<'src> {
         self.indent -= self.cfg.indent;
     }
 
+    fn line_break(&mut self) {
+        self.output.push('\n');
+        _ = self.output.write_fmt(format_args!("{0:1$}", "", self.indent));
+    }
+
     fn skip(&self, attrs: &[ast::Attr<'_>]) -> bool {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Make tool mod config'able: "rasur"|"rustfmt"|both
+        // FIXME: Support rustfmt_skip or whatever that legacy attr is called
         attrs.iter().any(|attr| {
             matches!(
                 &*attr.path.segs,
@@ -79,12 +79,15 @@ impl Fmt for ast::File<'_> {
         if !attrs.is_empty() {
             for attr in attrs {
                 attr.fmt(cx);
-                fmt!(cx, "\n");
+                cx.line_break();
             }
-            fmt!(cx, "\n");
+            cx.line_break();
         }
 
-        Punctuated::new(items, "\n\n").fmt(cx);
+        for item in items {
+            item.fmt(cx);
+            cx.line_break();
+        }
     }
 }
 
@@ -529,29 +532,26 @@ impl Fmt for ast::Expr<'_> {
                 body.fmt(cx);
             }
             Self::Match { scrutinee, arms } => {
-                let is_non_empty = !arms.is_empty();
-
                 fmt!(cx, "match ");
                 scrutinee.fmt(cx);
                 fmt!(cx, " {{");
-                cx.indent();
-                if is_non_empty {
-                    fmt!(cx, "\n");
-                }
-                for arm in arms {
-                    let needs_comma = !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
-
-                    fmt!(cx, indent);
-                    arm.fmt(cx);
-                    if needs_comma {
-                        fmt!(cx, ",");
+                if !arms.is_empty() {
+                    cx.indent();
+                    cx.line_break();
+                    let mut arms = arms.into_iter().peekable();
+                    while let Some(arm) = arms.next() {
+                        let needs_comma =
+                            !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
+                        arm.fmt(cx);
+                        if needs_comma {
+                            fmt!(cx, ",");
+                        }
+                        if arms.peek().is_some() {
+                            cx.line_break();
+                        }
                     }
-                    fmt!(cx, "\n");
-                }
-                cx.dedent();
-                if is_non_empty {
-                    // Because we added a trailing line break above.
-                    fmt!(cx, indent);
+                    cx.dedent();
+                    cx.line_break();
                 }
                 fmt!(cx, "}}");
             }
@@ -668,33 +668,28 @@ impl Fmt for ast::Pat<'_> {
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, stmts } = self;
-        let is_non_empty = !attrs.is_empty() || !stmts.is_empty();
 
         fmt!(cx, "{{");
-        if is_non_empty {
-            fmt!(cx, "\n");
-        }
-        cx.indent();
-        for attr in attrs {
-            fmt!(cx, indent);
-            attr.fmt(cx);
-            fmt!(cx, "\n");
-        }
-        for stmt in stmts {
-            if let ast::Stmt::Empty = stmt {
-                continue;
+        if !attrs.is_empty() || !stmts.is_empty() {
+            cx.indent();
+            cx.line_break();
+            for attr in attrs {
+                attr.fmt(cx);
+                cx.line_break();
             }
-            fmt!(cx, indent);
-            stmt.fmt(cx);
-            fmt!(cx, "\n");
+            let mut stmts = stmts.into_iter().peekable();
+            while let Some(stmt) = stmts.next() {
+                if let ast::Stmt::Empty = stmt {
+                    continue;
+                }
+                stmt.fmt(cx);
+                if stmts.peek().is_some() {
+                    cx.line_break();
+                }
+            }
+            cx.dedent();
+            cx.line_break();
         }
-        cx.dedent();
-
-        if is_non_empty {
-            // Because we added a trailing line break above.
-            fmt!(cx, indent);
-        }
-
         fmt!(cx, "}}");
     }
 }
