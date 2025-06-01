@@ -368,6 +368,7 @@ pub(crate) enum Expr<'src> {
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Borrow(Mutable, Box<Expr<'src>>),
+    Field(Box<Expr<'src>>, Ident<'src>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
     Group(Box<Expr<'src>>),
@@ -394,6 +395,7 @@ impl Expr<'_> {
             | Self::NumLit(_)
             | Self::StrLit(_)
             | Self::Borrow(..)
+            | Self::Field(..)
             | Self::Tup(_)
             | Self::Group(_)
             | Self::MacroCall(_) => false,

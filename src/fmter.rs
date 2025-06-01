@@ -547,13 +547,21 @@ impl Fmt for ast::Expr<'_> {
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::Borrow(mut_, expr) => {
-                // FIXME: Doesn't consider precedence!
                 fmt!(cx, "&");
                 match mut_ {
                     ast::Mutable::Yes => fmt!(cx, "mut "),
                     ast::Mutable::No => {}
                 }
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
                 expr.fmt(cx);
+                fmt!(cx, ")");
+            }
+            Self::Field(expr, field) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ").{field}");
             }
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),

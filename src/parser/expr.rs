@@ -113,6 +113,20 @@ impl<'src> Parser<'src> {
 
                     continue;
                 }
+                TokenKind::Dot => {
+                    let left_level = Level::FieldAccess;
+                    if left_level < level {
+                        break;
+                    }
+
+                    self.advance();
+
+                    let field = self.parse_common_ident()?;
+
+                    left = ast::Expr::Field(Box::new(left), field);
+
+                    continue;
+                }
                 _ => break,
             };
 
@@ -375,4 +389,5 @@ enum Level {
     Cast,
     NegNotDerefBorrow,
     Try,
+    FieldAccess,
 }
