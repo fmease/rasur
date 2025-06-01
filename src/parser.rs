@@ -4,6 +4,7 @@ use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 use std::borrow::Cow;
 use std::fmt;
+use std::path::Path;
 
 mod attr;
 mod expr;
@@ -352,27 +353,55 @@ pub(crate) enum ParseError {
     UnexpectedToken(Token, ExpectedFragment),
     // FIXME: Temporary
     InvalidDelimiter,
-    InvalidAssocItemKind,
-    InvalidExternItemKind,
+    InvalidAssocItemKind(Span),
+    InvalidExternItemKind(Span),
     ExpectedTraitFoundTy,
     ModifierOnOutlivesBound,
 }
 
 impl ParseError {
-    pub(crate) fn print(&self, source: &str) {
-        eprint!("error: ");
-        match self {
+    pub(crate) fn print(&self, source: &str, path: &Path) {
+        use annotate_snippets as ann;
+        let lvl = ann::Level::Error;
+        let msg = match self {
             Self::UnexpectedToken(token, expected) => {
                 let found = token.to_diag_str(Some(source));
-                eprint!("{:?}: found {found} but expected {expected}", token.span)
+                super let title = format!("found {found} but expected {expected}");
+                super let path = path.to_string_lossy();
+
+                lvl.title(&title).snippet(
+                    ann::Snippet::source(source)
+                        .origin(&path)
+                        .annotation(lvl.span(token.span.range()).label("unexpected token"))
+                        .fold(true),
+                )
             }
-            Self::InvalidDelimiter => eprint!("invalid delimiter"),
-            Self::InvalidAssocItemKind => eprint!("invalid associated item kind"),
-            Self::InvalidExternItemKind => eprint!("invalid extern item kind"),
-            Self::ExpectedTraitFoundTy => eprint!("found type expected trait"),
-            Self::ModifierOnOutlivesBound => eprint!("only trait bounds may have modifiers"),
-        }
-        eprintln!();
+            Self::InvalidAssocItemKind(span) => {
+                super let path = path.to_string_lossy();
+
+                lvl.title("invalid associated item kind").snippet(
+                    ann::Snippet::source(source)
+                        .origin(&path)
+                        .annotation(lvl.span(span.range()))
+                        .fold(true),
+                )
+            }
+            Self::InvalidDelimiter => lvl.title("invalid delimiter"),
+            Self::InvalidExternItemKind(span) => {
+                super let path = path.to_string_lossy();
+
+                lvl.title("invalid extern item kind").snippet(
+                    ann::Snippet::source(source)
+                        .origin(&path)
+                        .annotation(lvl.span(span.range()))
+                        .fold(true),
+                )
+            }
+            Self::ExpectedTraitFoundTy => lvl.title("found type expected trait"),
+            Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
+        };
+        let renderer = ann::Renderer::styled();
+        eprintln!("{}", renderer.render(msg));
     }
 }
 

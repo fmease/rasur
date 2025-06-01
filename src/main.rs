@@ -1,8 +1,7 @@
 #![feature(decl_macro)]
 #![feature(if_let_guard)]
 #![feature(iter_intersperse)]
-#![feature(let_chains)]
-#![feature(macro_metavar_expr)]
+#![feature(super_let)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use edition::Edition;
@@ -82,7 +81,7 @@ fn try_main() -> Result<(), ()> {
     }
 
     let file = parser::parse(tokens, &source, opts.edition.unwrap_or_default())
-        .map_err(|error| error.print(&source))?;
+        .map_err(|error| error.print(&source, &path))?;
 
     if opts.emit_ast {
         eprintln!("{file:#?}");

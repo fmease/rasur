@@ -261,7 +261,7 @@ impl<'src> Parser<'src> {
                         ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
                         ast::ItemKind::Ty(item) => ast::ExternItemKind::Ty(item),
-                        _ => return Err(ParseError::InvalidExternItemKind),
+                        _ => return Err(ParseError::InvalidExternItemKind(item.span)),
                     },
                     span: item.span,
                 })
@@ -668,7 +668,7 @@ impl<'src> Parser<'src> {
                         ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
                         ast::ItemKind::Ty(item) => ast::AssocItemKind::Ty(item),
-                        _ => return Err(ParseError::InvalidAssocItemKind),
+                        _ => return Err(ParseError::InvalidAssocItemKind(item.span)),
                     },
                     span: item.span,
                 })
