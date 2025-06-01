@@ -27,7 +27,7 @@ pub(crate) enum Visibility<'src> {
     Public,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutable {
     Yes,
     No,

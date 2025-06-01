@@ -357,20 +357,55 @@ impl<'src> Parser<'src> {
     /// ```
     fn parse_fn_params(&mut self) -> Result<Vec<ast::FnParam<'src>>> {
         let mut params = Vec::new();
+        let mut first = true;
 
         self.parse(TokenKind::OpenRoundBracket)?;
         const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
         while !self.consume(DELIMITER) {
+            let first = std::mem::take(&mut first);
+
             let pat = self.parse_pat()?;
-            // FIXME: Optional if in trait and edition 2015
-            let ty = self.parse_ty_annotation()?;
+
+            // FIXME: Extract into "extract_shorthand_self"
+            let (pat, ty) = match pat {
+                ast::Pat::Path(ast::Path {
+                    segs: deref!([ast::PathSeg { ident: "self", args: None }]),
+                }) => {
+                    if !first {
+                        return Err(ParseError::MisplacedReceiver);
+                    }
+                    let ty = if self.consume(TokenKind::Colon) {
+                        self.parse_ty()?
+                    } else {
+                        ast::Ty::Path(ast::Path::ident("Self"))
+                    };
+                    (pat, ty)
+                }
+                // FIXME: We don't support `&'a self` right now, oof!
+                ast::Pat::Borrow(
+                    mut_,
+                    deref!(pat @ ast::Pat::Path(ast::Path {
+                        segs: deref!([ast::PathSeg { ident: "self", args: None }]),
+                    })),
+                ) => {
+                    if !first {
+                        return Err(ParseError::MisplacedReceiver);
+                    }
+                    let ty =
+                        ast::Ty::Ref(None, mut_, Box::new(ast::Ty::Path(ast::Path::ident("Self"))));
+                    (pat, ty)
+                }
+
+                // FIXME: Optional if in trait && edition==2015
+                pat => (pat, self.parse_ty_annotation()?),
+            };
+
+            params.push(ast::FnParam { pat, ty });
 
             // FIXME: Is there a nicer way to do this?
             if self.token().kind != DELIMITER {
                 self.parse(TokenKind::Comma)?;
             }
-
-            params.push(ast::FnParam { pat, ty })
         }
 
         Ok(params)

@@ -1,7 +1,9 @@
 #![feature(decl_macro)]
+#![feature(deref_patterns)]
 #![feature(if_let_guard)]
 #![feature(iter_intersperse)]
 #![feature(super_let)]
+#![expect(incomplete_features)] // deref_patterns
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use edition::Edition;

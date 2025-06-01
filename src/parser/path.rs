@@ -280,8 +280,7 @@ fn extract_assoc_item_seg<'src>(
     arg: &mut ast::GenericArg<'src>,
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
     if let ast::GenericArg::Ty(ty) = arg
-        && let ast::Ty::Path(ast::Path { segs }) = ty
-        && let [seg] = segs.as_mut_slice()
+        && let ast::Ty::Path(ast::Path { segs: deref!([seg]) }) = ty
     {
         Some((seg.ident, seg.args.take()))
     } else {

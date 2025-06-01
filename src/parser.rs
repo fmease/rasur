@@ -382,6 +382,7 @@ pub(crate) enum ParseError {
     InvalidExternItemKind(Span),
     ExpectedTraitFoundTy,
     ModifierOnOutlivesBound,
+    MisplacedReceiver,
 }
 
 impl ParseError {
@@ -424,6 +425,7 @@ impl ParseError {
             }
             Self::ExpectedTraitFoundTy => lvl.title("found type expected trait"),
             Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
+            Self::MisplacedReceiver => lvl.title("misplaced receiver"),
         };
         let renderer = ann::Renderer::styled();
         eprintln!("{}", renderer.render(msg));
