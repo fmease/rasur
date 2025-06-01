@@ -253,7 +253,9 @@ impl<'src> Parser<'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let binder = self.parse_common_ident()?;
 
-        Ok(ast::EnumVariant { attrs, binder })
+        let discr = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+
+        Ok(ast::EnumVariant { attrs, binder, discr })
     }
 
     /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit? "{"` has been parsed already.

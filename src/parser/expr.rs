@@ -113,9 +113,7 @@ impl<'src> Parser<'src> {
                     }
 
                     self.advance();
-
                     left = ast::Expr::UnOp(op, Box::new(left));
-
                     continue;
                 }
                 TokenKind::Dot => {
@@ -125,11 +123,8 @@ impl<'src> Parser<'src> {
                     }
 
                     self.advance();
-
                     let field = self.parse_common_ident()?;
-
                     left = ast::Expr::Field(Box::new(left), field);
-
                     continue;
                 }
                 // FIXME: Detect method calls!
@@ -156,6 +151,20 @@ impl<'src> Parser<'src> {
 
                     continue;
                 }
+                TokenKind::Ident => match self.source(token.span) {
+                    "as" => {
+                        let left_level = Level::Cast;
+                        if left_level < level {
+                            break;
+                        }
+
+                        self.advance();
+                        let ty = self.parse_ty()?;
+                        left = ast::Expr::Cast(Box::new(left), Box::new(ty));
+                        continue;
+                    }
+                    _ => break,
+                },
                 _ => break,
             };
 
@@ -435,7 +444,6 @@ enum Level {
     AddSubRight,
     MulDivRemLeft,
     MulDivRemRight,
-    #[expect(dead_code)] // FIXME
     Cast,
     NegNotDerefBorrow,
     Try,

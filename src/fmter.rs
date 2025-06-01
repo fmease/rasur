@@ -489,6 +489,11 @@ impl Fmt for ast::Expr<'_> {
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Cast(expr, ty) => {
+                expr.fmt(cx);
+                fmt!(cx, " as ");
+                ty.fmt(cx);
+            }
             Self::BinOp(op, left, right) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");

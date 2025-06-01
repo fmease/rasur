@@ -72,7 +72,7 @@ pub(crate) struct EnumVariant<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) binder: Ident<'src>,
     // FIXME: payload
-    // FIXME: discriminant
+    pub(crate) discr: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
@@ -368,6 +368,7 @@ pub(crate) struct FnParam<'src> {
 pub(crate) enum Expr<'src> {
     UnOp(UnOp, Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
+    Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Wildcard,
     Continue,
@@ -404,6 +405,7 @@ impl Expr<'_> {
             },
             Self::UnOp(..)
             | Self::BinOp(..)
+            | Self::Cast(..)
             | Self::Path(_)
             | Self::Wildcard
             | Self::Continue

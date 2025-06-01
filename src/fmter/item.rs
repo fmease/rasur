@@ -88,14 +88,20 @@ impl Fmt for ast::EnumItem<'_> {
 
 impl Fmt for ast::EnumVariant<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, binder } = self;
+        let Self { attrs, binder, discr } = self;
 
         // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
         for attr in attrs {
             attr.fmt(cx);
             cx.line_break();
         }
+
         fmt!(cx, "{binder}");
+
+        if let Some(discr) = discr {
+            fmt!(cx, " = ");
+            discr.fmt(cx);
+        }
     }
 }
 
