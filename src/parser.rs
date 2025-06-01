@@ -98,10 +98,10 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn fin_parse_group_or_tuple<T>(
+    fn fin_parse_grouped_or_tuple<T>(
         &mut self,
         parse: impl Fn(&mut Self) -> Result<T>,
-        group: impl FnOnce(Box<T>) -> T,
+        grouped: impl FnOnce(Box<T>) -> T,
         tuple: impl FnOnce(Vec<T>) -> T,
     ) -> Result<T> {
         let mut nodes = Vec::new();
@@ -114,9 +114,9 @@ impl<'src> Parser<'src> {
             // FIXME: Is there a better way to express this?
             if self.token().kind == DELIMITER {
                 if nodes.is_empty() {
-                    // This is actually a group, not a tuple.
+                    // This is actually a grouped node, not a tuple.
                     self.advance();
-                    return Ok(group(Box::new(node)));
+                    return Ok(grouped(Box::new(node)));
                 }
             } else {
                 self.parse(SEPARATOR)?;

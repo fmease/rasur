@@ -111,7 +111,11 @@ impl<'src> Parser<'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
 
-                return self.fin_parse_group_or_tuple(Self::parse_ty, ast::Ty::Group, ast::Ty::Tup);
+                return self.fin_parse_grouped_or_tuple(
+                    Self::parse_ty,
+                    ast::Ty::Grouped,
+                    ast::Ty::Tup,
+                );
             }
             _ => {}
         }

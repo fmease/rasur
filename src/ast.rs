@@ -360,6 +360,9 @@ pub(crate) enum Expr<'src> {
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
     Wildcard,
+    Continue,
+    Break(Option<&'src str>, Option<Box<Expr<'src>>>),
+    Return(Option<Box<Expr<'src>>>),
     If(Box<IfExpr<'src>>),
     Loop(Box<Expr<'src>>),
     Match { scrutinee: Box<Expr<'src>>, arms: Vec<MatchArm<'src>> },
@@ -372,11 +375,12 @@ pub(crate) enum Expr<'src> {
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
-    Group(Box<Expr<'src>>),
+    Grouped(Box<Expr<'src>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
 }
 
 impl Expr<'_> {
+    // FIXME: Bad name (e.g. `break {}` is `false` despite "ha[ving] [æ] trailing block")
     pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
             Self::If(_)
@@ -392,6 +396,9 @@ impl Expr<'_> {
             | Self::BinOp(..)
             | Self::Path(_)
             | Self::Wildcard
+            | Self::Continue
+            | Self::Break(..)
+            | Self::Return(_)
             | Self::BoolLit(_)
             | Self::NumLit(_)
             | Self::StrLit(_)
@@ -399,7 +406,7 @@ impl Expr<'_> {
             | Self::Field(..)
             | Self::Call(..)
             | Self::Tup(_)
-            | Self::Group(_)
+            | Self::Grouped(_)
             | Self::MacroCall(_) => false,
         }
     }
@@ -481,7 +488,7 @@ pub(crate) enum Pat<'src> {
     Wildcard,
     Tup(Vec<Pat<'src>>),
     Borrow(Mutable, Box<Pat<'src>>),
-    Group(Box<Pat<'src>>),
+    Grouped(Box<Pat<'src>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
 }
 
@@ -498,7 +505,7 @@ pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
-    Group(Box<Ty<'src>>),
+    Grouped(Box<Ty<'src>>),
     Error,
 }
 

@@ -46,8 +46,13 @@ impl<'src> Parser<'src> {
 
         let token = self.token();
         match token.kind {
+            #[rustfmt::skip]
             TokenKind::Ident => {
-                matches!(self.source(token.span), "_" | "false" | "if" | "match" | "true" | "while")
+                matches!(
+                    self.source(token.span),
+                    | "_" | "continue" | "break" | "false" | "if"
+                    | "match" | "return" | "true" | "while"
+                )
             }
             | TokenKind::Hyphen
             | TokenKind::Bang
@@ -207,6 +212,17 @@ impl<'src> Parser<'src> {
                     self.advance();
                     return Ok(ast::Expr::Wildcard);
                 }
+                "break" => {
+                    self.advance();
+                    let label = self.consume_lifetime().map(|ast::Lifetime(label)| label);
+                    let expr =
+                        self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                    return Ok(ast::Expr::Break(label, expr));
+                }
+                "continue" => {
+                    self.advance();
+                    return Ok(ast::Expr::Continue);
+                }
                 "false" => {
                     self.advance();
                     return Ok(ast::Expr::BoolLit(false));
@@ -284,6 +300,12 @@ impl<'src> Parser<'src> {
 
                     return Ok(ast::Expr::Match { scrutinee: Box::new(scrutinee), arms });
                 }
+                "return" => {
+                    self.advance();
+                    let expr =
+                        self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                    return Ok(ast::Expr::Return(expr));
+                }
                 "true" => {
                     self.advance();
                     return Ok(ast::Expr::BoolLit(true));
@@ -319,9 +341,9 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_group_or_tuple(
+                return self.fin_parse_grouped_or_tuple(
                     Self::parse_expr,
-                    ast::Expr::Group,
+                    ast::Expr::Grouped,
                     ast::Expr::Tup,
                 );
             }

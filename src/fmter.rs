@@ -454,7 +454,7 @@ impl Fmt for ast::Ty<'_> {
                 fmt!(cx, "]")
             }
             Self::Tup(tys) => Tup(tys).fmt(cx),
-            Self::Group(ty) => {
+            Self::Grouped(ty) => {
                 fmt!(cx, "(");
                 ty.fmt(cx);
                 fmt!(cx, ")");
@@ -496,6 +496,24 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Path(path) => path.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
+            Self::Continue => fmt!(cx, "continue"),
+            Self::Break(label, expr) => {
+                fmt!(cx, "break");
+                if let Some(label) = label {
+                    fmt!(cx, " '{label}");
+                }
+                if let Some(expr) = expr {
+                    fmt!(cx, " ");
+                    expr.fmt(cx);
+                }
+            }
+            Self::Return(expr) => {
+                fmt!(cx, "return");
+                if let Some(expr) = expr {
+                    fmt!(cx, " ");
+                    expr.fmt(cx);
+                }
+            }
             Self::If(expr) => {
                 fmt!(cx, "if ");
                 expr.condition.fmt(cx);
@@ -573,7 +591,7 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
-            Self::Group(expr) => {
+            Self::Grouped(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");
@@ -637,7 +655,7 @@ impl Fmt for ast::Pat<'_> {
                 pat.fmt(cx);
             }
             Self::Tup(pats) => Tup(pats).fmt(cx),
-            Self::Group(pat) => {
+            Self::Grouped(pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);
                 fmt!(cx, ")");

@@ -58,9 +58,9 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_group_or_tuple(
+                return self.fin_parse_grouped_or_tuple(
                     Self::parse_pat,
-                    ast::Pat::Group,
+                    ast::Pat::Grouped,
                     ast::Pat::Tup,
                 );
             }
