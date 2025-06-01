@@ -127,6 +127,30 @@ impl<'src> Parser<'src> {
 
                     continue;
                 }
+                // FIXME: Detect method calls!
+                TokenKind::OpenRoundBracket => {
+                    let left_level = Level::CallIndex;
+                    if left_level < level {
+                        break;
+                    }
+
+                    self.advance();
+                    let mut args = Vec::new();
+
+                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                    const SEPARATOR: TokenKind = TokenKind::Comma;
+                    while !self.consume(DELIMITER) {
+                        args.push(self.parse_expr()?);
+
+                        if self.token().kind != DELIMITER {
+                            self.parse(SEPARATOR)?;
+                        }
+                    }
+
+                    left = ast::Expr::Call(Box::new(left), args);
+
+                    continue;
+                }
                 _ => break,
             };
 
@@ -365,14 +389,15 @@ impl ast::BinOp {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(dead_code)] // FIXME
 enum Level {
     Initial,
     OrLeft,
     OrRight,
     AndLeft,
     AndRight,
+    #[expect(dead_code)] // FIXME
     CmpLeft,
+    #[expect(dead_code)] // FIXME
     CmpRight,
     BitOrLeft,
     BitOrRight,
@@ -380,14 +405,18 @@ enum Level {
     BitXorRight,
     BitAndLeft,
     BitAndRight,
+    #[expect(dead_code)] // FIXME
     BitShiftLeft,
+    #[expect(dead_code)] // FIXME
     BitShiftRight,
     AddSubLeft,
     AddSubRight,
     MulDivRemLeft,
     MulDivRemRight,
+    #[expect(dead_code)] // FIXME
     Cast,
     NegNotDerefBorrow,
     Try,
+    CallIndex,
     FieldAccess,
 }
