@@ -62,11 +62,34 @@ impl Fmt for ast::ConstItem<'_> {
 
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics } = self;
+        let Self { binder, generics, variants } = self;
 
         fmt!(cx, "enum {binder}");
         generics.fmt(cx);
-        fmt!(cx, " {{}}");
+
+        fmt!(cx, " {{\n");
+        cx.indent();
+        for variant in variants {
+            fmt!(cx, indent);
+            variant.fmt(cx);
+            fmt!(cx, ",\n");
+        }
+        cx.dedent();
+        fmt!(cx, indent);
+        fmt!(cx, "}}");
+    }
+}
+
+impl Fmt for ast::EnumVariant<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, binder } = self;
+
+        // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, "\n");
+        }
+        fmt!(cx, "{binder}");
     }
 }
 

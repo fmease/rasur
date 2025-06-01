@@ -226,16 +226,34 @@ impl<'src> Parser<'src> {
     /// Enum_Item ::=
     ///     "enum" Common_Ident
     ///     Generics
-    ///     "{" … "}"
+    ///     "{" (Enum_Variant ("," | >"}"))* "}"
+    /// Enum_Variant ::= Common_Ident
     /// ```
     fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let generics = self.parse_generics()?;
+        let mut variants = Vec::new();
 
         self.parse(TokenKind::OpenCurlyBracket)?;
-        self.parse(TokenKind::CloseCurlyBracket)?;
 
-        Ok(ast::ItemKind::Enum(Box::new(ast::EnumItem { binder, generics })))
+        const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        while !self.consume(DELIMITER) {
+            variants.push(self.parse_enum_variant()?);
+
+            if self.token().kind != DELIMITER {
+                self.parse(SEPARATOR)?;
+            }
+        }
+
+        Ok(ast::ItemKind::Enum(Box::new(ast::EnumItem { binder, generics, variants })))
+    }
+
+    fn parse_enum_variant(&mut self) -> Result<ast::EnumVariant<'src>> {
+        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        let binder = self.parse_common_ident()?;
+
+        Ok(ast::EnumVariant { attrs, binder })
     }
 
     /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit? "{"` has been parsed already.
@@ -488,7 +506,7 @@ impl<'src> Parser<'src> {
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let generics = self.parse_generics()?;
-        // FIXME: Unit structs (where the where clause is trailing)
+        // FIXME: Tuple structs (where the where clause is trailing)
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
             let mut fields = Vec::new();
 

@@ -64,6 +64,15 @@ pub(crate) struct ConstItem<'src> {
 pub(crate) struct EnumItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+    pub(crate) variants: Vec<EnumVariant<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct EnumVariant<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) binder: Ident<'src>,
+    // FIXME: payload
+    // FIXME: discriminant
 }
 
 #[derive(Debug)]
