@@ -75,131 +75,138 @@ impl<'src> Parser<'src> {
             TokenKind::Ampersand => {
                 self.advance();
                 let mut_ = self.parse_mutability();
-                let expr = self.parse_expr_at(Level::NegNotDerefBorrow)?;
+                let expr = self.parse_expr_at(Level::Prefix)?;
                 ast::Expr::Borrow(mut_, Box::new(expr)).into()
             }
             _ => self.parse_lower_expr()?.into(),
         };
         let mut left = match left {
-            UnOpOrExpr::UnOp(op) => {
+            OpOrExpr::UnOp(op) => {
                 self.advance();
                 let (_, Some(right_level)) = op.level() else { unreachable!() }; // FIXME: unreachable??
                 let right = self.parse_expr_at(right_level)?;
                 ast::Expr::UnOp(op, Box::new(right))
             }
-            UnOpOrExpr::Expr(expr) => expr,
+            OpOrExpr::Expr(expr) => expr,
         };
 
         loop {
             let token = self.token();
             let op = match token.kind {
-                TokenKind::Plus => ast::BinOp::Add,
-                TokenKind::Hyphen => ast::BinOp::Sub,
-                TokenKind::Asterisk => ast::BinOp::Mul,
-                TokenKind::Slash => ast::BinOp::Div,
-                TokenKind::Percent => ast::BinOp::Rem,
-                TokenKind::Caret => ast::BinOp::BitXor,
+                TokenKind::Plus => ast::BinOp::Add.into(),
+                TokenKind::Hyphen => ast::BinOp::Sub.into(),
+                TokenKind::Asterisk => ast::BinOp::Mul.into(),
+                TokenKind::Slash => ast::BinOp::Div.into(),
+                TokenKind::Percent => ast::BinOp::Rem.into(),
+                TokenKind::Caret => ast::BinOp::BitXor.into(),
                 TokenKind::Ampersand if self.is_glued_to(token, TokenKind::Ampersand) => {
-                    ast::BinOp::And
+                    ast::BinOp::And.into()
                 }
-                TokenKind::Ampersand => ast::BinOp::BitAnd,
-                TokenKind::Pipe if self.is_glued_to(token, TokenKind::Pipe) => ast::BinOp::Or,
-                TokenKind::Pipe => ast::BinOp::BitOr,
-                TokenKind::QuestionMark => {
-                    let op = ast::UnOp::Try;
-                    let (Some(left_level), _) = op.level() else { unreachable!() }; // FIXME: unreachable??
-                    if left_level < level {
-                        break;
-                    }
-
-                    self.advance();
-                    left = ast::Expr::UnOp(op, Box::new(left));
-                    continue;
+                TokenKind::Ampersand => ast::BinOp::BitAnd.into(),
+                TokenKind::Pipe if self.is_glued_to(token, TokenKind::Pipe) => {
+                    ast::BinOp::Or.into()
                 }
-                TokenKind::Dot => {
-                    let left_level = Level::FieldAccess;
-                    if left_level < level {
-                        break;
-                    }
-
-                    self.advance();
-                    let field = self.parse_common_ident()?;
-                    left = ast::Expr::Field(Box::new(left), field);
-                    continue;
-                }
-                // FIXME: Detect method calls!
-                TokenKind::OpenRoundBracket => {
-                    let left_level = Level::CallIndex;
-                    if left_level < level {
-                        break;
-                    }
-
-                    self.advance();
-                    let mut args = Vec::new();
-
-                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-                    const SEPARATOR: TokenKind = TokenKind::Comma;
-                    while !self.consume(DELIMITER) {
-                        args.push(self.parse_expr()?);
-
-                        if self.token().kind != DELIMITER {
-                            self.parse(SEPARATOR)?;
-                        }
-                    }
-
-                    left = ast::Expr::Call(Box::new(left), args);
-
-                    continue;
-                }
-                TokenKind::Ident => match self.source(token.span) {
-                    "as" => {
-                        let left_level = Level::Cast;
-                        if left_level < level {
-                            break;
-                        }
-
-                        self.advance();
-                        let ty = self.parse_ty()?;
-                        left = ast::Expr::Cast(Box::new(left), Box::new(ty));
-                        continue;
-                    }
-                    _ => break,
-                },
+                TokenKind::Pipe => ast::BinOp::BitOr.into(),
+                TokenKind::QuestionMark => PostfixOp::Try.into(),
+                TokenKind::Dot => PostfixOp::Project.into(),
+                TokenKind::OpenRoundBracket => PostfixOp::Call.into(),
+                TokenKind::Ident if let "as" = self.source(token.span) => PostfixOp::Cast.into(),
                 _ => break,
             };
 
-            let (left_level, right_level) = op.levels();
-            if left_level < level {
-                break;
+            match op {
+                InfixOrPostfixOp::Infix(op) => {
+                    let (left_level, right_level) = op.levels();
+                    if left_level < level {
+                        break;
+                    }
+                    for _ in 0..op.length() {
+                        self.advance();
+                    }
+
+                    let right = self.parse_expr_at(right_level)?;
+                    left = ast::Expr::BinOp(op, Box::new(left), Box::new(right));
+                }
+                InfixOrPostfixOp::Postfix(op) => {
+                    let left_level = op.level();
+                    if left_level < level {
+                        break;
+                    }
+                    self.advance();
+
+                    left = self.fin_parse_postfix_op(op, left)?;
+                }
             }
 
-            for _ in 0..op.length() {
-                self.advance();
+            enum InfixOrPostfixOp {
+                Infix(ast::BinOp),
+                Postfix(PostfixOp),
             }
 
-            let right = self.parse_expr_at(right_level)?;
+            impl From<ast::BinOp> for InfixOrPostfixOp {
+                fn from(op: ast::BinOp) -> Self {
+                    Self::Infix(op)
+                }
+            }
 
-            left = ast::Expr::BinOp(op, Box::new(left), Box::new(right));
+            impl From<PostfixOp> for InfixOrPostfixOp {
+                fn from(op: PostfixOp) -> Self {
+                    Self::Postfix(op)
+                }
+            }
         }
 
-        enum UnOpOrExpr<'src> {
+        enum OpOrExpr<'src> {
             UnOp(ast::UnOp),
             Expr(ast::Expr<'src>),
         }
 
-        impl<'src> From<ast::Expr<'src>> for UnOpOrExpr<'src> {
+        impl<'src> From<ast::Expr<'src>> for OpOrExpr<'src> {
             fn from(expr: ast::Expr<'src>) -> Self {
                 Self::Expr(expr)
             }
         }
 
-        impl<'src> From<ast::UnOp> for UnOpOrExpr<'src> {
+        impl<'src> From<ast::UnOp> for OpOrExpr<'src> {
             fn from(op: ast::UnOp) -> Self {
                 Self::UnOp(op)
             }
         }
 
         Ok(left)
+    }
+
+    fn fin_parse_postfix_op(
+        &mut self,
+        op: PostfixOp,
+        left: ast::Expr<'src>,
+    ) -> Result<ast::Expr<'src>> {
+        Ok(match op {
+            PostfixOp::Cast => {
+                let ty = self.parse_ty()?;
+                ast::Expr::Cast(Box::new(left), Box::new(ty))
+            }
+            PostfixOp::Try => ast::Expr::UnOp(ast::UnOp::Try, Box::new(left)),
+            PostfixOp::Call => {
+                let mut args = Vec::new();
+
+                const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                const SEPARATOR: TokenKind = TokenKind::Comma;
+                while !self.consume(DELIMITER) {
+                    args.push(self.parse_expr()?);
+
+                    if self.token().kind != DELIMITER {
+                        self.parse(SEPARATOR)?;
+                    }
+                }
+
+                ast::Expr::Call(Box::new(left), args)
+            }
+            PostfixOp::Project => {
+                let field = self.parse_common_ident()?;
+                ast::Expr::Field(Box::new(left), field)
+            }
+        })
     }
 
     fn parse_lower_expr(&mut self) -> Result<ast::Expr<'src>> {
@@ -385,7 +392,8 @@ impl<'src> Parser<'src> {
 impl ast::UnOp {
     fn level(self) -> (Option<Level>, Option<Level>) {
         match self {
-            Self::Deref | Self::Neg | Self::Not => (None, Some(Level::NegNotDerefBorrow)),
+            Self::Deref | Self::Neg | Self::Not => (None, Some(Level::Prefix)),
+            // FIXME: unreachable
             Self::Try => (Some(Level::Try), None),
         }
     }
@@ -399,8 +407,8 @@ impl ast::BinOp {
             Self::BitOr => (Level::BitOrLeft, Level::BitOrRight),
             Self::BitXor => (Level::BitXorLeft, Level::BitXorRight),
             Self::BitAnd => (Level::BitAndLeft, Level::BitAndRight),
-            Self::Add | Self::Sub => (Level::AddSubLeft, Level::AddSubRight),
-            Self::Mul | Self::Div | Self::Rem => (Level::MulDivRemLeft, Level::MulDivRemRight),
+            Self::Add | Self::Sub => (Level::SumLeft, Level::SumRight),
+            Self::Mul | Self::Div | Self::Rem => (Level::ProductLeft, Level::ProductRight),
         }
     }
 
@@ -419,6 +427,25 @@ impl ast::BinOp {
     }
 }
 
+#[derive(Clone, Copy)]
+enum PostfixOp {
+    Cast,
+    Try,
+    Call,
+    Project,
+}
+
+impl PostfixOp {
+    fn level(self) -> Level {
+        match self {
+            Self::Cast => Level::Cast,
+            Self::Try => Level::Try,
+            Self::Call => Level::Call,
+            Self::Project => Level::Project,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Initial,
@@ -427,9 +454,9 @@ enum Level {
     AndLeft,
     AndRight,
     #[expect(dead_code)] // FIXME
-    CmpLeft,
+    CompareLeft,
     #[expect(dead_code)] // FIXME
-    CmpRight,
+    CompareRight,
     BitOrLeft,
     BitOrRight,
     BitXorLeft,
@@ -440,13 +467,13 @@ enum Level {
     BitShiftLeft,
     #[expect(dead_code)] // FIXME
     BitShiftRight,
-    AddSubLeft,
-    AddSubRight,
-    MulDivRemLeft,
-    MulDivRemRight,
+    SumLeft,
+    SumRight,
+    ProductLeft,
+    ProductRight,
     Cast,
-    NegNotDerefBorrow,
+    Prefix,
     Try,
-    CallIndex,
-    FieldAccess,
+    Call,
+    Project,
 }
