@@ -455,6 +455,7 @@ pub(crate) enum BinOp {
     Or,
     Rem,
     Sub,
+    Assign,
     Eq,
     Ne,
     Lt,

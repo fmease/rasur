@@ -102,6 +102,7 @@ impl<'src> Parser<'src> {
                 TokenKind::Caret => ast::BinOp::BitXor.into(),
                 TokenKind::Dot => PostfixOp::Project.into(),
                 TokenKind::DoubleAmpersand => ast::BinOp::And.into(),
+                TokenKind::Equals => ast::BinOp::Assign.into(),
                 TokenKind::DoubleEquals => ast::BinOp::Eq.into(),
                 TokenKind::DoublePipe => ast::BinOp::Or.into(),
                 TokenKind::GreaterThan => ast::BinOp::Gt.into(),
@@ -205,8 +206,19 @@ impl<'src> Parser<'src> {
                 ast::Expr::Index(Box::new(left), Box::new(index))
             }
             PostfixOp::Project => {
-                let field = self.parse_common_ident()?;
-                ast::Expr::Field(Box::new(left), field)
+                let token = self.token();
+                let ident = match token.kind {
+                    TokenKind::NumLit => self.source(token.span),
+                    _ if let Some(ident) = self.as_common_ident(token) => ident,
+                    _ => {
+                        return Err(ParseError::UnexpectedToken(
+                            token,
+                            one_of![ExpectedFragment::CommonIdent, TokenKind::NumLit],
+                        ));
+                    }
+                };
+                self.advance();
+                ast::Expr::Field(Box::new(left), ident)
             }
         })
     }
@@ -404,6 +416,7 @@ impl ast::UnOp {
 impl ast::BinOp {
     fn levels(self) -> (Level, Level) {
         match self {
+            Self::Assign => (Level::AssignLeft, Level::AssignRight),
             Self::Or => (Level::OrLeft, Level::OrRight),
             Self::And => (Level::AndLeft, Level::AndRight),
             // FIXME: Reject same-level instead!
@@ -442,6 +455,10 @@ impl PostfixOp {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Initial,
+    // FIXME: Jump
+    AssignRight,
+    AssignLeft,
+    // FIXME: Range
     OrLeft,
     OrRight,
     AndLeft,
