@@ -86,9 +86,9 @@ impl Fmt for ast::EnumItem<'_> {
     }
 }
 
-impl Fmt for ast::EnumVariant<'_> {
+impl Fmt for ast::Variant<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, binder, discr } = self;
+        let Self { attrs, binder, kind, discr } = self;
 
         // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
         for attr in attrs {
@@ -98,10 +98,70 @@ impl Fmt for ast::EnumVariant<'_> {
 
         fmt!(cx, "{binder}");
 
+        kind.fmt(cx);
+
         if let Some(discr) = discr {
             fmt!(cx, " = ");
             discr.fmt(cx);
         }
+    }
+}
+
+impl Fmt for ast::VariantKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Unit => {}
+            Self::Tuple(fields) => {
+                fmt!(cx, "(");
+                Punctuated::new(fields, ", ").fmt(cx);
+                fmt!(cx, ")");
+            }
+            Self::Struct(fields) => {
+                fmt!(cx, " {{");
+                if !fields.is_empty() {
+                    cx.indent();
+                    cx.line_break();
+                    let mut fields = fields.into_iter().peekable();
+                    while let Some(field) = fields.next() {
+                        field.fmt(cx);
+                        fmt!(cx, ",");
+                        if fields.peek().is_some() {
+                            cx.line_break();
+                        }
+                    }
+                    cx.dedent();
+                    cx.line_break();
+                }
+                fmt!(cx, "}}");
+            }
+        }
+    }
+}
+
+impl Fmt for ast::TupleField<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, vis, ty } = self;
+        // FIXME: Inspect attrs to look for fmt skips.
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+        vis.fmt(cx);
+        ty.fmt(cx);
+    }
+}
+
+impl Fmt for ast::StructField<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, vis, binder, ty } = self;
+        // FIXME: Inspect attrs to look for fmt skips.
+        for attr in attrs {
+            attr.fmt(cx);
+            cx.line_break();
+        }
+        vis.fmt(cx);
+        fmt!(cx, "{binder}: ");
+        ty.fmt(cx);
     }
 }
 
@@ -300,41 +360,18 @@ impl Fmt for ast::StaticItem<'_> {
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, body } = self;
+        let Self { binder, generics, kind: body } = self;
 
         fmt!(cx, "struct {binder}");
         generics.fmt(cx);
-        match body {
-            ast::StructBody::Normal { fields } => {
-                fmt!(cx, " {{");
-                if !fields.is_empty() {
-                    cx.indent();
-                    cx.line_break();
-                    let mut fields = fields.into_iter().peekable();
-                    while let Some(field) = fields.next() {
-                        field.fmt(cx);
-                        fmt!(cx, ",");
-                        if fields.peek().is_some() {
-                            cx.line_break();
-                        }
-                    }
-                    cx.dedent();
-                    cx.line_break();
-                }
-                fmt!(cx, "}}");
-            }
-            ast::StructBody::Unit => fmt!(cx, ";"),
+        let needs_semi = match body {
+            ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => true,
+            ast::VariantKind::Struct(_) => false,
+        };
+        body.fmt(cx);
+        if needs_semi {
+            fmt!(cx, ";");
         }
-    }
-}
-
-impl Fmt for ast::StructField<'_> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { vis, binder, ty } = self;
-
-        vis.fmt(cx);
-        fmt!(cx, "{binder}: ");
-        ty.fmt(cx);
     }
 }
 

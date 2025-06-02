@@ -237,19 +237,55 @@ impl<'src> Parser<'src> {
         let variants = self.parse_delimited_sequence(
             TokenKind::CloseCurlyBracket,
             TokenKind::Comma,
-            Self::parse_enum_variant,
+            Self::parse_variant,
         )?;
 
         Ok(ast::ItemKind::Enum(Box::new(ast::EnumItem { binder, generics, variants })))
     }
 
-    fn parse_enum_variant(&mut self) -> Result<ast::EnumVariant<'src>> {
+    fn parse_variant(&mut self) -> Result<ast::Variant<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        // FIXME: Parse visibility
         let binder = self.parse_common_ident()?;
-
+        let kind = self.parse_variant_kind()?;
         let discr = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        Ok(ast::Variant { attrs, binder, kind, discr })
+    }
 
-        Ok(ast::EnumVariant { attrs, binder, discr })
+    fn parse_variant_kind(&mut self) -> Result<ast::VariantKind<'src>> {
+        let token = self.token();
+        Ok(match token.kind {
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                let fields = self.parse_delimited_sequence(
+                    TokenKind::CloseRoundBracket,
+                    TokenKind::Comma,
+                    |this| {
+                        let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+                        let vis = this.parse_visibility()?;
+                        let ty = this.parse_ty()?;
+                        Ok(ast::TupleField { attrs, vis, ty })
+                    },
+                )?;
+                ast::VariantKind::Tuple(fields)
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                let fields = self.parse_delimited_sequence(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    |this| {
+                        let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+                        let vis = this.parse_visibility()?;
+                        let binder = this.parse_common_ident()?;
+                        let ty = this.parse_ty_annotation()?;
+                        Ok(ast::StructField { attrs, vis, binder, ty })
+                    },
+                )?;
+                ast::VariantKind::Struct(fields)
+            }
+            _ => ast::VariantKind::Unit,
+        })
     }
 
     /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit? "{"` has been parsed already.
@@ -527,28 +563,16 @@ impl<'src> Parser<'src> {
     /// ```
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
+        // FIXME: For tuple structs the where clause is trailing, not leading!
         let generics = self.parse_generics()?;
-        // FIXME: Tuple structs (where the where clause is trailing)
-        let body = if self.consume(TokenKind::OpenCurlyBracket) {
-            ast::StructBody::Normal {
-                fields: self.parse_delimited_sequence(
-                    TokenKind::CloseCurlyBracket,
-                    TokenKind::Comma,
-                    |this| {
-                        let vis = this.parse_visibility()?;
-                        let binder = this.parse_common_ident()?;
-                        let ty = this.parse_ty_annotation()?;
-                        Ok(ast::StructField { vis, binder, ty })
-                    },
-                )?,
+        let kind = self.parse_variant_kind()?;
+        match kind {
+            ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => {
+                self.parse(TokenKind::Semicolon)?
             }
-        } else {
-            // FIXME: Should this really be inside parse_fn or rather inside parse_item?
-            self.parse(TokenKind::Semicolon)?;
-            ast::StructBody::Unit
-        };
-
-        Ok(ast::ItemKind::Struct(Box::new(ast::StructItem { binder, generics, body })))
+            ast::VariantKind::Struct(_) => {}
+        }
+        Ok(ast::ItemKind::Struct(Box::new(ast::StructItem { binder, generics, kind })))
     }
 
     /// Finish parsing a trait item assuming the leading `trait` has been parsed already.

@@ -64,15 +64,37 @@ pub(crate) struct ConstItem<'src> {
 pub(crate) struct EnumItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
-    pub(crate) variants: Vec<EnumVariant<'src>>,
+    pub(crate) variants: Vec<Variant<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct EnumVariant<'src> {
+pub(crate) struct Variant<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) binder: Ident<'src>,
-    // FIXME: payload
+    pub(crate) kind: VariantKind<'src>,
     pub(crate) discr: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum VariantKind<'src> {
+    Unit,
+    Tuple(Vec<TupleField<'src>>),
+    Struct(Vec<StructField<'src>>),
+}
+
+#[derive(Debug)]
+pub(crate) struct TupleField<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility<'src>,
+    pub(crate) ty: Ty<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructField<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility<'src>,
+    pub(crate) binder: Ident<'src>,
+    pub(crate) ty: Ty<'src>,
 }
 
 #[derive(Debug)]
@@ -161,7 +183,7 @@ pub(crate) struct StaticItem<'src> {
 pub(crate) struct StructItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
-    pub(crate) body: StructBody<'src>,
+    pub(crate) kind: VariantKind<'src>,
 }
 
 #[derive(Debug)]
@@ -242,20 +264,6 @@ pub(crate) struct MacroCall<'src, A: GenericArgsPolicy::Kind> {
     pub(crate) path: Path<'src, A>,
     pub(crate) bracket: Bracket,
     pub(crate) stream: TokenStream,
-}
-
-#[derive(Debug)]
-pub(crate) enum StructBody<'src> {
-    // FIXME: Better name for this
-    Normal { fields: Vec<StructField<'src>> },
-    Unit,
-}
-
-#[derive(Debug)]
-pub(crate) struct StructField<'src> {
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) ty: Ty<'src>,
 }
 
 #[derive(Debug)]
