@@ -594,6 +594,14 @@ impl Fmt for ast::Expr<'_> {
                 Punctuated::new(args, ", ").fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Index(expr, index) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ")[");
+                index.fmt(cx);
+                fmt!(cx, "]");
+            }
             Self::Block(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::Grouped(expr) => {

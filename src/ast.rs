@@ -384,6 +384,7 @@ pub(crate) enum Expr<'src> {
     Borrow(Mutable, Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
+    Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
     Grouped(Box<Expr<'src>>),
@@ -417,6 +418,7 @@ impl Expr<'_> {
             | Self::Borrow(..)
             | Self::Field(..)
             | Self::Call(..)
+            | Self::Index(..)
             | Self::Tup(_)
             | Self::Grouped(_)
             | Self::MacroCall(_) => false,
@@ -429,6 +431,7 @@ pub(crate) enum UnOp {
     Deref,
     Neg,
     Not,
+    // FIXME: Remove from this list
     Try,
 }
 

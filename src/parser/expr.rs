@@ -110,6 +110,7 @@ impl<'src> Parser<'src> {
                 TokenKind::QuestionMark => PostfixOp::Try.into(),
                 TokenKind::Dot => PostfixOp::Project.into(),
                 TokenKind::OpenRoundBracket => PostfixOp::Call.into(),
+                TokenKind::OpenSquareBracket => PostfixOp::Index.into(),
                 TokenKind::Ident if let "as" = self.source(token.span) => PostfixOp::Cast.into(),
                 _ => break,
             };
@@ -194,6 +195,11 @@ impl<'src> Parser<'src> {
                     Self::parse_expr,
                 )?;
                 ast::Expr::Call(Box::new(left), args)
+            }
+            PostfixOp::Index => {
+                let index = self.parse_expr()?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                ast::Expr::Index(Box::new(left), Box::new(index))
             }
             PostfixOp::Project => {
                 let field = self.parse_common_ident()?;
@@ -425,6 +431,7 @@ enum PostfixOp {
     Cast,
     Try,
     Call,
+    Index,
     Project,
 }
 
@@ -433,7 +440,7 @@ impl PostfixOp {
         match self {
             Self::Cast => Level::Cast,
             Self::Try => Level::Try,
-            Self::Call => Level::Call,
+            Self::Call | Self::Index => Level::Call,
             Self::Project => Level::Project,
         }
     }
