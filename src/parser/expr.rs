@@ -1,5 +1,6 @@
 use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
+use std::cmp::Ordering;
 
 impl<'src> Parser<'src> {
     /// Parse an expression.
@@ -124,8 +125,10 @@ impl<'src> Parser<'src> {
             match op {
                 InfixOrPostfixOp::Infix(op) => {
                     let (left_level, right_level) = op.levels();
-                    if left_level < level {
-                        break;
+                    match left_level.cmp(&level) {
+                        Ordering::Less => break,
+                        Ordering::Equal => return Err(ParseError::OpCannotBeChained(op)),
+                        Ordering::Greater => {}
                     }
                     self.advance();
 
@@ -419,9 +422,8 @@ impl ast::BinOp {
             Self::Assign => (Level::AssignLeft, Level::AssignRight),
             Self::Or => (Level::OrLeft, Level::OrRight),
             Self::And => (Level::AndLeft, Level::AndRight),
-            // FIXME: Reject same-level instead!
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => {
-                (Level::CompareLeft, Level::CompareRight)
+                (Level::Compare, Level::Compare)
             }
             Self::BitOr => (Level::BitOrLeft, Level::BitOrRight),
             Self::BitXor => (Level::BitXorLeft, Level::BitXorRight),
@@ -463,8 +465,7 @@ enum Level {
     OrRight,
     AndLeft,
     AndRight,
-    CompareLeft,
-    CompareRight,
+    Compare,
     BitOrLeft,
     BitOrRight,
     BitXorLeft,

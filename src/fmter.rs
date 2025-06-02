@@ -635,30 +635,6 @@ impl ast::UnOp {
     }
 }
 
-impl ast::BinOp {
-    fn symbol(self) -> &'static str {
-        match self {
-            Self::Add => "+",
-            Self::And => "&&",
-            Self::Assign => "=",
-            Self::BitAnd => "&",
-            Self::BitOr => "|",
-            Self::BitXor => "^",
-            Self::Div => "/",
-            Self::Eq => "==",
-            Self::Ge => ">=",
-            Self::Gt => ">",
-            Self::Le => "<=",
-            Self::Lt => "<",
-            Self::Mul => "*",
-            Self::Ne => "!=",
-            Self::Or => "||",
-            Self::Rem => "%",
-            Self::Sub => "-",
-        }
-    }
-}
-
 impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { pat, body } = self;

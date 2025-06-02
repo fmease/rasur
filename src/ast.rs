@@ -464,6 +464,30 @@ pub(crate) enum BinOp {
     Ge,
 }
 
+impl BinOp {
+    pub(crate) fn symbol(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::And => "&&",
+            Self::Assign => "=",
+            Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitXor => "^",
+            Self::Div => "/",
+            Self::Eq => "==",
+            Self::Ge => ">=",
+            Self::Gt => ">",
+            Self::Le => "<=",
+            Self::Lt => "<",
+            Self::Mul => "*",
+            Self::Ne => "!=",
+            Self::Or => "||",
+            Self::Rem => "%",
+            Self::Sub => "-",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum TrailingBlockMode {
     Normal,

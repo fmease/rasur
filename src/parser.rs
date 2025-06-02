@@ -394,6 +394,7 @@ pub(crate) enum ParseError {
     ExpectedTraitFoundTy,
     ModifierOnOutlivesBound,
     MisplacedReceiver,
+    OpCannotBeChained(ast::BinOp),
 }
 
 impl ParseError {
@@ -437,6 +438,10 @@ impl ParseError {
             Self::ExpectedTraitFoundTy => lvl.title("found type expected trait"),
             Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
             Self::MisplacedReceiver => lvl.title("misplaced receiver"),
+            Self::OpCannotBeChained(op) => {
+                super let title = format!("operator `{}` cannot be chained", op.symbol());
+                lvl.title(&title)
+            }
         };
         let renderer = ann::Renderer::styled();
         eprintln!("{}", renderer.render(msg));
