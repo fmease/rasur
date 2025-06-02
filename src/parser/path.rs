@@ -1,11 +1,5 @@
-use super::{
-    DOUBLE_COLON, DoubleColon, ExpectedFragment, Ident, ParseError, Parser, Result, Shape as _,
-    TokenKind, is_path_seg_keyword,
-};
-use crate::{
-    ast,
-    parser::{Glued, one_of},
-};
+use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, is_path_seg_keyword};
+use crate::{ast, parser::one_of};
 
 impl<'src> Parser<'src> {
     /// Parse a path.
@@ -20,13 +14,13 @@ impl<'src> Parser<'src> {
 
         let mut path = ast::Path { segs: Vec::new() };
 
-        if self.consume(DOUBLE_COLON) {
+        if self.consume(TokenKind::DoubleColon) {
             path.segs.push(ast::PathSeg::ident(""));
         }
 
         path.segs.push(self.parse_path_seg::<A>()?);
 
-        while self.consume(DOUBLE_COLON) {
+        while self.consume(TokenKind::DoubleColon) {
             path.segs.push(self.parse_path_seg::<A>()?);
         }
 
@@ -36,7 +30,7 @@ impl<'src> Parser<'src> {
     pub(super) fn begins_path(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_path`.
 
-        DOUBLE_COLON.check(self) || self.as_path_seg_ident().is_some()
+        self.token().kind == TokenKind::DoubleColon || self.as_path_seg_ident().is_some()
     }
 
     fn parse_path_seg<A: ParseGenericArgs>(&mut self) -> Result<ast::PathSeg<'src, A>> {
@@ -56,11 +50,11 @@ impl<'src> Parser<'src> {
         &mut self,
         requires_disambiguation: RequiresDisambiguation,
     ) -> Result<Option<ast::GenericArgs<'src>>> {
-        let disambiguated = if DOUBLE_COLON.check(self)
-            && self.look_ahead(DoubleColon::LENGTH, |token| {
-                matches!(token.kind, TokenKind::OpenAngleBracket | TokenKind::OpenRoundBracket)
+        let disambiguated = if self.token().kind == TokenKind::DoubleColon
+            && self.look_ahead(1, |token| {
+                matches!(token.kind, TokenKind::LessThan | TokenKind::OpenRoundBracket)
             }) {
-            DoubleColon::advance(self);
+            self.advance();
             true
         } else {
             false
@@ -68,7 +62,7 @@ impl<'src> Parser<'src> {
 
         if disambiguated || requires_disambiguation == RequiresDisambiguation::No {
             return Ok(match self.token().kind {
-                TokenKind::OpenAngleBracket => {
+                TokenKind::LessThan => {
                     self.advance();
                     Some(self.fin_parse_angle_generic_args()?)
                 }
@@ -84,7 +78,7 @@ impl<'src> Parser<'src> {
     }
 
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+        const DELIMITER: TokenKind = TokenKind::GreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
             let mut arg = if this.begins_ty() {
@@ -93,7 +87,7 @@ impl<'src> Parser<'src> {
             } else if let Some(lt) = this.consume_lifetime() {
                 ast::GenericArg::Lifetime(lt)
             } else if this.begins_const_arg() {
-                let expr = this.parse_expr()?;
+                let expr = this.parse_const_arg()?;
                 ast::GenericArg::Const(expr)
             } else {
                 return Err(ParseError::UnexpectedToken(
@@ -125,7 +119,7 @@ impl<'src> Parser<'src> {
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        if self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
+        if self.consume(TokenKind::DoubleDot) {
             self.parse(TokenKind::CloseRoundBracket)?;
 
             return Ok(ast::GenericArgs::ParenElided);
@@ -145,16 +139,55 @@ impl<'src> Parser<'src> {
         if self.begins_ty() {
             Ok(ast::Term::Ty(self.parse_ty()?))
         } else if self.begins_const_arg() {
-            Ok(ast::Term::Const(self.parse_expr()?))
+            Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
             Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Term))
         }
     }
 
-    fn begins_const_arg(&self) -> bool {
-        let token = self.token();
+    fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_const_arg`.
 
         // FIXME: Leading dash (unary minus)
+        let token = self.token();
+        match token.kind {
+            TokenKind::NumLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Expr::NumLit(lit));
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(token.span);
+                self.advance();
+                return Ok(ast::Expr::StrLit(lit));
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                return self.fin_parse_block_expr();
+            }
+            TokenKind::Ident => match self.source(token.span) {
+                "false" => {
+                    self.advance();
+                    return Ok(ast::Expr::BoolLit(false));
+                }
+                "true" => {
+                    self.advance();
+                    return Ok(ast::Expr::BoolLit(true));
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        // FIXME: Proper fragment
+        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))
+    }
+
+    fn begins_const_arg(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_const_arg`.
+
+        // FIXME: Leading dash (unary minus)
+        let token = self.token();
         match token.kind {
             TokenKind::OpenCurlyBracket | TokenKind::StrLit | TokenKind::NumLit => true,
             TokenKind::Ident => matches!(self.source(token.span), "false" | "true"),
@@ -165,7 +198,7 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_path_tree(&mut self) -> Result<ast::PathTree<'src>> {
         let mut path = ast::Path { segs: Vec::new() };
 
-        if self.consume(DOUBLE_COLON) {
+        if self.consume(TokenKind::DoubleColon) {
             path.segs.push(ast::PathSeg::ident(""));
         }
 
@@ -174,7 +207,7 @@ impl<'src> Parser<'src> {
             kind => return Ok(ast::PathTree { path, kind }),
         }
 
-        while self.consume(DOUBLE_COLON) {
+        while self.consume(TokenKind::DoubleColon) {
             match self.parse_path_tree_kind(&mut path)? {
                 ast::PathTreeKind::Stump(None) => {}
                 kind => return Ok(ast::PathTree { path, kind }),

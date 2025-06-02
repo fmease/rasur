@@ -455,6 +455,12 @@ pub(crate) enum BinOp {
     Or,
     Rem,
     Sub,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
 }
 
 #[derive(Debug)]

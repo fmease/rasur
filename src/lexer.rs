@@ -11,23 +11,32 @@ pub(crate) enum TokenKind {
     Ampersand,
     Apostrophe,
     Asterisk,
+    At,
     Bang,
+    BangEquals,
     Caret,
-    CloseAngleBracket,
     CloseCurlyBracket,
     CloseRoundBracket,
     CloseSquareBracket,
     Colon,
     Comma,
     Dot,
+    DoubleAmpersand,
+    DoubleColon,
+    DoubleDot,
+    DoubleEquals,
+    DoublePipe,
     EndOfInput,
     Equals,
     Error,
+    GreaterThan,
+    GreaterThanEquals,
     Hash,
     Hyphen,
     Ident,
+    LessThan,
+    LessThanEquals,
     NumLit,
-    OpenAngleBracket,
     OpenCurlyBracket,
     OpenRoundBracket,
     OpenSquareBracket,
@@ -39,6 +48,7 @@ pub(crate) enum TokenKind {
     Slash,
     StrLit,
     ThinArrow,
+    TripleDot,
     WideArrow,
 }
 
@@ -134,35 +144,77 @@ impl<'src> Lexer<'src> {
                     // FIXME: Smh. taint unterminated str lits (but don't fatal!)
                     self.add(TokenKind::StrLit, start);
                 }
+                '@' => self.add(TokenKind::At, start),
                 ',' => self.add(TokenKind::Comma, start),
                 ';' => self.add(TokenKind::Semicolon, start),
-                '.' => self.add(TokenKind::Dot, start),
-                ':' => self.add(TokenKind::Colon, start),
-                '!' => self.add(TokenKind::Bang, start),
+                '.' => {
+                    if let Some('.') = self.peek() {
+                        self.advance();
+                        if let Some('.') = self.peek() {
+                            self.advance();
+                            self.add(TokenKind::TripleDot, start);
+                        } else {
+                            self.add(TokenKind::DoubleDot, start);
+                        }
+                    } else {
+                        self.add(TokenKind::Dot, start)
+                    }
+                }
+                ':' => {
+                    if let Some(':') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::DoubleColon, start);
+                    } else {
+                        self.add(TokenKind::Colon, start)
+                    }
+                }
+                '!' => {
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::BangEquals, start);
+                    } else {
+                        self.add(TokenKind::Bang, start);
+                    }
+                }
                 '?' => self.add(TokenKind::QuestionMark, start),
                 '+' => self.add(TokenKind::Plus, start),
                 '*' => self.add(TokenKind::Asterisk, start),
                 '-' => {
                     if let Some('>') = self.peek() {
                         self.advance();
-                        // FIXME: Do we actually want to do this in the lexer?
                         self.add(TokenKind::ThinArrow, start);
                     } else {
                         self.add(TokenKind::Hyphen, start);
                     }
                 }
-                '=' => {
-                    if let Some('>') = self.peek() {
+                '=' => match self.peek() {
+                    Some('>') => {
                         self.advance();
-                        // FIXME: Do we actually want to do this in the lexer?
                         self.add(TokenKind::WideArrow, start);
+                    }
+                    Some('=') => {
+                        self.advance();
+                        self.add(TokenKind::DoubleEquals, start);
+                    }
+                    _ => self.add(TokenKind::Equals, start),
+                },
+                '#' => self.add(TokenKind::Hash, start),
+                '&' => {
+                    if let Some('&') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::DoubleAmpersand, start);
                     } else {
-                        self.add(TokenKind::Equals, start);
+                        self.add(TokenKind::Ampersand, start);
                     }
                 }
-                '#' => self.add(TokenKind::Hash, start),
-                '&' => self.add(TokenKind::Ampersand, start),
-                '|' => self.add(TokenKind::Pipe, start),
+                '|' => {
+                    if let Some('|') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::DoublePipe, start);
+                    } else {
+                        self.add(TokenKind::Pipe, start);
+                    }
+                }
                 '%' => self.add(TokenKind::Percent, start),
                 '^' => self.add(TokenKind::Caret, start),
                 '(' => self.add(TokenKind::OpenRoundBracket, start),
@@ -171,8 +223,22 @@ impl<'src> Lexer<'src> {
                 ']' => self.add(TokenKind::CloseSquareBracket, start),
                 '{' => self.add(TokenKind::OpenCurlyBracket, start),
                 '}' => self.add(TokenKind::CloseCurlyBracket, start),
-                '<' => self.add(TokenKind::OpenAngleBracket, start),
-                '>' => self.add(TokenKind::CloseAngleBracket, start),
+                '<' => {
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::LessThanEquals, start);
+                    } else {
+                        self.add(TokenKind::LessThan, start);
+                    }
+                }
+                '>' => {
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::GreaterThanEquals, start)
+                    } else {
+                        self.add(TokenKind::GreaterThan, start)
+                    }
+                }
                 // FIXME: Character literals (without breaking lifetimes).
                 '\'' => self.add(TokenKind::Apostrophe, start),
                 _ => self.add(TokenKind::Error, start),

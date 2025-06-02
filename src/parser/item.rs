@@ -1,6 +1,6 @@
 use super::{
-    ExpectedFragment, Glued, Ident, MacroCallPolicy, ParseError, Parser, Result, Shape as _,
-    TokenKind, one_of,
+    ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, Shape as _, TokenKind,
+    one_of,
 };
 use crate::ast;
 
@@ -458,8 +458,8 @@ impl<'src> Parser<'src> {
         let ty = self.parse_ty()?;
 
         let (trait_ref, self_ty) = if self.consume(Ident("for")) {
-            let self_ty = match self.consume(Glued([TokenKind::Dot, TokenKind::Dot])) {
-                // Legacy syntax for auto trait impls.
+            let self_ty = match self.consume(TokenKind::DoubleDot) {
+                // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
                 true => ast::Ty::Error,
                 false => self.parse_ty()?,
             };

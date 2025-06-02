@@ -172,11 +172,11 @@ impl<'src> Parser<'src> {
     ///     | Common_Ident (":" Bounds)?
     /// ```
     pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
-        if !self.consume(TokenKind::OpenAngleBracket) {
+        if !self.consume(TokenKind::LessThan) {
             return Ok(Vec::new());
         }
 
-        const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+        const DELIMITER: TokenKind = TokenKind::GreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
             let token = this.token();

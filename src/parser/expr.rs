@@ -58,6 +58,7 @@ impl<'src> Parser<'src> {
             | TokenKind::Bang
             | TokenKind::Asterisk
             | TokenKind::Ampersand
+            | TokenKind::DoubleAmpersand
             | TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
@@ -72,6 +73,8 @@ impl<'src> Parser<'src> {
             TokenKind::Hyphen => ast::UnOp::Neg.into(),
             TokenKind::Bang => ast::UnOp::Not.into(),
             TokenKind::Asterisk => ast::UnOp::Deref.into(),
+            // FIXME: Smh. consider DoubleAmpersand, too. However are we allowed to commit
+            //        early, namely before "the level check"? E.g., `&&1&&&&1`
             TokenKind::Ampersand => {
                 self.advance();
                 let mut_ = self.parse_mutability();
@@ -93,24 +96,26 @@ impl<'src> Parser<'src> {
         loop {
             let token = self.token();
             let op = match token.kind {
-                TokenKind::Plus => ast::BinOp::Add.into(),
-                TokenKind::Hyphen => ast::BinOp::Sub.into(),
-                TokenKind::Asterisk => ast::BinOp::Mul.into(),
-                TokenKind::Slash => ast::BinOp::Div.into(),
-                TokenKind::Percent => ast::BinOp::Rem.into(),
-                TokenKind::Caret => ast::BinOp::BitXor.into(),
-                TokenKind::Ampersand if self.is_glued_to(token, TokenKind::Ampersand) => {
-                    ast::BinOp::And.into()
-                }
                 TokenKind::Ampersand => ast::BinOp::BitAnd.into(),
-                TokenKind::Pipe if self.is_glued_to(token, TokenKind::Pipe) => {
-                    ast::BinOp::Or.into()
-                }
-                TokenKind::Pipe => ast::BinOp::BitOr.into(),
-                TokenKind::QuestionMark => PostfixOp::Try.into(),
+                TokenKind::Asterisk => ast::BinOp::Mul.into(),
+                TokenKind::BangEquals => ast::BinOp::Ne.into(),
+                TokenKind::Caret => ast::BinOp::BitXor.into(),
                 TokenKind::Dot => PostfixOp::Project.into(),
+                TokenKind::DoubleAmpersand => ast::BinOp::And.into(),
+                TokenKind::DoubleEquals => ast::BinOp::Eq.into(),
+                TokenKind::DoublePipe => ast::BinOp::Or.into(),
+                TokenKind::GreaterThan => ast::BinOp::Gt.into(),
+                TokenKind::GreaterThanEquals => ast::BinOp::Ge.into(),
+                TokenKind::Hyphen => ast::BinOp::Sub.into(),
+                TokenKind::LessThan => ast::BinOp::Lt.into(),
+                TokenKind::LessThanEquals => ast::BinOp::Le.into(),
                 TokenKind::OpenRoundBracket => PostfixOp::Call.into(),
                 TokenKind::OpenSquareBracket => PostfixOp::Index.into(),
+                TokenKind::Percent => ast::BinOp::Rem.into(),
+                TokenKind::Pipe => ast::BinOp::BitOr.into(),
+                TokenKind::Plus => ast::BinOp::Add.into(),
+                TokenKind::QuestionMark => PostfixOp::Try.into(),
+                TokenKind::Slash => ast::BinOp::Div.into(),
                 TokenKind::Ident if let "as" = self.source(token.span) => PostfixOp::Cast.into(),
                 _ => break,
             };
@@ -121,9 +126,7 @@ impl<'src> Parser<'src> {
                     if left_level < level {
                         break;
                     }
-                    for _ in 0..op.length() {
-                        self.advance();
-                    }
+                    self.advance();
 
                     let right = self.parse_expr_at(right_level)?;
                     left = ast::Expr::BinOp(op, Box::new(left), Box::new(right));
@@ -403,25 +406,15 @@ impl ast::BinOp {
         match self {
             Self::Or => (Level::OrLeft, Level::OrRight),
             Self::And => (Level::AndLeft, Level::AndRight),
+            // FIXME: Reject same-level instead!
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => {
+                (Level::CompareLeft, Level::CompareRight)
+            }
             Self::BitOr => (Level::BitOrLeft, Level::BitOrRight),
             Self::BitXor => (Level::BitXorLeft, Level::BitXorRight),
             Self::BitAnd => (Level::BitAndLeft, Level::BitAndRight),
             Self::Add | Self::Sub => (Level::SumLeft, Level::SumRight),
             Self::Mul | Self::Div | Self::Rem => (Level::ProductLeft, Level::ProductRight),
-        }
-    }
-
-    fn length(self) -> usize {
-        match self {
-            Self::And | Self::Or => 2,
-            | Self::Add
-            | Self::BitAnd
-            | Self::BitOr
-            | Self::BitXor
-            | Self::Div
-            | Self::Mul
-            | Self::Rem
-            | Self::Sub => 1,
         }
     }
 }
@@ -453,9 +446,7 @@ enum Level {
     OrRight,
     AndLeft,
     AndRight,
-    #[expect(dead_code)] // FIXME
     CompareLeft,
-    #[expect(dead_code)] // FIXME
     CompareRight,
     BitOrLeft,
     BitOrRight,

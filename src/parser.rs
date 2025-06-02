@@ -328,10 +328,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn is_glued_to(&self, this: Token, kind: TokenKind) -> bool {
-        self.look_ahead(1, |other| other.kind == kind && this.touches(other))
-    }
-
     fn advance(&mut self) {
         self.index += 1;
     }
@@ -346,11 +342,6 @@ enum MacroCallPolicy {
     Allowed,
     Forbidden,
 }
-
-// FIXME: Or should we move most "glued" token detection into the lexer?
-//        We can't move everything though.
-type DoubleColon = Glued<2, TokenKind>;
-const DOUBLE_COLON: DoubleColon = Glued([TokenKind::Colon, TokenKind::Colon]);
 
 // FIXME: Check master if this is still up to date
 fn is_reserved(ident: &str, edition: Edition) -> bool {
@@ -470,35 +461,45 @@ impl TokenKind {
         match self {
             Self::Ampersand => "`&`",
             Self::Apostrophe => "`'`",
+            Self::Asterisk => "`*`",
+            Self::At => "`@`",
             Self::Bang => "`!`",
-            Self::QuestionMark => "`?`",
-            Self::CloseAngleBracket => "`>`",
+            Self::BangEquals => "`!=`",
+            Self::Caret => "`^`",
             Self::CloseCurlyBracket => "`}`",
             Self::CloseRoundBracket => "`)`",
             Self::CloseSquareBracket => "`]`",
             Self::Colon => "`:`",
             Self::Comma => "`,`",
             Self::Dot => "`.`",
+            Self::DoubleAmpersand => "`&&`",
+            Self::DoubleColon => "`::`",
+            Self::DoubleDot => "`..`",
+            Self::DoubleEquals => "`==`",
+            Self::DoublePipe => "`||`",
             Self::EndOfInput => "end of input",
             Self::Equals => "`=`",
             Self::Error => "error",
+            Self::GreaterThan => "`>`",
+            Self::GreaterThanEquals => "`>=`",
             Self::Hash => "`#`",
             Self::Hyphen => "-",
             Self::Ident => "identifier",
+            Self::LessThan => "`<`",
+            Self::LessThanEquals => "`<=`",
             Self::NumLit => "number literal",
-            Self::OpenAngleBracket => "`<`",
             Self::OpenCurlyBracket => "`{`",
             Self::OpenRoundBracket => "`(`",
             Self::OpenSquareBracket => "`[`",
+            Self::Percent => "`%`",
             Self::Pipe => "`|`",
             Self::Plus => "`+`",
+            Self::QuestionMark => "`?`",
             Self::Semicolon => "`;`",
             Self::Slash => "`/`",
-            Self::Asterisk => "`*`",
-            Self::Percent => "`%`",
-            Self::Caret => "`^`",
             Self::StrLit => "string literal",
             Self::ThinArrow => "`->`",
+            Self::TripleDot => "`...`",
             Self::WideArrow => "`=>`",
         }
     }
@@ -516,7 +517,6 @@ pub(crate) enum ExpectedFragment {
     Expr,
     GenericArg,
     GenericParam,
-    Glued(Box<[TokenKind]>),
     Item,
     OneOf(Box<[Self]>),
     Pat,
@@ -553,8 +553,6 @@ impl fmt::Display for ExpectedFragment {
                     .collect::<String>();
                 return write!(f, "{frags}");
             }
-            // FIXME: render properly
-            Self::Glued(tokens) => return write!(f, "{tokens:?}"),
             Self::PathSegIdent => "path segment",
             Self::Stmt => "statement",
             Self::Ty => "type",
@@ -604,23 +602,5 @@ impl Shape for Ident {
 
     fn fragment(self) -> ExpectedFragment {
         ExpectedFragment::Raw(self.0)
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Glued<const N: usize, T>([T; N]);
-
-impl Shape for Glued<2, TokenKind> {
-    const LENGTH: usize = 2;
-
-    fn check(self, parser: &Parser<'_>) -> bool {
-        let Self([expected0, expected1]) = self;
-        let actual0 = parser.token();
-        actual0.kind == expected0
-            && parser.look_ahead(1, |actual1| actual1.kind == expected1 && actual0.touches(actual1))
-    }
-
-    fn fragment(self) -> ExpectedFragment {
-        ExpectedFragment::Glued(Box::new(self.0))
     }
 }
