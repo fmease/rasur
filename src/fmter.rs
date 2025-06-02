@@ -240,16 +240,16 @@ impl FmtGenericArgs for ast::GenericArgsPolicy::Allowed {
 
 impl FmtGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
-        if let Some(args) = &args {
-            let is_non_empty = match args {
+        if let Some(args) = args {
+            let is_empty = match &args {
                 ast::GenericArgs::Angle(args) => args.is_empty(),
                 ast::GenericArgs::Paren { .. } | ast::GenericArgs::ParenElided => true,
             };
-            if is_non_empty {
+            if !is_empty {
                 fmt!(cx, "::");
             }
+            args.fmt(cx);
         }
-        args.fmt(cx);
     }
 }
 
