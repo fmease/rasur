@@ -232,19 +232,13 @@ impl<'src> Parser<'src> {
     fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let generics = self.parse_generics()?;
-        let mut variants = Vec::new();
 
         self.parse(TokenKind::OpenCurlyBracket)?;
-
-        const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
-        const SEPARATOR: TokenKind = TokenKind::Comma;
-        while !self.consume(DELIMITER) {
-            variants.push(self.parse_enum_variant()?);
-
-            if self.token().kind != DELIMITER {
-                self.parse(SEPARATOR)?;
-            }
-        }
+        let variants = self.parse_delimited_sequence(
+            TokenKind::CloseCurlyBracket,
+            TokenKind::Comma,
+            Self::parse_enum_variant,
+        )?;
 
         Ok(ast::ItemKind::Enum(Box::new(ast::EnumItem { binder, generics, variants })))
     }
@@ -358,15 +352,13 @@ impl<'src> Parser<'src> {
     /// Fn_Param ::= Pat ":" Ty
     /// ```
     fn parse_fn_params(&mut self) -> Result<Vec<ast::FnParam<'src>>> {
-        let mut params = Vec::new();
-        let mut first = true;
-
         self.parse(TokenKind::OpenRoundBracket)?;
-        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-        while !self.consume(DELIMITER) {
+
+        let mut first = true;
+        self.parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let first = std::mem::take(&mut first);
 
-            let pat = self.parse_pat()?;
+            let pat = this.parse_pat()?;
 
             // FIXME: Extract into "extract_shorthand_self"
             let (pat, ty) = match pat {
@@ -376,8 +368,8 @@ impl<'src> Parser<'src> {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);
                     }
-                    let ty = if self.consume(TokenKind::Colon) {
-                        self.parse_ty()?
+                    let ty = if this.consume(TokenKind::Colon) {
+                        this.parse_ty()?
                     } else {
                         ast::Ty::Path(ast::Path::ident("Self"))
                     };
@@ -399,18 +391,11 @@ impl<'src> Parser<'src> {
                 }
 
                 // FIXME: Optional if in trait && edition==2015
-                pat => (pat, self.parse_ty_annotation()?),
+                pat => (pat, this.parse_ty_annotation()?),
             };
 
-            params.push(ast::FnParam { pat, ty });
-
-            // FIXME: Is there a nicer way to do this?
-            if self.token().kind != DELIMITER {
-                self.parse(TokenKind::Comma)?;
-            }
-        }
-
-        Ok(params)
+            Ok(ast::FnParam { pat, ty })
+        })
     }
 
     /// Finish parsing an implementation item assuming the leading `impl` has been parsed already.
@@ -545,23 +530,18 @@ impl<'src> Parser<'src> {
         let generics = self.parse_generics()?;
         // FIXME: Tuple structs (where the where clause is trailing)
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
-            let mut fields = Vec::new();
-
-            const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
-            while !self.consume(DELIMITER) {
-                let vis = self.parse_visibility()?;
-
-                let binder = self.parse_common_ident()?;
-                let ty = self.parse_ty_annotation()?;
-
-                // FIXME: Can we express that nicer?
-                if self.token().kind != DELIMITER {
-                    self.parse(TokenKind::Comma)?;
-                }
-
-                fields.push(ast::StructField { vis, binder, ty })
+            ast::StructBody::Normal {
+                fields: self.parse_delimited_sequence(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    |this| {
+                        let vis = this.parse_visibility()?;
+                        let binder = this.parse_common_ident()?;
+                        let ty = this.parse_ty_annotation()?;
+                        Ok(ast::StructField { vis, binder, ty })
+                    },
+                )?,
             }
-            ast::StructBody::Normal { fields }
         } else {
             // FIXME: Should this really be inside parse_fn or rather inside parse_item?
             self.parse(TokenKind::Semicolon)?;

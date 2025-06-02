@@ -188,18 +188,11 @@ impl<'src> Parser<'src> {
             }
             PostfixOp::Try => ast::Expr::UnOp(ast::UnOp::Try, Box::new(left)),
             PostfixOp::Call => {
-                let mut args = Vec::new();
-
-                const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-                const SEPARATOR: TokenKind = TokenKind::Comma;
-                while !self.consume(DELIMITER) {
-                    args.push(self.parse_expr()?);
-
-                    if self.token().kind != DELIMITER {
-                        self.parse(SEPARATOR)?;
-                    }
-                }
-
+                let args = self.parse_delimited_sequence(
+                    TokenKind::CloseRoundBracket,
+                    TokenKind::Comma,
+                    Self::parse_expr,
+                )?;
                 ast::Expr::Call(Box::new(left), args)
             }
             PostfixOp::Project => {

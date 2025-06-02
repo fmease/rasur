@@ -172,58 +172,49 @@ impl<'src> Parser<'src> {
     ///     | Common_Ident (":" Bounds)?
     /// ```
     pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
-        let mut params = Vec::new();
-
-        if self.consume(TokenKind::OpenAngleBracket) {
-            const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
-            const SEPARATOR: TokenKind = TokenKind::Comma;
-            // FIXME: This is so hideously structured! We need better primitives!
-            while !self.consume(DELIMITER) {
-                let token = self.token();
-                let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = self.consume_lifetime()
-                {
-                    let bounds = if self.consume(TokenKind::Colon) {
-                        self.parse_outlives_bounds()?
-                    } else {
-                        Vec::new()
-                    };
-                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
-                } else {
-                    match self.as_ident(token) {
-                        Some("const") => {
-                            self.advance();
-                            let binder = self.parse_common_ident()?;
-                            let ty = self.parse_ty_annotation()?;
-                            (binder, ast::GenericParamKind::Const(ty))
-                        }
-                        Some(ident) if self.ident_is_common(ident) => {
-                            self.advance();
-                            let bounds = if self.consume(TokenKind::Colon) {
-                                self.parse_bounds()?
-                            } else {
-                                Vec::new()
-                            };
-                            (ident, ast::GenericParamKind::Ty(bounds))
-                        }
-                        _ => {
-                            return Err(ParseError::UnexpectedToken(
-                                token,
-                                one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
-                            ));
-                        }
-                    }
-                };
-
-                // FIXME: Is there a nicer way to do this?
-                if self.token().kind != DELIMITER {
-                    self.parse(SEPARATOR)?;
-                }
-
-                params.push(ast::GenericParam { binder, kind })
-            }
+        if !self.consume(TokenKind::OpenAngleBracket) {
+            return Ok(Vec::new());
         }
 
-        Ok(params)
+        const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
+            let token = this.token();
+            let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime() {
+                let bounds = if this.consume(TokenKind::Colon) {
+                    this.parse_outlives_bounds()?
+                } else {
+                    Vec::new()
+                };
+                (lifetime, ast::GenericParamKind::Lifetime(bounds))
+            } else {
+                match this.as_ident(token) {
+                    Some("const") => {
+                        this.advance();
+                        let binder = this.parse_common_ident()?;
+                        let ty = this.parse_ty_annotation()?;
+                        (binder, ast::GenericParamKind::Const(ty))
+                    }
+                    Some(ident) if this.ident_is_common(ident) => {
+                        this.advance();
+                        let bounds = if this.consume(TokenKind::Colon) {
+                            this.parse_bounds()?
+                        } else {
+                            Vec::new()
+                        };
+                        (ident, ast::GenericParamKind::Ty(bounds))
+                    }
+                    _ => {
+                        return Err(ParseError::UnexpectedToken(
+                            token,
+                            one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
+                        ));
+                    }
+                }
+            };
+
+            Ok(ast::GenericParam { binder, kind })
+        })
     }
 
     /// Parse a where clause.

@@ -129,6 +129,26 @@ impl<'src> Parser<'src> {
         Ok(tuple(nodes))
     }
 
+    fn parse_delimited_sequence<T>(
+        &mut self,
+        delimiter: TokenKind,
+        separator: TokenKind,
+        mut parse: impl FnMut(&mut Self) -> Result<T>,
+    ) -> Result<Vec<T>> {
+        let mut nodes = Vec::new();
+
+        while !self.consume(delimiter) {
+            // FIXME: Add delimiter and separator to "the list of expected tokens".
+            nodes.push(parse(self)?);
+
+            if self.token().kind != delimiter {
+                self.parse(separator)?;
+            }
+        }
+
+        Ok(nodes)
+    }
+
     fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {
         let bracket = self.token();
         match bracket.kind {

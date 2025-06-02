@@ -84,35 +84,33 @@ impl<'src> Parser<'src> {
     }
 
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        let mut args = Vec::new();
-
         const DELIMITER: TokenKind = TokenKind::CloseAngleBracket;
         const SEPARATOR: TokenKind = TokenKind::Comma;
-        while !self.consume(DELIMITER) {
-            let mut arg = if self.begins_ty() {
-                let ty = self.parse_ty()?;
+        self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
+            let mut arg = if this.begins_ty() {
+                let ty = this.parse_ty()?;
                 ast::GenericArg::Ty(ty)
-            } else if let Some(lt) = self.consume_lifetime() {
+            } else if let Some(lt) = this.consume_lifetime() {
                 ast::GenericArg::Lifetime(lt)
-            } else if self.begins_const_arg() {
-                let expr = self.parse_expr()?;
+            } else if this.begins_const_arg() {
+                let expr = this.parse_expr()?;
                 ast::GenericArg::Const(expr)
             } else {
                 return Err(ParseError::UnexpectedToken(
-                    self.token(),
+                    this.token(),
                     one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
                 ));
             };
 
-            let token = self.token();
+            let token = this.token();
             let arg = if let TokenKind::Colon | TokenKind::Equals = token.kind
                 && let Some((ident, args)) = extract_assoc_item_seg(&mut arg)
             {
-                self.advance();
+                this.advance();
 
                 let kind = match token.kind {
-                    TokenKind::Colon => ast::AssocItemConstraintKind::Bound(self.parse_bounds()?),
-                    TokenKind::Equals => ast::AssocItemConstraintKind::Equality(self.parse_term()?),
+                    TokenKind::Colon => ast::AssocItemConstraintKind::Bound(this.parse_bounds()?),
+                    TokenKind::Equals => ast::AssocItemConstraintKind::Equality(this.parse_term()?),
                     _ => unreachable!(),
                 };
 
@@ -121,15 +119,9 @@ impl<'src> Parser<'src> {
                 ast::AngleGenericArg::Argument(arg)
             };
 
-            args.push(arg);
-
-            // FIXME: Is there a better way to express this?
-            if self.token().kind != DELIMITER {
-                self.parse(SEPARATOR)?;
-            }
-        }
-
-        Ok(ast::GenericArgs::Angle(args))
+            Ok(arg)
+        })
+        .map(ast::GenericArgs::Angle)
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
@@ -139,19 +131,11 @@ impl<'src> Parser<'src> {
             return Ok(ast::GenericArgs::ParenElided);
         }
 
-        let mut inputs = Vec::new();
-
-        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-        const SEPARATOR: TokenKind = TokenKind::Comma;
-        while !self.consume(DELIMITER) {
-            inputs.push(self.parse_ty()?);
-
-            // FIXME: Is there a better way to express this?
-            if self.token().kind != DELIMITER {
-                self.parse(SEPARATOR)?;
-            }
-        }
-
+        let inputs = self.parse_delimited_sequence(
+            TokenKind::CloseRoundBracket,
+            TokenKind::Comma,
+            Self::parse_ty,
+        )?;
         let output = if self.consume(TokenKind::ThinArrow) { Some(self.parse_ty()?) } else { None };
 
         Ok(ast::GenericArgs::Paren { inputs, output })
@@ -208,19 +192,11 @@ impl<'src> Parser<'src> {
         Ok(match token.kind {
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                let mut trees = Vec::new();
-
-                const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
-                const SEPARATOR: TokenKind = TokenKind::Comma;
-                while !self.consume(DELIMITER) {
-                    trees.push(self.parse_path_tree()?);
-
-                    if self.token().kind != DELIMITER {
-                        self.parse(SEPARATOR)?;
-                    }
-                }
-
-                ast::PathTreeKind::Branch(trees)
+                ast::PathTreeKind::Branch(self.parse_delimited_sequence(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    Self::parse_path_tree,
+                )?)
             }
             TokenKind::Asterisk => {
                 self.advance();
