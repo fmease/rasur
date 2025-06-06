@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind};
-use crate::ast;
+use crate::{ast, parser::one_of};
 
 impl<'src> Parser<'src> {
     /// Parse a pattern.
@@ -8,26 +8,55 @@ impl<'src> Parser<'src> {
     ///
     /// ```grammar
     /// Pat ::=
-    ///     | Path
-    ///     | Macro_Call
     ///     | Wildcard_Pat
+    ///     | Ident_Pat
     ///     | #Num_Lit
     ///     | #Str_Lit
     ///     | Borrow_Pat
     ///     | Paren_Or_Tup_Pat
+    ///     | Ext_Path
+    ///     | Macro_Call
     /// Wildcard_Pat ::= "_"
+    /// Ident_Pat ::= "mut"? ("ref" "mut"?)? Common_Ident
     /// Borrow_Pat ::= "&" "mut"? Pat
     /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// ```
     pub(super) fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => {
-                if self.source(token.span) == "_" {
+            TokenKind::Ident => match self.source(token.span) {
+                "_" => {
                     self.advance();
                     return Ok(ast::Pat::Wildcard);
                 }
-            }
+                "mut" => {
+                    self.advance();
+                    let token = self.token();
+                    return match self.as_ident(token) {
+                        Some("ref") => {
+                            self.advance();
+                            self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
+                        }
+                        Some(ident) if self.ident_is_common(ident) => {
+                            self.advance();
+                            Ok(ast::Pat::Ident(ast::IdentPat {
+                                mut_: ast::Mutability::Mut,
+                                by_ref: ast::ByRef::No,
+                                ident,
+                            }))
+                        }
+                        _ => Err(ParseError::UnexpectedToken(
+                            token,
+                            one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent,],
+                        )),
+                    };
+                }
+                "ref" => {
+                    self.advance();
+                    return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
+                }
+                _ => {}
+            },
             TokenKind::NumLit => {
                 let lit = self.source(token.span);
                 self.advance();
@@ -67,9 +96,25 @@ impl<'src> Parser<'src> {
                 return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
             }
 
-            return Ok(ast::Pat::Path(Box::new(path)));
+            return Ok(match path {
+                ast::ExtPath {
+                    self_ty: None,
+                    path: ast::Path { segs: deref!([ast::PathSeg { ident, args: None }]) },
+                } => ast::Pat::Ident(ast::IdentPat {
+                    by_ref: ast::ByRef::No,
+                    mut_: ast::Mutability::Not,
+                    ident,
+                }),
+                _ => ast::Pat::Path(Box::new(path)),
+            });
         }
 
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat))
+    }
+
+    fn fin_parse_by_ref_ident_pat(&mut self, mut_: ast::Mutability) -> Result<ast::Pat<'src>> {
+        let ref_mut = self.parse_mutability();
+        let ident = self.parse_common_ident()?;
+        Ok(ast::Pat::Ident(ast::IdentPat { by_ref: ast::ByRef::Yes(ref_mut), mut_, ident }))
     }
 }

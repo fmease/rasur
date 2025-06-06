@@ -479,9 +479,11 @@ impl<'src> Parser<'src> {
 
             // FIXME: Extract into "extract_shorthand_self"
             let (pat, ty) = match pat {
-                ast::Pat::Path(ast::ExtPath {
-                    self_ty: None,
-                    path: ast::Path { segs: deref!([ast::PathSeg { ident: "self", args: None }]) },
+                // FIXME: "mut self" is actually impossible, we should parse the receiver manually.
+                ast::Pat::Ident(ast::IdentPat {
+                    mut_: _,
+                    by_ref: ast::ByRef::No,
+                    ident: "self",
                 }) => {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);
@@ -496,12 +498,7 @@ impl<'src> Parser<'src> {
                 // FIXME: We don't support `&'a self` right now, oof!
                 ast::Pat::Borrow(
                     mut_,
-                    deref!(pat @ ast::Pat::Path(ast::ExtPath {
-                        self_ty: None,
-                        path: ast::Path {
-                            segs: deref!([ast::PathSeg { ident: "self", args: None }]),
-                        },
-                    })),
+                    deref!(pat @ ast::Pat::Ident(ast::IdentPat { mut_: _, by_ref: ast::ByRef::No, ident: "self" })),
                 ) => {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);

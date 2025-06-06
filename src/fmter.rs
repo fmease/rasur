@@ -211,6 +211,26 @@ impl Fmt for (ast::Bracket, ast::Orientation) {
     }
 }
 
+impl Fmt for TrailingSpace<ast::Mutability> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(mut_) = self;
+        match mut_ {
+            ast::Mutability::Mut => fmt!(cx, "mut "),
+            ast::Mutability::Not => {}
+        }
+    }
+}
+
+struct TrailingSpace<T>(T);
+
+trait TrailingSpaceExt: Sized {
+    fn trailing_space(self) -> TrailingSpace<Self> {
+        TrailingSpace(self)
+    }
+}
+
+impl<T> TrailingSpaceExt for T {}
+
 struct Punctuated<T> {
     nodes: Vec<T>,
     sep: &'static str,

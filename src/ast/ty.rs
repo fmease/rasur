@@ -1,4 +1,4 @@
-use super::{Expr, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutable, Path};
+use super::{Expr, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Path};
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
@@ -8,8 +8,8 @@ pub(crate) enum Ty<'src> {
     FnPtr((), Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
     Path(Box<ExtPath<'src, GenericArgsPolicy::Allowed>>),
-    Ref(Option<Lifetime<'src>>, Mutable, Box<Ty<'src>>),
-    Ptr(Mutable, Box<Ty<'src>>),
+    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
+    Ptr(Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),

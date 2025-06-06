@@ -286,10 +286,10 @@ impl<'src> Parser<'src> {
         Ident("pub").check(self)
     }
 
-    fn parse_mutability(&mut self) -> ast::Mutable {
+    fn parse_mutability(&mut self) -> ast::Mutability {
         match self.consume(Ident("mut")) {
-            true => ast::Mutable::Yes,
-            false => ast::Mutable::No,
+            true => ast::Mutability::Mut,
+            false => ast::Mutability::Not,
         }
     }
 

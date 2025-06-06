@@ -1,4 +1,4 @@
-use super::{Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutable, Pat, Stmt, Ty};
+use super::{Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, Stmt, Ty};
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
@@ -18,7 +18,7 @@ pub(crate) enum Expr<'src> {
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     StructLit(Box<StructLit<'src>>),
-    Borrow(Mutable, Box<Expr<'src>>),
+    Borrow(Mutability, Box<Expr<'src>>),
     Try(Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),

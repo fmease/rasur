@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, Tup, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Ty<'_> {
@@ -19,17 +19,14 @@ impl Fmt for ast::Ty<'_> {
                     lt.fmt(cx);
                     fmt!(cx, " ");
                 }
-                match mut_ {
-                    ast::Mutable::Yes => fmt!(cx, "mut "),
-                    ast::Mutable::No => {}
-                }
+                mut_.trailing_space().fmt(cx);
                 ty.fmt(cx);
             }
             Self::Ptr(mut_, ty) => {
                 fmt!(cx, "*");
                 match mut_ {
-                    ast::Mutable::Yes => fmt!(cx, "mut "),
-                    ast::Mutable::No => fmt!(cx, "const "),
+                    ast::Mutability::Mut => fmt!(cx, "mut "),
+                    ast::Mutability::Not => fmt!(cx, "const "),
                 }
                 ty.fmt(cx);
             }

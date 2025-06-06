@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, fmt};
 use crate::ast;
 
 impl Fmt for ast::Item<'_> {
@@ -245,16 +245,8 @@ impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { constness, safety, externness, binder, generics, params, ret_ty, body } = self;
 
-        match constness {
-            ast::Constness::Const => fmt!(cx, "const "),
-            ast::Constness::Not => {}
-        }
-
-        match safety {
-            ast::Safety::Inherited => {}
-            ast::Safety::Safe => fmt!(cx, "safe "),
-            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
-        }
+        constness.trailing_space().fmt(cx);
+        safety.trailing_space().fmt(cx);
 
         match externness {
             ast::Externness::Extern(abi) => {
@@ -296,18 +288,12 @@ impl Fmt for ast::ImplItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { safety, generics, constness, polarity, trait_ref, self_ty, body } = self;
 
-        match safety {
-            ast::Safety::Inherited => {}
-            ast::Safety::Safe => unreachable!(),
-            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
-        }
+        safety.trailing_space().fmt(cx);
 
         fmt!(cx, "impl");
         generics.params.fmt(cx);
         fmt!(cx, " ");
-        if let ast::Constness::Const = constness {
-            fmt!(cx, "const ");
-        }
+        constness.trailing_space().fmt(cx);
         if let ast::ImplPolarity::Negative = polarity {
             fmt!(cx, "!");
         }
@@ -354,10 +340,7 @@ impl Fmt for ast::StaticItem<'_> {
         let Self { mut_, binder, ty, body } = self;
 
         fmt!(cx, "static ");
-        match mut_ {
-            ast::Mutable::Yes => fmt!(cx, "mut "),
-            ast::Mutable::No => {}
-        }
+        mut_.trailing_space().fmt(cx);
         fmt!(cx, "{binder}: ");
         ty.fmt(cx);
         if let Some(body) = body {
@@ -389,11 +372,7 @@ impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { safety, binder, generics, bounds, body } = self;
 
-        match safety {
-            ast::Safety::Inherited => {}
-            ast::Safety::Safe => unreachable!(),
-            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
-        }
+        safety.trailing_space().fmt(cx);
 
         fmt!(cx, "trait {binder}");
         generics.params.fmt(cx);
@@ -557,6 +536,27 @@ impl Fmt for ast::Visibility<'_> {
                 fmt!(cx, ") ");
             }
             ast::Visibility::Public => fmt!(cx, "pub "),
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Constness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(constness) = self;
+        match constness {
+            ast::Constness::Const => fmt!(cx, "const "),
+            ast::Constness::Not => {}
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Safety> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(safety) = self;
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Safe => fmt!(cx, "safe "),
+            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
         }
     }
 }

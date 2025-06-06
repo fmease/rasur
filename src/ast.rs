@@ -46,7 +46,7 @@ pub(crate) enum Orientation {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Mutable {
-    Yes,
-    No,
+pub(crate) enum Mutability {
+    Mut,
+    Not,
 }

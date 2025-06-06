@@ -1,5 +1,5 @@
 use super::{
-    Attr, BlockExpr, Bound, Expr, GenericArgsPolicy, Generics, Ident, MacroCall, Mutable, Pat,
+    Attr, BlockExpr, Bound, Expr, GenericArgsPolicy, Generics, Ident, MacroCall, Mutability, Pat,
     Path, PathTree, Span, TokenStream, Ty,
 };
 
@@ -167,7 +167,7 @@ pub(crate) struct ModItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
-    pub(crate) mut_: Mutable,
+    pub(crate) mut_: Mutability,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,

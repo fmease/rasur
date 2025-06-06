@@ -1,19 +1,16 @@
-use super::{Cx, Fmt, Tup, fmt};
+use super::{Cx, Fmt, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Path(path) => path.fmt(cx),
+            Self::Ident(ident) => ident.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
             Self::Borrow(mut_, pat) => {
                 fmt!(cx, "&");
-                match mut_ {
-                    ast::Mutable::Yes => fmt!(cx, "mut "),
-                    ast::Mutable::No => {}
-                }
+                mut_.trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
             Self::Tup(pats) => Tup(pats).fmt(cx),
@@ -22,7 +19,26 @@ impl Fmt for ast::Pat<'_> {
                 pat.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
         }
+    }
+}
+
+impl Fmt for ast::IdentPat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { mut_, by_ref, ident } = self;
+
+        mut_.trailing_space().fmt(cx);
+
+        match by_ref {
+            ast::ByRef::Yes(mut_) => {
+                fmt!(cx, "ref ");
+                mut_.trailing_space().fmt(cx);
+            }
+            ast::ByRef::No => {}
+        }
+
+        fmt!(cx, "{ident}");
     }
 }

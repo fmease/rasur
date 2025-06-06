@@ -77,11 +77,11 @@ impl<'src> Parser<'src> {
                 let mut_ = match self.as_ident(token) {
                     Some("mut") => {
                         self.advance();
-                        ast::Mutable::Yes
+                        ast::Mutability::Mut
                     }
                     Some("const") => {
                         self.advance();
-                        ast::Mutable::No
+                        ast::Mutability::Not
                     }
                     _ => {
                         return Err(ParseError::UnexpectedToken(

@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, Tup, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Expr<'_> {
@@ -55,10 +55,7 @@ impl Fmt for ast::Expr<'_> {
             Self::StructLit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");
-                match mut_ {
-                    ast::Mutable::Yes => fmt!(cx, "mut "),
-                    ast::Mutable::No => {}
-                }
+                mut_.trailing_space().fmt(cx);
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
