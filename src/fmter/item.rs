@@ -542,3 +542,21 @@ impl Fmt for ast::AssocItem<'_> {
         }
     }
 }
+
+impl Fmt for ast::Visibility<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            ast::Visibility::Inherited => {}
+            ast::Visibility::Restricted(path) => {
+                fmt!(cx, "pub(");
+                match &*path.segs {
+                    [ast::PathSeg { ident: "crate" | "super" | "self", args: () }] => {}
+                    _ => fmt!(cx, "in "),
+                }
+                path.fmt(cx);
+                fmt!(cx, ") ");
+            }
+            ast::Visibility::Public => fmt!(cx, "pub "),
+        }
+    }
+}
