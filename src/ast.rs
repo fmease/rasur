@@ -159,6 +159,7 @@ pub(crate) enum Externness<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ImplItem<'src> {
+    pub(crate) safety: Safety,
     pub(crate) generics: Generics<'src>,
     pub(crate) constness: Constness,
     pub(crate) polarity: ImplPolarity,
@@ -196,6 +197,7 @@ pub(crate) struct StructItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TraitItem<'src> {
+    pub(crate) safety: Safety,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,

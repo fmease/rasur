@@ -296,7 +296,13 @@ impl Fmt for ast::FnParam<'_> {
 
 impl Fmt for ast::ImplItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { generics, constness, polarity, trait_ref, self_ty, body } = self;
+        let Self { safety, generics, constness, polarity, trait_ref, self_ty, body } = self;
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Safe => unreachable!(),
+            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
+        }
 
         fmt!(cx, "impl");
         generics.params.fmt(cx);
@@ -383,7 +389,13 @@ impl Fmt for ast::StructItem<'_> {
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, bounds, body } = self;
+        let Self { safety, binder, generics, bounds, body } = self;
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Safe => unreachable!(),
+            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
+        }
 
         fmt!(cx, "trait {binder}");
         generics.params.fmt(cx);

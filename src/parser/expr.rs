@@ -52,7 +52,7 @@ impl<'src> Parser<'src> {
                 matches!(
                     self.source(token.span),
                     | "_" | "const" | "continue" | "break" | "false" | "if"
-                    | "match" | "return" | "true" | "while" | "unsafe"
+                    | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
             | TokenKind::Hyphen

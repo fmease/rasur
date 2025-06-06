@@ -131,7 +131,7 @@ impl<'src> Parser<'src> {
                     }
                     "impl" => {
                         self.advance();
-                        break 'kind self.fin_parse_impl_item();
+                        break 'kind self.fin_parse_impl_item(ast::Safety::Inherited);
                     }
                     "macro" => {
                         self.advance();
@@ -165,7 +165,7 @@ impl<'src> Parser<'src> {
                     }
                     "trait" => {
                         self.advance();
-                        break 'kind self.fin_parse_trait_item();
+                        break 'kind self.fin_parse_trait_item(ast::Safety::Inherited);
                     }
                     "type" => {
                         self.advance();
@@ -180,13 +180,38 @@ impl<'src> Parser<'src> {
                     "unsafe" => {
                         if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
                             self.advance();
-                            // FIXME: or "extern"
-                            self.parse(Ident("fn"))?;
-                            break 'kind self.fin_parse_fn_item(
-                                ast::Constness::Not,
-                                ast::Safety::Unsafe,
-                                ast::Externness::Not,
-                            );
+
+                            let token = self.token();
+                            // FIXME: Doesn't account for `unsafe extern ...` (extern block, fn)
+                            // FIXME: `unsafe impl`
+                            match self.as_ident(token) {
+                                Some("fn") => {
+                                    self.advance();
+                                    break 'kind self.fin_parse_fn_item(
+                                        ast::Constness::Not,
+                                        ast::Safety::Unsafe,
+                                        ast::Externness::Not,
+                                    );
+                                }
+                                Some("trait") => {
+                                    self.advance();
+                                    break 'kind self.fin_parse_trait_item(ast::Safety::Unsafe);
+                                }
+                                Some("impl") => {
+                                    self.advance();
+                                    break 'kind self.fin_parse_impl_item(ast::Safety::Unsafe);
+                                }
+                                _ => {
+                                    return Err(ParseError::UnexpectedToken(
+                                        token,
+                                        one_of![
+                                            ExpectedFragment::Raw("fn"),
+                                            ExpectedFragment::Raw("trait"),
+                                            ExpectedFragment::Raw("impl"),
+                                        ],
+                                    ));
+                                }
+                            }
                         }
                     }
                     "use" => {
@@ -486,7 +511,8 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Impl_Item ::= "impl" Generic_Params Path for Ty Where_Clause? "{" … "}"
     /// ```
-    fn fin_parse_impl_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
+    fn fin_parse_impl_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
         let params = self.parse_generic_params()?;
 
@@ -522,6 +548,7 @@ impl<'src> Parser<'src> {
         let items = self.parse_delimited_assoc_items()?;
 
         Ok(ast::ItemKind::Impl(Box::new(ast::ImplItem {
+            safety,
             generics: ast::Generics { params, preds },
             constness,
             polarity,
@@ -632,7 +659,8 @@ impl<'src> Parser<'src> {
     ///     Where_Clause?
     ///     "{" … "}"
     /// ```
-    fn fin_parse_trait_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
+    fn fin_parse_trait_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
@@ -642,6 +670,7 @@ impl<'src> Parser<'src> {
         let items = self.parse_delimited_assoc_items()?;
 
         Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
+            safety,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
