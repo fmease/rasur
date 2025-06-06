@@ -4,12 +4,6 @@ use crate::ast;
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::UnOp(op @ ast::UnOp::Try, expr) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
-                fmt!(cx, "(");
-                expr.fmt(cx);
-                fmt!(cx, "){}", op.symbol());
-            }
             Self::UnOp(op, expr) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "{}(", op.symbol());
@@ -71,6 +65,12 @@ impl Fmt for ast::Expr<'_> {
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Try(expr) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ")?");
+            }
             Self::Field(expr, field) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
@@ -120,7 +120,6 @@ impl ast::UnOp {
             Self::Deref => "*",
             Self::Neg => "-",
             Self::Not => "!",
-            Self::Try => "?",
         }
     }
 }

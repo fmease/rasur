@@ -103,7 +103,7 @@ impl<'src> Parser<'src> {
                 TokenKind::Asterisk => ast::BinOp::Mul.into(),
                 TokenKind::BangEquals => ast::BinOp::Ne.into(),
                 TokenKind::Caret => ast::BinOp::BitXor.into(),
-                TokenKind::Dot => PostfixOp::Project.into(),
+                TokenKind::Dot => PostfixOp::Field.into(),
                 TokenKind::DoubleAmpersand => ast::BinOp::And.into(),
                 TokenKind::Equals => ast::BinOp::Assign.into(),
                 TokenKind::DoubleEquals => ast::BinOp::Eq.into(),
@@ -196,7 +196,7 @@ impl<'src> Parser<'src> {
                 let ty = self.parse_ty()?;
                 ast::Expr::Cast(Box::new(left), Box::new(ty))
             }
-            PostfixOp::Try => ast::Expr::UnOp(ast::UnOp::Try, Box::new(left)),
+            PostfixOp::Try => ast::Expr::Try(Box::new(left)),
             PostfixOp::Call => {
                 let args = self.parse_delimited_sequence(
                     TokenKind::CloseRoundBracket,
@@ -210,7 +210,7 @@ impl<'src> Parser<'src> {
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::Expr::Index(Box::new(left), Box::new(index))
             }
-            PostfixOp::Project => {
+            PostfixOp::Field => {
                 let token = self.token();
                 let ident = match token.kind {
                     TokenKind::NumLit => self.source(token.span),
@@ -489,8 +489,6 @@ impl ast::UnOp {
     fn level(self) -> (Option<Level>, Option<Level>) {
         match self {
             Self::Deref | Self::Neg | Self::Not => (None, Some(Level::Prefix)),
-            // FIXME: unreachable
-            Self::Try => (Some(Level::Try), None),
         }
     }
 }
@@ -519,7 +517,7 @@ enum PostfixOp {
     Try,
     Call,
     Index,
-    Project,
+    Field,
 }
 
 impl PostfixOp {
@@ -528,7 +526,7 @@ impl PostfixOp {
             Self::Cast => Level::Cast,
             Self::Try => Level::Try,
             Self::Call | Self::Index => Level::Call,
-            Self::Project => Level::Project,
+            Self::Field => Level::Project,
         }
     }
 }

@@ -19,6 +19,7 @@ pub(crate) enum Expr<'src> {
     StrLit(Ident<'src>),
     StructLit(Box<StructLit<'src>>),
     Borrow(Mutable, Box<Expr<'src>>),
+    Try(Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
@@ -59,6 +60,7 @@ impl Expr<'_> {
             | Self::StrLit(_)
             | Self::StructLit(_)
             | Self::Borrow(..)
+            | Self::Try(_)
             | Self::Field(..)
             | Self::Call(..)
             | Self::Index(..)
@@ -75,8 +77,6 @@ pub(crate) enum UnOp {
     Deref,
     Neg,
     Not,
-    // FIXME: Remove from this list
-    Try,
 }
 
 #[derive(Debug, Clone, Copy)]
