@@ -478,8 +478,9 @@ impl<'src> Parser<'src> {
 
             // FIXME: Extract into "extract_shorthand_self"
             let (pat, ty) = match pat {
-                ast::Pat::Path(ast::Path {
-                    segs: deref!([ast::PathSeg { ident: "self", args: None }]),
+                ast::Pat::Path(ast::ExtPath {
+                    self_ty: None,
+                    path: ast::Path { segs: deref!([ast::PathSeg { ident: "self", args: None }]) },
                 }) => {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);
@@ -487,22 +488,28 @@ impl<'src> Parser<'src> {
                     let ty = if this.consume(TokenKind::Colon) {
                         this.parse_ty()?
                     } else {
-                        ast::Ty::Path(ast::Path::ident("Self"))
+                        ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")))
                     };
                     (pat, ty)
                 }
                 // FIXME: We don't support `&'a self` right now, oof!
                 ast::Pat::Borrow(
                     mut_,
-                    deref!(pat @ ast::Pat::Path(ast::Path {
-                        segs: deref!([ast::PathSeg { ident: "self", args: None }]),
+                    deref!(pat @ ast::Pat::Path(ast::ExtPath {
+                        self_ty: None,
+                        path: ast::Path {
+                            segs: deref!([ast::PathSeg { ident: "self", args: None }]),
+                        },
                     })),
                 ) => {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);
                     }
-                    let ty =
-                        ast::Ty::Ref(None, mut_, Box::new(ast::Ty::Path(ast::Path::ident("Self"))));
+                    let ty = ast::Ty::Ref(
+                        None,
+                        mut_,
+                        Box::new(ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")))),
+                    );
                     (pat, ty)
                 }
 
@@ -545,7 +552,7 @@ impl<'src> Parser<'src> {
                 false => self.parse_ty()?,
             };
             let trait_ref = match ty {
-                ast::Ty::Path(path) => path,
+                ast::Ty::Path(deref!(ast::ExtPath { self_ty: None, path })) => path,
                 _ => return Err(ParseError::ExpectedTraitFoundTy),
             };
             (Some(trait_ref), self_ty)

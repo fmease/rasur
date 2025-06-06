@@ -117,6 +117,25 @@ impl Fmt for ast::Attr<'_> {
     }
 }
 
+impl<'src, A: FmtGenericArgs> Fmt for ast::ExtPath<'_, A> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { self_ty, mut path } = self;
+        if let Some(self_ty) = self_ty {
+            fmt!(cx, "<");
+            self_ty.ty.fmt(cx);
+            let segs = path.segs.split_off(self_ty.offset);
+            if !path.segs.is_empty() {
+                fmt!(cx, " as ");
+                path.fmt(cx);
+            }
+            fmt!(cx, ">::");
+            ast::Path { segs }.fmt(cx);
+        } else {
+            path.fmt(cx);
+        }
+    }
+}
+
 impl<'src, A: FmtGenericArgs> Fmt for ast::Path<'src, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { segs } = self;
@@ -472,6 +491,7 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::MacroCall(ty) => ty.fmt(cx),
             Self::Error => fmt!(cx, "/*error*/"),
         }
     }

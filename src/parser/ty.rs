@@ -29,10 +29,6 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
-        if self.begins_path() {
-            return Ok(ast::Ty::Path(self.parse_path::<ast::GenericArgsPolicy::Allowed>()?));
-        }
-
         let token = self.token();
         match token.kind {
             TokenKind::Ident => match self.source(token.span) {
@@ -120,6 +116,20 @@ impl<'src> Parser<'src> {
                 );
             }
             _ => {}
+        }
+
+        if self.begins_ext_path() {
+            let path = self.parse_ext_path::<ast::GenericArgsPolicy::Allowed>()?;
+
+            if self.consume(TokenKind::Bang) {
+                let ast::ExtPath { self_ty: None, path } = path else {
+                    return Err(ParseError::TyRelMacroCall);
+                };
+                let (bracket, stream) = self.parse_delimited_token_stream()?;
+                return Ok(ast::Ty::MacroCall(ast::MacroCall { path, bracket, stream }));
+            }
+
+            return Ok(ast::Ty::Path(Box::new(path)));
         }
 
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))

@@ -393,14 +393,21 @@ impl<'src> Parser<'src> {
             _ => {}
         }
 
-        if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
+        if self.begins_ext_path() {
+            let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
             let token = self.token();
             match token.kind {
                 TokenKind::Bang => {
+                    let ast::ExtPath { self_ty: None, path } = path else {
+                        return Err(ParseError::TyRelMacroCall);
+                    };
+
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
+
+                    // FIXME: Proper error
+
                     return Ok(ast::Expr::MacroCall(Box::new(ast::MacroCall {
                         path,
                         bracket,
@@ -427,7 +434,7 @@ impl<'src> Parser<'src> {
                 _ => {}
             }
 
-            return Ok(ast::Expr::Path(path));
+            return Ok(ast::Expr::Path(Box::new(path)));
         }
 
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))

@@ -388,7 +388,7 @@ pub(crate) enum Expr<'src> {
     UnOp(UnOp, Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
-    Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
+    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     Wildcard,
     Continue,
     Break(Option<&'src str>, Option<Box<Expr<'src>>>),
@@ -546,7 +546,7 @@ pub(crate) struct BlockExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructLit<'src> {
-    pub(crate) path: Path<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
     pub(crate) fields: Vec<StructLitField<'src>>,
 }
 
@@ -592,7 +592,7 @@ pub(crate) struct LetStmt<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
-    Path(Path<'src, GenericArgsPolicy::DisambiguatedOnly>),
+    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
     Wildcard,
@@ -609,13 +609,14 @@ pub(crate) enum Ty<'src> {
     DynTrait(Vec<Bound<'src>>),
     FnPtr((), Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
-    Path(Path<'src, GenericArgsPolicy::Allowed>),
+    Path(Box<ExtPath<'src, GenericArgsPolicy::Allowed>>),
     Ref(Option<Lifetime<'src>>, Mutable, Box<Ty<'src>>),
     Ptr(Mutable, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
     Grouped(Box<Ty<'src>>),
+    MacroCall(MacroCall<'src, GenericArgsPolicy::Allowed>),
     Error,
 }
 
@@ -655,6 +656,25 @@ pub(crate) enum Bracket {
 pub(crate) enum Orientation {
     Open,
     Close,
+}
+
+#[derive(Debug)]
+pub(crate) struct ExtPath<'src, A: GenericArgsPolicy::Kind> {
+    pub(crate) self_ty: Option<SelfTy<'src>>,
+    pub(crate) path: Path<'src, A>,
+}
+
+impl<'src, A: GenericArgsPolicy::Kind> ExtPath<'src, A> {
+    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+        Self { self_ty: None, path: Path::ident(ident) }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SelfTy<'src> {
+    pub(crate) ty: Ty<'src>,
+    // FIXME: Better name, this doesn't make any sense
+    pub(crate) offset: usize,
 }
 
 #[derive(Debug)]

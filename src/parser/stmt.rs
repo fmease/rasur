@@ -20,8 +20,10 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         // FIXME: Outer attrs on let stmt
         if self.begins_item(MacroCallPolicy::Forbidden) {
-            Ok(ast::Stmt::Item(self.parse_item()?))
-        } else if self.consume(Ident("let")) {
+            return Ok(ast::Stmt::Item(self.parse_item()?));
+        }
+
+        if self.consume(Ident("let")) {
             let pat = self.parse_pat()?;
             let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
             let body = self
@@ -29,8 +31,10 @@ impl<'src> Parser<'src> {
                 .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
                 .transpose()?;
             self.parse(TokenKind::Semicolon)?;
-            Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }))
-        } else if self.begins_expr() {
+            return Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }));
+        }
+
+        if self.begins_expr() {
             let expr = self.parse_expr(expr::StructLitPolicy::Allowed)?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if expr.has_trailing_block(ast::TrailingBlockMode::Normal)
@@ -44,16 +48,16 @@ impl<'src> Parser<'src> {
                 self.parse(TokenKind::Semicolon)?;
                 ast::Semicolon::Yes
             };
-            Ok(ast::Stmt::Expr(expr, semi))
-        } else {
-            let token = self.token();
-            match token.kind {
-                TokenKind::Semicolon => {
-                    self.advance();
-                    Ok(ast::Stmt::Empty)
-                }
-                _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Stmt)),
+            return Ok(ast::Stmt::Expr(expr, semi));
+        }
+
+        let token = self.token();
+        match token.kind {
+            TokenKind::Semicolon => {
+                self.advance();
+                Ok(ast::Stmt::Empty)
             }
+            _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Stmt)),
         }
     }
 }

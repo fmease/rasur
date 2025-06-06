@@ -33,6 +33,40 @@ impl<'src> Parser<'src> {
         self.token().kind == TokenKind::DoubleColon || self.as_path_seg_ident().is_some()
     }
 
+    pub(super) fn begins_ext_path(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_ty_rel_path`.
+
+        // FIXME: Or DoubleLessThan
+        self.token().kind == TokenKind::LessThan || self.begins_path()
+    }
+
+    pub(super) fn parse_ext_path<A: ParseGenericArgs>(&mut self) -> Result<ast::ExtPath<'src, A>> {
+        let mut path = ast::Path { segs: Vec::new() };
+
+        // FIXME: Deal with DoubleLessThan, too (`<<T>::P>::P`).
+        let self_ty = if self.consume(TokenKind::LessThan) {
+            let ty = self.parse_ty()?;
+            if self.consume(Ident("as")) {
+                path = self.parse_path::<A>()?;
+            }
+            self.parse(TokenKind::GreaterThan)?;
+            self.parse(TokenKind::DoubleColon)?;
+            Some(ast::SelfTy { ty, offset: path.segs.len() })
+        } else {
+            None
+        };
+
+        // FIXME: Add `<`` to list of expected tokens
+
+        path.segs.push(self.parse_path_seg::<A>()?);
+
+        while self.consume(TokenKind::DoubleColon) {
+            path.segs.push(self.parse_path_seg::<A>()?);
+        }
+
+        Ok(ast::ExtPath { self_ty, path })
+    }
+
     fn parse_path_seg<A: ParseGenericArgs>(&mut self) -> Result<ast::PathSeg<'src, A>> {
         let ident = self.as_path_seg_ident().inspect(|_| self.advance()).ok_or_else(|| {
             ParseError::UnexpectedToken(self.token(), ExpectedFragment::PathSegIdent)
@@ -289,7 +323,9 @@ fn extract_assoc_item_seg<'src>(
     arg: &mut ast::GenericArg<'src>,
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
     if let ast::GenericArg::Ty(ty) = arg
-        && let ast::Ty::Path(ast::Path { segs: deref!([seg]) }) = ty
+        && let ast::Ty::Path(path) = ty
+        && let ast::ExtPath { self_ty: None, path } = path
+        && let ast::Path { segs: deref!([seg]) } = path
     {
         Some((seg.ident, seg.args.take()))
     } else {

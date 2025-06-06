@@ -395,6 +395,7 @@ pub(crate) enum ParseError {
     ModifierOnOutlivesBound,
     MisplacedReceiver,
     OpCannotBeChained(ast::BinOp),
+    TyRelMacroCall,
 }
 
 impl ParseError {
@@ -442,6 +443,7 @@ impl ParseError {
                 super let title = format!("operator `{}` cannot be chained", op.symbol());
                 lvl.title(&title)
             }
+            Self::TyRelMacroCall => lvl.title("type-relative macro call"),
         };
         let renderer = ann::Renderer::styled();
         eprintln!("{}", renderer.render(msg));
