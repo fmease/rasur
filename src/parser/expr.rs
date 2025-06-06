@@ -32,10 +32,10 @@ impl<'src> Parser<'src> {
     /// Borrow_Expr ::= "&" "mut"? Expr
     /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
     /// ```
-    pub(super) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
+    pub(super) fn parse_expr(&mut self, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
-        self.parse_expr_at(Level::Initial)
+        self.parse_expr_at(Level::Initial, policy)
     }
 
     pub(super) fn begins_expr(&self) -> bool {
@@ -68,7 +68,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn parse_expr_at(&mut self, level: Level) -> Result<ast::Expr<'src>> {
+    fn parse_expr_at(&mut self, level: Level, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         let token = self.token();
         let left = match token.kind {
             TokenKind::Hyphen => ast::UnOp::Neg.into(),
@@ -79,16 +79,16 @@ impl<'src> Parser<'src> {
             TokenKind::Ampersand => {
                 self.advance();
                 let mut_ = self.parse_mutability();
-                let expr = self.parse_expr_at(Level::Prefix)?;
+                let expr = self.parse_expr_at(Level::Prefix, policy)?;
                 ast::Expr::Borrow(mut_, Box::new(expr)).into()
             }
-            _ => self.parse_lower_expr()?.into(),
+            _ => self.parse_lower_expr(policy)?.into(),
         };
         let mut left = match left {
             OpOrExpr::UnOp(op) => {
                 self.advance();
                 let (_, Some(right_level)) = op.level() else { unreachable!() }; // FIXME: unreachable??
-                let right = self.parse_expr_at(right_level)?;
+                let right = self.parse_expr_at(right_level, policy)?;
                 ast::Expr::UnOp(op, Box::new(right))
             }
             OpOrExpr::Expr(expr) => expr,
@@ -132,7 +132,7 @@ impl<'src> Parser<'src> {
                     }
                     self.advance();
 
-                    let right = self.parse_expr_at(right_level)?;
+                    let right = self.parse_expr_at(right_level, policy)?;
                     left = ast::Expr::BinOp(op, Box::new(left), Box::new(right));
                 }
                 InfixOrPostfixOp::Postfix(op) => {
@@ -199,12 +199,12 @@ impl<'src> Parser<'src> {
                 let args = self.parse_delimited_sequence(
                     TokenKind::CloseRoundBracket,
                     TokenKind::Comma,
-                    Self::parse_expr,
+                    |this| this.parse_expr(StructLitPolicy::Allowed),
                 )?;
                 ast::Expr::Call(Box::new(left), args)
             }
             PostfixOp::Index => {
-                let index = self.parse_expr()?;
+                let index = self.parse_expr(StructLitPolicy::Allowed)?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::Expr::Index(Box::new(left), Box::new(index))
             }
@@ -226,22 +226,7 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn parse_lower_expr(&mut self) -> Result<ast::Expr<'src>> {
-        if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
-
-            if self.consume(TokenKind::Bang) {
-                let (bracket, stream) = self.parse_delimited_token_stream()?;
-                return Ok(ast::Expr::MacroCall(Box::new(ast::MacroCall {
-                    path,
-                    bracket,
-                    stream,
-                })));
-            }
-
-            return Ok(ast::Expr::Path(path));
-        }
-
+    fn parse_lower_expr(&mut self, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         let token = self.token();
         match token.kind {
             TokenKind::Ident => match self.source(token.span) {
@@ -252,8 +237,11 @@ impl<'src> Parser<'src> {
                 "break" => {
                     self.advance();
                     let label = self.consume_lifetime().map(|ast::Lifetime(label)| label);
-                    let expr =
-                        self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                    let expr = self
+                        .begins_expr()
+                        // NOTE: Yes indeed, allowed! Plz add test for this!
+                        .then(|| self.parse_expr(StructLitPolicy::Allowed).map(Box::new))
+                        .transpose()?;
                     return Ok(ast::Expr::Break(label, expr));
                 }
                 "const" => {
@@ -271,9 +259,8 @@ impl<'src> Parser<'src> {
                 "if" => {
                     self.advance();
 
-                    // FIXME: Add Restriction::StructLit
                     // FIXME: Permit let-exprs
-                    let condition = self.parse_expr()?;
+                    let condition = self.parse_expr(StructLitPolicy::Forbidden)?;
                     let consequent = self.parse_block_expr()?;
 
                     let alternate = if self.consume(Ident("else")) {
@@ -292,7 +279,8 @@ impl<'src> Parser<'src> {
                             }
                         }
 
-                        Some(self.parse_expr()?)
+                        // FIXME: Think about this again. Allowed?
+                        Some(self.parse_expr(StructLitPolicy::Allowed)?)
                     } else {
                         None
                     };
@@ -310,8 +298,7 @@ impl<'src> Parser<'src> {
                 "match" => {
                     self.advance();
 
-                    // FIXME: Add Restriction::StructLit
-                    let scrutinee = self.parse_expr()?;
+                    let scrutinee = self.parse_expr(StructLitPolicy::Forbidden)?;
                     let mut arms = Vec::new();
 
                     self.parse(TokenKind::OpenCurlyBracket)?;
@@ -321,7 +308,7 @@ impl<'src> Parser<'src> {
                         let pat = self.parse_pat()?;
                         self.parse(TokenKind::WideArrow)?;
 
-                        let body = self.parse_expr()?;
+                        let body = self.parse_expr(StructLitPolicy::Allowed)?;
 
                         if body.has_trailing_block(ast::TrailingBlockMode::Match)
                             || self.token().kind == DELIMITER
@@ -338,8 +325,11 @@ impl<'src> Parser<'src> {
                 }
                 "return" => {
                     self.advance();
-                    let expr =
-                        self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                    let expr = self
+                        .begins_expr()
+                        // NOTE: Yes indeed. Add test.
+                        .then(|| self.parse_expr(StructLitPolicy::Allowed).map(Box::new))
+                        .transpose()?;
                     return Ok(ast::Expr::Return(expr));
                 }
                 "true" => {
@@ -348,9 +338,8 @@ impl<'src> Parser<'src> {
                 }
                 "while" => {
                     self.advance();
-                    // FIXME: Add Restriction::StructLit
                     // FIXME: Permit let-exprs
-                    let condition = self.parse_expr()?;
+                    let condition = self.parse_expr(StructLitPolicy::Forbidden)?;
                     let body = self.parse_block_expr()?;
                     return Ok(ast::Expr::While(Box::new(ast::WhileExpr { condition, body })));
                 }
@@ -377,12 +366,49 @@ impl<'src> Parser<'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
-                    Self::parse_expr,
+                    |this| this.parse_expr(StructLitPolicy::Allowed),
                     ast::Expr::Grouped,
                     ast::Expr::Tup,
                 );
             }
             _ => {}
+        }
+
+        if self.begins_path() {
+            let path = self.parse_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
+
+            let token = self.token();
+            match token.kind {
+                TokenKind::Bang => {
+                    self.advance();
+                    let (bracket, stream) = self.parse_delimited_token_stream()?;
+                    return Ok(ast::Expr::MacroCall(Box::new(ast::MacroCall {
+                        path,
+                        bracket,
+                        stream,
+                    })));
+                }
+                TokenKind::OpenCurlyBracket if let StructLitPolicy::Allowed = policy => {
+                    self.advance();
+
+                    // FIXME: NumLit fields
+                    let fields = self.parse_delimited_sequence(
+                        TokenKind::CloseCurlyBracket,
+                        TokenKind::Comma,
+                        |this| {
+                            let ident = this.parse_common_ident()?;
+                            this.parse(TokenKind::Colon)?;
+                            let expr = this.parse_expr(StructLitPolicy::Allowed)?;
+                            Ok(ast::StructLitField { ident, expr })
+                        },
+                    )?;
+
+                    return Ok(ast::Expr::StructLit(Box::new(ast::StructLit { path, fields })));
+                }
+                _ => {}
+            }
+
+            return Ok(ast::Expr::Path(path));
         }
 
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))
@@ -411,6 +437,12 @@ impl<'src> Parser<'src> {
 
         Ok(ast::BlockExpr { attrs, stmts })
     }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum StructLitPolicy {
+    Allowed,
+    Forbidden,
 }
 
 impl ast::UnOp {

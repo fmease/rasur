@@ -542,6 +542,7 @@ impl Fmt for ast::Expr<'_> {
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit}"),
+            Self::StructLit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");
                 match mut_ {
@@ -667,6 +668,26 @@ impl Fmt for ast::WhileExpr<'_> {
         condition.fmt(cx);
         fmt!(cx, " ");
         body.fmt(cx);
+    }
+}
+
+impl Fmt for ast::StructLit<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path, fields } = self;
+
+        path.fmt(cx);
+        fmt!(cx, " {{");
+        Punctuated::new(fields, ", ").fmt(cx);
+        fmt!(cx, "}}");
+    }
+}
+
+impl Fmt for ast::StructLitField<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { ident, expr } = self;
+
+        fmt!(cx, "{ident}: ");
+        expr.fmt(cx);
     }
 }
 

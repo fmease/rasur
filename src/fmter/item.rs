@@ -116,25 +116,29 @@ impl Fmt for ast::VariantKind<'_> {
                 Punctuated::new(fields, ", ").fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Struct(fields) => {
-                fmt!(cx, " {{");
-                if !fields.is_empty() {
-                    cx.indent();
-                    cx.line_break();
-                    let mut fields = fields.into_iter().peekable();
-                    while let Some(field) = fields.next() {
-                        field.fmt(cx);
-                        fmt!(cx, ",");
-                        if fields.peek().is_some() {
-                            cx.line_break();
-                        }
-                    }
-                    cx.dedent();
+            Self::Struct(fields) => fields.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for Vec<ast::StructField<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, " {{");
+        if !self.is_empty() {
+            cx.indent();
+            cx.line_break();
+            let mut fields = self.into_iter().peekable();
+            while let Some(field) = fields.next() {
+                field.fmt(cx);
+                fmt!(cx, ",");
+                if fields.peek().is_some() {
                     cx.line_break();
                 }
-                fmt!(cx, "}}");
             }
+            cx.dedent();
+            cx.line_break();
         }
+        fmt!(cx, "}}");
     }
 }
 
@@ -372,15 +376,15 @@ impl Fmt for ast::StaticItem<'_> {
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, kind: body } = self;
+        let Self { binder, generics, kind } = self;
 
         fmt!(cx, "struct {binder}");
         generics.fmt(cx);
-        let needs_semi = match body {
+        let needs_semi = match kind {
             ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => true,
             ast::VariantKind::Struct(_) => false,
         };
-        body.fmt(cx);
+        kind.fmt(cx);
         if needs_semi {
             fmt!(cx, ";");
         }
@@ -429,11 +433,11 @@ impl Fmt for ast::TyItem<'_> {
 
 impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics } = self;
+        let Self { binder, generics, fields } = self;
 
         fmt!(cx, "union {binder}");
         generics.fmt(cx);
-        fmt!(cx, " {{}}")
+        fields.fmt(cx);
     }
 }
 

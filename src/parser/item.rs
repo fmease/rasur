@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, Shape as _, TokenKind,
     one_of,
 };
-use crate::ast;
+use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
     /// Parse a sequence of items.
@@ -172,9 +172,12 @@ impl<'src> Parser<'src> {
                         break 'kind self.fin_parse_ty_item();
                     }
                     "union" => {
-                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
+                        if let Some(binder) =
+                            self.look_ahead(1, |token| self.as_common_ident(token))
+                        {
                             self.advance();
-                            break 'kind self.fin_parse_union_item();
+                            self.advance();
+                            break 'kind self.fin_parse_union_item(binder);
                         }
                     }
                     "unsafe" => {
@@ -246,9 +249,10 @@ impl<'src> Parser<'src> {
         match ident {
             "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
             | "type" | "use" => true,
-            "const" | "union" | "unsafe" => {
+            "const" | "unsafe" => {
                 self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket)
             }
+            "union" => self.look_ahead(1, |token| self.as_common_ident(token).is_some()),
             "safe" => {
                 // FIXME: or "extern"
                 self.look_ahead(1, |token| self.as_ident(token).is_some_and(|ident| ident == "fn"))
@@ -274,7 +278,10 @@ impl<'src> Parser<'src> {
         let binder = self.parse_ident_if_common_or("_")?;
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_annotation()?;
-        let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        let body = self
+            .consume(TokenKind::Equals)
+            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
+            .transpose()?;
         let preds = self.parse_where_clause()?;
         self.parse(TokenKind::Semicolon)?;
 
@@ -316,7 +323,10 @@ impl<'src> Parser<'src> {
         // FIXME: Parse visibility
         let binder = self.parse_common_ident()?;
         let kind = self.parse_variant_kind()?;
-        let discr = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        let discr = self
+            .consume(TokenKind::Equals)
+            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
+            .transpose()?;
         Ok(ast::Variant { attrs, binder, kind, discr })
     }
 
@@ -339,20 +349,20 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                let fields = self.parse_delimited_sequence(
-                    TokenKind::CloseCurlyBracket,
-                    TokenKind::Comma,
-                    |this| {
-                        let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
-                        let vis = this.parse_visibility()?;
-                        let binder = this.parse_common_ident()?;
-                        let ty = this.parse_ty_annotation()?;
-                        Ok(ast::StructField { attrs, vis, binder, ty })
-                    },
-                )?;
+                let fields = self.parse_struct_fields()?;
                 ast::VariantKind::Struct(fields)
             }
             _ => ast::VariantKind::Unit,
+        })
+    }
+
+    fn parse_struct_fields(&mut self) -> Result<Vec<ast::StructField<'src>>> {
+        self.parse_delimited_sequence(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
+            let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+            let vis = this.parse_visibility()?;
+            let binder = this.parse_common_ident()?;
+            let ty = this.parse_ty_annotation()?;
+            Ok(ast::StructField { attrs, vis, binder, ty })
         })
     }
 
@@ -616,7 +626,10 @@ impl<'src> Parser<'src> {
         let mut_ = self.parse_mutability();
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
-        let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+        let body = self
+            .consume(TokenKind::Equals)
+            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
+            .transpose()?;
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Static(Box::new(ast::StaticItem { mut_, binder, ty, body })))
@@ -708,7 +721,7 @@ impl<'src> Parser<'src> {
         })))
     }
 
-    /// Finish parsing a union item assuming the leading `union` has been parsed already.
+    /// Finish parsing a union item assuming the leading `"union" Common_Ident` has been parsed already.
     ///
     /// # Grammar
     ///
@@ -718,14 +731,13 @@ impl<'src> Parser<'src> {
     ///     Generics
     ///     "{" … "}"
     /// ```
-    fn fin_parse_union_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_common_ident()?;
+    fn fin_parse_union_item(&mut self, binder: ast::Ident<'src>) -> Result<ast::ItemKind<'src>> {
         let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
-        self.parse(TokenKind::CloseCurlyBracket)?;
+        let fields = self.parse_struct_fields()?;
 
-        Ok(ast::ItemKind::Union(Box::new(ast::UnionItem { binder, generics })))
+        Ok(ast::ItemKind::Union(Box::new(ast::UnionItem { binder, generics, fields })))
     }
 
     /// Finish parsing a use-item assuming the leading `use` has been parsed already.

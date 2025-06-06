@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, one_of};
-use crate::ast;
+use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
     /// Parse a type.
@@ -100,8 +100,10 @@ impl<'src> Parser<'src> {
             TokenKind::OpenSquareBracket => {
                 self.advance();
                 let ty = self.parse_ty()?;
-                let len =
-                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
+                let len = self
+                    .consume(TokenKind::Semicolon)
+                    .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
+                    .transpose()?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 return Ok(match len {
                     Some(len) => ast::Ty::Array(Box::new(ty), len),

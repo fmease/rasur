@@ -1,5 +1,5 @@
 use super::{ParseError, Parser, Result, TokenKind, one_of};
-use crate::ast;
+use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
     /// Parse a sequence of attributes of the given style.
@@ -52,7 +52,7 @@ impl<'src> Parser<'src> {
             // FIXME: Admits `==`.
             TokenKind::Equals => {
                 self.advance();
-                let expr = self.parse_expr()?;
+                let expr = self.parse_expr(expr::StructLitPolicy::Allowed)?;
                 ast::AttrKind::Assign(expr)
             }
             TokenKind::OpenRoundBracket => {

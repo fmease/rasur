@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, TokenKind};
-use crate::ast;
+use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
     /// Parse a statement.
@@ -24,11 +24,14 @@ impl<'src> Parser<'src> {
         } else if self.consume(Ident("let")) {
             let pat = self.parse_pat()?;
             let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
-            let body = self.consume(TokenKind::Equals).then(|| self.parse_expr()).transpose()?;
+            let body = self
+                .consume(TokenKind::Equals)
+                .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
+                .transpose()?;
             self.parse(TokenKind::Semicolon)?;
             Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }))
         } else if self.begins_expr() {
-            let expr = self.parse_expr()?;
+            let expr = self.parse_expr(expr::StructLitPolicy::Allowed)?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if expr.has_trailing_block(ast::TrailingBlockMode::Normal)
                 || self.token().kind == delimiter

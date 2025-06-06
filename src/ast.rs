@@ -233,6 +233,7 @@ pub(crate) struct TyItem<'src> {
 pub(crate) struct UnionItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
+    pub(crate) fields: Vec<StructField<'src>>,
 }
 
 #[derive(Debug)]
@@ -399,6 +400,7 @@ pub(crate) enum Expr<'src> {
     BoolLit(bool),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
+    StructLit(Box<StructLit<'src>>),
     Borrow(Mutable, Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
@@ -437,6 +439,7 @@ impl Expr<'_> {
             | Self::BoolLit(_)
             | Self::NumLit(_)
             | Self::StrLit(_)
+            | Self::StructLit(_)
             | Self::Borrow(..)
             | Self::Field(..)
             | Self::Call(..)
@@ -537,6 +540,18 @@ pub(crate) struct WhileExpr<'src> {
 pub(crate) struct BlockExpr<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) stmts: Vec<Stmt<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructLit<'src> {
+    pub(crate) path: Path<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) fields: Vec<StructLitField<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructLitField<'src> {
+    pub(crate) ident: Ident<'src>,
+    pub(crate) expr: Expr<'src>,
 }
 
 #[derive(Debug)]
