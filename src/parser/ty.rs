@@ -194,7 +194,7 @@ impl<'src> Parser<'src> {
             let token = this.token();
             let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime() {
                 let bounds = if this.consume(TokenKind::Colon) {
-                    this.parse_outlives_bounds()?
+                    this.parse_outlives_bounds()
                 } else {
                     Vec::new()
                 };
@@ -271,7 +271,7 @@ impl<'src> Parser<'src> {
         }
         if let Some(lt) = self.consume_lifetime() {
             self.parse(TokenKind::Colon)?;
-            let bounds = self.parse_outlives_bounds()?;
+            let bounds = self.parse_outlives_bounds();
             return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
         }
 
@@ -359,7 +359,7 @@ impl<'src> Parser<'src> {
         matches!(self.token().kind, TokenKind::Bang | TokenKind::QuestionMark)
     }
 
-    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
+    fn parse_outlives_bounds(&mut self) -> Vec<ast::Lifetime<'src>> {
         let mut bounds = Vec::new();
 
         while let Some(lt) = self.consume_lifetime() {
@@ -370,6 +370,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        Ok(bounds)
+        bounds
     }
 }

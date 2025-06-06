@@ -124,7 +124,7 @@ impl BinOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum TrailingBlockMode {
     Normal,
     Match,

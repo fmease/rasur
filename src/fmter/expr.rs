@@ -51,8 +51,7 @@ impl Fmt for ast::Expr<'_> {
             Self::Match(expr) => expr.fmt(cx),
             Self::While(expr) => expr.fmt(cx),
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
-            Self::NumLit(lit) => fmt!(cx, "{lit}"),
-            Self::StrLit(lit) => fmt!(cx, "{lit}"),
+            Self::NumLit(lit) | Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::StructLit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");

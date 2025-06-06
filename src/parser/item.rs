@@ -48,6 +48,7 @@ impl<'src> Parser<'src> {
     ///     | Macro_Call // FIXME
     ///     | Macro_Def // FIXME
     /// ```
+    #[expect(clippy::too_many_lines)]
     pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
 
@@ -110,7 +111,7 @@ impl<'src> Parser<'src> {
                                 _ => {}
                             },
                             _ => {}
-                        };
+                        }
 
                         break 'kind Err(ParseError::UnexpectedToken(
                             token,
@@ -551,9 +552,8 @@ impl<'src> Parser<'src> {
                 true => ast::Ty::Error,
                 false => self.parse_ty()?,
             };
-            let trait_ref = match ty {
-                ast::Ty::Path(deref!(ast::ExtPath { self_ty: None, path })) => path,
-                _ => return Err(ParseError::ExpectedTraitFoundTy),
+            let ast::Ty::Path(deref!(ast::ExtPath { self_ty: None, path: trait_ref })) = ty else {
+                return Err(ParseError::ExpectedTraitFoundTy);
             };
             (Some(trait_ref), self_ty)
         } else {
@@ -660,7 +660,7 @@ impl<'src> Parser<'src> {
         let kind = self.parse_variant_kind()?;
         match kind {
             ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => {
-                self.parse(TokenKind::Semicolon)?
+                self.parse(TokenKind::Semicolon)?;
             }
             ast::VariantKind::Struct(_) => {}
         }

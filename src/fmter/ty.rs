@@ -54,12 +54,12 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
                 fmt!(cx, "; ");
                 expr.fmt(cx);
-                fmt!(cx, "]")
+                fmt!(cx, "]");
             }
             Self::Slice(ty) => {
                 fmt!(cx, "[");
                 ty.fmt(cx);
-                fmt!(cx, "]")
+                fmt!(cx, "]");
             }
             Self::Tup(tys) => Tup(tys).fmt(cx),
             Self::Grouped(ty) => {
@@ -168,7 +168,7 @@ impl Fmt for ast::Bound<'_> {
         match self {
             Self::Trait(mods, path) => {
                 mods.fmt(cx);
-                path.fmt(cx)
+                path.fmt(cx);
             }
             Self::Outlives(lt) => lt.fmt(cx),
         }

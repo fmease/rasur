@@ -56,7 +56,7 @@ impl<'src> Cx<'src> {
         _ = self.output.write_fmt(format_args!("{0:1$}", "", self.indent));
     }
 
-    fn skip(&self, attrs: &[ast::Attr<'_>]) -> bool {
+    fn skip(attrs: &[ast::Attr<'_>]) -> bool {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Make tool mod config'able: "rasur"|"rustfmt"|both
         // FIXME: Support rustfmt_skip or whatever that legacy attr is called
@@ -76,7 +76,7 @@ impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, items, span } = self;
 
-        if cx.skip(&attrs) {
+        if Cx::skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -175,11 +175,11 @@ impl Fmt for ast::Token {
             | ast::TokenKind::StrLit
             | ast::TokenKind::Error => cx.source(self.span),
         };
-        fmt!(cx, "{str}")
+        fmt!(cx, "{str}");
     }
 }
 
-impl<'src, A: path::FmtGenericArgs> Fmt for ast::MacroCall<'src, A> {
+impl<A: path::FmtGenericArgs> Fmt for ast::MacroCall<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { path, bracket, stream } = self;
 
@@ -196,6 +196,7 @@ impl<'src, A: path::FmtGenericArgs> Fmt for ast::MacroCall<'src, A> {
 
 impl Fmt for (ast::Bracket, ast::Orientation) {
     fn fmt(self, cx: &mut Cx<'_>) {
+        #![expect(clippy::enum_glob_use)]
         use ast::Bracket::*;
         use ast::Orientation::*;
         let fmt = match self {
@@ -206,7 +207,7 @@ impl Fmt for (ast::Bracket, ast::Orientation) {
             (Curly, Open) => "{",
             (Curly, Close) => "}",
         };
-        fmt!(cx, "{fmt}")
+        fmt!(cx, "{fmt}");
     }
 }
 

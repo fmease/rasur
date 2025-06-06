@@ -245,7 +245,7 @@ impl<'src> Parser<'src> {
             match self.parse_path_tree_kind(&mut path)? {
                 ast::PathTreeKind::Stump(None) => {}
                 kind => return Ok(ast::PathTree { path, kind }),
-            };
+            }
         }
 
         Ok(ast::PathTree { path, kind: ast::PathTreeKind::Stump(None) })
@@ -313,7 +313,7 @@ impl ParseGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum RequiresDisambiguation {
     Yes,
     No,

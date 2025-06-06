@@ -1,14 +1,14 @@
 use super::{Cx, Fmt, Punctuated, fmt};
 use crate::ast;
 
-impl<'src, A: FmtGenericArgs> Fmt for ast::Path<'src, A> {
+impl<A: FmtGenericArgs> Fmt for ast::Path<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { segs } = self;
         Punctuated::new(segs, "::").fmt(cx);
     }
 }
 
-impl<'src, A: FmtGenericArgs> Fmt for ast::PathSeg<'src, A> {
+impl<A: FmtGenericArgs> Fmt for ast::PathSeg<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ident, args } = self;
 
@@ -17,7 +17,7 @@ impl<'src, A: FmtGenericArgs> Fmt for ast::PathSeg<'src, A> {
     }
 }
 
-impl<'src, A: FmtGenericArgs> Fmt for ast::ExtPath<'_, A> {
+impl<A: FmtGenericArgs> Fmt for ast::ExtPath<'_, A> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { self_ty, mut path } = self;
         if let Some(self_ty) = self_ty {

@@ -1,10 +1,16 @@
+// Features
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
 #![feature(if_let_guard)]
 #![feature(iter_intersperse)]
 #![feature(super_let)]
+// Lints
 #![expect(incomplete_features)] // deref_patterns
 #![deny(unused_must_use, rust_2018_idioms)]
+#![deny(clippy::all, clippy::pedantic)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::match_bool)]
+#![allow(clippy::option_option)]
 
 use edition::Edition;
 use std::{path::PathBuf, process::ExitCode};

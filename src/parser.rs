@@ -196,6 +196,7 @@ impl<'src> Parser<'src> {
         loop {
             let token = self.token();
 
+            #[expect(clippy::enum_glob_use)]
             let act_delim = {
                 use ast::Bracket::*;
                 use ast::Orientation::*;
@@ -337,6 +338,7 @@ impl<'src> Parser<'src> {
     }
 }
 
+#[derive(Clone, Copy)]
 enum MacroCallPolicy {
     #[expect(dead_code)] // FIXME
     Allowed,
@@ -456,7 +458,7 @@ impl Token {
         match (self.kind, source) {
             (TokenKind::Ident, Some(source)) => {
                 let ident = &source[self.span.range()];
-                return Cow::Owned(format!("identifier `{ident}`"));
+                Cow::Owned(format!("identifier `{ident}`"))
             }
             _ => Cow::Borrowed(self.kind.to_diag_str()),
         }

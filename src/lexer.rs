@@ -80,6 +80,7 @@ impl<'src> Lexer<'src> {
         Self { chars: PeekableCharIndices::new(source), tokens: Vec::new() }
     }
 
+    #[expect(clippy::too_many_lines)]
     fn run(mut self) -> Vec<Token> {
         while let Some(char) = self.peek() {
             let start = self.index();
@@ -157,7 +158,7 @@ impl<'src> Lexer<'src> {
                             self.add(TokenKind::DoubleDot, start);
                         }
                     } else {
-                        self.add(TokenKind::Dot, start)
+                        self.add(TokenKind::Dot, start);
                     }
                 }
                 ':' => {
@@ -165,7 +166,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::DoubleColon, start);
                     } else {
-                        self.add(TokenKind::Colon, start)
+                        self.add(TokenKind::Colon, start);
                     }
                 }
                 '!' => {
@@ -234,15 +235,15 @@ impl<'src> Lexer<'src> {
                 '>' => {
                     if let Some('=') = self.peek() {
                         self.advance();
-                        self.add(TokenKind::GreaterThanEquals, start)
+                        self.add(TokenKind::GreaterThanEquals, start);
                     } else {
-                        self.add(TokenKind::GreaterThan, start)
+                        self.add(TokenKind::GreaterThan, start);
                     }
                 }
                 // FIXME: Character literals (without breaking lifetimes).
                 '\'' => self.add(TokenKind::Apostrophe, start),
                 _ => self.add(TokenKind::Error, start),
-            };
+            }
         }
 
         self.add(TokenKind::EndOfInput, self.index());
@@ -263,7 +264,7 @@ impl<'src> std::ops::Deref for Lexer<'src> {
     }
 }
 
-impl<'src> std::ops::DerefMut for Lexer<'src> {
+impl std::ops::DerefMut for Lexer<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.chars
     }

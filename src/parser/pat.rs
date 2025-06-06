@@ -22,13 +22,12 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
         let token = self.token();
         match token.kind {
-            TokenKind::Ident => match self.source(token.span) {
-                "_" => {
+            TokenKind::Ident => {
+                if self.source(token.span) == "_" {
                     self.advance();
                     return Ok(ast::Pat::Wildcard);
                 }
-                _ => {}
-            },
+            }
             TokenKind::NumLit => {
                 let lit = self.source(token.span);
                 self.advance();
@@ -39,6 +38,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 return Ok(ast::Pat::StrLit(lit));
             }
+            // FIXME: Also DoubleAmpersand
             TokenKind::Ampersand => {
                 self.advance();
                 let mut_ = self.parse_mutability();

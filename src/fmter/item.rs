@@ -5,7 +5,7 @@ impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        if Cx::skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -56,7 +56,7 @@ impl Fmt for ast::ConstItem<'_> {
             body.fmt(cx);
         }
         generics.preds.fmt(cx);
-        fmt!(cx, ";")
+        fmt!(cx, ";");
     }
 }
 
@@ -214,7 +214,7 @@ impl Fmt for ast::ExternItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        if Cx::skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -364,7 +364,7 @@ impl Fmt for ast::StaticItem<'_> {
             fmt!(cx, " = ");
             body.fmt(cx);
         }
-        fmt!(cx, ";")
+        fmt!(cx, ";");
     }
 }
 
@@ -421,7 +421,7 @@ impl Fmt for ast::TyAliasItem<'_> {
             body.fmt(cx);
         }
         generics.preds.fmt(cx);
-        fmt!(cx, ";")
+        fmt!(cx, ";");
     }
 }
 
@@ -516,7 +516,7 @@ impl Fmt for ast::AssocItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        if Cx::skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }

@@ -177,7 +177,7 @@ impl<'src> Parser<'src> {
             }
         }
 
-        impl<'src> From<ast::UnOp> for OpOrExpr<'src> {
+        impl From<ast::UnOp> for OpOrExpr<'_> {
             fn from(op: ast::UnOp) -> Self {
                 Self::UnOp(op)
             }
@@ -228,6 +228,7 @@ impl<'src> Parser<'src> {
         })
     }
 
+    #[expect(clippy::too_many_lines)]
     fn parse_lower_expr(&mut self, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         let token = self.token();
         match token.kind {
@@ -318,9 +319,9 @@ impl<'src> Parser<'src> {
                             self.consume(TokenKind::Comma);
                         } else {
                             self.parse(TokenKind::Comma)?;
-                        };
+                        }
 
-                        arms.push(ast::MatchArm { pat, body })
+                        arms.push(ast::MatchArm { pat, body });
                     }
 
                     return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
