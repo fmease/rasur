@@ -239,11 +239,17 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, externness, binder, generics, params, ret_ty, body } = self;
+        let Self { constness, safety, externness, binder, generics, params, ret_ty, body } = self;
 
         match constness {
             ast::Constness::Const => fmt!(cx, "const "),
             ast::Constness::Not => {}
+        }
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Safe => fmt!(cx, "safe "),
+            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
         }
 
         match externness {

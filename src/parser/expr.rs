@@ -51,8 +51,8 @@ impl<'src> Parser<'src> {
             TokenKind::Ident => {
                 matches!(
                     self.source(token.span),
-                    | "_" | "continue" | "break" | "false" | "if"
-                    | "match" | "return" | "true" | "while"
+                    | "_" | "const" | "continue" | "break" | "false" | "if"
+                    | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
             | TokenKind::Hyphen
@@ -232,7 +232,11 @@ impl<'src> Parser<'src> {
 
             if self.consume(TokenKind::Bang) {
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
-                return Ok(ast::Expr::MacroCall(ast::MacroCall { path, bracket, stream }));
+                return Ok(ast::Expr::MacroCall(Box::new(ast::MacroCall {
+                    path,
+                    bracket,
+                    stream,
+                })));
             }
 
             return Ok(ast::Expr::Path(path));
@@ -252,6 +256,10 @@ impl<'src> Parser<'src> {
                         self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                     return Ok(ast::Expr::Break(label, expr));
                 }
+                "const" => {
+                    self.advance();
+                    return Ok(ast::Expr::ConstBlock(Box::new(self.parse_block_expr()?)));
+                }
                 "continue" => {
                     self.advance();
                     return Ok(ast::Expr::Continue);
@@ -266,8 +274,7 @@ impl<'src> Parser<'src> {
                     // FIXME: Add Restriction::StructLit
                     // FIXME: Permit let-exprs
                     let condition = self.parse_expr()?;
-                    self.parse(TokenKind::OpenCurlyBracket)?;
-                    let consequent = self.fin_parse_block_expr()?;
+                    let consequent = self.parse_block_expr()?;
 
                     let alternate = if self.consume(Ident("else")) {
                         let token = self.token();
@@ -298,11 +305,7 @@ impl<'src> Parser<'src> {
                 }
                 "loop" => {
                     self.advance();
-
-                    self.parse(TokenKind::OpenCurlyBracket)?;
-                    let body = self.fin_parse_block_expr()?;
-
-                    return Ok(ast::Expr::Loop(Box::new(body)));
+                    return Ok(ast::Expr::Loop(Box::new(self.parse_block_expr()?)));
                 }
                 "match" => {
                     self.advance();
@@ -331,7 +334,7 @@ impl<'src> Parser<'src> {
                         arms.push(ast::MatchArm { pat, body })
                     }
 
-                    return Ok(ast::Expr::Match { scrutinee: Box::new(scrutinee), arms });
+                    return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
                 }
                 "return" => {
                     self.advance();
@@ -348,13 +351,12 @@ impl<'src> Parser<'src> {
                     // FIXME: Add Restriction::StructLit
                     // FIXME: Permit let-exprs
                     let condition = self.parse_expr()?;
-                    self.parse(TokenKind::OpenCurlyBracket)?;
-                    let body = self.fin_parse_block_expr()?;
-
-                    return Ok(ast::Expr::While {
-                        condition: Box::new(condition),
-                        body: Box::new(body),
-                    });
+                    let body = self.parse_block_expr()?;
+                    return Ok(ast::Expr::While(Box::new(ast::WhileExpr { condition, body })));
+                }
+                "unsafe" => {
+                    self.advance();
+                    return Ok(ast::Expr::UnsafeBlock(Box::new(self.parse_block_expr()?)));
                 }
                 _ => {}
             },
@@ -370,7 +372,7 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return self.fin_parse_block_expr();
+                return Ok(ast::Expr::Block(Box::new(self.fin_parse_block_expr()?)));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -386,6 +388,11 @@ impl<'src> Parser<'src> {
         Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))
     }
 
+    pub(super) fn parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
+        self.parse(TokenKind::OpenCurlyBracket)?;
+        self.fin_parse_block_expr()
+    }
+
     /// Finish parsing a block expression assuming the leading `{` has already been parsed.
     ///
     /// # Grammar
@@ -393,7 +400,7 @@ impl<'src> Parser<'src> {
     /// ```grammar
     /// Block_Expr ::= "{" Attrs⟨Inner⟩* Stmt* "}"
     /// ```
-    pub(super) fn fin_parse_block_expr(&mut self) -> Result<ast::Expr<'src>> {
+    pub(super) fn fin_parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let mut stmts = Vec::new();
 
@@ -402,7 +409,7 @@ impl<'src> Parser<'src> {
             stmts.push(self.parse_stmt(DELIMITER)?);
         }
 
-        Ok(ast::Expr::Block(Box::new(ast::BlockExpr { attrs, stmts })))
+        Ok(ast::BlockExpr { attrs, stmts })
     }
 }
 

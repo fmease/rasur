@@ -532,50 +532,13 @@ impl Fmt for ast::Expr<'_> {
                     expr.fmt(cx);
                 }
             }
-            Self::If(expr) => {
-                fmt!(cx, "if ");
-                expr.condition.fmt(cx);
-                fmt!(cx, " ");
-                expr.consequent.fmt(cx);
-                if let Some(alternate) = expr.alternate {
-                    fmt!(cx, " else ");
-                    alternate.fmt(cx);
-                }
-            }
+            Self::If(expr) => expr.fmt(cx),
             Self::Loop(body) => {
                 fmt!(cx, "loop ");
                 body.fmt(cx);
             }
-            Self::Match { scrutinee, arms } => {
-                fmt!(cx, "match ");
-                scrutinee.fmt(cx);
-                fmt!(cx, " {{");
-                if !arms.is_empty() {
-                    cx.indent();
-                    cx.line_break();
-                    let mut arms = arms.into_iter().peekable();
-                    while let Some(arm) = arms.next() {
-                        let needs_comma =
-                            !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
-                        arm.fmt(cx);
-                        if needs_comma {
-                            fmt!(cx, ",");
-                        }
-                        if arms.peek().is_some() {
-                            cx.line_break();
-                        }
-                    }
-                    cx.dedent();
-                    cx.line_break();
-                }
-                fmt!(cx, "}}");
-            }
-            Self::While { condition, body } => {
-                fmt!(cx, "while ");
-                condition.fmt(cx);
-                fmt!(cx, " ");
-                body.fmt(cx);
-            }
+            Self::Match(expr) => expr.fmt(cx),
+            Self::While(expr) => expr.fmt(cx),
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) => fmt!(cx, "{lit}"),
             Self::StrLit(lit) => fmt!(cx, "{lit}"),
@@ -612,7 +575,15 @@ impl Fmt for ast::Expr<'_> {
                 index.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Block(expr) => expr.fmt(cx),
+            Self::Block(block) => block.fmt(cx),
+            Self::ConstBlock(block) => {
+                fmt!(cx, "const ");
+                block.fmt(cx);
+            }
+            Self::UnsafeBlock(block) => {
+                fmt!(cx, "unsafe ");
+                block.fmt(cx);
+            }
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::Grouped(expr) => {
                 fmt!(cx, "(");
@@ -635,12 +606,66 @@ impl ast::UnOp {
     }
 }
 
+impl Fmt for ast::IfExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { condition, consequent, alternate } = self;
+
+        fmt!(cx, "if ");
+        condition.fmt(cx);
+        fmt!(cx, " ");
+        consequent.fmt(cx);
+        if let Some(alternate) = alternate {
+            fmt!(cx, " else ");
+            alternate.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for ast::MatchExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { scrutinee, arms } = self;
+
+        fmt!(cx, "match ");
+        scrutinee.fmt(cx);
+        fmt!(cx, " {{");
+        if !arms.is_empty() {
+            cx.indent();
+            cx.line_break();
+            let mut arms = arms.into_iter().peekable();
+            while let Some(arm) = arms.next() {
+                let needs_comma = !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
+                arm.fmt(cx);
+                if needs_comma {
+                    fmt!(cx, ",");
+                }
+                if arms.peek().is_some() {
+                    cx.line_break();
+                }
+            }
+            cx.dedent();
+            cx.line_break();
+        }
+        fmt!(cx, "}}");
+    }
+}
+
 impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { pat, body } = self;
 
         pat.fmt(cx);
         fmt!(cx, " => ");
+        body.fmt(cx);
+    }
+}
+
+impl Fmt for ast::WhileExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { condition, body } = self;
+
+        fmt!(cx, "while ");
+        condition.fmt(cx);
+        fmt!(cx, " ");
         body.fmt(cx);
     }
 }

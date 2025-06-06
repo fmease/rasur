@@ -163,7 +163,7 @@ impl<'src> Parser<'src> {
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return self.fin_parse_block_expr();
+                return Ok(ast::Expr::Block(Box::new(self.fin_parse_block_expr()?)));
             }
             TokenKind::Ident => match self.source(token.span) {
                 "false" => {

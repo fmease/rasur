@@ -129,18 +129,26 @@ pub(crate) enum ExternItemKind<'src> {
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
     pub(crate) constness: Constness,
+    pub(crate) safety: Safety,
     pub(crate) externness: Externness<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<FnParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
-    pub(crate) body: Option<Expr<'src>>,
+    pub(crate) body: Option<BlockExpr<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) enum Constness {
     Const,
     Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum Safety {
+    Inherited,
+    Safe,
+    Unsafe,
 }
 
 #[derive(Debug)]
@@ -383,9 +391,9 @@ pub(crate) enum Expr<'src> {
     Break(Option<&'src str>, Option<Box<Expr<'src>>>),
     Return(Option<Box<Expr<'src>>>),
     If(Box<IfExpr<'src>>),
-    Loop(Box<Expr<'src>>),
-    Match { scrutinee: Box<Expr<'src>>, arms: Vec<MatchArm<'src>> },
-    While { condition: Box<Expr<'src>>, body: Box<Expr<'src>> },
+    Loop(Box<BlockExpr<'src>>),
+    Match(Box<MatchExpr<'src>>),
+    While(Box<WhileExpr<'src>>),
     BoolLit(bool),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
@@ -394,9 +402,11 @@ pub(crate) enum Expr<'src> {
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
+    ConstBlock(Box<BlockExpr<'src>>),
+    UnsafeBlock(Box<BlockExpr<'src>>),
     Tup(Vec<Expr<'src>>),
     Grouped(Box<Expr<'src>>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
 }
 
 impl Expr<'_> {
@@ -404,10 +414,12 @@ impl Expr<'_> {
     pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
             Self::If(_)
-            | Self::Loop { .. }
-            | Self::Match { .. }
-            | Self::While { .. }
-            | Self::Block(..) => true,
+            | Self::Loop(_)
+            | Self::Match(_)
+            | Self::While(_)
+            | Self::Block(_)
+            | Self::ConstBlock(_)
+            | Self::UnsafeBlock(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
                 TrailingBlockMode::Normal => true,
                 TrailingBlockMode::Match => false,
@@ -497,14 +509,26 @@ pub(crate) enum TrailingBlockMode {
 #[derive(Debug)]
 pub(crate) struct IfExpr<'src> {
     pub(crate) condition: Expr<'src>,
-    pub(crate) consequent: Expr<'src>,
+    pub(crate) consequent: BlockExpr<'src>,
     pub(crate) alternate: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct MatchExpr<'src> {
+    pub(crate) scrutinee: Expr<'src>,
+    pub(crate) arms: Vec<MatchArm<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct MatchArm<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) body: Expr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct WhileExpr<'src> {
+    pub(crate) condition: Expr<'src>,
+    pub(crate) body: BlockExpr<'src>,
 }
 
 #[derive(Debug)]

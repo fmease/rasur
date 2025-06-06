@@ -31,8 +31,6 @@ impl<'src> Parser<'src> {
     /// Item ::= Attrs⟨Outer⟩ Visibility Bare_Item
     /// Visibility ::= "pub"?
     /// Bare_Item ::=
-    ///     | Macro_Call // FIXME
-    ///     | Macro_Def // FIXME
     ///     | Const_Item
     ///     | Enum_Item
     ///     | Extern_Block_Item
@@ -47,6 +45,8 @@ impl<'src> Parser<'src> {
     ///     | Ty_Item
     ///     | Union_Item
     ///     | Use_Item
+    ///     | Macro_Call // FIXME
+    ///     | Macro_Def // FIXME
     /// ```
     pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
@@ -59,20 +59,22 @@ impl<'src> Parser<'src> {
         let vis = self.parse_visibility()?;
 
         let kind = 'kind: {
-            if self.begins_path() {
-                break 'kind self.parse_macro_call_item();
-            }
-
             let token = self.token();
             if let Some(ident) = self.as_ident(token) {
                 match ident {
                     "const" => {
-                        self.advance();
-                        break 'kind if self.consume(Ident("fn")) {
-                            self.fin_parse_fn_item(ast::Constness::Const, ast::Externness::Not)
-                        } else {
-                            self.fin_parse_const_item()
-                        };
+                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
+                            self.advance();
+                            break 'kind if self.consume(Ident("fn")) {
+                                self.fin_parse_fn_item(
+                                    ast::Constness::Const,
+                                    ast::Safety::Inherited,
+                                    ast::Externness::Not,
+                                )
+                            } else {
+                                self.fin_parse_const_item()
+                            };
+                        }
                     }
                     "enum" => {
                         self.advance();
@@ -101,6 +103,7 @@ impl<'src> Parser<'src> {
 
                                     break 'kind self.fin_parse_fn_item(
                                         ast::Constness::Not,
+                                        ast::Safety::Inherited,
                                         ast::Externness::Extern(abi),
                                     );
                                 }
@@ -120,8 +123,11 @@ impl<'src> Parser<'src> {
                     }
                     "fn" => {
                         self.advance();
-                        break 'kind self
-                            .fin_parse_fn_item(ast::Constness::Not, ast::Externness::Not);
+                        break 'kind self.fin_parse_fn_item(
+                            ast::Constness::Not,
+                            ast::Safety::Inherited,
+                            ast::Externness::Not,
+                        );
                     }
                     "impl" => {
                         self.advance();
@@ -134,6 +140,20 @@ impl<'src> Parser<'src> {
                     "mod" => {
                         self.advance();
                         break 'kind self.fin_parse_mod_item();
+                    }
+                    "safe" => {
+                        // FIXME: Or "extern"
+                        if self.look_ahead(1, |token| {
+                            self.as_ident(token).is_some_and(|ident| ident == "fn")
+                        }) {
+                            self.advance();
+                            self.advance();
+                            break 'kind self.fin_parse_fn_item(
+                                ast::Constness::Not,
+                                ast::Safety::Safe,
+                                ast::Externness::Not,
+                            );
+                        }
                     }
                     "static" => {
                         self.advance();
@@ -151,10 +171,23 @@ impl<'src> Parser<'src> {
                         self.advance();
                         break 'kind self.fin_parse_ty_item();
                     }
-                    // FIXME: Likely Needs look-ahead(Ident) bc of `fn f() { union { x: 20 } }`
                     "union" => {
-                        self.advance();
-                        break 'kind self.fin_parse_union_item();
+                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
+                            self.advance();
+                            break 'kind self.fin_parse_union_item();
+                        }
+                    }
+                    "unsafe" => {
+                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
+                            self.advance();
+                            // FIXME: or "extern"
+                            self.parse(Ident("fn"))?;
+                            break 'kind self.fin_parse_fn_item(
+                                ast::Constness::Not,
+                                ast::Safety::Unsafe,
+                                ast::Externness::Not,
+                            );
+                        }
                     }
                     "use" => {
                         self.advance();
@@ -162,6 +195,10 @@ impl<'src> Parser<'src> {
                     }
                     _ => {}
                 }
+            }
+
+            if self.begins_path() {
+                break 'kind self.parse_macro_call_item();
             }
 
             Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Item))
@@ -179,14 +216,20 @@ impl<'src> Parser<'src> {
             return true;
         }
 
-        // FIXME: look-ahead(Ident) for union bc of `fn f() { union { x: 20 } }`
-        self.as_ident(self.token()).is_some_and(|ident| {
-            [
-                "const", "enum", "extern", "fn", "impl", "macro", "mod", "static", "struct",
-                "trait", "type", "union", "use",
-            ]
-            .contains(&ident)
-        })
+        let Some(ident) = self.as_ident(self.token()) else { return false };
+
+        match ident {
+            "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
+            | "type" | "use" => true,
+            "const" | "union" | "unsafe" => {
+                self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket)
+            }
+            "safe" => {
+                // FIXME: or "extern"
+                self.look_ahead(1, |token| self.as_ident(token).is_some_and(|ident| ident == "fn"))
+            }
+            _ => false,
+        }
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -353,6 +396,7 @@ impl<'src> Parser<'src> {
     fn fin_parse_fn_item(
         &mut self,
         constness: ast::Constness,
+        safety: ast::Safety,
         externness: ast::Externness<'src>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
@@ -370,6 +414,7 @@ impl<'src> Parser<'src> {
 
         Ok(ast::ItemKind::Fn(Box::new(ast::FnItem {
             constness,
+            safety,
             externness,
             binder,
             generics: ast::Generics { params: gen_params, preds },
