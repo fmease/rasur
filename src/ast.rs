@@ -408,6 +408,7 @@ pub(crate) enum Expr<'src> {
     Block(Box<BlockExpr<'src>>),
     ConstBlock(Box<BlockExpr<'src>>),
     UnsafeBlock(Box<BlockExpr<'src>>),
+    Closure(Box<ClosureExpr<'src>>),
     Tup(Vec<Expr<'src>>),
     Grouped(Box<Expr<'src>>),
     MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
@@ -444,6 +445,7 @@ impl Expr<'_> {
             | Self::Field(..)
             | Self::Call(..)
             | Self::Index(..)
+            | Self::Closure(_)
             | Self::Tup(_)
             | Self::Grouped(_)
             | Self::MacroCall(_) => false,
@@ -552,6 +554,19 @@ pub(crate) struct StructLit<'src> {
 pub(crate) struct StructLitField<'src> {
     pub(crate) ident: Ident<'src>,
     pub(crate) expr: Expr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClosureExpr<'src> {
+    pub(crate) params: Vec<ClosureParam<'src>>,
+    pub(crate) ret_ty: Option<Ty<'src>>,
+    pub(crate) body: Expr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClosureParam<'src> {
+    pub(crate) pat: Pat<'src>,
+    pub(crate) ty: Option<Ty<'src>>,
 }
 
 #[derive(Debug)]

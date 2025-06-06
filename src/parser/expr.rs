@@ -60,6 +60,8 @@ impl<'src> Parser<'src> {
             | TokenKind::Asterisk
             | TokenKind::Ampersand
             | TokenKind::DoubleAmpersand
+            | TokenKind::Pipe
+            | TokenKind::DoublePipe
             | TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
@@ -359,6 +361,23 @@ impl<'src> Parser<'src> {
                 self.advance();
                 return Ok(ast::Expr::StrLit(lit));
             }
+            TokenKind::Pipe => {
+                self.advance();
+                // FIXME: Maybe reuse parse_fn_params smh?
+                let params =
+                    self.parse_delimited_sequence(TokenKind::Pipe, TokenKind::Comma, |this| {
+                        let pat = this.parse_pat()?;
+                        let ty =
+                            this.consume(TokenKind::Colon).then(|| this.parse_ty()).transpose()?;
+
+                        Ok(ast::ClosureParam { pat, ty })
+                    })?;
+                return self.fin_parse_closure_expr(params);
+            }
+            TokenKind::DoublePipe => {
+                self.advance();
+                return self.fin_parse_closure_expr(Vec::new());
+            }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
                 return Ok(ast::Expr::Block(Box::new(self.fin_parse_block_expr()?)));
@@ -436,6 +455,20 @@ impl<'src> Parser<'src> {
         }
 
         Ok(ast::BlockExpr { attrs, stmts })
+    }
+
+    fn fin_parse_closure_expr(
+        &mut self,
+        params: Vec<ast::ClosureParam<'src>>,
+    ) -> Result<ast::Expr<'src>> {
+        let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
+
+        let body = match ret_ty {
+            Some(_) => ast::Expr::Block(Box::new(self.parse_block_expr()?)),
+            None => self.parse_expr(StructLitPolicy::Allowed)?,
+        };
+
+        Ok(ast::Expr::Closure(Box::new(ast::ClosureExpr { params, ret_ty, body })))
     }
 }
 

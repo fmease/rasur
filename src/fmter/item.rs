@@ -265,7 +265,9 @@ impl Fmt for ast::FnItem<'_> {
 
         fmt!(cx, "fn {binder}");
         generics.params.fmt(cx);
-        params.fmt(cx);
+        fmt!(cx, "(");
+        Punctuated::new(params, ", ").fmt(cx);
+        fmt!(cx, ")");
         if let Some(ty) = ret_ty {
             fmt!(cx, " -> ");
             ty.fmt(cx);
@@ -277,14 +279,6 @@ impl Fmt for ast::FnItem<'_> {
         } else {
             fmt!(cx, ";");
         }
-    }
-}
-
-impl Fmt for Vec<ast::FnParam<'_>> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "(");
-        Punctuated::new(self, ", ").fmt(cx);
-        fmt!(cx, ")");
     }
 }
 

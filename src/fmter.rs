@@ -585,6 +585,7 @@ impl Fmt for ast::Expr<'_> {
                 fmt!(cx, "unsafe ");
                 block.fmt(cx);
             }
+            Self::Closure(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::Grouped(expr) => {
                 fmt!(cx, "(");
@@ -688,6 +689,36 @@ impl Fmt for ast::StructLitField<'_> {
 
         fmt!(cx, "{ident}: ");
         expr.fmt(cx);
+    }
+}
+
+impl Fmt for ast::ClosureExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { params, ret_ty, body } = self;
+
+        fmt!(cx, "|");
+        Punctuated::new(params, ", ").fmt(cx);
+        fmt!(cx, "|");
+
+        if let Some(ty) = ret_ty {
+            fmt!(cx, " -> ");
+            ty.fmt(cx);
+        }
+
+        fmt!(cx, " ");
+
+        body.fmt(cx);
+    }
+}
+
+impl Fmt for ast::ClosureParam<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { pat, ty } = self;
+        pat.fmt(cx);
+        if let Some(ty) = ty {
+            fmt!(cx, ": ");
+            ty.fmt(cx);
+        }
     }
 }
 
