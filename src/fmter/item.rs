@@ -406,7 +406,7 @@ impl Fmt for ast::TraitItem<'_> {
     }
 }
 
-impl Fmt for ast::TyItem<'_> {
+impl Fmt for ast::TyAliasItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { binder, generics, bounds, body } = self;
 

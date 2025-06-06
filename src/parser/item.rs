@@ -169,7 +169,7 @@ impl<'src> Parser<'src> {
                     }
                     "type" => {
                         self.advance();
-                        break 'kind self.fin_parse_ty_item();
+                        break 'kind self.fin_parse_ty_alias_item();
                     }
                     "union" => {
                         if let Some(binder) =
@@ -703,7 +703,7 @@ impl<'src> Parser<'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Ty_Item ::=
+    /// Ty_Alias_Item ::=
     ///     "type" Common_Ident
     ///     Generic_Params
     ///     (":" Bounds)?
@@ -711,7 +711,7 @@ impl<'src> Parser<'src> {
     ///     ("=" Ty)?
     ///     Where_Clause?
     ///     ";"
-    fn fin_parse_ty_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_ty_alias_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
         let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
@@ -720,7 +720,7 @@ impl<'src> Parser<'src> {
         preds.append(&mut self.parse_where_clause()?);
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Ty(Box::new(ast::TyItem {
+        Ok(ast::ItemKind::Ty(Box::new(ast::TyAliasItem {
             binder,
             generics: ast::Generics { params, preds },
             bounds,
