@@ -133,7 +133,6 @@ impl Fmt for ast::Token {
     fn fmt(self, cx: &mut Cx<'_>) {
         let str = match self.kind {
             ast::TokenKind::Ampersand => "&",
-            ast::TokenKind::Apostrophe => "'",
             ast::TokenKind::Asterisk => "*",
             ast::TokenKind::At => "@",
             ast::TokenKind::Bang => "!",
@@ -170,7 +169,8 @@ impl Fmt for ast::Token {
             ast::TokenKind::ThinArrow => "->",
             ast::TokenKind::TripleDot => "...",
             ast::TokenKind::WideArrow => "=>",
-            ast::TokenKind::Ident
+            | ast::TokenKind::Ident
+            | ast::TokenKind::Lifetime
             | ast::TokenKind::NumLit
             | ast::TokenKind::StrLit
             | ast::TokenKind::Error => cx.source(self.span),

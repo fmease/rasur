@@ -29,7 +29,7 @@ impl Fmt for ast::Expr<'_> {
             Self::Break(label, expr) => {
                 fmt!(cx, "break");
                 if let Some(label) = label {
-                    fmt!(cx, " '{label}");
+                    fmt!(cx, " {label}");
                 }
                 if let Some(expr) = expr {
                     fmt!(cx, " ");

@@ -73,7 +73,7 @@ impl Fmt for ast::Ty<'_> {
 impl Fmt for ast::Lifetime<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(lt) = self;
-        fmt!(cx, "'{lt}");
+        fmt!(cx, "{lt}");
     }
 }
 

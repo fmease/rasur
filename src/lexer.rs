@@ -9,7 +9,6 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
     Ampersand,
-    Apostrophe,
     Asterisk,
     At,
     Bang,
@@ -34,6 +33,7 @@ pub(crate) enum TokenKind {
     Hash,
     Hyphen,
     Ident,
+    Lifetime,
     LessThan,
     LessThanEquals,
     NumLit,
@@ -58,12 +58,6 @@ pub(crate) struct Token {
     pub(crate) span: Span,
 }
 
-impl Token {
-    pub(crate) fn touches(self, other: Self) -> bool {
-        self.span.end == other.span.start
-    }
-}
-
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}@{:?}", self.kind, self.span)
@@ -82,11 +76,7 @@ impl<'src> Lexer<'src> {
 
     #[expect(clippy::too_many_lines)]
     fn run(mut self) -> Vec<Token> {
-        while let Some(char) = self.peek() {
-            let start = self.index();
-            // FIXME: Use next()? instead of "uncond_peek+advance"?
-            self.advance();
-
+        while let Some((start, char)) = self.next() {
             match char {
                 _ if char.is_whitespace() => {}
                 '/' => {
@@ -118,7 +108,7 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 'a'..='z' | 'A'..='Z' | '_' => {
-                    while let Some('a'..='z' | 'A'..='Z' | '0'..='9' | '_') = self.peek() {
+                    while let Some(IdentMiddle![]) = self.peek() {
                         self.advance();
                     }
 
@@ -241,7 +231,13 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 // FIXME: Character literals (without breaking lifetimes).
-                '\'' => self.add(TokenKind::Apostrophe, start),
+                '\'' => {
+                    while let Some(IdentMiddle![]) = self.peek() {
+                        self.advance();
+                    }
+
+                    self.add(TokenKind::Lifetime, start);
+                }
                 _ => self.add(TokenKind::Error, start),
             }
         }
@@ -270,6 +266,10 @@ impl std::ops::DerefMut for Lexer<'_> {
     }
 }
 
+macro IdentMiddle() {
+    'a'..='z' | 'A'..='Z' | '0'..='9' | '_'
+}
+
 mod iter {
     use crate::span::ByteIndex;
     use std::str::CharIndices;
@@ -287,6 +287,13 @@ mod iter {
 
         pub(super) fn peek(&mut self) -> Option<char> {
             self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
+        }
+
+        pub(super) fn next(&mut self) -> Option<(ByteIndex, char)> {
+            self.peeked
+                .take()
+                .unwrap_or_else(|| self.chars.next())
+                .map(|(index, char)| (ByteIndex::new(index), char))
         }
 
         pub(super) fn advance(&mut self) {

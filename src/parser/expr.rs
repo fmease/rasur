@@ -239,7 +239,7 @@ impl<'src> Parser<'src> {
                 }
                 "break" => {
                     self.advance();
-                    let label = self.consume_lifetime().map(|ast::Lifetime(label)| label);
+                    let label = self.consume_lifetime()?.map(|ast::Lifetime(label)| label);
                     let expr = self
                         .begins_expr()
                         // NOTE: Yes indeed, allowed! Plz add test for this!

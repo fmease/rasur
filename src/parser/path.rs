@@ -118,7 +118,7 @@ impl<'src> Parser<'src> {
             let mut arg = if this.begins_ty() {
                 let ty = this.parse_ty()?;
                 ast::GenericArg::Ty(ty)
-            } else if let Some(lt) = this.consume_lifetime() {
+            } else if let Some(lt) = this.consume_lifetime()? {
                 ast::GenericArg::Lifetime(lt)
             } else if this.begins_const_arg() {
                 let expr = this.parse_const_arg()?;

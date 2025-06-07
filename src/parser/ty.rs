@@ -66,7 +66,7 @@ impl<'src> Parser<'src> {
             }
             TokenKind::Ampersand => {
                 self.advance();
-                let lt = self.consume_lifetime();
+                let lt = self.consume_lifetime()?;
                 let mut_ = self.parse_mutability();
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)));
@@ -192,9 +192,9 @@ impl<'src> Parser<'src> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
             let token = this.token();
-            let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime() {
+            let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime()? {
                 let bounds = if this.consume(TokenKind::Colon) {
-                    this.parse_outlives_bounds()
+                    this.parse_outlives_bounds()?
                 } else {
                     Vec::new()
                 };
@@ -269,9 +269,9 @@ impl<'src> Parser<'src> {
             let bounds = self.parse_bounds()?;
             return Ok(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
         }
-        if let Some(lt) = self.consume_lifetime() {
+        if let Some(lt) = self.consume_lifetime()? {
             self.parse(TokenKind::Colon)?;
-            let bounds = self.parse_outlives_bounds();
+            let bounds = self.parse_outlives_bounds()?;
             return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
         }
 
@@ -281,7 +281,7 @@ impl<'src> Parser<'src> {
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        self.begins_ty() || self.as_lifetime().is_some()
+        self.begins_ty() || matches!(self.token().kind, TokenKind::Lifetime)
     }
 
     /// Parse a bounds annotation if available.
@@ -319,7 +319,7 @@ impl<'src> Parser<'src> {
         }
 
         let token = self.token();
-        if let Some(lt) = self.consume_lifetime() {
+        if let Some(lt) = self.consume_lifetime()? {
             if let ast::TraitBoundModifiers::NONE = mods {
                 return Ok(ast::Bound::Outlives(lt));
             }
@@ -332,7 +332,9 @@ impl<'src> Parser<'src> {
     fn begins_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        self.begins_trait_bound_modifiers() || self.begins_path() || self.as_lifetime().is_some()
+        self.begins_trait_bound_modifiers()
+            || self.begins_path()
+            || matches!(self.token().kind, TokenKind::Lifetime)
     }
 
     fn parse_trait_bound_modifiers(&mut self) -> ast::TraitBoundModifiers {
@@ -359,10 +361,10 @@ impl<'src> Parser<'src> {
         matches!(self.token().kind, TokenKind::Bang | TokenKind::QuestionMark)
     }
 
-    fn parse_outlives_bounds(&mut self) -> Vec<ast::Lifetime<'src>> {
+    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
         let mut bounds = Vec::new();
 
-        while let Some(lt) = self.consume_lifetime() {
+        while let Some(lt) = self.consume_lifetime()? {
             bounds.push(lt);
 
             if !self.consume(TokenKind::Plus) {
@@ -370,6 +372,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        bounds
+        Ok(bounds)
     }
 }

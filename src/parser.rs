@@ -80,23 +80,19 @@ impl<'src> Parser<'src> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
-    fn as_lifetime(&self) -> Option<ast::Lifetime<'src>> {
-        let apo = self.token();
-        if apo.kind == TokenKind::Apostrophe
-            && let Some(ident) =
-                self.look_ahead(1, |ident| self.as_ident(ident).filter(|_| apo.touches(ident)))
-            && (ident == "_" || ident == "static" || self.ident_is_common(ident))
-        {
-            return Some(ast::Lifetime(ident));
+    fn consume_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
+        let token = self.token();
+        if let TokenKind::Lifetime = token.kind {
+            self.advance();
+            let lifetime = self.source(token.span);
+            if lifetime == "'_" || lifetime == "'static" || self.ident_is_common(&lifetime[1..]) {
+                Ok(Some(ast::Lifetime(lifetime)))
+            } else {
+                Err(ParseError::ReservedLifetime(token.span))
+            }
+        } else {
+            Ok(None)
         }
-        None
-    }
-
-    fn consume_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
-        self.as_lifetime().inspect(|_| {
-            self.advance(); // Apostrophe
-            self.advance(); // Ident
-        })
     }
 
     fn fin_parse_grouped_or_tuple<T>(
@@ -398,6 +394,7 @@ pub(crate) enum ParseError {
     MisplacedReceiver,
     OpCannotBeChained(ast::BinOp),
     TyRelMacroCall,
+    ReservedLifetime(Span),
 }
 
 impl ParseError {
@@ -446,6 +443,16 @@ impl ParseError {
                 lvl.title(&title)
             }
             Self::TyRelMacroCall => lvl.title("type-relative macro call"),
+            Self::ReservedLifetime(span) => {
+                super let path = path.to_string_lossy();
+
+                lvl.title("reserved lifetime").snippet(
+                    ann::Snippet::source(source)
+                        .origin(&path)
+                        .annotation(lvl.span(span.range()))
+                        .fold(true),
+                )
+            }
         };
         let renderer = ann::Renderer::styled();
         eprintln!("{}", renderer.render(msg));
@@ -469,7 +476,6 @@ impl TokenKind {
     fn to_diag_str(self) -> &'static str {
         match self {
             Self::Ampersand => "`&`",
-            Self::Apostrophe => "`'`",
             Self::Asterisk => "`*`",
             Self::At => "`@`",
             Self::Bang => "`!`",
@@ -494,6 +500,7 @@ impl TokenKind {
             Self::Hash => "`#`",
             Self::Hyphen => "-",
             Self::Ident => "identifier",
+            Self::Lifetime => "lifetime",
             Self::LessThan => "`<`",
             Self::LessThanEquals => "`<=`",
             Self::NumLit => "number literal",
