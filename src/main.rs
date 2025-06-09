@@ -38,6 +38,7 @@ fn try_main() -> Result<(), ()> {
             match opt {
                 b"tok" => opts.emit_tokens = true,
                 b"ast" => opts.emit_ast = true,
+                b"lex-only" => opts.lex_only = true,
                 b"edition" => {
                     let edition = args.next().ok_or_else(|| {
                         eprintln!("error: missing argument to `--edition`");
@@ -88,6 +89,10 @@ fn try_main() -> Result<(), ()> {
         }
     }
 
+    if opts.lex_only {
+        return Ok(());
+    }
+
     let file = parser::parse(tokens, &source, opts.edition.unwrap_or_default())
         .map_err(|error| error.print(&source, &path))?;
 
@@ -109,5 +114,6 @@ struct Opts {
     edition: Option<Edition>,
     emit_tokens: bool,
     emit_ast: bool,
+    lex_only: bool,
     fmt: bool,
 }

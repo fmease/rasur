@@ -824,4 +824,44 @@ impl<'src> Parser<'src> {
             })
             .collect()
     }
+
+    fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
+        // To kept in sync with `Self::begins_visibility`.
+
+        if !self.consume(Ident("pub")) {
+            return Ok(ast::Visibility::Inherited);
+        }
+
+        // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
+        // can give better errors on invalid vis restrictions in the common cases.
+        if self.token().kind == TokenKind::OpenRoundBracket
+            && let Some(ident) = self.look_ahead(1, |token| self.as_ident(token))
+        {
+            let path = match ident {
+                "in" => {
+                    self.advance();
+                    self.advance();
+                    Some(self.parse_path()?)
+                }
+                "crate" | "super" | "self" => {
+                    self.advance();
+                    self.advance();
+                    Some(ast::Path::ident(ident))
+                }
+                _ => None,
+            };
+            if let Some(path) = path {
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::Visibility::Restricted(path));
+            }
+        }
+
+        Ok(ast::Visibility::Public)
+    }
+
+    fn begins_visibility(&self) -> bool {
+        // To kept in sync with `Self::parse_visibility`.
+
+        Ident("pub").check(self)
+    }
 }

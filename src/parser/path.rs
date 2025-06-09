@@ -1,5 +1,8 @@
-use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, is_path_seg_keyword};
-use crate::{ast, parser::one_of};
+use super::{
+    ExpectedFragment, Ident, ParseError, Parser, Result, Token, TokenKind, is_path_seg_keyword,
+    is_reserved, one_of,
+};
+use crate::ast;
 
 impl<'src> Parser<'src> {
     /// Parse a path.
@@ -288,6 +291,43 @@ impl<'src> Parser<'src> {
                 ));
             }
         })
+    }
+
+    pub(super) fn parse_ident_if_common_or(
+        &mut self,
+        exception: &'static str,
+    ) -> Result<ast::Ident<'src>> {
+        let token = self.token();
+        self.as_ident(token)
+            .filter(|&ident| ident == exception || self.ident_is_common(ident))
+            .inspect(|_| self.advance())
+            .ok_or_else(|| {
+                ParseError::UnexpectedToken(
+                    token,
+                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
+                )
+            })
+    }
+
+    pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
+        self.consume_common_ident()
+            .ok_or_else(|| ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent))
+    }
+
+    pub(super) fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
+        self.as_common_ident(self.token()).inspect(|_| self.advance())
+    }
+
+    pub(super) fn as_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+        self.as_ident(token).filter(|ident| self.ident_is_common(ident))
+    }
+
+    pub(super) fn ident_is_common(&self, ident: &str) -> bool {
+        !is_reserved(ident, self.edition)
+    }
+
+    pub(super) fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+        matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 }
 

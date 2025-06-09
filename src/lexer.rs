@@ -33,9 +33,9 @@ pub(crate) enum TokenKind {
     Hash,
     Hyphen,
     Ident,
-    Lifetime,
     LessThan,
     LessThanEquals,
+    Lifetime,
     NumLit,
     OpenCurlyBracket,
     OpenRoundBracket,
@@ -123,12 +123,8 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::NumLit, start);
                 }
                 '"' => {
-                    // FIXME: Escape sequences;
-                    while self.peek().is_some_and(|char| char != '"') {
-                        self.advance();
-                    }
-
-                    if let Some('"') = self.peek() {
+                    // // FIXME: Escape sequences;
+                    while self.next().is_some_and(|(_, char)| char != '"') {
                         self.advance();
                     }
 

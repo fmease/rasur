@@ -46,40 +46,6 @@ impl<'src> Parser<'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    fn parse_ident_if_common_or(&mut self, exception: &'static str) -> Result<ast::Ident<'src>> {
-        let token = self.token();
-        self.as_ident(token)
-            .filter(|&ident| ident == exception || self.ident_is_common(ident))
-            .inspect(|_| self.advance())
-            .ok_or_else(|| {
-                ParseError::UnexpectedToken(
-                    token,
-                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
-                )
-            })
-    }
-
-    fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
-        self.consume_common_ident()
-            .ok_or_else(|| ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent))
-    }
-
-    fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
-        self.as_common_ident(self.token()).inspect(|_| self.advance())
-    }
-
-    fn as_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        self.as_ident(token).filter(|ident| self.ident_is_common(ident))
-    }
-
-    fn ident_is_common(&self, ident: &str) -> bool {
-        !is_reserved(ident, self.edition)
-    }
-
-    fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
-    }
-
     fn consume_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
         let token = self.token();
         if let TokenKind::Lifetime = token.kind {
@@ -240,46 +206,6 @@ impl<'src> Parser<'src> {
             // FIXME: Better error.
             Err(ParseError::InvalidDelimiter)
         }
-    }
-
-    fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
-        // To kept in sync with `Self::begins_visibility`.
-
-        if !self.consume(Ident("pub")) {
-            return Ok(ast::Visibility::Inherited);
-        }
-
-        // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
-        // can give better errors on invalid vis restrictions in the common cases.
-        if self.token().kind == TokenKind::OpenRoundBracket
-            && let Some(ident) = self.look_ahead(1, |token| self.as_ident(token))
-        {
-            let path = match ident {
-                "in" => {
-                    self.advance();
-                    self.advance();
-                    Some(self.parse_path()?)
-                }
-                "crate" | "super" | "self" => {
-                    self.advance();
-                    self.advance();
-                    Some(ast::Path::ident(ident))
-                }
-                _ => None,
-            };
-            if let Some(path) = path {
-                self.parse(TokenKind::CloseRoundBracket)?;
-                return Ok(ast::Visibility::Restricted(path));
-            }
-        }
-
-        Ok(ast::Visibility::Public)
-    }
-
-    fn begins_visibility(&self) -> bool {
-        // To kept in sync with `Self::parse_visibility`.
-
-        Ident("pub").check(self)
     }
 
     fn parse_mutability(&mut self) -> ast::Mutability {
