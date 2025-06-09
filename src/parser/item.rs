@@ -705,8 +705,7 @@ impl<'src> Parser<'src> {
     ///     Generic_Params
     ///     (":" Bounds)?
     ///     Where_Clause?
-    ///     ("=" Ty)?
-    ///     Where_Clause?
+    ///     ("=" Ty Where_Clause?)?
     ///     ";"
     fn fin_parse_ty_alias_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
@@ -714,7 +713,9 @@ impl<'src> Parser<'src> {
         let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
         let mut preds = self.parse_where_clause()?;
         let body = self.consume(TokenKind::Equals).then(|| self.parse_ty()).transpose()?;
-        preds.append(&mut self.parse_where_clause()?);
+        if body.is_some() {
+            preds.append(&mut self.parse_where_clause()?);
+        }
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Ty(Box::new(ast::TyAliasItem {
