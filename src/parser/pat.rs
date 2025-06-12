@@ -68,7 +68,7 @@ impl<'src> Parser<'src> {
                 return Ok(ast::Pat::StrLit(lit));
             }
             // FIXME: Also DoubleAmpersand
-            TokenKind::Ampersand => {
+            TokenKind::SingleAmpersand => {
                 self.advance();
                 let mut_ = self.parse_mutability();
                 let pat = self.parse_pat()?;
@@ -88,7 +88,7 @@ impl<'src> Parser<'src> {
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
-            if self.consume(TokenKind::Bang) {
+            if self.consume(TokenKind::SingleBang) {
                 let ast::ExtPath { self_ty: None, path } = path else {
                     return Err(ParseError::TyRelMacroCall);
                 };

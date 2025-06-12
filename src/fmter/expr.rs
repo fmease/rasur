@@ -23,6 +23,24 @@ impl Fmt for ast::Expr<'_> {
                 right.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Range(left, right, kind) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                if let Some(left) = left {
+                    fmt!(cx, "(");
+                    left.fmt(cx);
+                    fmt!(cx, ")");
+                }
+                let symbol = match kind {
+                    ast::RangeKind::Exclusive => "..",
+                    ast::RangeKind::Inclusive => "..=",
+                };
+                fmt!(cx, "{symbol}");
+                if let Some(right) = right {
+                    fmt!(cx, "(");
+                    right.fmt(cx);
+                    fmt!(cx, ")");
+                }
+            }
             Self::Path(path) => path.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
             Self::Continue => fmt!(cx, "continue"),

@@ -25,9 +25,9 @@ impl<'src> Parser<'src> {
 
         if self.consume(Ident("let")) {
             let pat = self.parse_pat()?;
-            let ty = self.consume(TokenKind::Colon).then(|| self.parse_ty()).transpose()?;
+            let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             let body = self
-                .consume(TokenKind::Equals)
+                .consume(TokenKind::SingleEquals)
                 .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
                 .transpose()?;
             self.parse(TokenKind::Semicolon)?;

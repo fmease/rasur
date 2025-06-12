@@ -1,9 +1,12 @@
-use super::{Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, Stmt, Ty};
+use super::{
+    Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, Stmt, Ty,
+};
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
     UnOp(UnOp, Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
+    Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeKind),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     Wildcard,
@@ -49,6 +52,7 @@ impl Expr<'_> {
             },
             Self::UnOp(..)
             | Self::BinOp(..)
+            | Self::Range(..)
             | Self::Cast(..)
             | Self::Path(_)
             | Self::Wildcard
@@ -122,6 +126,12 @@ impl BinOp {
             Self::Sub => "-",
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum RangeKind {
+    Inclusive,
+    Exclusive,
 }
 
 #[derive(Clone, Copy, Debug)]

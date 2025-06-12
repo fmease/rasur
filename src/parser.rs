@@ -318,7 +318,7 @@ pub(crate) enum ParseError {
     ExpectedTraitFoundTy,
     ModifierOnOutlivesBound,
     MisplacedReceiver,
-    OpCannotBeChained(ast::BinOp),
+    OpCannotBeChained(expr::Op),
     TyRelMacroCall,
     ReservedLifetime(Span),
 }
@@ -365,7 +365,8 @@ impl ParseError {
             Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
             Self::MisplacedReceiver => lvl.title("misplaced receiver"),
             Self::OpCannotBeChained(op) => {
-                super let title = format!("operator `{}` cannot be chained", op.symbol());
+                // FIXME: Don't use Debug repr of op but its symbol instead
+                super let title = format!("operator `{op:?}` cannot be chained");
                 lvl.title(&title)
             }
             Self::TyRelMacroCall => lvl.title("type-relative macro call"),
@@ -401,30 +402,31 @@ impl Token {
 impl TokenKind {
     fn to_diag_str(self) -> &'static str {
         match self {
-            Self::Ampersand => "`&`",
+            Self::SingleAmpersand => "`&`",
             Self::Asterisk => "`*`",
             Self::At => "`@`",
-            Self::Bang => "`!`",
+            Self::SingleBang => "`!`",
             Self::BangEquals => "`!=`",
             Self::Caret => "`^`",
             Self::CloseCurlyBracket => "`}`",
             Self::CloseRoundBracket => "`)`",
             Self::CloseSquareBracket => "`]`",
-            Self::Colon => "`:`",
+            Self::SingleColon => "`:`",
             Self::Comma => "`,`",
-            Self::Dot => "`.`",
+            Self::SingleDot => "`.`",
             Self::DoubleAmpersand => "`&&`",
             Self::DoubleColon => "`::`",
             Self::DoubleDot => "`..`",
+            Self::DoubleDotEquals => "`..=`",
             Self::DoubleEquals => "`==`",
             Self::DoublePipe => "`||`",
             Self::EndOfInput => "end of input",
-            Self::Equals => "`=`",
+            Self::SingleEquals => "`=`",
             Self::Error => "error",
             Self::GreaterThan => "`>`",
             Self::GreaterThanEquals => "`>=`",
             Self::Hash => "`#`",
-            Self::Hyphen => "-",
+            Self::SingleHyphen => "-",
             Self::Ident => "identifier",
             Self::Lifetime => "lifetime",
             Self::LessThan => "`<`",
@@ -434,7 +436,7 @@ impl TokenKind {
             Self::OpenRoundBracket => "`(`",
             Self::OpenSquareBracket => "`[`",
             Self::Percent => "`%`",
-            Self::Pipe => "`|`",
+            Self::SinglePipe => "`|`",
             Self::Plus => "`+`",
             Self::QuestionMark => "`?`",
             Self::Semicolon => "`;`",

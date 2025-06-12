@@ -8,30 +8,25 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TokenKind {
-    Ampersand,
     Asterisk,
     At,
-    Bang,
     BangEquals,
     Caret,
     CloseCurlyBracket,
     CloseRoundBracket,
     CloseSquareBracket,
-    Colon,
     Comma,
-    Dot,
     DoubleAmpersand,
     DoubleColon,
     DoubleDot,
+    DoubleDotEquals,
     DoubleEquals,
     DoublePipe,
     EndOfInput,
-    Equals,
     Error,
     GreaterThan,
     GreaterThanEquals,
     Hash,
-    Hyphen,
     Ident,
     LessThan,
     LessThanEquals,
@@ -41,10 +36,16 @@ pub(crate) enum TokenKind {
     OpenRoundBracket,
     OpenSquareBracket,
     Percent,
-    Pipe,
     Plus,
     QuestionMark,
     Semicolon,
+    SingleAmpersand,
+    SingleBang,
+    SingleColon,
+    SingleDot,
+    SingleEquals,
+    SingleHyphen,
+    SinglePipe,
     Slash,
     StrLit,
     ThinArrow,
@@ -123,10 +124,8 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::NumLit, start);
                 }
                 '"' => {
-                    // // FIXME: Escape sequences;
-                    while self.next().is_some_and(|(_, char)| char != '"') {
-                        self.advance();
-                    }
+                    // FIXME: Escape sequences;
+                    while self.next().is_some_and(|(_, char)| char != '"') {}
 
                     // FIXME: Smh. taint unterminated str lits (but don't fatal!)
                     self.add(TokenKind::StrLit, start);
@@ -137,14 +136,21 @@ impl<'src> Lexer<'src> {
                 '.' => {
                     if let Some('.') = self.peek() {
                         self.advance();
-                        if let Some('.') = self.peek() {
-                            self.advance();
-                            self.add(TokenKind::TripleDot, start);
-                        } else {
-                            self.add(TokenKind::DoubleDot, start);
+                        match self.peek() {
+                            Some('.') => {
+                                self.advance();
+                                self.add(TokenKind::TripleDot, start);
+                            }
+                            Some('=') => {
+                                self.advance();
+                                self.add(TokenKind::DoubleDotEquals, start);
+                            }
+                            _ => {
+                                self.add(TokenKind::DoubleDot, start);
+                            }
                         }
                     } else {
-                        self.add(TokenKind::Dot, start);
+                        self.add(TokenKind::SingleDot, start);
                     }
                 }
                 ':' => {
@@ -152,7 +158,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::DoubleColon, start);
                     } else {
-                        self.add(TokenKind::Colon, start);
+                        self.add(TokenKind::SingleColon, start);
                     }
                 }
                 '!' => {
@@ -160,7 +166,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::BangEquals, start);
                     } else {
-                        self.add(TokenKind::Bang, start);
+                        self.add(TokenKind::SingleBang, start);
                     }
                 }
                 '?' => self.add(TokenKind::QuestionMark, start),
@@ -171,7 +177,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::ThinArrow, start);
                     } else {
-                        self.add(TokenKind::Hyphen, start);
+                        self.add(TokenKind::SingleHyphen, start);
                     }
                 }
                 '=' => match self.peek() {
@@ -183,7 +189,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::DoubleEquals, start);
                     }
-                    _ => self.add(TokenKind::Equals, start),
+                    _ => self.add(TokenKind::SingleEquals, start),
                 },
                 '#' => self.add(TokenKind::Hash, start),
                 '&' => {
@@ -191,7 +197,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::DoubleAmpersand, start);
                     } else {
-                        self.add(TokenKind::Ampersand, start);
+                        self.add(TokenKind::SingleAmpersand, start);
                     }
                 }
                 '|' => {
@@ -199,7 +205,7 @@ impl<'src> Lexer<'src> {
                         self.advance();
                         self.add(TokenKind::DoublePipe, start);
                     } else {
-                        self.add(TokenKind::Pipe, start);
+                        self.add(TokenKind::SinglePipe, start);
                     }
                 }
                 '%' => self.add(TokenKind::Percent, start),

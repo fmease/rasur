@@ -23,7 +23,7 @@ impl<'src> Parser<'src> {
                 // We don't expect(Bang) here because the caller may want to
                 // parse outer attributes next.
                 ast::AttrStyle::Inner => {
-                    if self.look_ahead(1, |token| token.kind == TokenKind::Bang) {
+                    if self.look_ahead(1, |token| token.kind == TokenKind::SingleBang) {
                         self.advance();
                         self.advance();
                     } else {
@@ -50,7 +50,7 @@ impl<'src> Parser<'src> {
         let kind = match token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
             // FIXME: Admits `==`.
-            TokenKind::Equals => {
+            TokenKind::SingleEquals => {
                 self.advance();
                 let expr = self.parse_expr(expr::StructLitPolicy::Allowed)?;
                 ast::AttrKind::Assign(expr)
@@ -78,7 +78,7 @@ impl<'src> Parser<'src> {
                     token,
                     one_of![
                         TokenKind::CloseSquareBracket,
-                        TokenKind::Equals,
+                        TokenKind::SingleEquals,
                         TokenKind::OpenRoundBracket,
                         TokenKind::OpenSquareBracket,
                         TokenKind::OpenCurlyBracket,

@@ -134,14 +134,18 @@ impl<'src> Parser<'src> {
             };
 
             let token = this.token();
-            let arg = if let TokenKind::Colon | TokenKind::Equals = token.kind
+            let arg = if let TokenKind::SingleColon | TokenKind::SingleEquals = token.kind
                 && let Some((ident, args)) = extract_assoc_item_seg(&mut arg)
             {
                 this.advance();
 
                 let kind = match token.kind {
-                    TokenKind::Colon => ast::AssocItemConstraintKind::Bound(this.parse_bounds()?),
-                    TokenKind::Equals => ast::AssocItemConstraintKind::Equality(this.parse_term()?),
+                    TokenKind::SingleColon => {
+                        ast::AssocItemConstraintKind::Bound(this.parse_bounds()?)
+                    }
+                    TokenKind::SingleEquals => {
+                        ast::AssocItemConstraintKind::Equality(this.parse_term()?)
+                    }
                     _ => unreachable!(),
                 };
 

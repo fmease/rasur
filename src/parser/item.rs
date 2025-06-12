@@ -280,7 +280,7 @@ impl<'src> Parser<'src> {
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_annotation()?;
         let body = self
-            .consume(TokenKind::Equals)
+            .consume(TokenKind::SingleEquals)
             .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
             .transpose()?;
         let preds = self.parse_where_clause()?;
@@ -325,7 +325,7 @@ impl<'src> Parser<'src> {
         let binder = self.parse_common_ident()?;
         let kind = self.parse_variant_kind()?;
         let discr = self
-            .consume(TokenKind::Equals)
+            .consume(TokenKind::SingleEquals)
             .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
             .transpose()?;
         Ok(ast::Variant { attrs, binder, kind, discr })
@@ -488,7 +488,7 @@ impl<'src> Parser<'src> {
                     if !first {
                         return Err(ParseError::MisplacedReceiver);
                     }
-                    let ty = if this.consume(TokenKind::Colon) {
+                    let ty = if this.consume(TokenKind::SingleColon) {
                         this.parse_ty()?
                     } else {
                         ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")))
@@ -536,7 +536,7 @@ impl<'src> Parser<'src> {
             false => ast::Constness::Not,
         };
 
-        let polarity = match self.consume(TokenKind::Bang) {
+        let polarity = match self.consume(TokenKind::SingleBang) {
             true => ast::ImplPolarity::Negative,
             false => ast::ImplPolarity::Positive,
         };
@@ -631,7 +631,7 @@ impl<'src> Parser<'src> {
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
         let body = self
-            .consume(TokenKind::Equals)
+            .consume(TokenKind::SingleEquals)
             .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
             .transpose()?;
         self.parse(TokenKind::Semicolon)?;
@@ -681,7 +681,11 @@ impl<'src> Parser<'src> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
-        let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
+        // FIXME: Or if `=` parse a trait alias but make sure to reject unsafe trait aliases,
+        //        bounds and leading where-clauses on them.
+
+        let bounds =
+            if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
         let preds = self.parse_where_clause()?;
 
         let items = self.parse_delimited_assoc_items()?;
@@ -710,9 +714,10 @@ impl<'src> Parser<'src> {
     fn fin_parse_ty_alias_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
-        let bounds = if self.consume(TokenKind::Colon) { self.parse_bounds()? } else { Vec::new() };
+        let bounds =
+            if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
         let mut preds = self.parse_where_clause()?;
-        let body = self.consume(TokenKind::Equals).then(|| self.parse_ty()).transpose()?;
+        let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_ty()).transpose()?;
         if body.is_some() {
             preds.append(&mut self.parse_where_clause()?);
         }
@@ -764,7 +769,7 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
         let path = self.parse_path::<ast::GenericArgsPolicy::Forbidden>()?;
-        self.parse(TokenKind::Bang)?;
+        self.parse(TokenKind::SingleBang)?;
 
         let binder = if let [ast::PathSeg { ident: "macro_rules", args: () }] = *path.segs {
             self.consume_common_ident()
@@ -797,7 +802,7 @@ impl<'src> Parser<'src> {
             MacroCallPolicy::Allowed => self.begins_path(),
             MacroCallPolicy::Forbidden => {
                 Ident("macro_rules").check(self)
-                    && self.look_ahead(1, |token| token.kind == TokenKind::Bang)
+                    && self.look_ahead(1, |token| token.kind == TokenKind::SingleBang)
                     && self.look_ahead(2, |token| self.as_common_ident(token).is_some())
             }
         }

@@ -55,13 +55,15 @@ impl<'src> Parser<'src> {
                     | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
-            | TokenKind::Hyphen
-            | TokenKind::Bang
+            | TokenKind::SingleHyphen
+            | TokenKind::SingleBang
             | TokenKind::Asterisk
-            | TokenKind::Ampersand
+            | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
-            | TokenKind::Pipe
+            | TokenKind::SinglePipe
             | TokenKind::DoublePipe
+            | TokenKind::DoubleDot
+            | TokenKind::DoubleDotEquals
             | TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
@@ -72,145 +74,124 @@ impl<'src> Parser<'src> {
 
     fn parse_expr_at(&mut self, level: Level, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         let token = self.token();
-        let left = match token.kind {
-            TokenKind::Hyphen => ast::UnOp::Neg.into(),
-            TokenKind::Bang => ast::UnOp::Not.into(),
-            TokenKind::Asterisk => ast::UnOp::Deref.into(),
-            // FIXME: Smh. consider DoubleAmpersand, too. However are we allowed to commit
-            //        early, namely before "the level check"? E.g., `&&1&&&&1`
-            TokenKind::Ampersand => {
-                self.advance();
-                let mut_ = self.parse_mutability();
-                let expr = self.parse_expr_at(Level::Prefix, policy)?;
-                ast::Expr::Borrow(mut_, Box::new(expr)).into()
-            }
-            _ => self.parse_lower_expr(policy)?.into(),
+        let op = match token.kind {
+            // FIXME: Support DoubleHypen (double negated)
+            TokenKind::SingleHyphen => Some(PrefixOp::Neg),
+            TokenKind::SingleBang => Some(PrefixOp::Not),
+            TokenKind::Asterisk => Some(PrefixOp::Deref),
+            // FIXME: Also DoubleAmpersand, we want to support `&&1&&&&1` :)
+            TokenKind::SingleAmpersand => Some(PrefixOp::Borrow),
+            TokenKind::DoubleDot => Some(PrefixOp::RangeExclusive),
+            TokenKind::DoubleDotEquals => Some(PrefixOp::RangeInclusive),
+            _ => None,
         };
-        let mut left = match left {
-            OpOrExpr::UnOp(op) => {
-                self.advance();
-                let (_, Some(right_level)) = op.level() else { unreachable!() }; // FIXME: unreachable??
-                let right = self.parse_expr_at(right_level, policy)?;
-                ast::Expr::UnOp(op, Box::new(right))
-            }
-            OpOrExpr::Expr(expr) => expr,
-        };
+        let mut left = if let Some(op) = op {
+            self.advance();
+            self.fin_parse_prefix_op(op, policy)
+        } else {
+            self.parse_lower_expr(policy)
+        }?;
 
         loop {
             let token = self.token();
             let op = match token.kind {
-                TokenKind::Ampersand => ast::BinOp::BitAnd.into(),
-                TokenKind::Asterisk => ast::BinOp::Mul.into(),
-                TokenKind::BangEquals => ast::BinOp::Ne.into(),
-                TokenKind::Caret => ast::BinOp::BitXor.into(),
-                TokenKind::Dot => PostfixOp::Field.into(),
-                TokenKind::DoubleAmpersand => ast::BinOp::And.into(),
-                TokenKind::Equals => ast::BinOp::Assign.into(),
-                TokenKind::DoubleEquals => ast::BinOp::Eq.into(),
-                TokenKind::DoublePipe => ast::BinOp::Or.into(),
-                TokenKind::GreaterThan => ast::BinOp::Gt.into(),
-                TokenKind::GreaterThanEquals => ast::BinOp::Ge.into(),
-                TokenKind::Hyphen => ast::BinOp::Sub.into(),
-                TokenKind::LessThan => ast::BinOp::Lt.into(),
-                TokenKind::LessThanEquals => ast::BinOp::Le.into(),
-                TokenKind::OpenRoundBracket => PostfixOp::Call.into(),
-                TokenKind::OpenSquareBracket => PostfixOp::Index.into(),
-                TokenKind::Percent => ast::BinOp::Rem.into(),
-                TokenKind::Pipe => ast::BinOp::BitOr.into(),
-                TokenKind::Plus => ast::BinOp::Add.into(),
-                TokenKind::QuestionMark => PostfixOp::Try.into(),
-                TokenKind::Slash => ast::BinOp::Div.into(),
-                TokenKind::Ident if let "as" = self.source(token.span) => PostfixOp::Cast.into(),
+                TokenKind::SingleAmpersand => Op::BitAnd,
+                TokenKind::Asterisk => Op::Mul,
+                TokenKind::BangEquals => Op::Ne,
+                TokenKind::Caret => Op::BitXor,
+                TokenKind::SingleDot => Op::Field,
+                TokenKind::DoubleDot => Op::RangeExclusive,
+                TokenKind::DoubleDotEquals => Op::RangeInclusive,
+                TokenKind::DoubleAmpersand => Op::And,
+                TokenKind::DoubleEquals => Op::Eq,
+                TokenKind::DoublePipe => Op::Or,
+                TokenKind::SingleEquals => Op::Assign,
+                TokenKind::GreaterThan => Op::Gt,
+                TokenKind::GreaterThanEquals => Op::Ge,
+                TokenKind::SingleHyphen => Op::Sub,
+                TokenKind::LessThan => Op::Lt,
+                TokenKind::LessThanEquals => Op::Le,
+                TokenKind::Percent => Op::Rem,
+                TokenKind::SinglePipe => Op::BitOr,
+                TokenKind::Plus => Op::Add,
+                TokenKind::Slash => Op::Div,
+                TokenKind::OpenRoundBracket => Op::Call,
+                TokenKind::OpenSquareBracket => Op::Index,
+                TokenKind::QuestionMark => Op::Try,
+                TokenKind::Ident if let "as" = self.source(token.span) => Op::Cast,
                 _ => break,
             };
 
-            match op {
-                InfixOrPostfixOp::Infix(op) => {
-                    let (left_level, right_level) = op.levels();
-                    match left_level.cmp(&level) {
-                        Ordering::Less => break,
-                        Ordering::Equal => return Err(ParseError::OpCannotBeChained(op)),
-                        Ordering::Greater => {}
-                    }
-                    self.advance();
-
-                    let right = self.parse_expr_at(right_level, policy)?;
-                    left = ast::Expr::BinOp(op, Box::new(left), Box::new(right));
-                }
-                InfixOrPostfixOp::Postfix(op) => {
-                    let left_level = op.level();
-                    if left_level < level {
-                        break;
-                    }
-                    self.advance();
-
-                    left = self.fin_parse_postfix_op(op, left)?;
-                }
+            let left_level = op.left_level();
+            match left_level.cmp(&level) {
+                Ordering::Less => break,
+                Ordering::Equal => return Err(ParseError::OpCannotBeChained(op)),
+                Ordering::Greater => {}
             }
+            self.advance();
 
-            enum InfixOrPostfixOp {
-                Infix(ast::BinOp),
-                Postfix(PostfixOp),
-            }
-
-            impl From<ast::BinOp> for InfixOrPostfixOp {
-                fn from(op: ast::BinOp) -> Self {
-                    Self::Infix(op)
-                }
-            }
-
-            impl From<PostfixOp> for InfixOrPostfixOp {
-                fn from(op: PostfixOp) -> Self {
-                    Self::Postfix(op)
-                }
-            }
-        }
-
-        enum OpOrExpr<'src> {
-            UnOp(ast::UnOp),
-            Expr(ast::Expr<'src>),
-        }
-
-        impl<'src> From<ast::Expr<'src>> for OpOrExpr<'src> {
-            fn from(expr: ast::Expr<'src>) -> Self {
-                Self::Expr(expr)
-            }
-        }
-
-        impl From<ast::UnOp> for OpOrExpr<'_> {
-            fn from(op: ast::UnOp) -> Self {
-                Self::UnOp(op)
-            }
+            left = self.fin_parse_op(op, left, policy)?;
         }
 
         Ok(left)
     }
 
-    fn fin_parse_postfix_op(
+    fn fin_parse_prefix_op(
         &mut self,
-        op: PostfixOp,
-        left: ast::Expr<'src>,
+        op: PrefixOp,
+        policy: StructLitPolicy,
     ) -> Result<ast::Expr<'src>> {
-        Ok(match op {
-            PostfixOp::Cast => {
-                let ty = self.parse_ty()?;
-                ast::Expr::Cast(Box::new(left), Box::new(ty))
+        let right_level = op.right_level();
+
+        let ast_op = match op {
+            PrefixOp::Neg => ast::UnOp::Neg,
+            PrefixOp::Not => ast::UnOp::Not,
+            PrefixOp::Deref => ast::UnOp::Deref,
+            PrefixOp::Borrow => {
+                let mut_ = self.parse_mutability();
+                let expr = self.parse_expr_at(right_level, policy)?;
+                return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
             }
-            PostfixOp::Try => ast::Expr::Try(Box::new(left)),
-            PostfixOp::Call => {
+            PrefixOp::RangeInclusive => {
+                return self.fin_parse_range_exclusive(None, right_level, policy);
+            }
+            PrefixOp::RangeExclusive => {
+                return self.fin_parse_range_exclusive(None, right_level, policy);
+            }
+        };
+
+        let right = self.parse_expr_at(right_level, policy)?;
+        Ok(ast::Expr::UnOp(ast_op, Box::new(right)))
+    }
+
+    fn fin_parse_op(
+        &mut self,
+        op: Op,
+        left: ast::Expr<'src>,
+        policy: StructLitPolicy,
+    ) -> Result<ast::Expr<'src>> {
+        let ast_op = match op {
+            Op::Add => ast::BinOp::Add,
+            Op::And => ast::BinOp::And,
+            Op::Assign => ast::BinOp::Assign,
+            Op::BitAnd => ast::BinOp::BitAnd,
+            Op::BitOr => ast::BinOp::BitOr,
+            Op::BitXor => ast::BinOp::BitXor,
+            Op::Call => {
                 let args = self.parse_delimited_sequence(
                     TokenKind::CloseRoundBracket,
                     TokenKind::Comma,
                     |this| this.parse_expr(StructLitPolicy::Allowed),
                 )?;
-                ast::Expr::Call(Box::new(left), args)
+                return Ok(ast::Expr::Call(Box::new(left), args));
             }
-            PostfixOp::Index => {
-                let index = self.parse_expr(StructLitPolicy::Allowed)?;
-                self.parse(TokenKind::CloseSquareBracket)?;
-                ast::Expr::Index(Box::new(left), Box::new(index))
+            Op::Cast => {
+                let ty = self.parse_ty()?;
+                return Ok(ast::Expr::Cast(Box::new(left), Box::new(ty)));
             }
-            PostfixOp::Field => {
+            Op::Div => ast::BinOp::Div,
+            Op::Eq => ast::BinOp::Eq,
+            Op::Field => {
                 let token = self.token();
                 let ident = match token.kind {
                     TokenKind::NumLit => self.source(token.span),
@@ -223,9 +204,63 @@ impl<'src> Parser<'src> {
                     }
                 };
                 self.advance();
-                ast::Expr::Field(Box::new(left), ident)
+                return Ok(ast::Expr::Field(Box::new(left), ident));
             }
-        })
+            Op::Ge => ast::BinOp::Ge,
+            Op::Gt => ast::BinOp::Gt,
+            Op::Index => {
+                let index = self.parse_expr(StructLitPolicy::Allowed)?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                return Ok(ast::Expr::Index(Box::new(left), Box::new(index)));
+            }
+            Op::Le => ast::BinOp::Le,
+            Op::Lt => ast::BinOp::Lt,
+            Op::Mul => ast::BinOp::Mul,
+            Op::Ne => ast::BinOp::Ne,
+            Op::Or => ast::BinOp::Or,
+            Op::RangeExclusive => {
+                return self.fin_parse_range_exclusive(
+                    Some(Box::new(left)),
+                    op.right_level().unwrap(),
+                    policy,
+                );
+            }
+            Op::RangeInclusive => {
+                return self.fin_parse_range_inclusive(
+                    Some(Box::new(left)),
+                    op.right_level().unwrap(),
+                    policy,
+                );
+            }
+            Op::Rem => ast::BinOp::Rem,
+            Op::Sub => ast::BinOp::Sub,
+            Op::Try => return Ok(ast::Expr::Try(Box::new(left))),
+        };
+
+        let right = self.parse_expr_at(op.right_level().unwrap(), policy)?;
+        Ok(ast::Expr::BinOp(ast_op, Box::new(left), Box::new(right)))
+    }
+
+    fn fin_parse_range_exclusive(
+        &mut self,
+        left: Option<Box<ast::Expr<'src>>>,
+        right_level: Level,
+        policy: StructLitPolicy,
+    ) -> Result<ast::Expr<'src>> {
+        // FIXME: "begins_expr_at(right_level)"?
+        let right =
+            self.begins_expr().then(|| self.parse_expr_at(right_level, policy)).transpose()?;
+        Ok(ast::Expr::Range(left, right.map(Box::new), ast::RangeKind::Exclusive))
+    }
+
+    fn fin_parse_range_inclusive(
+        &mut self,
+        left: Option<Box<ast::Expr<'src>>>,
+        right_level: Level,
+        policy: StructLitPolicy,
+    ) -> Result<ast::Expr<'src>> {
+        let right = self.parse_expr_at(right_level, policy)?;
+        return Ok(ast::Expr::Range(left, Some(Box::new(right)), ast::RangeKind::Inclusive));
     }
 
     #[expect(clippy::too_many_lines)]
@@ -362,17 +397,22 @@ impl<'src> Parser<'src> {
                 self.advance();
                 return Ok(ast::Expr::StrLit(lit));
             }
-            TokenKind::Pipe => {
+            TokenKind::SinglePipe => {
                 self.advance();
                 // FIXME: Maybe reuse parse_fn_params smh?
-                let params =
-                    self.parse_delimited_sequence(TokenKind::Pipe, TokenKind::Comma, |this| {
+                let params = self.parse_delimited_sequence(
+                    TokenKind::SinglePipe,
+                    TokenKind::Comma,
+                    |this| {
                         let pat = this.parse_pat()?;
-                        let ty =
-                            this.consume(TokenKind::Colon).then(|| this.parse_ty()).transpose()?;
+                        let ty = this
+                            .consume(TokenKind::SingleColon)
+                            .then(|| this.parse_ty())
+                            .transpose()?;
 
                         Ok(ast::ClosureParam { pat, ty })
-                    })?;
+                    },
+                )?;
                 return self.fin_parse_closure_expr(params);
             }
             TokenKind::DoublePipe => {
@@ -399,7 +439,7 @@ impl<'src> Parser<'src> {
 
             let token = self.token();
             match token.kind {
-                TokenKind::Bang => {
+                TokenKind::SingleBang => {
                     let ast::ExtPath { self_ty: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
                     };
@@ -424,7 +464,7 @@ impl<'src> Parser<'src> {
                         TokenKind::Comma,
                         |this| {
                             let ident = this.parse_common_ident()?;
-                            this.parse(TokenKind::Colon)?;
+                            this.parse(TokenKind::SingleColon)?;
                             let expr = this.parse_expr(StructLitPolicy::Allowed)?;
                             Ok(ast::StructLitField { ident, expr })
                         },
@@ -486,59 +526,97 @@ pub(super) enum StructLitPolicy {
     Forbidden,
 }
 
-impl ast::UnOp {
-    fn level(self) -> (Option<Level>, Option<Level>) {
-        match self {
-            Self::Deref | Self::Neg | Self::Not => (None, Some(Level::Prefix)),
-        }
-    }
-}
-
-impl ast::BinOp {
-    fn levels(self) -> (Level, Level) {
-        match self {
-            Self::Assign => (Level::AssignLeft, Level::AssignRight),
-            Self::Or => (Level::OrLeft, Level::OrRight),
-            Self::And => (Level::AndLeft, Level::AndRight),
-            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => {
-                (Level::Compare, Level::Compare)
-            }
-            Self::BitOr => (Level::BitOrLeft, Level::BitOrRight),
-            Self::BitXor => (Level::BitXorLeft, Level::BitXorRight),
-            Self::BitAnd => (Level::BitAndLeft, Level::BitAndRight),
-            Self::Add | Self::Sub => (Level::SumLeft, Level::SumRight),
-            Self::Mul | Self::Div | Self::Rem => (Level::ProductLeft, Level::ProductRight),
-        }
-    }
-}
-
+// FIXME: PrefixOp is temp, use Op for them too
 #[derive(Clone, Copy)]
-enum PostfixOp {
-    Cast,
-    Try,
-    Call,
-    Index,
-    Field,
+enum PrefixOp {
+    Neg,
+    Not,
+    Deref,
+    Borrow,
+    RangeInclusive,
+    RangeExclusive,
 }
 
-impl PostfixOp {
-    fn level(self) -> Level {
+impl PrefixOp {
+    fn right_level(self) -> Level {
         match self {
-            Self::Cast => Level::Cast,
-            Self::Try => Level::Try,
-            Self::Call | Self::Index => Level::Call,
-            Self::Field => Level::Project,
+            Self::Deref | Self::Neg | Self::Not | Self::Borrow => Level::Prefix,
+            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Op {
+    Add,
+    And,
+    Assign,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Call,
+    Cast,
+    Div,
+    Eq,
+    Field,
+    Ge,
+    Gt,
+    Index,
+    Le,
+    Lt,
+    Mul,
+    Ne,
+    Or,
+    RangeExclusive,
+    RangeInclusive,
+    Rem,
+    Sub,
+    Try,
+}
+
+impl Op {
+    fn left_level(self) -> Level {
+        match self {
+            Self::Add | Self::Sub => Level::SumLeft,
+            Self::And => Level::AndLeft,
+            Self::Assign => Level::AssignLeft,
+            Self::BitAnd => Level::BitAndLeft,
+            Self::BitOr => Level::BitOrLeft,
+            Self::BitXor => Level::BitXorLeft,
+            Self::Call | Self::Index => Level::Call,
+            Self::Cast => Level::Cast,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
+            Self::Field => Level::Project,
+            Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
+            Self::Or => Level::OrLeft,
+            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
+            Self::Try => Level::Try,
+        }
+    }
+
+    fn right_level(self) -> Option<Level> {
+        Some(match self {
+            Self::Add | Self::Sub => Level::SumRight,
+            Self::And => Level::AndRight,
+            Self::Assign => Level::AssignRight,
+            Self::BitAnd => Level::BitAndRight,
+            Self::BitOr => Level::BitOrRight,
+            Self::BitXor => Level::BitXorRight,
+            Self::Call | Self::Cast | Self::Field | Self::Index | Self::Try => return None,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
+            Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
+            Self::Or => Level::OrRight,
+            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
+        })
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Initial,
-    // FIXME: Jump
     AssignRight,
     AssignLeft,
-    // FIXME: Range
+    Range,
     OrLeft,
     OrRight,
     AndLeft,
