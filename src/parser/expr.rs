@@ -76,13 +76,13 @@ impl<'src> Parser<'src> {
         let token = self.token();
         let op = match token.kind {
             // FIXME: Support DoubleHypen (double negated)
-            TokenKind::SingleHyphen => Some(PrefixOp::Neg),
-            TokenKind::SingleBang => Some(PrefixOp::Not),
-            TokenKind::Asterisk => Some(PrefixOp::Deref),
+            TokenKind::SingleHyphen => Some(Op::Neg),
+            TokenKind::SingleBang => Some(Op::Not),
+            TokenKind::Asterisk => Some(Op::Deref),
             // FIXME: Also DoubleAmpersand, we want to support `&&1&&&&1` :)
-            TokenKind::SingleAmpersand => Some(PrefixOp::Borrow),
-            TokenKind::DoubleDot => Some(PrefixOp::RangeExclusive),
-            TokenKind::DoubleDotEquals => Some(PrefixOp::RangeInclusive),
+            TokenKind::SingleAmpersand => Some(Op::Borrow),
+            TokenKind::DoubleDot => Some(Op::RangeExclusive),
+            TokenKind::DoubleDotEquals => Some(Op::RangeInclusive),
             _ => None,
         };
         let mut left = if let Some(op) = op {
@@ -122,7 +122,7 @@ impl<'src> Parser<'src> {
                 _ => break,
             };
 
-            let left_level = op.left_level();
+            let left_level = op.left_level().unwrap();
             match left_level.cmp(&level) {
                 Ordering::Less => break,
                 Ordering::Equal => return Err(ParseError::OpCannotBeChained(op)),
@@ -136,28 +136,25 @@ impl<'src> Parser<'src> {
         Ok(left)
     }
 
-    fn fin_parse_prefix_op(
-        &mut self,
-        op: PrefixOp,
-        policy: StructLitPolicy,
-    ) -> Result<ast::Expr<'src>> {
-        let right_level = op.right_level();
+    fn fin_parse_prefix_op(&mut self, op: Op, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
+        let right_level = op.right_level().unwrap();
 
         let ast_op = match op {
-            PrefixOp::Neg => ast::UnOp::Neg,
-            PrefixOp::Not => ast::UnOp::Not,
-            PrefixOp::Deref => ast::UnOp::Deref,
-            PrefixOp::Borrow => {
+            Op::Neg => ast::UnOp::Neg,
+            Op::Not => ast::UnOp::Not,
+            Op::Deref => ast::UnOp::Deref,
+            Op::Borrow => {
                 let mut_ = self.parse_mutability();
                 let expr = self.parse_expr_at(right_level, policy)?;
                 return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
             }
-            PrefixOp::RangeInclusive => {
+            Op::RangeInclusive => {
                 return self.fin_parse_range_exclusive(None, right_level, policy);
             }
-            PrefixOp::RangeExclusive => {
+            Op::RangeExclusive => {
                 return self.fin_parse_range_exclusive(None, right_level, policy);
             }
+            _ => unreachable!(),
         };
 
         let right = self.parse_expr_at(right_level, policy)?;
@@ -235,6 +232,7 @@ impl<'src> Parser<'src> {
             Op::Rem => ast::BinOp::Rem,
             Op::Sub => ast::BinOp::Sub,
             Op::Try => return Ok(ast::Expr::Try(Box::new(left))),
+            _ => unreachable!(),
         };
 
         let right = self.parse_expr_at(op.right_level().unwrap(), policy)?;
@@ -526,26 +524,6 @@ pub(super) enum StructLitPolicy {
     Forbidden,
 }
 
-// FIXME: PrefixOp is temp, use Op for them too
-#[derive(Clone, Copy)]
-enum PrefixOp {
-    Neg,
-    Not,
-    Deref,
-    Borrow,
-    RangeInclusive,
-    RangeExclusive,
-}
-
-impl PrefixOp {
-    fn right_level(self) -> Level {
-        match self {
-            Self::Deref | Self::Neg | Self::Not | Self::Borrow => Level::Prefix,
-            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Op {
     Add,
@@ -554,8 +532,10 @@ pub(crate) enum Op {
     BitAnd,
     BitOr,
     BitXor,
+    Borrow,
     Call,
     Cast,
+    Deref,
     Div,
     Eq,
     Field,
@@ -566,6 +546,8 @@ pub(crate) enum Op {
     Lt,
     Mul,
     Ne,
+    Neg,
+    Not,
     Or,
     RangeExclusive,
     RangeInclusive,
@@ -575,8 +557,9 @@ pub(crate) enum Op {
 }
 
 impl Op {
-    fn left_level(self) -> Level {
-        match self {
+    fn left_level(self) -> Option<Level> {
+        Some(match self {
+            Self::Deref | Self::Neg | Self::Not | Self::Borrow => return None,
             Self::Add | Self::Sub => Level::SumLeft,
             Self::And => Level::AndLeft,
             Self::Assign => Level::AssignLeft,
@@ -591,7 +574,7 @@ impl Op {
             Self::Or => Level::OrLeft,
             Self::RangeInclusive | Self::RangeExclusive => Level::Range,
             Self::Try => Level::Try,
-        }
+        })
     }
 
     fn right_level(self) -> Option<Level> {
@@ -603,6 +586,7 @@ impl Op {
             Self::BitOr => Level::BitOrRight,
             Self::BitXor => Level::BitXorRight,
             Self::Call | Self::Cast | Self::Field | Self::Index | Self::Try => return None,
+            Self::Deref | Self::Neg | Self::Not | Self::Borrow => Level::Prefix,
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
             Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
             Self::Or => Level::OrRight,
