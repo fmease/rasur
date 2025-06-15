@@ -41,7 +41,7 @@ impl<'src> Parser<'src> {
     pub(super) fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
-        if self.begins_path() {
+        if self.begins_ext_path() {
             return true;
         }
 
