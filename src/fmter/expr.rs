@@ -68,6 +68,7 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Match(expr) => expr.fmt(cx),
             Self::While(expr) => expr.fmt(cx),
+            Self::Let(expr) => expr.fmt(cx),
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) | Self::StrLit(lit) => fmt!(cx, "{lit}"),
             Self::Borrow(mut_, expr) => {
@@ -284,5 +285,16 @@ impl Fmt for ast::BlockExpr<'_> {
             cx.line_break();
         }
         fmt!(cx, "}}");
+    }
+}
+
+impl Fmt for ast::LetExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { pat, expr } = self;
+
+        fmt!(cx, "let ");
+        pat.fmt(cx);
+        fmt!(cx, " = ");
+        expr.fmt(cx);
     }
 }

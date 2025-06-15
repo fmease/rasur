@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, one_of};
-use crate::{ast, parser::expr};
+use crate::ast;
 
 impl<'src> Parser<'src> {
     /// Parse a sequence of items.
@@ -276,10 +276,7 @@ impl<'src> Parser<'src> {
         let binder = self.parse_ident_if_common_or("_")?;
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_annotation()?;
-        let body = self
-            .consume(TokenKind::SingleEquals)
-            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
-            .transpose()?;
+        let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         let preds = self.parse_where_clause()?;
         self.parse(TokenKind::Semicolon)?;
 
@@ -321,10 +318,7 @@ impl<'src> Parser<'src> {
         // FIXME: Parse visibility
         let binder = self.parse_common_ident()?;
         let kind = self.parse_variant_kind()?;
-        let discr = self
-            .consume(TokenKind::SingleEquals)
-            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
-            .transpose()?;
+        let discr = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         Ok(ast::Variant { attrs, binder, kind, discr })
     }
 
@@ -627,10 +621,7 @@ impl<'src> Parser<'src> {
         let mut_ = self.parse_mutability();
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
-        let body = self
-            .consume(TokenKind::SingleEquals)
-            .then(|| self.parse_expr(expr::StructLitPolicy::Allowed))
-            .transpose()?;
+        let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Static(Box::new(ast::StaticItem { mut_, binder, ty, body })))

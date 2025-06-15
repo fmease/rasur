@@ -4,76 +4,78 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) enum Expr<'src> {
-    UnOp(UnOp, Box<Expr<'src>>),
+    Array(Vec<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
-    Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeKind),
-    Cast(Box<Expr<'src>>, Box<Ty<'src>>),
-    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
-    Wildcard,
-    Continue,
-    Break(Option<&'src str>, Option<Box<Expr<'src>>>),
-    Return(Option<Box<Expr<'src>>>),
-    If(Box<IfExpr<'src>>),
-    Loop(Box<BlockExpr<'src>>),
-    Match(Box<MatchExpr<'src>>),
-    While(Box<WhileExpr<'src>>),
+    Block(Box<BlockExpr<'src>>),
     BoolLit(bool),
+    Borrow(Mutability, Box<Expr<'src>>),
+    Break(Option<&'src str>, Option<Box<Expr<'src>>>),
+    Call(Box<Expr<'src>>, Vec<Expr<'src>>),
+    Cast(Box<Expr<'src>>, Box<Ty<'src>>),
+    Closure(Box<ClosureExpr<'src>>),
+    ConstBlock(Box<BlockExpr<'src>>),
+    Continue,
+    Field(Box<Expr<'src>>, Ident<'src>),
+    Grouped(Box<Expr<'src>>),
+    If(Box<IfExpr<'src>>),
+    Index(Box<Expr<'src>>, Box<Expr<'src>>),
+    Let(Box<LetExpr<'src>>),
+    Loop(Box<BlockExpr<'src>>),
+    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
+    Match(Box<MatchExpr<'src>>),
     NumLit(Ident<'src>),
+    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
+    Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeKind),
+    Return(Option<Box<Expr<'src>>>),
     StrLit(Ident<'src>),
     Struct(Box<StructExpr<'src>>),
-    Borrow(Mutability, Box<Expr<'src>>),
     Try(Box<Expr<'src>>),
-    Field(Box<Expr<'src>>, Ident<'src>),
-    Call(Box<Expr<'src>>, Vec<Expr<'src>>),
-    Index(Box<Expr<'src>>, Box<Expr<'src>>),
-    Block(Box<BlockExpr<'src>>),
-    ConstBlock(Box<BlockExpr<'src>>),
-    UnsafeBlock(Box<BlockExpr<'src>>),
-    Closure(Box<ClosureExpr<'src>>),
     Tup(Vec<Expr<'src>>),
-    Array(Vec<Expr<'src>>),
-    Grouped(Box<Expr<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
+    UnOp(UnOp, Box<Expr<'src>>),
+    UnsafeBlock(Box<BlockExpr<'src>>),
+    While(Box<WhileExpr<'src>>),
+    Wildcard,
 }
 
 impl Expr<'_> {
     // FIXME: Bad name (e.g. `break {}` is `false` despite "ha[ving] [æ] trailing block")
     pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
-            Self::If(_)
-            | Self::Loop(_)
-            | Self::Match(_)
-            | Self::While(_)
             | Self::Block(_)
             | Self::ConstBlock(_)
-            | Self::UnsafeBlock(_) => true,
+            | Self::If(_)
+            | Self::Loop(_)
+            | Self::Match(_)
+            | Self::UnsafeBlock(_)
+            | Self::While(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
                 TrailingBlockMode::Normal => true,
                 TrailingBlockMode::Match => false,
             },
-            Self::UnOp(..)
+            | Self::Array(_)
             | Self::BinOp(..)
-            | Self::Range(..)
-            | Self::Cast(..)
-            | Self::Path(_)
-            | Self::Wildcard
-            | Self::Continue
-            | Self::Break(..)
-            | Self::Return(_)
             | Self::BoolLit(_)
+            | Self::Borrow(..)
+            | Self::Break(..)
+            | Self::Call(..)
+            | Self::Cast(..)
+            | Self::Closure(_)
+            | Self::Continue
+            | Self::Field(..)
+            | Self::Grouped(_)
+            | Self::Index(..)
+            | Self::Let(_)
+            | Self::MacroCall(_)
             | Self::NumLit(_)
+            | Self::Path(_)
+            | Self::Range(..)
+            | Self::Return(_)
             | Self::StrLit(_)
             | Self::Struct(_)
-            | Self::Borrow(..)
             | Self::Try(_)
-            | Self::Field(..)
-            | Self::Call(..)
-            | Self::Index(..)
-            | Self::Closure(_)
             | Self::Tup(_)
-            | Self::Array(_)
-            | Self::Grouped(_)
-            | Self::MacroCall(_) => false,
+            | Self::UnOp(..)
+            | Self::Wildcard => false,
         }
     }
 }
@@ -200,4 +202,10 @@ pub(crate) struct ClosureExpr<'src> {
 pub(crate) struct ClosureParam<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Option<Ty<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct LetExpr<'src> {
+    pub(crate) pat: Pat<'src>,
+    pub(crate) expr: Expr<'src>,
 }
