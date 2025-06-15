@@ -21,14 +21,14 @@ pub(crate) enum TokenKind {
     DoubleDot,
     DoubleDotEquals,
     DoubleEquals,
+    DoubleGreaterThan,
+    DoubleLessThan,
     DoublePipe,
     EndOfInput,
     Error,
-    GreaterThan,
     GreaterThanEquals,
     Hash,
     Ident,
-    LessThan,
     LessThanEquals,
     Lifetime,
     NumLit,
@@ -44,7 +44,9 @@ pub(crate) enum TokenKind {
     SingleColon,
     SingleDot,
     SingleEquals,
+    SingleGreaterThan,
     SingleHyphen,
+    SingleLessThan,
     SinglePipe,
     Slash,
     StrLit,
@@ -216,22 +218,32 @@ impl<'src> Lexer<'src> {
                 ']' => self.add(TokenKind::CloseSquareBracket, start),
                 '{' => self.add(TokenKind::OpenCurlyBracket, start),
                 '}' => self.add(TokenKind::CloseCurlyBracket, start),
-                '<' => {
-                    if let Some('=') = self.peek() {
+                '<' => match self.peek() {
+                    Some('<') => {
+                        self.advance();
+                        self.add(TokenKind::DoubleLessThan, start);
+                    }
+                    Some('=') => {
                         self.advance();
                         self.add(TokenKind::LessThanEquals, start);
-                    } else {
-                        self.add(TokenKind::LessThan, start);
                     }
-                }
-                '>' => {
-                    if let Some('=') = self.peek() {
+                    _ => {
+                        self.add(TokenKind::SingleLessThan, start);
+                    }
+                },
+                '>' => match self.peek() {
+                    Some('>') => {
+                        self.advance();
+                        self.add(TokenKind::DoubleGreaterThan, start);
+                    }
+                    Some('=') => {
                         self.advance();
                         self.add(TokenKind::GreaterThanEquals, start);
-                    } else {
-                        self.add(TokenKind::GreaterThan, start);
                     }
-                }
+                    _ => {
+                        self.add(TokenKind::SingleGreaterThan, start);
+                    }
+                },
                 // FIXME: Character literals (without breaking lifetimes).
                 '\'' => {
                     while let Some(IdentMiddle![]) = self.peek() {

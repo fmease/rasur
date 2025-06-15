@@ -75,12 +75,11 @@ impl<'src> Parser<'src> {
     fn parse_expr_at(&mut self, level: Level, policy: StructLitPolicy) -> Result<ast::Expr<'src>> {
         let token = self.token();
         let op = match token.kind {
-            // FIXME: Support DoubleHypen (double negated)
             TokenKind::SingleHyphen => Some(Op::Neg),
             TokenKind::SingleBang => Some(Op::Not),
             TokenKind::Asterisk => Some(Op::Deref),
-            // FIXME: Also DoubleAmpersand, we want to support `&&1&&&&1` :)
-            TokenKind::SingleAmpersand => Some(Op::Borrow),
+            TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
+            TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
             TokenKind::DoubleDot => Some(Op::RangeExclusive),
             TokenKind::DoubleDotEquals => Some(Op::RangeInclusive),
             _ => None,
@@ -95,30 +94,32 @@ impl<'src> Parser<'src> {
         loop {
             let token = self.token();
             let op = match token.kind {
-                TokenKind::SingleAmpersand => Op::BitAnd,
                 TokenKind::Asterisk => Op::Mul,
                 TokenKind::BangEquals => Op::Ne,
                 TokenKind::Caret => Op::BitXor,
-                TokenKind::SingleDot => Op::Field,
+                TokenKind::DoubleAmpersand => Op::And,
                 TokenKind::DoubleDot => Op::RangeExclusive,
                 TokenKind::DoubleDotEquals => Op::RangeInclusive,
-                TokenKind::DoubleAmpersand => Op::And,
                 TokenKind::DoubleEquals => Op::Eq,
                 TokenKind::DoublePipe => Op::Or,
-                TokenKind::SingleEquals => Op::Assign,
-                TokenKind::GreaterThan => Op::Gt,
+                TokenKind::DoubleGreaterThan => Op::BitShiftRight,
+                TokenKind::DoubleLessThan => Op::BitShiftLeft,
                 TokenKind::GreaterThanEquals => Op::Ge,
-                TokenKind::SingleHyphen => Op::Sub,
-                TokenKind::LessThan => Op::Lt,
+                TokenKind::Ident if let "as" = self.source(token.span) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
-                TokenKind::Percent => Op::Rem,
-                TokenKind::SinglePipe => Op::BitOr,
-                TokenKind::Plus => Op::Add,
-                TokenKind::Slash => Op::Div,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
+                TokenKind::Percent => Op::Rem,
+                TokenKind::Plus => Op::Add,
                 TokenKind::QuestionMark => Op::Try,
-                TokenKind::Ident if let "as" = self.source(token.span) => Op::Cast,
+                TokenKind::SingleAmpersand => Op::BitAnd,
+                TokenKind::SingleDot => Op::Field,
+                TokenKind::SingleEquals => Op::Assign,
+                TokenKind::SingleGreaterThan => Op::Gt,
+                TokenKind::SingleHyphen => Op::Sub,
+                TokenKind::SingleLessThan => Op::Lt,
+                TokenKind::SinglePipe => Op::BitOr,
+                TokenKind::Slash => Op::Div,
                 _ => break,
             };
 
@@ -143,16 +144,18 @@ impl<'src> Parser<'src> {
             Op::Neg => ast::UnOp::Neg,
             Op::Not => ast::UnOp::Not,
             Op::Deref => ast::UnOp::Deref,
-            Op::Borrow => {
-                let mut_ = self.parse_mutability();
-                let expr = self.parse_expr_at(right_level, policy)?;
-                return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
+            Op::SingleBorrow => {
+                return self.fin_parse_borrow_expr(right_level, policy);
+            }
+            Op::DoubleBorrow => {
+                let borrow = self.fin_parse_borrow_expr(right_level, policy)?;
+                return Ok(ast::Expr::Borrow(ast::Mutability::Not, Box::new(borrow)));
             }
             Op::RangeInclusive => {
-                return self.fin_parse_range_exclusive(None, right_level, policy);
+                return self.fin_parse_range_inclusive_expr(None, right_level, policy);
             }
             Op::RangeExclusive => {
-                return self.fin_parse_range_exclusive(None, right_level, policy);
+                return self.fin_parse_range_exclusive_expr(None, right_level, policy);
             }
             _ => unreachable!(),
         };
@@ -173,6 +176,8 @@ impl<'src> Parser<'src> {
             Op::Assign => ast::BinOp::Assign,
             Op::BitAnd => ast::BinOp::BitAnd,
             Op::BitOr => ast::BinOp::BitOr,
+            Op::BitShiftLeft => ast::BinOp::BitShiftLeft,
+            Op::BitShiftRight => ast::BinOp::BitShiftRight,
             Op::BitXor => ast::BinOp::BitXor,
             Op::Call => {
                 let args = self.parse_delimited_sequence(
@@ -216,14 +221,14 @@ impl<'src> Parser<'src> {
             Op::Ne => ast::BinOp::Ne,
             Op::Or => ast::BinOp::Or,
             Op::RangeExclusive => {
-                return self.fin_parse_range_exclusive(
+                return self.fin_parse_range_exclusive_expr(
                     Some(Box::new(left)),
                     op.right_level().unwrap(),
                     policy,
                 );
             }
             Op::RangeInclusive => {
-                return self.fin_parse_range_inclusive(
+                return self.fin_parse_range_inclusive_expr(
                     Some(Box::new(left)),
                     op.right_level().unwrap(),
                     policy,
@@ -239,7 +244,17 @@ impl<'src> Parser<'src> {
         Ok(ast::Expr::BinOp(ast_op, Box::new(left), Box::new(right)))
     }
 
-    fn fin_parse_range_exclusive(
+    fn fin_parse_borrow_expr(
+        &mut self,
+        right_level: Level,
+        policy: StructLitPolicy,
+    ) -> Result<ast::Expr<'src>> {
+        let mut_ = self.parse_mutability();
+        let expr = self.parse_expr_at(right_level, policy)?;
+        return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
+    }
+
+    fn fin_parse_range_exclusive_expr(
         &mut self,
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
@@ -251,7 +266,7 @@ impl<'src> Parser<'src> {
         Ok(ast::Expr::Range(left, right.map(Box::new), ast::RangeKind::Exclusive))
     }
 
-    fn fin_parse_range_inclusive(
+    fn fin_parse_range_inclusive_expr(
         &mut self,
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
@@ -531,12 +546,14 @@ pub(crate) enum Op {
     Assign,
     BitAnd,
     BitOr,
+    BitShiftLeft,
+    BitShiftRight,
     BitXor,
-    Borrow,
     Call,
     Cast,
     Deref,
     Div,
+    DoubleBorrow,
     Eq,
     Field,
     Ge,
@@ -552,6 +569,7 @@ pub(crate) enum Op {
     RangeExclusive,
     RangeInclusive,
     Rem,
+    SingleBorrow,
     Sub,
     Try,
 }
@@ -559,15 +577,18 @@ pub(crate) enum Op {
 impl Op {
     fn left_level(self) -> Option<Level> {
         Some(match self {
-            Self::Deref | Self::Neg | Self::Not | Self::Borrow => return None,
             Self::Add | Self::Sub => Level::SumLeft,
             Self::And => Level::AndLeft,
             Self::Assign => Level::AssignLeft,
             Self::BitAnd => Level::BitAndLeft,
             Self::BitOr => Level::BitOrLeft,
+            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftLeft,
             Self::BitXor => Level::BitXorLeft,
             Self::Call | Self::Index => Level::Call,
             Self::Cast => Level::Cast,
+            Self::Deref | Self::Neg | Self::Not | Self::SingleBorrow | Self::DoubleBorrow => {
+                return None;
+            }
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
             Self::Field => Level::Project,
             Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
@@ -584,9 +605,12 @@ impl Op {
             Self::Assign => Level::AssignRight,
             Self::BitAnd => Level::BitAndRight,
             Self::BitOr => Level::BitOrRight,
+            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,
             Self::BitXor => Level::BitXorRight,
             Self::Call | Self::Cast | Self::Field | Self::Index | Self::Try => return None,
-            Self::Deref | Self::Neg | Self::Not | Self::Borrow => Level::Prefix,
+            Self::Deref | Self::Neg | Self::Not | Self::SingleBorrow | Self::DoubleBorrow => {
+                Level::Prefix
+            }
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
             Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
             Self::Or => Level::OrRight,
@@ -612,9 +636,7 @@ enum Level {
     BitXorRight,
     BitAndLeft,
     BitAndRight,
-    #[expect(dead_code)] // FIXME
     BitShiftLeft,
-    #[expect(dead_code)] // FIXME
     BitShiftRight,
     SumLeft,
     SumRight,

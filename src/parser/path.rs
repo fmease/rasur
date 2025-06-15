@@ -40,19 +40,19 @@ impl<'src> Parser<'src> {
         // NOTE: To be kept in sync with `Self::parse_ty_rel_path`.
 
         // FIXME: Or DoubleLessThan
-        self.token().kind == TokenKind::LessThan || self.begins_path()
+        self.token().kind == TokenKind::SingleLessThan || self.begins_path()
     }
 
     pub(super) fn parse_ext_path<A: ParseGenericArgs>(&mut self) -> Result<ast::ExtPath<'src, A>> {
         let mut path = ast::Path { segs: Vec::new() };
 
         // FIXME: Deal with DoubleLessThan, too (`<<T>::P>::P`).
-        let self_ty = if self.consume(TokenKind::LessThan) {
+        let self_ty = if self.consume(TokenKind::SingleLessThan) {
             let ty = self.parse_ty()?;
             if self.consume(Ident("as")) {
                 path = self.parse_path::<A>()?;
             }
-            self.parse(TokenKind::GreaterThan)?;
+            self.parse(TokenKind::SingleGreaterThan)?;
             self.parse(TokenKind::DoubleColon)?;
             Some(ast::SelfTy { ty, offset: path.segs.len() })
         } else {
@@ -89,7 +89,7 @@ impl<'src> Parser<'src> {
     ) -> Result<Option<ast::GenericArgs<'src>>> {
         let disambiguated = if self.token().kind == TokenKind::DoubleColon
             && self.look_ahead(1, |token| {
-                matches!(token.kind, TokenKind::LessThan | TokenKind::OpenRoundBracket)
+                matches!(token.kind, TokenKind::SingleLessThan | TokenKind::OpenRoundBracket)
             }) {
             self.advance();
             true
@@ -99,7 +99,7 @@ impl<'src> Parser<'src> {
 
         if disambiguated || requires_disambiguation == RequiresDisambiguation::No {
             return Ok(match self.token().kind {
-                TokenKind::LessThan => {
+                TokenKind::SingleLessThan => {
                     self.advance();
                     Some(self.fin_parse_angle_generic_args()?)
                 }
@@ -115,7 +115,7 @@ impl<'src> Parser<'src> {
     }
 
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        const DELIMITER: TokenKind = TokenKind::GreaterThan;
+        const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
             let mut arg = if this.begins_ty() {
