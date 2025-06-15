@@ -209,28 +209,65 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_mutability(&mut self) -> ast::Mutability {
-        match self.consume(Ident("mut")) {
+        match self.consume_ident_if("mut") {
             true => ast::Mutability::Mut,
             false => ast::Mutability::Not,
         }
     }
 
-    fn consume<S: Shape>(&mut self, shape: S) -> bool {
-        if shape.check(self) {
-            S::advance(self);
+    // FIXME: Temporary and bad name
+    fn modify_in_place(&mut self, token: TokenKind) {
+        // FIXME: Also update span.
+        self.tokens[self.index].kind = token;
+    }
+
+    fn consume_single_less_than(&mut self) -> bool {
+        let token = self.token();
+        match token.kind {
+            TokenKind::SingleLessThan => {
+                self.advance();
+                true
+            }
+            TokenKind::DoubleLessThan => {
+                self.modify_in_place(TokenKind::SingleLessThan);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn consume_single_greater_than(&mut self) -> bool {
+        let token = self.token();
+        match token.kind {
+            TokenKind::SingleGreaterThan => {
+                self.advance();
+                true
+            }
+            TokenKind::DoubleGreaterThan => {
+                self.modify_in_place(TokenKind::SingleGreaterThan);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn consume(&mut self, expected: TokenKind) -> bool {
+        if self.token().kind == expected {
+            self.advance();
             true
         } else {
             false
         }
     }
 
-    fn parse<S: Shape>(&mut self, shape: S) -> Result<()> {
-        if shape.check(self) {
-            S::advance(self);
+    fn parse(&mut self, expected: TokenKind) -> Result<()> {
+        let token = self.token();
+        if token.kind == expected {
+            self.advance();
             return Ok(());
         }
 
-        Err(ParseError::UnexpectedToken(self.token(), shape.fragment()))
+        Err(ParseError::UnexpectedToken(token, expected.into()))
     }
 
     fn prev_token(&self) -> Option<Token> {
@@ -505,48 +542,5 @@ impl fmt::Display for ExpectedFragment {
             Self::Pat => "pattern",
             Self::Term => "type or const argument",
         })
-    }
-}
-
-trait Shape: Copy {
-    const LENGTH: usize;
-
-    fn check(self, parser: &Parser<'_>) -> bool;
-
-    fn fragment(self) -> ExpectedFragment;
-
-    fn advance(parser: &mut Parser<'_>) {
-        for _ in 0..Self::LENGTH {
-            parser.advance();
-        }
-    }
-}
-
-impl Shape for TokenKind {
-    const LENGTH: usize = 1;
-
-    fn check(self, parser: &Parser<'_>) -> bool {
-        // FIXME: This permits `==` if `=` is requested. This is not okay
-        parser.token().kind == self
-    }
-
-    fn fragment(self) -> ExpectedFragment {
-        self.into()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Ident(&'static str);
-
-impl Shape for Ident {
-    const LENGTH: usize = 1;
-
-    fn check(self, parser: &Parser<'_>) -> bool {
-        let actual = parser.token();
-        actual.kind == TokenKind::Ident && parser.source(actual.span) == self.0
-    }
-
-    fn fragment(self) -> ExpectedFragment {
-        ExpectedFragment::Raw(self.0)
     }
 }

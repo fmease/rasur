@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Ident, ParseError, Parser, Result, Token, TokenKind, is_path_seg_keyword,
+    ExpectedFragment, ParseError, Parser, Result, Token, TokenKind, is_path_seg_keyword,
     is_reserved, one_of,
 };
 use crate::ast;
@@ -37,22 +37,21 @@ impl<'src> Parser<'src> {
     }
 
     pub(super) fn begins_ext_path(&self) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_ty_rel_path`.
+        // NOTE: To be kept in sync with `Self::parse_ext_path`.
 
-        // FIXME: Or DoubleLessThan
-        self.token().kind == TokenKind::SingleLessThan || self.begins_path()
+        matches!(self.token().kind, TokenKind::SingleLessThan | TokenKind::DoubleLessThan)
+            || self.begins_path()
     }
 
     pub(super) fn parse_ext_path<A: ParseGenericArgs>(&mut self) -> Result<ast::ExtPath<'src, A>> {
         let mut path = ast::Path { segs: Vec::new() };
 
-        // FIXME: Deal with DoubleLessThan, too (`<<T>::P>::P`).
-        let self_ty = if self.consume(TokenKind::SingleLessThan) {
+        let self_ty = if self.consume_single_less_than() {
             let ty = self.parse_ty()?;
-            if self.consume(Ident("as")) {
+            if self.consume_ident_if("as") {
                 path = self.parse_path::<A>()?;
             }
-            self.parse(TokenKind::SingleGreaterThan)?;
+            self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
             self.parse(TokenKind::DoubleColon)?;
             Some(ast::SelfTy { ty, offset: path.segs.len() })
         } else {
@@ -89,7 +88,12 @@ impl<'src> Parser<'src> {
     ) -> Result<Option<ast::GenericArgs<'src>>> {
         let disambiguated = if self.token().kind == TokenKind::DoubleColon
             && self.look_ahead(1, |token| {
-                matches!(token.kind, TokenKind::SingleLessThan | TokenKind::OpenRoundBracket)
+                matches!(
+                    token.kind,
+                    TokenKind::SingleLessThan
+                        | TokenKind::DoubleLessThan
+                        | TokenKind::OpenRoundBracket
+                )
             }) {
             self.advance();
             true
@@ -101,6 +105,10 @@ impl<'src> Parser<'src> {
             return Ok(match self.token().kind {
                 TokenKind::SingleLessThan => {
                     self.advance();
+                    Some(self.fin_parse_angle_generic_args()?)
+                }
+                TokenKind::DoubleLessThan => {
+                    self.modify_in_place(TokenKind::SingleLessThan);
                     Some(self.fin_parse_angle_generic_args()?)
                 }
                 TokenKind::OpenRoundBracket => {
@@ -115,9 +123,11 @@ impl<'src> Parser<'src> {
     }
 
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
+        // FIXME: Smh use parse_delimited_sequence again
+
         const SEPARATOR: TokenKind = TokenKind::Comma;
-        self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
+
+        let parse = |this: &mut Self| {
             let mut arg = if this.begins_ty() {
                 let ty = this.parse_ty()?;
                 ast::GenericArg::Ty(ty)
@@ -129,7 +139,11 @@ impl<'src> Parser<'src> {
             } else {
                 return Err(ParseError::UnexpectedToken(
                     this.token(),
-                    one_of![ExpectedFragment::GenericArg, SEPARATOR, DELIMITER],
+                    one_of![
+                        ExpectedFragment::GenericArg,
+                        SEPARATOR,
+                        /*delimiter*/ TokenKind::SingleGreaterThan
+                    ],
                 ));
             };
 
@@ -155,8 +169,25 @@ impl<'src> Parser<'src> {
             };
 
             Ok(arg)
-        })
-        .map(ast::GenericArgs::Angle)
+        };
+
+        let mut args = Vec::new();
+
+        while
+        /*delimiter*/
+        !self.consume_single_greater_than() {
+            // FIXME: Add delimiter and separator to "the list of expected tokens".
+            args.push(parse(self)?);
+
+            if !matches!(
+                self.token().kind,
+                /*delimiter*/ TokenKind::SingleGreaterThan | TokenKind::DoubleGreaterThan
+            ) {
+                self.parse(SEPARATOR)?;
+            }
+        }
+
+        Ok(ast::GenericArgs::Angle(args))
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
@@ -280,7 +311,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 path.segs.push(ast::PathSeg::ident(ident));
                 let binder =
-                    self.consume(Ident("as")).then(|| self.parse_common_ident()).transpose()?;
+                    self.consume_ident_if("as").then(|| self.parse_common_ident()).transpose()?;
                 ast::PathTreeKind::Stump(binder)
             }
             _ => {
@@ -313,6 +344,19 @@ impl<'src> Parser<'src> {
             })
     }
 
+    pub(super) fn consume_ident_if(&mut self, expected: &str) -> bool {
+        if self.as_ident(self.token()).is_some_and(|ident| ident == expected) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
+        matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
+    }
+
     pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         self.consume_common_ident()
             .ok_or_else(|| ParseError::UnexpectedToken(self.token(), ExpectedFragment::CommonIdent))
@@ -328,10 +372,6 @@ impl<'src> Parser<'src> {
 
     pub(super) fn ident_is_common(&self, ident: &str) -> bool {
         !is_reserved(ident, self.edition)
-    }
-
-    pub(super) fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 }
 

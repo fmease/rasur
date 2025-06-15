@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, one_of};
+use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
 use std::cmp::Ordering;
 
@@ -314,7 +314,7 @@ impl<'src> Parser<'src> {
                     let condition = self.parse_expr(StructLitPolicy::Forbidden)?;
                     let consequent = self.parse_block_expr()?;
 
-                    let alternate = if self.consume(Ident("else")) {
+                    let alternate = if self.consume_ident_if("else") {
                         let token = self.token();
                         match token.kind {
                             TokenKind::OpenCurlyBracket => {}

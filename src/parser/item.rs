@@ -1,7 +1,4 @@
-use super::{
-    ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, Shape as _, TokenKind,
-    one_of,
-};
+use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, one_of};
 use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
@@ -66,7 +63,7 @@ impl<'src> Parser<'src> {
                     "const" => {
                         if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
                             self.advance();
-                            break 'kind if self.consume(Ident("fn")) {
+                            break 'kind if self.consume_ident_if("fn") {
                                 self.fin_parse_fn_item(
                                     ast::Constness::Const,
                                     ast::Safety::Inherited,
@@ -409,7 +406,7 @@ impl<'src> Parser<'src> {
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let target = self.parse_ident_if_common_or("self")?;
-        let binder = self.consume(Ident("as")).then(|| self.parse_common_ident()).transpose()?;
+        let binder = self.consume_ident_if("as").then(|| self.parse_common_ident()).transpose()?;
 
         self.parse(TokenKind::Semicolon)?;
 
@@ -531,7 +528,7 @@ impl<'src> Parser<'src> {
         // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
         let params = self.parse_generic_params()?;
 
-        let constness = match self.consume(Ident("const")) {
+        let constness = match self.consume_ident_if("const") {
             true => ast::Constness::Const,
             false => ast::Constness::Not,
         };
@@ -543,7 +540,7 @@ impl<'src> Parser<'src> {
 
         let ty = self.parse_ty()?;
 
-        let (trait_ref, self_ty) = if self.consume(Ident("for")) {
+        let (trait_ref, self_ty) = if self.consume_ident_if("for") {
             let self_ty = match self.consume(TokenKind::DoubleDot) {
                 // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
                 true => ast::Ty::Error,
@@ -801,7 +798,7 @@ impl<'src> Parser<'src> {
         match policy {
             MacroCallPolicy::Allowed => self.begins_path(),
             MacroCallPolicy::Forbidden => {
-                Ident("macro_rules").check(self)
+                self.as_ident(self.token()).is_some_and(|ident| ident == "macro_rules")
                     && self.look_ahead(1, |token| token.kind == TokenKind::SingleBang)
                     && self.look_ahead(2, |token| self.as_common_ident(token).is_some())
             }
@@ -834,7 +831,7 @@ impl<'src> Parser<'src> {
     fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
         // To kept in sync with `Self::begins_visibility`.
 
-        if !self.consume(Ident("pub")) {
+        if !self.consume_ident_if("pub") {
             return Ok(ast::Visibility::Inherited);
         }
 
@@ -868,6 +865,6 @@ impl<'src> Parser<'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        Ident("pub").check(self)
+        self.as_ident(self.token()).is_some_and(|ident| ident == "pub")
     }
 }

@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, Ident, ParseError, Parser, Result, TokenKind, one_of};
+use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
 use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
@@ -188,6 +188,7 @@ impl<'src> Parser<'src> {
             return Ok(Vec::new());
         }
 
+        // FIXME: Doesn't account for DoubleGreaterThan (e.g. bc of `fn f<T = Option<X>>`)
         const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
@@ -243,7 +244,7 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
 
-        if !self.consume(Ident("where")) {
+        if !self.consume_ident_if("where") {
             return Ok(preds);
         }
 

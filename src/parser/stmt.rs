@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, Ident, MacroCallPolicy, ParseError, Parser, Result, TokenKind};
+use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind};
 use crate::{ast, parser::expr};
 
 impl<'src> Parser<'src> {
@@ -23,7 +23,7 @@ impl<'src> Parser<'src> {
             return Ok(ast::Stmt::Item(self.parse_item()?));
         }
 
-        if self.consume(Ident("let")) {
+        if self.consume_ident_if("let") {
             let pat = self.parse_pat()?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             let body = self
