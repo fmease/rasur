@@ -41,7 +41,7 @@ impl Fmt for ast::Expr<'_> {
                     fmt!(cx, ")");
                 }
             }
-            Self::Path(path) => path.fmt(cx),
+
             Self::Wildcard => fmt!(cx, "_"),
             Self::Continue => fmt!(cx, "continue"),
             Self::Break(label, expr) => {
@@ -70,7 +70,6 @@ impl Fmt for ast::Expr<'_> {
             Self::While(expr) => expr.fmt(cx),
             Self::BoolLit(lit) => fmt!(cx, "{lit}"),
             Self::NumLit(lit) | Self::StrLit(lit) => fmt!(cx, "{lit}"),
-            Self::StructLit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");
                 mut_.trailing_space().fmt(cx);
@@ -118,12 +117,19 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Closure(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
+            Self::Array(elems) => {
+                fmt!(cx, "[");
+                Punctuated::new(elems, ", ").fmt(cx);
+                fmt!(cx, "]");
+            }
             Self::Grouped(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
+            Self::Struct(expr) => expr.fmt(cx),
         }
     }
 }
@@ -202,18 +208,18 @@ impl Fmt for ast::WhileExpr<'_> {
     }
 }
 
-impl Fmt for ast::StructLit<'_> {
+impl Fmt for ast::StructExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { path, fields } = self;
 
         path.fmt(cx);
-        fmt!(cx, " {{");
+        fmt!(cx, " {{ ");
         Punctuated::new(fields, ", ").fmt(cx);
-        fmt!(cx, "}}");
+        fmt!(cx, " }}");
     }
 }
 
-impl Fmt for ast::StructLitField<'_> {
+impl Fmt for ast::StructExprField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ident, expr } = self;
 

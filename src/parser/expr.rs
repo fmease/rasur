@@ -67,6 +67,7 @@ impl<'src> Parser<'src> {
             | TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
             | TokenKind::OpenCurlyBracket => true,
             _ => false,
         }
@@ -180,7 +181,7 @@ impl<'src> Parser<'src> {
             Op::BitShiftRight => ast::BinOp::BitShiftRight,
             Op::BitXor => ast::BinOp::BitXor,
             Op::Call => {
-                let args = self.parse_delimited_sequence(
+                let args = self.fin_parse_delimited_sequence(
                     TokenKind::CloseRoundBracket,
                     TokenKind::Comma,
                     |this| this.parse_expr(StructLitPolicy::Allowed),
@@ -413,7 +414,7 @@ impl<'src> Parser<'src> {
             TokenKind::SinglePipe => {
                 self.advance();
                 // FIXME: Maybe reuse parse_fn_params smh?
-                let params = self.parse_delimited_sequence(
+                let params = self.fin_parse_delimited_sequence(
                     TokenKind::SinglePipe,
                     TokenKind::Comma,
                     |this| {
@@ -431,6 +432,15 @@ impl<'src> Parser<'src> {
             TokenKind::DoublePipe => {
                 self.advance();
                 return self.fin_parse_closure_expr(Vec::new());
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let elems = self.fin_parse_delimited_sequence(
+                    TokenKind::CloseSquareBracket,
+                    TokenKind::Comma,
+                    |this| this.parse_expr(StructLitPolicy::Allowed),
+                )?;
+                return Ok(ast::Expr::Array(elems));
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
@@ -472,18 +482,21 @@ impl<'src> Parser<'src> {
                     self.advance();
 
                     // FIXME: NumLit fields
-                    let fields = self.parse_delimited_sequence(
+                    let fields = self.fin_parse_delimited_sequence(
                         TokenKind::CloseCurlyBracket,
                         TokenKind::Comma,
                         |this| {
                             let ident = this.parse_common_ident()?;
-                            this.parse(TokenKind::SingleColon)?;
-                            let expr = this.parse_expr(StructLitPolicy::Allowed)?;
-                            Ok(ast::StructLitField { ident, expr })
+                            let expr = if this.consume(TokenKind::SingleColon) {
+                                this.parse_expr(StructLitPolicy::Allowed)?
+                            } else {
+                                ast::Expr::Path(Box::new(ast::ExtPath::ident(ident)))
+                            };
+                            Ok(ast::StructExprField { ident, expr })
                         },
                     )?;
 
-                    return Ok(ast::Expr::StructLit(Box::new(ast::StructLit { path, fields })));
+                    return Ok(ast::Expr::Struct(Box::new(ast::StructExpr { path, fields })));
                 }
                 _ => {}
             }

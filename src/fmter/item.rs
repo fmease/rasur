@@ -121,7 +121,7 @@ impl Fmt for ast::VariantKind<'_> {
     }
 }
 
-impl Fmt for Vec<ast::StructField<'_>> {
+impl Fmt for Vec<ast::StructFieldDef<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, " {{");
         if !self.is_empty() {
@@ -142,7 +142,7 @@ impl Fmt for Vec<ast::StructField<'_>> {
     }
 }
 
-impl Fmt for ast::TupleField<'_> {
+impl Fmt for ast::TupleFieldDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, ty } = self;
         // FIXME: Inspect attrs to look for fmt skips.
@@ -155,7 +155,7 @@ impl Fmt for ast::TupleField<'_> {
     }
 }
 
-impl Fmt for ast::StructField<'_> {
+impl Fmt for ast::StructFieldDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, binder, ty } = self;
         // FIXME: Inspect attrs to look for fmt skips.

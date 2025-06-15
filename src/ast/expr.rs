@@ -20,7 +20,7 @@ pub(crate) enum Expr<'src> {
     BoolLit(bool),
     NumLit(Ident<'src>),
     StrLit(Ident<'src>),
-    StructLit(Box<StructLit<'src>>),
+    Struct(Box<StructExpr<'src>>),
     Borrow(Mutability, Box<Expr<'src>>),
     Try(Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
@@ -31,6 +31,7 @@ pub(crate) enum Expr<'src> {
     UnsafeBlock(Box<BlockExpr<'src>>),
     Closure(Box<ClosureExpr<'src>>),
     Tup(Vec<Expr<'src>>),
+    Array(Vec<Expr<'src>>),
     Grouped(Box<Expr<'src>>),
     MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
 }
@@ -62,7 +63,7 @@ impl Expr<'_> {
             | Self::BoolLit(_)
             | Self::NumLit(_)
             | Self::StrLit(_)
-            | Self::StructLit(_)
+            | Self::Struct(_)
             | Self::Borrow(..)
             | Self::Try(_)
             | Self::Field(..)
@@ -70,6 +71,7 @@ impl Expr<'_> {
             | Self::Index(..)
             | Self::Closure(_)
             | Self::Tup(_)
+            | Self::Array(_)
             | Self::Grouped(_)
             | Self::MacroCall(_) => false,
         }
@@ -176,13 +178,13 @@ pub(crate) struct BlockExpr<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct StructLit<'src> {
+pub(crate) struct StructExpr<'src> {
     pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
-    pub(crate) fields: Vec<StructLitField<'src>>,
+    pub(crate) fields: Vec<StructExprField<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructLitField<'src> {
+pub(crate) struct StructExprField<'src> {
     pub(crate) ident: Ident<'src>,
     pub(crate) expr: Expr<'src>,
 }

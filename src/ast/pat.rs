@@ -11,6 +11,7 @@ pub(crate) enum Pat<'src> {
     Grouped(Box<Pat<'src>>),
     Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
+    TupleStruct(Box<TupleStructPat<'src>>),
 }
 
 // FIXME: I hate this name
@@ -25,4 +26,10 @@ pub(crate) struct IdentPat<'src> {
 pub(crate) enum ByRef {
     Yes(Mutability),
     No,
+}
+
+#[derive(Debug)]
+pub(crate) struct TupleStructPat<'src> {
+    pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) fields: Vec<Pat<'src>>,
 }

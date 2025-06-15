@@ -307,7 +307,7 @@ impl<'src> Parser<'src> {
         let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
-        let variants = self.parse_delimited_sequence(
+        let variants = self.fin_parse_delimited_sequence(
             TokenKind::CloseCurlyBracket,
             TokenKind::Comma,
             Self::parse_variant,
@@ -333,14 +333,14 @@ impl<'src> Parser<'src> {
         Ok(match token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                let fields = self.parse_delimited_sequence(
+                let fields = self.fin_parse_delimited_sequence(
                     TokenKind::CloseRoundBracket,
                     TokenKind::Comma,
                     |this| {
                         let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
                         let vis = this.parse_visibility()?;
                         let ty = this.parse_ty()?;
-                        Ok(ast::TupleField { attrs, vis, ty })
+                        Ok(ast::TupleFieldDef { attrs, vis, ty })
                     },
                 )?;
                 ast::VariantKind::Tuple(fields)
@@ -354,13 +354,13 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn parse_struct_fields(&mut self) -> Result<Vec<ast::StructField<'src>>> {
-        self.parse_delimited_sequence(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
+    fn parse_struct_fields(&mut self) -> Result<Vec<ast::StructFieldDef<'src>>> {
+        self.fin_parse_delimited_sequence(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
             let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
-            Ok(ast::StructField { attrs, vis, binder, ty })
+            Ok(ast::StructFieldDef { attrs, vis, binder, ty })
         })
     }
 
@@ -469,7 +469,7 @@ impl<'src> Parser<'src> {
         self.parse(TokenKind::OpenRoundBracket)?;
 
         let mut first = true;
-        self.parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+        self.fin_parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let first = std::mem::take(&mut first);
 
             let pat = this.parse_pat()?;

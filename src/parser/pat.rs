@@ -88,12 +88,28 @@ impl<'src> Parser<'src> {
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
-            if self.consume(TokenKind::SingleBang) {
-                let ast::ExtPath { self_ty: None, path } = path else {
-                    return Err(ParseError::TyRelMacroCall);
-                };
-                let (bracket, stream) = self.parse_delimited_token_stream()?;
-                return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
+            let token = self.token();
+            match token.kind {
+                TokenKind::SingleBang => {
+                    let ast::ExtPath { self_ty: None, path } = path else {
+                        return Err(ParseError::TyRelMacroCall);
+                    };
+                    let (bracket, stream) = self.parse_delimited_token_stream()?;
+                    return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
+                }
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
+                    let fields = self.fin_parse_delimited_sequence(
+                        TokenKind::CloseRoundBracket,
+                        TokenKind::Comma,
+                        |this| this.parse_pat(),
+                    )?;
+                    return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
+                        path,
+                        fields,
+                    })));
+                }
+                _ => {}
             }
 
             return Ok(match path {

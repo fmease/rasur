@@ -197,7 +197,7 @@ impl<'src> Parser<'src> {
             return Ok(ast::GenericArgs::ParenElided);
         }
 
-        let inputs = self.parse_delimited_sequence(
+        let inputs = self.fin_parse_delimited_sequence(
             TokenKind::CloseRoundBracket,
             TokenKind::Comma,
             Self::parse_ty,
@@ -297,7 +297,7 @@ impl<'src> Parser<'src> {
         Ok(match token.kind {
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                ast::PathTreeKind::Branch(self.parse_delimited_sequence(
+                ast::PathTreeKind::Branch(self.fin_parse_delimited_sequence(
                     TokenKind::CloseCurlyBracket,
                     TokenKind::Comma,
                     Self::parse_path_tree,

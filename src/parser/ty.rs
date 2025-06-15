@@ -191,7 +191,7 @@ impl<'src> Parser<'src> {
         // FIXME: Doesn't account for DoubleGreaterThan (e.g. bc of `fn f<T = Option<X>>`)
         const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
-        self.parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
+        self.fin_parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
             let token = this.token();
             let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime()? {
                 let bounds = if this.consume(TokenKind::SingleColon) {

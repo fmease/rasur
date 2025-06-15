@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Pat<'_> {
@@ -21,6 +21,7 @@ impl Fmt for ast::Pat<'_> {
             }
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
+            Self::TupleStruct(pat) => pat.fmt(cx),
         }
     }
 }
@@ -40,5 +41,16 @@ impl Fmt for ast::IdentPat<'_> {
         }
 
         fmt!(cx, "{ident}");
+    }
+}
+
+impl Fmt for ast::TupleStructPat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path, fields } = self;
+
+        path.fmt(cx);
+        fmt!(cx, "(");
+        Punctuated::new(fields, ", ").fmt(cx);
+        fmt!(cx, ")");
     }
 }

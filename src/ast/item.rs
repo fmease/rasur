@@ -57,19 +57,19 @@ pub(crate) struct Variant<'src> {
 #[derive(Debug)]
 pub(crate) enum VariantKind<'src> {
     Unit,
-    Tuple(Vec<TupleField<'src>>),
-    Struct(Vec<StructField<'src>>),
+    Tuple(Vec<TupleFieldDef<'src>>),
+    Struct(Vec<StructFieldDef<'src>>),
 }
 
 #[derive(Debug)]
-pub(crate) struct TupleField<'src> {
+pub(crate) struct TupleFieldDef<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) vis: Visibility<'src>,
     pub(crate) ty: Ty<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructField<'src> {
+pub(crate) struct StructFieldDef<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) vis: Visibility<'src>,
     pub(crate) binder: Ident<'src>,
@@ -218,7 +218,7 @@ pub(crate) struct TyAliasItem<'src> {
 pub(crate) struct UnionItem<'src> {
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
-    pub(crate) fields: Vec<StructField<'src>>,
+    pub(crate) fields: Vec<StructFieldDef<'src>>,
 }
 
 #[derive(Debug)]

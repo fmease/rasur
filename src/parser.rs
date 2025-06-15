@@ -91,7 +91,7 @@ impl<'src> Parser<'src> {
         Ok(tuple(nodes))
     }
 
-    fn parse_delimited_sequence<T>(
+    fn fin_parse_delimited_sequence<T>(
         &mut self,
         delimiter: TokenKind,
         separator: TokenKind,
