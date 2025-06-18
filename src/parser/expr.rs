@@ -62,7 +62,7 @@ impl<'src> Parser<'src> {
                 // We can ignore `let` from let-exprs.
                 matches!(
                     self.source(token.span),
-                    | "_" | "const" | "continue" | "break" | "false" | "if"
+                    | "_" | "const" | "continue" | "break" | "false" | "for" | "if"
                     | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
@@ -333,6 +333,16 @@ impl<'src> Parser<'src> {
                 "false" => {
                     self.advance();
                     return Ok(ast::Expr::BoolLit(false));
+                }
+                "for" => {
+                    self.advance();
+                    let pat = self.parse_pat()?;
+                    self.parse_ident_where("in")?;
+                    let expr =
+                        self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
+                    let body = self.parse_block_expr()?;
+                    return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr { pat, expr, body })));
+                    // return Ok(ast::Expr::ForLoop(Box::new()));
                 }
                 "if" => {
                     self.advance();

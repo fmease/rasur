@@ -117,6 +117,7 @@ impl Fmt for ast::Expr<'_> {
                 block.fmt(cx);
             }
             Self::Closure(expr) => expr.fmt(cx),
+            Self::ForLoop(expr) => expr.fmt(cx),
             Self::Tup(exprs) => Tup(exprs).fmt(cx),
             Self::Array(elems) => {
                 fmt!(cx, "[");
@@ -256,6 +257,19 @@ impl Fmt for ast::ClosureParam<'_> {
             fmt!(cx, ": ");
             ty.fmt(cx);
         }
+    }
+}
+
+impl Fmt for ast::ForLoopExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { pat, expr, body } = self;
+
+        fmt!(cx, "for ");
+        pat.fmt(cx);
+        fmt!(cx, " in ");
+        expr.fmt(cx);
+        fmt!(cx, " ");
+        body.fmt(cx);
     }
 }
 

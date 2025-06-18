@@ -328,20 +328,32 @@ impl<'src> Parser<'src> {
         })
     }
 
-    pub(super) fn parse_ident_if_common_or(
+    pub(super) fn parse_ident_where(&mut self, expected: &'static str) -> Result<()> {
+        let token = self.token();
+        if self.as_ident(token) == Some(expected) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(ParseError::UnexpectedToken(token, one_of![ExpectedFragment::Raw(expected)]))
+        }
+    }
+
+    pub(super) fn parse_ident_where_common_or(
         &mut self,
         exception: &'static str,
     ) -> Result<ast::Ident<'src>> {
         let token = self.token();
-        self.as_ident(token)
-            .filter(|&ident| ident == exception || self.ident_is_common(ident))
-            .inspect(|_| self.advance())
-            .ok_or_else(|| {
-                ParseError::UnexpectedToken(
-                    token,
-                    one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
-                )
-            })
+        if let Some(ident) = self.as_ident(token)
+            && (ident == exception || self.ident_is_common(ident))
+        {
+            self.advance();
+            Ok(ident)
+        } else {
+            Err(ParseError::UnexpectedToken(
+                token,
+                one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
+            ))
+        }
     }
 
     pub(super) fn consume_ident_if(&mut self, expected: &str) -> bool {

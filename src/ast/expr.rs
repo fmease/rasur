@@ -35,6 +35,7 @@ pub(crate) enum Expr<'src> {
     UnsafeBlock(Box<BlockExpr<'src>>),
     While(Box<WhileExpr<'src>>),
     Wildcard,
+    ForLoop(Box<ForLoopExpr<'src>>),
 }
 
 impl Expr<'_> {
@@ -47,7 +48,8 @@ impl Expr<'_> {
             | Self::Loop(_)
             | Self::Match(_)
             | Self::UnsafeBlock(_)
-            | Self::While(_) => true,
+            | Self::While(_)
+            | Self::ForLoop(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
                 TrailingBlockMode::Normal => true,
                 TrailingBlockMode::Match => false,
@@ -208,4 +210,11 @@ pub(crate) struct ClosureParam<'src> {
 pub(crate) struct LetExpr<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) expr: Expr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ForLoopExpr<'src> {
+    pub(crate) pat: Pat<'src>,
+    pub(crate) expr: Expr<'src>,
+    pub(crate) body: BlockExpr<'src>,
 }
