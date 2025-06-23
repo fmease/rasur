@@ -16,18 +16,29 @@ mod ty;
 
 pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
 
-pub(crate) fn parse(tokens: Vec<Token>, source: &str, edition: Edition) -> Result<ast::File<'_>> {
-    Parser { tokens, index: 0, source, edition }.parse_file()
+pub(crate) fn parse<'src>(
+    tokens: &[Token],
+    source: &'src str,
+    edition: Edition,
+) -> Result<ast::File<'src>> {
+    Parser::new(tokens, source, edition).parse_file()
 }
 
-struct Parser<'src> {
-    tokens: Vec<Token>,
+struct Parser<'a, 'src> {
+    tokens: &'a [Token],
+    token: Token,
     index: usize,
     source: &'src str,
     edition: Edition,
 }
 
-impl<'src> Parser<'src> {
+impl<'a, 'src> Parser<'a, 'src> {
+    fn new(tokens: &'a [Token], source: &'src str, edition: Edition) -> Self {
+        let index = 0;
+        let token = tokens[index];
+        Self { tokens, token, index, source, edition }
+    }
+
     /// Parse a source file.
     ///
     /// # Grammar
@@ -36,7 +47,7 @@ impl<'src> Parser<'src> {
     /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
     /// ```
     fn parse_file(&mut self) -> Result<ast::File<'src>> {
-        let start = self.token().span;
+        let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let items = self.parse_items(TokenKind::EndOfInput)?;
@@ -46,8 +57,8 @@ impl<'src> Parser<'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    fn consume_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
-        let token = self.token();
+    fn consume_common_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
+        let token = self.token;
         if let TokenKind::Lifetime = token.kind {
             self.advance();
             let lifetime = self.source(token.span);
@@ -75,7 +86,7 @@ impl<'src> Parser<'src> {
             let node = parse(self)?;
 
             // FIXME: Is there a better way to express this?
-            if self.token().kind == DELIMITER {
+            if self.token.kind == DELIMITER {
                 if nodes.is_empty() {
                     // This is actually a grouped node, not a tuple.
                     self.advance();
@@ -103,7 +114,7 @@ impl<'src> Parser<'src> {
             // FIXME: Add delimiter and separator to "the list of expected tokens".
             nodes.push(parse(self)?);
 
-            if self.token().kind != delimiter {
+            if self.token.kind != delimiter {
                 self.parse(separator)?;
             }
         }
@@ -112,8 +123,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {
-        let bracket = self.token();
-        match bracket.kind {
+        match self.token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 self.fin_parse_delimited_token_stream(ast::Bracket::Round)
@@ -127,7 +137,7 @@ impl<'src> Parser<'src> {
                 self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
             }
             _ => Err(ParseError::UnexpectedToken(
-                bracket,
+                self.token,
                 one_of![
                     TokenKind::OpenRoundBracket,
                     TokenKind::OpenSquareBracket,
@@ -156,13 +166,11 @@ impl<'src> Parser<'src> {
         let mut is_delimited = false;
 
         loop {
-            let token = self.token();
-
             #[expect(clippy::enum_glob_use)]
             let act_delim = {
                 use ast::Bracket::*;
                 use ast::Orientation::*;
-                match token.kind {
+                match self.token.kind {
                     TokenKind::OpenRoundBracket => Some((Round, Open)),
                     TokenKind::OpenSquareBracket => Some((Square, Open)),
                     TokenKind::OpenCurlyBracket => Some((Curly, Open)),
@@ -196,7 +204,7 @@ impl<'src> Parser<'src> {
                 }
             }
 
-            tokens.push(token);
+            tokens.push(self.token);
             self.advance();
         }
 
@@ -215,15 +223,8 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // FIXME: Temporary and bad name
-    fn modify_in_place(&mut self, token: TokenKind) {
-        // FIXME: Also update span.
-        self.tokens[self.index].kind = token;
-    }
-
     fn consume_single_less_than(&mut self) -> bool {
-        let token = self.token();
-        match token.kind {
+        match self.token.kind {
             TokenKind::SingleLessThan => {
                 self.advance();
                 true
@@ -237,8 +238,7 @@ impl<'src> Parser<'src> {
     }
 
     fn consume_single_greater_than(&mut self) -> bool {
-        let token = self.token();
-        match token.kind {
+        match self.token.kind {
             TokenKind::SingleGreaterThan => {
                 self.advance();
                 true
@@ -252,7 +252,7 @@ impl<'src> Parser<'src> {
     }
 
     fn consume(&mut self, expected: TokenKind) -> bool {
-        if self.token().kind == expected {
+        if self.token.kind == expected {
             self.advance();
             true
         } else {
@@ -261,28 +261,30 @@ impl<'src> Parser<'src> {
     }
 
     fn parse(&mut self, expected: TokenKind) -> Result<()> {
-        let token = self.token();
-        if token.kind == expected {
+        if self.token.kind == expected {
             self.advance();
             return Ok(());
         }
 
-        Err(ParseError::UnexpectedToken(token, expected.into()))
+        Err(ParseError::UnexpectedToken(self.token, expected.into()))
     }
 
+    // FIXME: likely no longer correct
     fn prev_token(&self) -> Option<Token> {
         Some(self.tokens[self.index.checked_sub(1)?])
     }
 
-    fn token(&self) -> Token {
-        self.tokens[self.index]
+    // FIXME: Temporary and bad name
+    fn modify_in_place(&mut self, token: TokenKind) {
+        // FIXME: Also update span.
+        self.token.kind = token;
     }
 
-    fn look_ahead<T: Default>(&self, amount: usize, pred: impl FnOnce(Token) -> T) -> T {
+    fn look_ahead<T: Default>(&self, amount: usize, inspect: impl FnOnce(Token) -> T) -> T {
         if let Some(index) = self.index.checked_add(amount)
             && let Some(&token) = self.tokens.get(index)
         {
-            pred(token)
+            inspect(token)
         } else {
             T::default()
         }
@@ -290,12 +292,23 @@ impl<'src> Parser<'src> {
 
     fn advance(&mut self) {
         self.index += 1;
+        if let Some(&token) = self.tokens.get(self.index) {
+            self.token = token;
+        }
     }
 
     fn source(&self, span: Span) -> &'src str {
         &self.source[span.range()]
     }
+
+    fn probe<T>(&mut self, parse: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
+        let mut this = Self { ..*self };
+        parse(&mut this).inspect(|_| *self = this)
+    }
 }
+
+impl !Clone for Parser<'_, '_> {}
+impl !Copy for Parser<'_, '_> {}
 
 #[derive(Clone, Copy)]
 enum MacroCallPolicy {
@@ -468,6 +481,7 @@ impl TokenKind {
             Self::OpenSquareBracket => "`[`",
             Self::Percent => "`%`",
             Self::Plus => "`+`",
+            Self::PlusEquals => "`+=`",
             Self::QuestionMark => "`?`",
             Self::Semicolon => "`;`",
             Self::SingleAmpersand => "`&`",

@@ -1,7 +1,7 @@
 use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse a sequence of items.
     ///
     /// # Grammar
@@ -49,7 +49,7 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
 
-        let start = self.token().span;
+        let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
@@ -57,8 +57,7 @@ impl<'src> Parser<'src> {
         let vis = self.parse_visibility()?;
 
         let kind = 'kind: {
-            let token = self.token();
-            if let Some(ident) = self.as_ident(token) {
+            if let Some(ident) = self.as_ident(self.token) {
                 match ident {
                     "const" => {
                         if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
@@ -81,16 +80,17 @@ impl<'src> Parser<'src> {
                     "extern" => {
                         self.advance();
 
-                        let token = self.token();
-                        let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
+                        let abi = {
+                            let token = self.token;
+                            self.consume(TokenKind::StrLit).then(|| self.source(token.span))
+                        };
 
-                        let token = self.token();
-                        match token.kind {
+                        match self.token.kind {
                             TokenKind::OpenCurlyBracket => {
                                 self.advance();
                                 break 'kind self.fin_parse_extern_block_item(abi);
                             }
-                            TokenKind::Ident => match self.source(token.span) {
+                            TokenKind::Ident => match self.source(self.token.span) {
                                 "crate" => {
                                     self.advance();
 
@@ -111,7 +111,7 @@ impl<'src> Parser<'src> {
                         }
 
                         break 'kind Err(ParseError::UnexpectedToken(
-                            token,
+                            self.token,
                             one_of![
                                 TokenKind::OpenCurlyBracket,
                                 ExpectedFragment::Raw("crate"),
@@ -182,10 +182,9 @@ impl<'src> Parser<'src> {
                         if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
                             self.advance();
 
-                            let token = self.token();
                             // FIXME: Doesn't account for `unsafe extern ...` (extern block, fn)
                             // FIXME: `unsafe impl`
-                            match self.as_ident(token) {
+                            match self.as_ident(self.token) {
                                 Some("fn") => {
                                     self.advance();
                                     break 'kind self.fin_parse_fn_item(
@@ -204,7 +203,7 @@ impl<'src> Parser<'src> {
                                 }
                                 _ => {
                                     return Err(ParseError::UnexpectedToken(
-                                        token,
+                                        self.token,
                                         one_of![
                                             ExpectedFragment::Raw("fn"),
                                             ExpectedFragment::Raw("trait"),
@@ -227,7 +226,7 @@ impl<'src> Parser<'src> {
                 break 'kind self.parse_macro_call_item();
             }
 
-            Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Item))
+            Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
         }?;
 
         let span = start.to(self.prev_token().map(|token| token.span));
@@ -242,7 +241,7 @@ impl<'src> Parser<'src> {
             return true;
         }
 
-        let Some(ident) = self.as_ident(self.token()) else { return false };
+        let Some(ident) = self.as_ident(self.token) else { return false };
 
         match ident {
             "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
@@ -323,8 +322,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_variant_kind(&mut self) -> Result<ast::VariantKind<'src>> {
-        let token = self.token();
-        Ok(match token.kind {
+        Ok(match self.token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 let fields = self.fin_parse_delimited_sequence(
@@ -466,45 +464,42 @@ impl<'src> Parser<'src> {
         self.fin_parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let first = std::mem::take(&mut first);
 
-            let pat = this.parse_pat()?;
+            if let Some((ref_, mut_)) = this.probe(|this| {
+                let ref_ = this
+                    .consume(TokenKind::SingleAmpersand)
+                    .then(|| this.consume_common_lifetime());
+                let mut_ = this.parse_mutability();
+                this.parse_ident_where("self").ok()?;
+                Some((ref_, mut_))
+            }) {
+                if !first {
+                    return Err(ParseError::MisplacedReceiver);
+                }
 
-            // FIXME: Extract into "extract_shorthand_self"
-            let (pat, ty) = match pat {
-                // FIXME: "mut self" is actually impossible, we should parse the receiver manually.
-                ast::Pat::Ident(ast::IdentPat {
-                    mut_: _,
+                let pat = ast::Pat::Ident(ast::IdentPat {
+                    mut_: match ref_ {
+                        Some(_) => ast::Mutability::Not,
+                        None => mut_,
+                    },
                     by_ref: ast::ByRef::No,
                     ident: "self",
-                }) => {
-                    if !first {
-                        return Err(ParseError::MisplacedReceiver);
-                    }
-                    let ty = if this.consume(TokenKind::SingleColon) {
-                        this.parse_ty()?
-                    } else {
-                        ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")))
-                    };
-                    (pat, ty)
-                }
-                // FIXME: We don't support `&'a self` right now, oof!
-                ast::Pat::Borrow(
-                    mut_,
-                    deref!(pat @ ast::Pat::Ident(ast::IdentPat { mut_: _, by_ref: ast::ByRef::No, ident: "self" })),
-                ) => {
-                    if !first {
-                        return Err(ParseError::MisplacedReceiver);
-                    }
-                    let ty = ast::Ty::Ref(
-                        None,
-                        mut_,
-                        Box::new(ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")))),
-                    );
-                    (pat, ty)
-                }
+                });
 
-                // FIXME: Optional if in trait && edition==2015
-                pat => (pat, this.parse_ty_annotation()?),
+                let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
+
+                let ty = match ref_ {
+                    Some(lt) => ast::Ty::Ref(lt?, mut_, Box::new(self_ty())),
+                    None => match this.consume(TokenKind::SingleColon) {
+                        true => this.parse_ty()?,
+                        false => self_ty(),
+                    },
+                };
+
+                return Ok(ast::FnParam { pat, ty });
             };
+
+            let pat = this.parse_pat()?;
+            let ty = this.parse_ty_annotation()?;
 
             Ok(ast::FnParam { pat, ty })
         })
@@ -789,7 +784,7 @@ impl<'src> Parser<'src> {
         match policy {
             MacroCallPolicy::Allowed => self.begins_path(),
             MacroCallPolicy::Forbidden => {
-                self.as_ident(self.token()).is_some_and(|ident| ident == "macro_rules")
+                self.as_ident(self.token).is_some_and(|ident| ident == "macro_rules")
                     && self.look_ahead(1, |token| token.kind == TokenKind::SingleBang)
                     && self.look_ahead(2, |token| self.as_common_ident(token).is_some())
             }
@@ -828,7 +823,7 @@ impl<'src> Parser<'src> {
 
         // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
         // can give better errors on invalid vis restrictions in the common cases.
-        if self.token().kind == TokenKind::OpenRoundBracket
+        if self.token.kind == TokenKind::OpenRoundBracket
             && let Some(ident) = self.look_ahead(1, |token| self.as_ident(token))
         {
             let path = match ident {
@@ -856,6 +851,6 @@ impl<'src> Parser<'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        self.as_ident(self.token()).is_some_and(|ident| ident == "pub")
+        self.as_ident(self.token).is_some_and(|ident| ident == "pub")
     }
 }

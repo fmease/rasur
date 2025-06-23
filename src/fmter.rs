@@ -13,12 +13,22 @@ mod ty;
 
 pub(crate) struct Cfg {
     pub(crate) indent: usize,
+    pub(crate) skip_marker: SkipMarker,
 }
 
 impl Default for Cfg {
     fn default() -> Self {
-        Self { indent: 4 }
+        Self { indent: 4, skip_marker: SkipMarker::default() }
     }
+}
+
+#[derive(Default)]
+pub(crate) enum SkipMarker {
+    None,
+    #[default]
+    All,
+    Rustfmt,
+    Rasur,
 }
 
 macro fmt($cx:ident, $($arg:tt)*) {
@@ -56,18 +66,28 @@ impl<'src> Cx<'src> {
         _ = self.output.write_fmt(format_args!("{0:1$}", "", self.indent));
     }
 
-    fn skip(attrs: &[ast::Attr<'_>]) -> bool {
+    fn skip(&self, attrs: &[ast::Attr<'_>]) -> bool {
+        if let SkipMarker::None = self.cfg.skip_marker {
+            return false;
+        }
+
         // FIXME: Look into cfg_attrs, too
-        // FIXME: Make tool mod config'able: "rasur"|"rustfmt"|both
         // FIXME: Support rustfmt_skip or whatever that legacy attr is called
         attrs.iter().any(|attr| {
-            matches!(
-                &*attr.path.segs,
-                [
-                    ast::PathSeg { ident: "rustfmt", args: () },
-                    ast::PathSeg { ident: "skip", args: () }
-                ]
-            ) && matches!(attr.kind, ast::AttrKind::Unit)
+            let ast::AttrKind::Unit = attr.kind else { return false };
+
+            let &[ast::PathSeg { ident: tool, args: () }, ast::PathSeg { ident: "skip", args: () }] =
+                attr.path.segs.as_slice()
+            else {
+                return false;
+            };
+
+            match self.cfg.skip_marker {
+                SkipMarker::None => unreachable!(),
+                SkipMarker::All => matches!(tool, "rustfmt" | "rasur"),
+                SkipMarker::Rustfmt => tool == "rustfmt",
+                SkipMarker::Rasur => tool == "rasur",
+            }
         })
     }
 }
@@ -76,7 +96,7 @@ impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, items, span } = self;
 
-        if Cx::skip(&attrs) {
+        if cx.skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -157,6 +177,7 @@ impl Fmt for ast::Token {
             ast::TokenKind::OpenSquareBracket => "[",
             ast::TokenKind::Percent => "%",
             ast::TokenKind::Plus => "+",
+            ast::TokenKind::PlusEquals => "+=",
             ast::TokenKind::QuestionMark => "?",
             ast::TokenKind::Semicolon => ";",
             ast::TokenKind::SingleAmpersand => "&",

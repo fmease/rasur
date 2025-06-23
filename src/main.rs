@@ -2,16 +2,19 @@
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
 #![feature(if_let_guard)]
+#![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
+#![feature(negative_impls)]
 #![feature(super_let)]
 // Lints
-#![expect(incomplete_features)] // deref_patterns
+#![expect(incomplete_features, reason = "deref_patterns")]
 #![deny(unused_must_use, rust_2018_idioms)]
 #![deny(clippy::all, clippy::pedantic)]
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::match_bool)]
 #![allow(clippy::option_option)]
 
+use Default::default;
 use edition::Edition;
 use std::{path::PathBuf, process::ExitCode};
 
@@ -44,7 +47,7 @@ fn try_main() -> Result<(), ()> {
                         eprintln!("error: missing argument to `--edition`");
                     })?;
                     if opts.edition.is_some() {
-                        eprintln!("error: flag can't be passed multiple times");
+                        eprintln!("error: `--edition` can't be passed multiple times");
                         return Err(());
                     }
                     opts.edition = Some(match edition.as_encoded_bytes() {
@@ -60,6 +63,26 @@ fn try_main() -> Result<(), ()> {
                     });
                 }
                 b"fmt" => opts.fmt = true,
+                // FIXME: reject unless --fmt set anytime
+                b"skip-marker" => {
+                    let skip_marker = args.next().ok_or_else(|| {
+                        eprintln!("error: missing argument to `--skip-marker`");
+                    })?;
+                    if opts.skip_marker.is_some() {
+                        eprintln!("error: `--skip-marker` can't be passed multiple times");
+                        return Err(());
+                    }
+                    opts.skip_marker = Some(match skip_marker.as_encoded_bytes() {
+                        b"none" => fmter::SkipMarker::None,
+                        b"all" => fmter::SkipMarker::All,
+                        b"rustfmt" => fmter::SkipMarker::Rustfmt,
+                        b"rasur" => fmter::SkipMarker::Rasur,
+                        _ => {
+                            eprintln!("error: invalid skip marker `{}`", skip_marker.display());
+                            return Err(());
+                        }
+                    });
+                }
                 _ => {
                     eprintln!("error: unknown flag `{}`", arg.display());
                     return Err(());
@@ -72,6 +95,11 @@ fn try_main() -> Result<(), ()> {
             }
             opts.path = Some(PathBuf::from(arg));
         }
+    }
+
+    if !opts.fmt && opts.skip_marker.is_some() {
+        eprintln!("`--skip-marker` requires `--fmt` to be set");
+        return Err(());
     }
 
     let path = opts.path.ok_or_else(|| eprintln!("error: missing required path argument"))?;
@@ -93,7 +121,7 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = parser::parse(tokens, &source, opts.edition.unwrap_or_default())
+    let file = parser::parse(&tokens, &source, opts.edition.unwrap_or_default())
         .map_err(|error| error.print(&source, &path))?;
 
     if opts.emit_ast {
@@ -101,7 +129,11 @@ fn try_main() -> Result<(), ()> {
     }
 
     if opts.fmt {
-        let result = fmter::fmt(file, &source, fmter::Cfg::default());
+        let result = fmter::fmt(
+            file,
+            &source,
+            fmter::Cfg { skip_marker: opts.skip_marker.unwrap_or_default(), ..default() },
+        );
         println!("{result}");
     }
 
@@ -116,4 +148,5 @@ struct Opts {
     emit_ast: bool,
     lex_only: bool,
     fmt: bool,
+    skip_marker: Option<fmter::SkipMarker>,
 }

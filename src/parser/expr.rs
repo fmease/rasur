@@ -2,7 +2,7 @@ use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
 use std::cmp::Ordering;
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse an expression.
     ///
     /// # Grammar
@@ -55,13 +55,12 @@ impl<'src> Parser<'src> {
             return true;
         }
 
-        let token = self.token();
-        match token.kind {
+        match self.token.kind {
             #[rustfmt::skip]
             TokenKind::Ident => {
                 // We can ignore `let` from let-exprs.
                 matches!(
-                    self.source(token.span),
+                    self.source(self.token.span),
                     | "_" | "const" | "continue" | "break" | "false" | "for" | "if"
                     | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
@@ -90,8 +89,7 @@ impl<'src> Parser<'src> {
         structs: StructPolicy,
         lets: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let token = self.token();
-        let op = match token.kind {
+        let op = match self.token.kind {
             TokenKind::SingleHyphen => Some(Op::Neg),
             TokenKind::SingleBang => Some(Op::Not),
             TokenKind::Asterisk => Some(Op::Deref),
@@ -109,8 +107,7 @@ impl<'src> Parser<'src> {
         }?;
 
         loop {
-            let token = self.token();
-            let op = match token.kind {
+            let op = match self.token.kind {
                 TokenKind::Asterisk => Op::Mul,
                 TokenKind::BangEquals => Op::Ne,
                 TokenKind::Caret => Op::BitXor,
@@ -122,12 +119,13 @@ impl<'src> Parser<'src> {
                 TokenKind::DoubleGreaterThan => Op::BitShiftRight,
                 TokenKind::DoubleLessThan => Op::BitShiftLeft,
                 TokenKind::GreaterThanEquals => Op::Ge,
-                TokenKind::Ident if let "as" = self.source(token.span) => Op::Cast,
+                TokenKind::Ident if let "as" = self.source(self.token.span) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
                 TokenKind::Percent => Op::Rem,
                 TokenKind::Plus => Op::Add,
+                TokenKind::PlusEquals => Op::AddAssign,
                 TokenKind::QuestionMark => Op::Try,
                 TokenKind::SingleAmpersand => Op::BitAnd,
                 TokenKind::SingleDot => Op::Field,
@@ -189,6 +187,7 @@ impl<'src> Parser<'src> {
     ) -> Result<ast::Expr<'src>> {
         let ast_op = match op {
             Op::Add => ast::BinOp::Add,
+            Op::AddAssign => ast::BinOp::AddAssign,
             Op::And => ast::BinOp::And,
             Op::Assign => ast::BinOp::Assign,
             Op::BitAnd => ast::BinOp::BitAnd,
@@ -211,13 +210,12 @@ impl<'src> Parser<'src> {
             Op::Div => ast::BinOp::Div,
             Op::Eq => ast::BinOp::Eq,
             Op::Field => {
-                let token = self.token();
-                let ident = match token.kind {
-                    TokenKind::NumLit => self.source(token.span),
-                    _ if let Some(ident) = self.as_common_ident(token) => ident,
+                let ident = match self.token.kind {
+                    TokenKind::NumLit => self.source(self.token.span),
+                    _ if let Some(ident) = self.as_common_ident(self.token) => ident,
                     _ => {
                         return Err(ParseError::UnexpectedToken(
-                            token,
+                            self.token,
                             one_of![ExpectedFragment::CommonIdent, TokenKind::NumLit],
                         ));
                     }
@@ -302,16 +300,15 @@ impl<'src> Parser<'src> {
         structs: StructPolicy,
         lets: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let token = self.token();
-        match token.kind {
-            TokenKind::Ident => match self.source(token.span) {
+        match self.token.kind {
+            TokenKind::Ident => match self.source(self.token.span) {
                 "_" => {
                     self.advance();
                     return Ok(ast::Expr::Wildcard);
                 }
                 "break" => {
                     self.advance();
-                    let label = self.consume_lifetime()?.map(|ast::Lifetime(label)| label);
+                    let label = self.consume_common_lifetime()?.map(|ast::Lifetime(label)| label);
                     let expr = self
                         .begins_expr()
                         // NOTE: Yes indeed, allowed! Plz add test for this!
@@ -352,13 +349,12 @@ impl<'src> Parser<'src> {
                     let consequent = self.parse_block_expr()?;
 
                     let alternate = if self.consume_ident_if("else") {
-                        let token = self.token();
-                        match token.kind {
+                        match self.token.kind {
                             TokenKind::OpenCurlyBracket => {}
-                            TokenKind::Ident if let "if" = self.source(token.span) => {}
+                            TokenKind::Ident if let "if" = self.source(self.token.span) => {}
                             _ => {
                                 return Err(ParseError::UnexpectedToken(
-                                    token,
+                                    self.token,
                                     one_of![
                                         TokenKind::OpenCurlyBracket,
                                         ExpectedFragment::Raw("if")
@@ -411,7 +407,7 @@ impl<'src> Parser<'src> {
                             self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
 
                         if body.has_trailing_block(ast::TrailingBlockMode::Match)
-                            || self.token().kind == DELIMITER
+                            || self.token.kind == DELIMITER
                         {
                             self.consume(TokenKind::Comma);
                         } else {
@@ -453,12 +449,12 @@ impl<'src> Parser<'src> {
                 _ => {}
             },
             TokenKind::NumLit => {
-                let lit = self.source(token.span);
+                let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::Expr::NumLit(lit));
             }
             TokenKind::StrLit => {
-                let lit = self.source(token.span);
+                let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::Expr::StrLit(lit));
             }
@@ -511,8 +507,7 @@ impl<'src> Parser<'src> {
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
-            let token = self.token();
-            match token.kind {
+            match self.token.kind {
                 TokenKind::SingleBang => {
                     let ast::ExtPath { self_ty: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
@@ -555,7 +550,7 @@ impl<'src> Parser<'src> {
             return Ok(ast::Expr::Path(Box::new(path)));
         }
 
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Expr))
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Expr))
     }
 
     pub(super) fn parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
@@ -614,6 +609,7 @@ enum LetPolicy {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Op {
     Add,
+    AddAssign,
     And,
     Assign,
     BitAnd,
@@ -651,7 +647,7 @@ impl Op {
         Some(match self {
             Self::Add | Self::Sub => Level::SumLeft,
             Self::And => Level::AndLeft,
-            Self::Assign => Level::AssignLeft,
+            Self::Assign | Self::AddAssign => Level::AssignLeft,
             Self::BitAnd => Level::BitAndLeft,
             Self::BitOr => Level::BitOrLeft,
             Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftLeft,
@@ -674,7 +670,7 @@ impl Op {
         Some(match self {
             Self::Add | Self::Sub => Level::SumRight,
             Self::And => Level::AndRight,
-            Self::Assign => Level::AssignRight,
+            Self::Assign | Self::AddAssign => Level::AssignRight,
             Self::BitAnd => Level::BitAndRight,
             Self::BitOr => Level::BitOrRight,
             Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,

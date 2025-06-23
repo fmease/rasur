@@ -1,7 +1,7 @@
 use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse a type.
     ///
     /// # Grammar
@@ -29,9 +29,8 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
-        let token = self.token();
-        match token.kind {
-            TokenKind::Ident => match self.source(token.span) {
+        match self.token.kind {
+            TokenKind::Ident => match self.source(self.token.span) {
                 "_" => {
                     self.advance();
                     return Ok(ast::Ty::Inferred);
@@ -66,15 +65,14 @@ impl<'src> Parser<'src> {
             }
             TokenKind::SingleAmpersand => {
                 self.advance();
-                let lt = self.consume_lifetime()?;
+                let lt = self.consume_common_lifetime()?;
                 let mut_ = self.parse_mutability();
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)));
             }
             TokenKind::Asterisk => {
                 self.advance();
-                let token = self.token();
-                let mut_ = match self.as_ident(token) {
+                let mut_ = match self.as_ident(self.token) {
                     Some("mut") => {
                         self.advance();
                         ast::Mutability::Mut
@@ -85,7 +83,7 @@ impl<'src> Parser<'src> {
                     }
                     _ => {
                         return Err(ParseError::UnexpectedToken(
-                            token,
+                            self.token,
                             one_of![ExpectedFragment::Raw("mut"), ExpectedFragment::Raw("const")],
                         ));
                     }
@@ -130,7 +128,7 @@ impl<'src> Parser<'src> {
             return Ok(ast::Ty::Path(Box::new(path)));
         }
 
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Ty))
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Ty))
     }
 
     pub(super) fn begins_ty(&self) -> bool {
@@ -140,9 +138,8 @@ impl<'src> Parser<'src> {
             return true;
         }
 
-        let token = self.token();
-        match token.kind {
-            TokenKind::Ident => matches!(self.source(token.span), "_" | "dyn" | "fn" | "impl"),
+        match self.token.kind {
+            TokenKind::Ident => matches!(self.source(self.token.span), "_" | "dyn" | "fn" | "impl"),
             TokenKind::SingleBang
             | TokenKind::SingleAmpersand
             | TokenKind::Asterisk
@@ -190,39 +187,39 @@ impl<'src> Parser<'src> {
         const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.fin_parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
-            let token = this.token();
-            let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.consume_lifetime()? {
-                let bounds = if this.consume(TokenKind::SingleColon) {
-                    this.parse_outlives_bounds()?
+            let (binder, kind) =
+                if let Some(ast::Lifetime(lifetime)) = this.consume_common_lifetime()? {
+                    let bounds = if this.consume(TokenKind::SingleColon) {
+                        this.parse_outlives_bounds()?
+                    } else {
+                        Vec::new()
+                    };
+                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
                 } else {
-                    Vec::new()
+                    match this.as_ident(this.token) {
+                        Some("const") => {
+                            this.advance();
+                            let binder = this.parse_common_ident()?;
+                            let ty = this.parse_ty_annotation()?;
+                            (binder, ast::GenericParamKind::Const(ty))
+                        }
+                        Some(ident) if this.ident_is_common(ident) => {
+                            this.advance();
+                            let bounds = if this.consume(TokenKind::SingleColon) {
+                                this.parse_bounds()?
+                            } else {
+                                Vec::new()
+                            };
+                            (ident, ast::GenericParamKind::Ty(bounds))
+                        }
+                        _ => {
+                            return Err(ParseError::UnexpectedToken(
+                                this.token,
+                                one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
+                            ));
+                        }
+                    }
                 };
-                (lifetime, ast::GenericParamKind::Lifetime(bounds))
-            } else {
-                match this.as_ident(token) {
-                    Some("const") => {
-                        this.advance();
-                        let binder = this.parse_common_ident()?;
-                        let ty = this.parse_ty_annotation()?;
-                        (binder, ast::GenericParamKind::Const(ty))
-                    }
-                    Some(ident) if this.ident_is_common(ident) => {
-                        this.advance();
-                        let bounds = if this.consume(TokenKind::SingleColon) {
-                            this.parse_bounds()?
-                        } else {
-                            Vec::new()
-                        };
-                        (ident, ast::GenericParamKind::Ty(bounds))
-                    }
-                    _ => {
-                        return Err(ParseError::UnexpectedToken(
-                            token,
-                            one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
-                        ));
-                    }
-                }
-            };
 
             Ok(ast::GenericParam { binder, kind })
         })
@@ -268,19 +265,19 @@ impl<'src> Parser<'src> {
             let bounds = self.parse_bounds()?;
             return Ok(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
         }
-        if let Some(lt) = self.consume_lifetime()? {
+        if let Some(lt) = self.consume_common_lifetime()? {
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_outlives_bounds()?;
             return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
         }
 
-        Err(ParseError::UnexpectedToken(self.token(), ExpectedFragment::Predicate))
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Predicate))
     }
 
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        self.begins_ty() || matches!(self.token().kind, TokenKind::Lifetime)
+        self.begins_ty() || matches!(self.token.kind, TokenKind::Lifetime)
     }
 
     /// Parse a bounds annotation if available.
@@ -317,15 +314,14 @@ impl<'src> Parser<'src> {
             return Ok(ast::Bound::Trait(mods, path));
         }
 
-        let token = self.token();
-        if let Some(lt) = self.consume_lifetime()? {
+        if let Some(lt) = self.consume_common_lifetime()? {
             if let ast::TraitBoundModifiers::NONE = mods {
                 return Ok(ast::Bound::Outlives(lt));
             }
             return Err(ParseError::ModifierOnOutlivesBound);
         }
 
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Bound))
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Bound))
     }
 
     fn begins_bound(&self) -> bool {
@@ -333,13 +329,13 @@ impl<'src> Parser<'src> {
 
         self.begins_trait_bound_modifiers()
             || self.begins_path()
-            || matches!(self.token().kind, TokenKind::Lifetime)
+            || matches!(self.token.kind, TokenKind::Lifetime)
     }
 
     fn parse_trait_bound_modifiers(&mut self) -> ast::TraitBoundModifiers {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
-        let polarity = match self.token().kind {
+        let polarity = match self.token.kind {
             TokenKind::SingleBang => {
                 self.advance();
                 ast::BoundPolarity::Negative
@@ -357,13 +353,13 @@ impl<'src> Parser<'src> {
     fn begins_trait_bound_modifiers(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
-        matches!(self.token().kind, TokenKind::SingleBang | TokenKind::QuestionMark)
+        matches!(self.token.kind, TokenKind::SingleBang | TokenKind::QuestionMark)
     }
 
     fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
         let mut bounds = Vec::new();
 
-        while let Some(lt) = self.consume_lifetime()? {
+        while let Some(lt) = self.consume_common_lifetime()? {
             bounds.push(lt);
 
             if !self.consume(TokenKind::Plus) {

@@ -92,6 +92,7 @@ pub(crate) enum UnOp {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum BinOp {
     Add,
+    AddAssign,
     And,
     Assign,
     BitAnd,
@@ -116,6 +117,7 @@ impl BinOp {
     pub(crate) fn symbol(self) -> &'static str {
         match self {
             Self::Add => "+",
+            Self::AddAssign => "+=",
             Self::And => "&&",
             Self::Assign => "=",
             Self::BitAnd => "&",

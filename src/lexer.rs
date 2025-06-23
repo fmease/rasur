@@ -37,6 +37,7 @@ pub(crate) enum TokenKind {
     OpenSquareBracket,
     Percent,
     Plus,
+    PlusEquals,
     QuestionMark,
     Semicolon,
     SingleAmpersand,
@@ -172,7 +173,14 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 '?' => self.add(TokenKind::QuestionMark, start),
-                '+' => self.add(TokenKind::Plus, start),
+                '+' => {
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        self.add(TokenKind::PlusEquals, start);
+                    } else {
+                        self.add(TokenKind::Plus, start);
+                    }
+                }
                 '*' => self.add(TokenKind::Asterisk, start),
                 '-' => {
                     if let Some('>') = self.peek() {

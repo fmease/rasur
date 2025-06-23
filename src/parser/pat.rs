@@ -1,7 +1,7 @@
 use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind};
 use crate::{ast, parser::one_of};
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse a pattern.
     ///
     /// # Grammar
@@ -22,17 +22,15 @@ impl<'src> Parser<'src> {
     /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// ```
     pub(super) fn parse_pat(&mut self) -> Result<ast::Pat<'src>> {
-        let token = self.token();
-        match token.kind {
-            TokenKind::Ident => match self.source(token.span) {
+        match self.token.kind {
+            TokenKind::Ident => match self.source(self.token.span) {
                 "_" => {
                     self.advance();
                     return Ok(ast::Pat::Wildcard);
                 }
                 "mut" => {
                     self.advance();
-                    let token = self.token();
-                    return match self.as_ident(token) {
+                    return match self.as_ident(self.token) {
                         Some("ref") => {
                             self.advance();
                             self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
@@ -46,7 +44,7 @@ impl<'src> Parser<'src> {
                             }))
                         }
                         _ => Err(ParseError::UnexpectedToken(
-                            token,
+                            self.token,
                             one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent,],
                         )),
                     };
@@ -58,12 +56,12 @@ impl<'src> Parser<'src> {
                 _ => {}
             },
             TokenKind::NumLit => {
-                let lit = self.source(token.span);
+                let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::Pat::NumLit(lit));
             }
             TokenKind::StrLit => {
-                let lit = self.source(token.span);
+                let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::Pat::StrLit(lit));
             }
@@ -88,8 +86,7 @@ impl<'src> Parser<'src> {
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
 
-            let token = self.token();
-            match token.kind {
+            match self.token.kind {
                 TokenKind::SingleBang => {
                     let ast::ExtPath { self_ty: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
@@ -125,7 +122,7 @@ impl<'src> Parser<'src> {
             });
         }
 
-        Err(ParseError::UnexpectedToken(token, ExpectedFragment::Pat))
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Pat))
     }
 
     fn fin_parse_by_ref_ident_pat(&mut self, mut_: ast::Mutability) -> Result<ast::Pat<'src>> {

@@ -1,7 +1,7 @@
 use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind};
 use crate::ast;
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse a statement.
     ///
     /// # Grammar
@@ -36,7 +36,7 @@ impl<'src> Parser<'src> {
             let expr = self.parse_expr()?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if expr.has_trailing_block(ast::TrailingBlockMode::Normal)
-                || self.token().kind == delimiter
+                || self.token.kind == delimiter
             {
                 match self.consume(TokenKind::Semicolon) {
                     true => ast::Semicolon::Yes,
@@ -49,13 +49,12 @@ impl<'src> Parser<'src> {
             return Ok(ast::Stmt::Expr(expr, semi));
         }
 
-        let token = self.token();
-        match token.kind {
+        match self.token.kind {
             TokenKind::Semicolon => {
                 self.advance();
                 Ok(ast::Stmt::Empty)
             }
-            _ => Err(ParseError::UnexpectedToken(token, ExpectedFragment::Stmt)),
+            _ => Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Stmt)),
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::{ParseError, Parser, Result, TokenKind, one_of};
 use crate::ast;
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'_, 'src> {
     /// Parse a sequence of attributes of the given style.
     ///
     /// # Grammar
@@ -17,7 +17,7 @@ impl<'src> Parser<'src> {
 
         let mut attrs = Vec::new();
 
-        while self.token().kind == TokenKind::Hash {
+        while self.token.kind == TokenKind::Hash {
             match style {
                 ast::AttrStyle::Outer => self.advance(),
                 // We don't expect(Bang) here because the caller may want to
@@ -40,14 +40,13 @@ impl<'src> Parser<'src> {
     pub(super) fn begins_outer_attr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_attr`.
 
-        self.token().kind == TokenKind::Hash
+        self.token.kind == TokenKind::Hash
     }
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
         let path = self.parse_path::<ast::GenericArgsPolicy::Forbidden>()?;
-        let token = self.token();
-        let kind = match token.kind {
+        let kind = match self.token.kind {
             TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
             // FIXME: Admits `==`.
             TokenKind::SingleEquals => {
@@ -75,7 +74,7 @@ impl<'src> Parser<'src> {
             }
             _ => {
                 return Err(ParseError::UnexpectedToken(
-                    token,
+                    self.token,
                     one_of![
                         TokenKind::CloseSquareBracket,
                         TokenKind::SingleEquals,

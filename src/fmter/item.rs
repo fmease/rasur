@@ -5,7 +5,7 @@ impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if Cx::skip(&attrs) {
+        if cx.skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -214,7 +214,7 @@ impl Fmt for ast::ExternItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if Cx::skip(&attrs) {
+        if cx.skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -495,7 +495,7 @@ impl Fmt for ast::AssocItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if Cx::skip(&attrs) {
+        if cx.skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
