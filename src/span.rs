@@ -20,6 +20,10 @@ impl Span {
         Self { end: other.into().unwrap_or(self).end, ..self }
     }
 
+    pub(crate) fn until(self, other: Span) -> Span {
+        Self { end: other.start, ..self }
+    }
+
     pub(crate) fn range(self) -> Range<usize> {
         self.start.0 as usize..self.end.0 as usize
     }

@@ -69,8 +69,7 @@ impl Fmt for ast::Expr<'_> {
             Self::Match(expr) => expr.fmt(cx),
             Self::While(expr) => expr.fmt(cx),
             Self::Let(expr) => expr.fmt(cx),
-            Self::BoolLit(lit) => fmt!(cx, "{lit}"),
-            Self::NumLit(lit) | Self::StrLit(lit) => fmt!(cx, "{lit}"),
+            Self::Lit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, expr) => {
                 fmt!(cx, "&");
                 mut_.trailing_space().fmt(cx);
@@ -99,6 +98,7 @@ impl Fmt for ast::Expr<'_> {
                 Punctuated::new(args, ", ").fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::MethodCall(call) => call.fmt(cx),
             Self::Index(expr, index) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
@@ -230,6 +230,21 @@ impl Fmt for ast::StructExprField<'_> {
     }
 }
 
+impl Fmt for ast::MethodCallExpr<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { receiver, seg, args } = self;
+
+        // FIXME: Less parens
+        fmt!(cx, "(");
+        receiver.fmt(cx);
+        fmt!(cx, ").");
+        seg.fmt(cx);
+        fmt!(cx, "(");
+        Punctuated::new(args, ", ").fmt(cx);
+        fmt!(cx, ")");
+    }
+}
+
 impl Fmt for ast::ClosureExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { params, ret_ty, body } = self;
@@ -310,5 +325,15 @@ impl Fmt for ast::LetExpr<'_> {
         pat.fmt(cx);
         fmt!(cx, " = ");
         expr.fmt(cx);
+    }
+}
+
+impl Fmt for ast::Lit<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Bool(lit) => fmt!(cx, "{lit}"),
+            Self::Char(lit) => fmt!(cx, "{lit}"),
+            Self::Num(lit) | Self::Str(lit) => fmt!(cx, "{lit}"),
+        }
     }
 }

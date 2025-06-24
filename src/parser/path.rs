@@ -225,12 +225,18 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::NumLit(lit));
+                return Ok(ast::Expr::Lit(ast::Lit::Num(lit)));
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::StrLit(lit));
+                return Ok(ast::Expr::Lit(ast::Lit::Str(lit)));
+            }
+            TokenKind::CharLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                // FIXME: Validate the char lit.
+                return Ok(ast::Expr::Lit(ast::Lit::Char(lit)));
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
@@ -239,11 +245,11 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Ident => match self.source(self.token.span) {
                 "false" => {
                     self.advance();
-                    return Ok(ast::Expr::BoolLit(false));
+                    return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
                 }
                 "true" => {
                     self.advance();
-                    return Ok(ast::Expr::BoolLit(true));
+                    return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
                 }
                 _ => {}
             },
@@ -259,7 +265,10 @@ impl<'src> Parser<'_, 'src> {
 
         // FIXME: Leading dash (unary minus)
         match self.token.kind {
-            TokenKind::OpenCurlyBracket | TokenKind::StrLit | TokenKind::NumLit => true,
+            TokenKind::OpenCurlyBracket
+            | TokenKind::StrLit
+            | TokenKind::NumLit
+            | TokenKind::CharLit => true,
             TokenKind::Ident => matches!(self.source(self.token.span), "false" | "true"),
             _ => false,
         }

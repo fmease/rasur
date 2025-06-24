@@ -12,6 +12,7 @@ pub(crate) enum TokenKind {
     At,
     BangEquals,
     Caret,
+    CharLit,
     CloseCurlyBracket,
     CloseRoundBracket,
     CloseSquareBracket,
@@ -111,6 +112,10 @@ impl<'src> Lexer<'src> {
                         }
                     }
                 }
+                'b' if self.peek() == Some('\'') => {
+                    self.advance();
+                    self.fin_lex_char_lit(start);
+                }
                 'a'..='z' | 'A'..='Z' | '_' => {
                     while let Some(IdentMiddle![]) = self.peek() {
                         self.advance();
@@ -127,10 +132,11 @@ impl<'src> Lexer<'src> {
                     self.add(TokenKind::NumLit, start);
                 }
                 '"' => {
-                    // FIXME: Escape sequences;
+                    // FIXME: Escape sequences
                     while self.next().is_some_and(|(_, char)| char != '"') {}
 
-                    // FIXME: Smh. taint unterminated str lits (but don't fatal!)
+                    // FIXME: We currently don't mark unterminated str lits
+                    //        and the parser doesn't report them.
                     self.add(TokenKind::StrLit, start);
                 }
                 '@' => self.add(TokenKind::At, start),
@@ -252,14 +258,24 @@ impl<'src> Lexer<'src> {
                         self.add(TokenKind::SingleGreaterThan, start);
                     }
                 },
-                // FIXME: Character literals (without breaking lifetimes).
-                '\'' => {
-                    while let Some(IdentMiddle![]) = self.peek() {
+                '\'' => match self.peek() {
+                    Some(IdentMiddle![]) => {
                         self.advance();
+                        let kind = loop {
+                            match self.peek() {
+                                Some(IdentMiddle![]) => self.advance(),
+                                // FIXME: Escaped apostrophe
+                                Some('\'') => {
+                                    self.advance();
+                                    break TokenKind::CharLit;
+                                }
+                                _ => break TokenKind::Lifetime,
+                            }
+                        };
+                        self.add(kind, start);
                     }
-
-                    self.add(TokenKind::Lifetime, start);
-                }
+                    _ => self.fin_lex_char_lit(start),
+                },
                 _ => self.add(TokenKind::Error, start),
             }
         }
@@ -267,6 +283,15 @@ impl<'src> Lexer<'src> {
         self.add(TokenKind::EndOfInput, self.index());
 
         self.tokens
+    }
+
+    fn fin_lex_char_lit(&mut self, start: ByteIndex) {
+        // FIXME: Escape sequences, most importantly escaped apostrophe.
+        while self.next().is_some_and(|(_, char)| char != '\'') {}
+
+        // FIXME: We currently don't mark unterminated str lits
+        //        and the parser doesn't report them.
+        self.add(TokenKind::CharLit, start);
     }
 
     fn add(&mut self, kind: TokenKind, start: ByteIndex) {

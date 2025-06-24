@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
-use crate::ast;
+use crate::{ast, parser::path::ParseGenericArgs};
 use std::cmp::Ordering;
 
 impl<'src> Parser<'_, 'src> {
@@ -65,20 +65,21 @@ impl<'src> Parser<'_, 'src> {
                     | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
-            | TokenKind::SingleHyphen
-            | TokenKind::SingleBang
             | TokenKind::Asterisk
-            | TokenKind::SingleAmpersand
+            | TokenKind::CharLit
             | TokenKind::DoubleAmpersand
-            | TokenKind::SinglePipe
-            | TokenKind::DoublePipe
             | TokenKind::DoubleDot
             | TokenKind::DoubleDotEquals
+            | TokenKind::DoublePipe
             | TokenKind::NumLit
-            | TokenKind::StrLit
+            | TokenKind::OpenCurlyBracket
             | TokenKind::OpenRoundBracket
             | TokenKind::OpenSquareBracket
-            | TokenKind::OpenCurlyBracket => true,
+            | TokenKind::SingleAmpersand
+            | TokenKind::SingleBang
+            | TokenKind::SingleHyphen
+            | TokenKind::SinglePipe
+            | TokenKind::StrLit => true,
             _ => false,
         }
     }
@@ -196,11 +197,7 @@ impl<'src> Parser<'_, 'src> {
             Op::BitShiftRight => ast::BinOp::BitShiftRight,
             Op::BitXor => ast::BinOp::BitXor,
             Op::Call => {
-                let args = self.fin_parse_delimited_sequence(
-                    TokenKind::CloseRoundBracket,
-                    TokenKind::Comma,
-                    |this| this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden),
-                )?;
+                let args = self.fin_parse_fn_args()?;
                 return Ok(ast::Expr::Call(Box::new(left), args));
             }
             Op::Cast => {
@@ -210,18 +207,7 @@ impl<'src> Parser<'_, 'src> {
             Op::Div => ast::BinOp::Div,
             Op::Eq => ast::BinOp::Eq,
             Op::Field => {
-                let ident = match self.token.kind {
-                    TokenKind::NumLit => self.source(self.token.span),
-                    _ if let Some(ident) = self.as_common_ident(self.token) => ident,
-                    _ => {
-                        return Err(ParseError::UnexpectedToken(
-                            self.token,
-                            one_of![ExpectedFragment::CommonIdent, TokenKind::NumLit],
-                        ));
-                    }
-                };
-                self.advance();
-                return Ok(ast::Expr::Field(Box::new(left), ident));
+                return self.fin_parse_field_or_method_call_expr(left);
             }
             Op::Ge => ast::BinOp::Ge,
             Op::Gt => ast::BinOp::Gt,
@@ -258,6 +244,50 @@ impl<'src> Parser<'_, 'src> {
         let right =
             self.parse_expr_at_level(op.right_level().unwrap(), structs, LetPolicy::Forbidden)?;
         Ok(ast::Expr::BinOp(ast_op, Box::new(left), Box::new(right)))
+    }
+
+    fn fin_parse_field_or_method_call_expr(
+        &mut self,
+        left: ast::Expr<'src>,
+    ) -> Result<ast::Expr<'src>> {
+        match self.token.kind {
+            TokenKind::NumLit => {
+                let ident = self.source(self.token.span);
+                self.advance();
+                Ok(ast::Expr::Field(Box::new(left), ident))
+            }
+            _ if let Some(ident) = self.as_common_ident(self.token) => {
+                self.advance();
+                let gen_args_start = self.token.span;
+                let gen_args = ast::GenericArgsPolicy::DisambiguatedOnly::parse(self)?;
+                Ok(if self.consume(TokenKind::OpenRoundBracket) {
+                    let args = self.fin_parse_fn_args()?;
+                    ast::Expr::MethodCall(Box::new(ast::MethodCallExpr {
+                        receiver: left,
+                        seg: ast::PathSeg { ident, args: gen_args },
+                        args,
+                    }))
+                } else if gen_args.is_some() {
+                    return Err(ParseError::GenericArgsOnFieldExpr(
+                        gen_args_start.until(self.token.span),
+                    ));
+                } else {
+                    ast::Expr::Field(Box::new(left), ident)
+                })
+            }
+            _ => {
+                return Err(ParseError::UnexpectedToken(
+                    self.token,
+                    one_of![ExpectedFragment::CommonIdent, TokenKind::NumLit],
+                ));
+            }
+        }
+    }
+
+    fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
+        self.fin_parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+            this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
+        })
     }
 
     fn fin_parse_borrow_expr(
@@ -329,7 +359,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "false" => {
                     self.advance();
-                    return Ok(ast::Expr::BoolLit(false));
+                    return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
                 }
                 "for" => {
                     self.advance();
@@ -433,7 +463,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "true" => {
                     self.advance();
-                    return Ok(ast::Expr::BoolLit(true));
+                    return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
                 }
                 "unsafe" => {
                     self.advance();
@@ -451,12 +481,18 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::NumLit(lit));
+                return Ok(ast::Expr::Lit(ast::Lit::Num(lit)));
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::StrLit(lit));
+                return Ok(ast::Expr::Lit(ast::Lit::Str(lit)));
+            }
+            TokenKind::CharLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                // FIXME: Validate that the char lit only contains one scalar.
+                return Ok(ast::Expr::Lit(ast::Lit::Char(lit)));
             }
             TokenKind::SinglePipe => {
                 self.advance();

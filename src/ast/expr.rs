@@ -1,5 +1,5 @@
 use super::{
-    Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, Stmt, Ty,
+    Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, PathSeg, Stmt, Ty,
 };
 
 #[derive(Debug)]
@@ -7,7 +7,6 @@ pub(crate) enum Expr<'src> {
     Array(Vec<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(Box<BlockExpr<'src>>),
-    BoolLit(bool),
     Borrow(Mutability, Box<Expr<'src>>),
     Break(Option<&'src str>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
@@ -16,18 +15,19 @@ pub(crate) enum Expr<'src> {
     ConstBlock(Box<BlockExpr<'src>>),
     Continue,
     Field(Box<Expr<'src>>, Ident<'src>),
+    ForLoop(Box<ForLoopExpr<'src>>),
     Grouped(Box<Expr<'src>>),
     If(Box<IfExpr<'src>>),
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Let(Box<LetExpr<'src>>),
+    Lit(Lit<'src>),
     Loop(Box<BlockExpr<'src>>),
     MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     Match(Box<MatchExpr<'src>>),
-    NumLit(Ident<'src>),
+    MethodCall(Box<MethodCallExpr<'src>>),
     Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeKind),
     Return(Option<Box<Expr<'src>>>),
-    StrLit(Ident<'src>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
     Tup(Vec<Expr<'src>>),
@@ -35,7 +35,6 @@ pub(crate) enum Expr<'src> {
     UnsafeBlock(Box<BlockExpr<'src>>),
     While(Box<WhileExpr<'src>>),
     Wildcard,
-    ForLoop(Box<ForLoopExpr<'src>>),
 }
 
 impl Expr<'_> {
@@ -56,7 +55,6 @@ impl Expr<'_> {
             },
             | Self::Array(_)
             | Self::BinOp(..)
-            | Self::BoolLit(_)
             | Self::Borrow(..)
             | Self::Break(..)
             | Self::Call(..)
@@ -67,12 +65,12 @@ impl Expr<'_> {
             | Self::Grouped(_)
             | Self::Index(..)
             | Self::Let(_)
+            | Self::Lit(_)
             | Self::MacroCall(_)
-            | Self::NumLit(_)
+            | Self::MethodCall(_)
             | Self::Path(_)
             | Self::Range(..)
             | Self::Return(_)
-            | Self::StrLit(_)
             | Self::Struct(_)
             | Self::Try(_)
             | Self::Tup(_)
@@ -196,6 +194,13 @@ pub(crate) struct StructExprField<'src> {
 }
 
 #[derive(Debug)]
+pub(crate) struct MethodCallExpr<'src> {
+    pub(crate) receiver: Expr<'src>,
+    pub(crate) seg: PathSeg<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) args: Vec<Expr<'src>>,
+}
+
+#[derive(Debug)]
 pub(crate) struct ClosureExpr<'src> {
     pub(crate) params: Vec<ClosureParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
@@ -219,4 +224,13 @@ pub(crate) struct ForLoopExpr<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) expr: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Lit<'src> {
+    Bool(bool),
+    // FIXME: char
+    Char(&'src str),
+    Num(&'src str),
+    Str(&'src str),
 }

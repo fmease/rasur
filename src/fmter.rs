@@ -193,11 +193,12 @@ impl Fmt for ast::Token {
             ast::TokenKind::ThinArrow => "->",
             ast::TokenKind::TripleDot => "...",
             ast::TokenKind::WideArrow => "=>",
+            | ast::TokenKind::CharLit
+            | ast::TokenKind::Error
             | ast::TokenKind::Ident
             | ast::TokenKind::Lifetime
             | ast::TokenKind::NumLit
-            | ast::TokenKind::StrLit
-            | ast::TokenKind::Error => cx.source(self.span),
+            | ast::TokenKind::StrLit => cx.source(self.span),
         };
         fmt!(cx, "{str}");
     }

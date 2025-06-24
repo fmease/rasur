@@ -360,17 +360,17 @@ fn is_path_seg_keyword(ident: &str) -> bool {
 }
 
 pub(crate) enum ParseError {
-    UnexpectedToken(Token, ExpectedFragment),
-    // FIXME: Temporary
-    InvalidDelimiter,
-    InvalidAssocItemKind(Span),
-    InvalidExternItemKind(Span),
     ExpectedTraitFoundTy,
-    ModifierOnOutlivesBound,
+    GenericArgsOnFieldExpr(Span),
+    InvalidAssocItemKind(Span),
+    InvalidDelimiter,
+    InvalidExternItemKind(Span),
     MisplacedReceiver,
+    ModifierOnOutlivesBound,
     OpCannotBeChained(expr::Op),
-    TyRelMacroCall,
     ReservedLifetime(Span),
+    TyRelMacroCall,
+    UnexpectedToken(Token, ExpectedFragment),
 }
 
 impl ParseError {
@@ -430,6 +430,16 @@ impl ParseError {
                         .fold(true),
                 )
             }
+            Self::GenericArgsOnFieldExpr(span) => {
+                super let path = path.to_string_lossy();
+
+                lvl.title("generic args on field expression").snippet(
+                    ann::Snippet::source(source)
+                        .origin(&path)
+                        .annotation(lvl.span(span.range()))
+                        .fold(true),
+                )
+            }
         };
         let renderer = ann::Renderer::styled();
         eprintln!("{}", renderer.render(msg));
@@ -456,6 +466,7 @@ impl TokenKind {
             Self::At => "`@`",
             Self::BangEquals => "`!=`",
             Self::Caret => "`^`",
+            Self::CharLit => "char literal",
             Self::CloseCurlyBracket => "`}`",
             Self::CloseRoundBracket => "`)`",
             Self::CloseSquareBracket => "`]`",
