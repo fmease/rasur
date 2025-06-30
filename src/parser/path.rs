@@ -36,14 +36,9 @@ impl<'src> Parser<'_, 'src> {
         self.token.kind == TokenKind::DoubleColon || self.as_path_seg_ident().is_some()
     }
 
-    pub(super) fn begins_ext_path(&self) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_ext_path`.
-
-        matches!(self.token.kind, TokenKind::SingleLessThan | TokenKind::DoubleLessThan)
-            || self.begins_path()
-    }
-
     pub(super) fn parse_ext_path<A: ParseGenericArgs>(&mut self) -> Result<ast::ExtPath<'src, A>> {
+        // NOTE: To be kept in sync with `Self::begins_ext_path`.
+
         let mut path = ast::Path { segs: Vec::new() };
 
         let self_ty = if self.consume_single_less_than() {
@@ -58,7 +53,7 @@ impl<'src> Parser<'_, 'src> {
             None
         };
 
-        // FIXME: Add `<`` to list of expected tokens
+        // FIXME: Add `<` to list of expected tokens
 
         path.segs.push(self.parse_path_seg::<A>()?);
 
@@ -67,6 +62,18 @@ impl<'src> Parser<'_, 'src> {
         }
 
         Ok(ast::ExtPath { self_ty, path })
+    }
+
+    pub(super) fn begins_ext_path(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_ext_path`.
+
+        matches!(
+            self.token.kind,
+            TokenKind::SingleLessThan
+                | TokenKind::DoubleLessThan
+                | TokenKind::LessThanEquals
+                | TokenKind::DoubleLessThanEquals
+        ) || self.begins_path()
     }
 
     fn parse_path_seg<A: ParseGenericArgs>(&mut self) -> Result<ast::PathSeg<'src, A>> {
@@ -179,9 +186,14 @@ impl<'src> Parser<'_, 'src> {
             // FIXME: Add delimiter and separator to "the list of expected tokens".
             args.push(parse(self)?);
 
+            // FIXME: This list isn't scalable
             if !matches!(
                 self.token.kind,
-                /*delimiter*/ TokenKind::SingleGreaterThan | TokenKind::DoubleGreaterThan
+                /*delimiter*/
+                TokenKind::SingleGreaterThan
+                    | TokenKind::DoubleGreaterThan
+                    | TokenKind::GreaterThanEquals
+                    | TokenKind::DoubleGreaterThanEquals
             ) {
                 self.parse(SEPARATOR)?;
             }
@@ -309,7 +321,7 @@ impl<'src> Parser<'_, 'src> {
                     Self::parse_path_tree,
                 )?)
             }
-            TokenKind::Asterisk => {
+            TokenKind::SingleAsterisk => {
                 self.advance();
                 ast::PathTreeKind::Global
             }
@@ -327,7 +339,7 @@ impl<'src> Parser<'_, 'src> {
                     one_of![
                         ExpectedFragment::PathSegIdent,
                         TokenKind::OpenCurlyBracket,
-                        TokenKind::Asterisk
+                        TokenKind::SingleAsterisk
                     ],
                 ));
             }

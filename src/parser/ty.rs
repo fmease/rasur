@@ -70,7 +70,7 @@ impl<'src> Parser<'_, 'src> {
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)));
             }
-            TokenKind::Asterisk => {
+            TokenKind::SingleAsterisk => {
                 self.advance();
                 let mut_ = match self.as_ident(self.token) {
                     Some("mut") => {
@@ -142,7 +142,7 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Ident => matches!(self.source(self.token.span), "_" | "dyn" | "fn" | "impl"),
             TokenKind::SingleBang
             | TokenKind::SingleAmpersand
-            | TokenKind::Asterisk
+            | TokenKind::SingleAsterisk
             | TokenKind::OpenSquareBracket
             | TokenKind::OpenRoundBracket => true,
             _ => false,

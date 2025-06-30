@@ -1,5 +1,5 @@
-pub(crate) use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
+use crate::token::Token;
 pub(crate) use attr::*;
 pub(crate) use expr::*;
 pub(crate) use item::*;

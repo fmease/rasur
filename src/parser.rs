@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::edition::Edition;
-use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
+use crate::token::{Token, TokenKind};
 use std::borrow::Cow;
 use std::fmt;
 use std::path::Path;
@@ -233,6 +233,14 @@ impl<'a, 'src> Parser<'a, 'src> {
                 self.modify_in_place(TokenKind::SingleLessThan);
                 true
             }
+            TokenKind::LessThanEquals => {
+                self.modify_in_place(TokenKind::SingleEquals);
+                true
+            }
+            TokenKind::DoubleLessThanEquals => {
+                self.modify_in_place(TokenKind::LessThanEquals);
+                true
+            }
             _ => false,
         }
     }
@@ -245,6 +253,14 @@ impl<'a, 'src> Parser<'a, 'src> {
             }
             TokenKind::DoubleGreaterThan => {
                 self.modify_in_place(TokenKind::SingleGreaterThan);
+                true
+            }
+            TokenKind::GreaterThanEquals => {
+                self.modify_in_place(TokenKind::SingleEquals);
+                true
+            }
+            TokenKind::DoubleGreaterThanEquals => {
+                self.modify_in_place(TokenKind::GreaterThanEquals);
                 true
             }
             _ => false,
@@ -276,8 +292,8 @@ impl<'a, 'src> Parser<'a, 'src> {
 
     // FIXME: Temporary and bad name
     fn modify_in_place(&mut self, token: TokenKind) {
-        // FIXME: Also update span.
         self.token.kind = token;
+        self.token.span.start += 1;
     }
 
     fn look_ahead<T: Default>(&self, amount: usize, inspect: impl FnOnce(Token) -> T) -> T {
@@ -452,63 +468,18 @@ impl Token {
         match (self.kind, source) {
             (TokenKind::Ident, Some(source)) => {
                 let ident = &source[self.span.range()];
-                Cow::Owned(format!("identifier `{ident}`"))
+                format!("identifier `{ident}`").into()
             }
-            _ => Cow::Borrowed(self.kind.to_diag_str()),
+            _ => self.kind.to_diag_str(),
         }
     }
 }
 
 impl TokenKind {
-    fn to_diag_str(self) -> &'static str {
-        match self {
-            Self::Asterisk => "`*`",
-            Self::At => "`@`",
-            Self::BangEquals => "`!=`",
-            Self::Caret => "`^`",
-            Self::CharLit => "char literal",
-            Self::CloseCurlyBracket => "`}`",
-            Self::CloseRoundBracket => "`)`",
-            Self::CloseSquareBracket => "`]`",
-            Self::Comma => "`,`",
-            Self::DoubleAmpersand => "`&&`",
-            Self::DoubleColon => "`::`",
-            Self::DoubleDot => "`..`",
-            Self::DoubleDotEquals => "`..=`",
-            Self::DoubleEquals => "`==`",
-            Self::DoubleGreaterThan => "`>>`",
-            Self::DoubleLessThan => "`<<`",
-            Self::DoublePipe => "`||`",
-            Self::EndOfInput => "end of input",
-            Self::Error => "error",
-            Self::GreaterThanEquals => "`>=`",
-            Self::Hash => "`#`",
-            Self::Ident => "identifier",
-            Self::LessThanEquals => "`<=`",
-            Self::Lifetime => "lifetime",
-            Self::NumLit => "number literal",
-            Self::OpenCurlyBracket => "`{`",
-            Self::OpenRoundBracket => "`(`",
-            Self::OpenSquareBracket => "`[`",
-            Self::Percent => "`%`",
-            Self::Plus => "`+`",
-            Self::PlusEquals => "`+=`",
-            Self::QuestionMark => "`?`",
-            Self::Semicolon => "`;`",
-            Self::SingleAmpersand => "`&`",
-            Self::SingleBang => "`!`",
-            Self::SingleColon => "`:`",
-            Self::SingleDot => "`.`",
-            Self::SingleEquals => "`=`",
-            Self::SingleGreaterThan => "`>`",
-            Self::SingleHyphen => "-",
-            Self::SingleLessThan => "`<`",
-            Self::SinglePipe => "`|`",
-            Self::Slash => "`/`",
-            Self::StrLit => "string literal",
-            Self::ThinArrow => "`->`",
-            Self::TripleDot => "`...`",
-            Self::WideArrow => "`=>`",
+    fn to_diag_str(self) -> Cow<'static, str> {
+        match self.repr() {
+            crate::token::Repr::Src(src) => format!("`{src}`").into(),
+            crate::token::Repr::Tag(tag) => tag.into(),
         }
     }
 }
@@ -545,7 +516,7 @@ impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Raw(frag) => return write!(f, "`{frag}`"),
-            Self::Token(token) => token.to_diag_str(),
+            Self::Token(token) => return write!(f, "{}", token.to_diag_str()),
             Self::Bound => "bound",
             Self::Predicate => "predicate",
             Self::CommonIdent => "identifier",

@@ -9,6 +9,12 @@ impl ByteIndex {
     }
 }
 
+impl std::ops::AddAssign<u32> for ByteIndex {
+    fn add_assign(&mut self, rhs: u32) {
+        self.0 += rhs;
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Span {
     pub(crate) start: ByteIndex,

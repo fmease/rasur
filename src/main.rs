@@ -24,6 +24,7 @@ mod fmter;
 mod lexer;
 mod parser;
 mod span;
+mod token;
 
 fn main() -> ExitCode {
     match try_main() {

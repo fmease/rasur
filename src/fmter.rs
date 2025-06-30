@@ -1,3 +1,4 @@
+use crate::token;
 use crate::{ast, span::Span};
 use std::fmt::Write as _;
 
@@ -149,56 +150,11 @@ impl Fmt for ast::TokenStream {
     }
 }
 
-impl Fmt for ast::Token {
+impl Fmt for token::Token {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let str = match self.kind {
-            ast::TokenKind::Asterisk => "*",
-            ast::TokenKind::At => "@",
-            ast::TokenKind::BangEquals => "!=",
-            ast::TokenKind::Caret => "^",
-            ast::TokenKind::CloseCurlyBracket => "}",
-            ast::TokenKind::CloseRoundBracket => ")",
-            ast::TokenKind::CloseSquareBracket => "]",
-            ast::TokenKind::Comma => ",",
-            ast::TokenKind::DoubleAmpersand => "&&",
-            ast::TokenKind::DoubleColon => "::",
-            ast::TokenKind::DoubleDot => "..",
-            ast::TokenKind::DoubleDotEquals => "..=",
-            ast::TokenKind::DoubleEquals => "==",
-            ast::TokenKind::DoubleGreaterThan => ">>",
-            ast::TokenKind::DoubleLessThan => "<<",
-            ast::TokenKind::DoublePipe => "||",
-            ast::TokenKind::EndOfInput => "",
-            ast::TokenKind::GreaterThanEquals => ">=",
-            ast::TokenKind::Hash => "#",
-            ast::TokenKind::LessThanEquals => "<=",
-            ast::TokenKind::OpenCurlyBracket => "{",
-            ast::TokenKind::OpenRoundBracket => "(",
-            ast::TokenKind::OpenSquareBracket => "[",
-            ast::TokenKind::Percent => "%",
-            ast::TokenKind::Plus => "+",
-            ast::TokenKind::PlusEquals => "+=",
-            ast::TokenKind::QuestionMark => "?",
-            ast::TokenKind::Semicolon => ";",
-            ast::TokenKind::SingleAmpersand => "&",
-            ast::TokenKind::SingleBang => "!",
-            ast::TokenKind::SingleColon => ":",
-            ast::TokenKind::SingleDot => ".",
-            ast::TokenKind::SingleEquals => "=",
-            ast::TokenKind::SingleGreaterThan => ">",
-            ast::TokenKind::SingleHyphen => "-",
-            ast::TokenKind::SingleLessThan => "<",
-            ast::TokenKind::SinglePipe => "|",
-            ast::TokenKind::Slash => "/",
-            ast::TokenKind::ThinArrow => "->",
-            ast::TokenKind::TripleDot => "...",
-            ast::TokenKind::WideArrow => "=>",
-            | ast::TokenKind::CharLit
-            | ast::TokenKind::Error
-            | ast::TokenKind::Ident
-            | ast::TokenKind::Lifetime
-            | ast::TokenKind::NumLit
-            | ast::TokenKind::StrLit => cx.source(self.span),
+        let str = match self.kind.repr() {
+            token::Repr::Src(src) => src,
+            token::Repr::Tag(_) => cx.source(self.span),
         };
         fmt!(cx, "{str}");
     }

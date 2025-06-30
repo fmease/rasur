@@ -65,7 +65,7 @@ impl<'src> Parser<'_, 'src> {
                     | "loop" | "match" | "return" | "true" | "while" | "unsafe"
                 )
             }
-            | TokenKind::Asterisk
+            | TokenKind::SingleAsterisk
             | TokenKind::CharLit
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
@@ -93,7 +93,7 @@ impl<'src> Parser<'_, 'src> {
         let op = match self.token.kind {
             TokenKind::SingleHyphen => Some(Op::Neg),
             TokenKind::SingleBang => Some(Op::Not),
-            TokenKind::Asterisk => Some(Op::Deref),
+            TokenKind::SingleAsterisk => Some(Op::Deref),
             TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
             TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
             TokenKind::DoubleDot => Some(Op::RangeExclusive),
@@ -109,33 +109,42 @@ impl<'src> Parser<'_, 'src> {
 
         loop {
             let op = match self.token.kind {
-                TokenKind::Asterisk => Op::Mul,
+                TokenKind::AmpersandEquals => Op::BitAndAssign,
+                TokenKind::AsteriskEquals => Op::MulAssign,
                 TokenKind::BangEquals => Op::Ne,
-                TokenKind::Caret => Op::BitXor,
+                TokenKind::CaretEquals => Op::BitXorAssign,
                 TokenKind::DoubleAmpersand => Op::And,
                 TokenKind::DoubleDot => Op::RangeExclusive,
                 TokenKind::DoubleDotEquals => Op::RangeInclusive,
                 TokenKind::DoubleEquals => Op::Eq,
-                TokenKind::DoublePipe => Op::Or,
                 TokenKind::DoubleGreaterThan => Op::BitShiftRight,
+                TokenKind::DoubleGreaterThanEquals => Op::BitShiftRightAssign,
                 TokenKind::DoubleLessThan => Op::BitShiftLeft,
+                TokenKind::DoubleLessThanEquals => Op::BitShiftLeftAssign,
+                TokenKind::DoublePipe => Op::Or,
                 TokenKind::GreaterThanEquals => Op::Ge,
+                TokenKind::HypenEquals => Op::SubAssign,
                 TokenKind::Ident if let "as" = self.source(self.token.span) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
-                TokenKind::Percent => Op::Rem,
+                TokenKind::PercentEquals => Op::RemAssign,
+                TokenKind::PipeEquals => Op::BitOrAssign,
                 TokenKind::Plus => Op::Add,
                 TokenKind::PlusEquals => Op::AddAssign,
                 TokenKind::QuestionMark => Op::Try,
                 TokenKind::SingleAmpersand => Op::BitAnd,
+                TokenKind::SingleAsterisk => Op::Mul,
+                TokenKind::SingleCaret => Op::BitXor,
                 TokenKind::SingleDot => Op::Field,
                 TokenKind::SingleEquals => Op::Assign,
                 TokenKind::SingleGreaterThan => Op::Gt,
                 TokenKind::SingleHyphen => Op::Sub,
                 TokenKind::SingleLessThan => Op::Lt,
+                TokenKind::SinglePercent => Op::Rem,
                 TokenKind::SinglePipe => Op::BitOr,
-                TokenKind::Slash => Op::Div,
+                TokenKind::SingleSlash => Op::Div,
+                TokenKind::SlashEquals => Op::DivAssign,
                 _ => break,
             };
 
@@ -192,10 +201,15 @@ impl<'src> Parser<'_, 'src> {
             Op::And => ast::BinOp::And,
             Op::Assign => ast::BinOp::Assign,
             Op::BitAnd => ast::BinOp::BitAnd,
+            Op::BitAndAssign => ast::BinOp::BitAndAssign,
             Op::BitOr => ast::BinOp::BitOr,
+            Op::BitOrAssign => ast::BinOp::BitOrAssign,
             Op::BitShiftLeft => ast::BinOp::BitShiftLeft,
+            Op::BitShiftLeftAssign => ast::BinOp::BitShiftLeftAssign,
             Op::BitShiftRight => ast::BinOp::BitShiftRight,
+            Op::BitShiftRightAssign => ast::BinOp::BitShiftRightAssign,
             Op::BitXor => ast::BinOp::BitXor,
+            Op::BitXorAssign => ast::BinOp::BitXorAssign,
             Op::Call => {
                 let args = self.fin_parse_fn_args()?;
                 return Ok(ast::Expr::Call(Box::new(left), args));
@@ -205,6 +219,7 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(ast::Expr::Cast(Box::new(left), Box::new(ty)));
             }
             Op::Div => ast::BinOp::Div,
+            Op::DivAssign => ast::BinOp::DivAssign,
             Op::Eq => ast::BinOp::Eq,
             Op::Field => {
                 return self.fin_parse_field_or_method_call_expr(left);
@@ -219,6 +234,7 @@ impl<'src> Parser<'_, 'src> {
             Op::Le => ast::BinOp::Le,
             Op::Lt => ast::BinOp::Lt,
             Op::Mul => ast::BinOp::Mul,
+            Op::MulAssign => ast::BinOp::MulAssign,
             Op::Ne => ast::BinOp::Ne,
             Op::Or => ast::BinOp::Or,
             Op::RangeExclusive => {
@@ -236,7 +252,9 @@ impl<'src> Parser<'_, 'src> {
                 );
             }
             Op::Rem => ast::BinOp::Rem,
+            Op::RemAssign => ast::BinOp::RemAssign,
             Op::Sub => ast::BinOp::Sub,
+            Op::SubAssign => ast::BinOp::SubAssign,
             Op::Try => return Ok(ast::Expr::Try(Box::new(left))),
             _ => unreachable!(),
         };
@@ -640,8 +658,6 @@ enum LetPolicy {
     Forbidden,
 }
 
-// pub(super) enum LetExprPolicy {}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Op {
     Add,
@@ -649,14 +665,20 @@ pub(crate) enum Op {
     And,
     Assign,
     BitAnd,
+    BitAndAssign,
     BitOr,
+    BitOrAssign,
     BitShiftLeft,
+    BitShiftLeftAssign,
     BitShiftRight,
+    BitShiftRightAssign,
     BitXor,
+    BitXorAssign,
     Call,
     Cast,
     Deref,
     Div,
+    DivAssign,
     DoubleBorrow,
     Eq,
     Field,
@@ -666,6 +688,7 @@ pub(crate) enum Op {
     Le,
     Lt,
     Mul,
+    MulAssign,
     Ne,
     Neg,
     Not,
@@ -673,8 +696,10 @@ pub(crate) enum Op {
     RangeExclusive,
     RangeInclusive,
     Rem,
+    RemAssign,
     SingleBorrow,
     Sub,
+    SubAssign,
     Try,
 }
 
@@ -683,7 +708,17 @@ impl Op {
         Some(match self {
             Self::Add | Self::Sub => Level::SumLeft,
             Self::And => Level::AndLeft,
-            Self::Assign | Self::AddAssign => Level::AssignLeft,
+            | Self::AddAssign
+            | Self::Assign
+            | Self::BitAndAssign
+            | Self::BitOrAssign
+            | Self::BitShiftLeftAssign
+            | Self::BitShiftRightAssign
+            | Self::BitXorAssign
+            | Self::DivAssign
+            | Self::MulAssign
+            | Self::RemAssign
+            | Self::SubAssign => Level::AssignLeft,
             Self::BitAnd => Level::BitAndLeft,
             Self::BitOr => Level::BitOrLeft,
             Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftLeft,
@@ -706,7 +741,17 @@ impl Op {
         Some(match self {
             Self::Add | Self::Sub => Level::SumRight,
             Self::And => Level::AndRight,
-            Self::Assign | Self::AddAssign => Level::AssignRight,
+            | Self::AddAssign
+            | Self::Assign
+            | Self::BitAndAssign
+            | Self::BitOrAssign
+            | Self::BitShiftLeftAssign
+            | Self::BitShiftRightAssign
+            | Self::BitXorAssign
+            | Self::DivAssign
+            | Self::MulAssign
+            | Self::RemAssign
+            | Self::SubAssign => Level::AssignRight,
             Self::BitAnd => Level::BitAndRight,
             Self::BitOr => Level::BitOrRight,
             Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,
