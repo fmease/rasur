@@ -303,7 +303,7 @@ impl<'src> Parser<'_, 'src> {
         let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
-        let variants = self.fin_parse_delimited_sequence(
+        let variants = self.fin_parse_delim_seq(
             TokenKind::CloseCurlyBracket,
             TokenKind::Comma,
             Self::parse_variant,
@@ -325,7 +325,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(match self.token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                let fields = self.fin_parse_delimited_sequence(
+                let fields = self.fin_parse_delim_seq(
                     TokenKind::CloseRoundBracket,
                     TokenKind::Comma,
                     |this| {
@@ -347,7 +347,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn parse_struct_fields(&mut self) -> Result<Vec<ast::StructFieldDef<'src>>> {
-        self.fin_parse_delimited_sequence(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
+        self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
             let binder = this.parse_common_ident()?;
@@ -461,7 +461,7 @@ impl<'src> Parser<'_, 'src> {
         self.parse(TokenKind::OpenRoundBracket)?;
 
         let mut first = true;
-        self.fin_parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+        self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let first = std::mem::take(&mut first);
 
             if let Some((ref_, mut_)) = this.probe(|this| {

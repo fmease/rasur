@@ -303,7 +303,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
-        self.fin_parse_delimited_sequence(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+        self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
         })
     }
@@ -515,10 +515,8 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::SinglePipe => {
                 self.advance();
                 // FIXME: Maybe reuse parse_fn_params smh?
-                let params = self.fin_parse_delimited_sequence(
-                    TokenKind::SinglePipe,
-                    TokenKind::Comma,
-                    |this| {
+                let params =
+                    self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
                         let pat = this.parse_pat()?;
                         let ty = this
                             .consume(TokenKind::SingleColon)
@@ -526,8 +524,7 @@ impl<'src> Parser<'_, 'src> {
                             .transpose()?;
 
                         Ok(ast::ClosureParam { pat, ty })
-                    },
-                )?;
+                    })?;
                 return self.fin_parse_closure_expr(params);
             }
             TokenKind::DoublePipe => {
@@ -536,7 +533,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
-                let elems = self.fin_parse_delimited_sequence(
+                let elems = self.fin_parse_delim_seq(
                     TokenKind::CloseSquareBracket,
                     TokenKind::Comma,
                     |this| this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden),
@@ -582,7 +579,7 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
 
                     // FIXME: NumLit fields
-                    let fields = self.fin_parse_delimited_sequence(
+                    let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseCurlyBracket,
                         TokenKind::Comma,
                         |this| {

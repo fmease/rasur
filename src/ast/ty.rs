@@ -35,8 +35,8 @@ pub(crate) struct GenericParam<'src> {
 
 #[derive(Debug)]
 pub(crate) enum GenericParamKind<'src> {
-    Ty(Vec<Bound<'src>>),
-    Const(Ty<'src>),
+    Ty { bounds: Vec<Bound<'src>>, default: Option<Ty<'src>> },
+    Const { ty: Ty<'src>, default: Option<Expr<'src>> },
     Lifetime(Vec<Lifetime<'src>>),
 }
 

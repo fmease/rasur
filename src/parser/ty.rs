@@ -175,54 +175,69 @@ impl<'src> Parser<'_, 'src> {
     /// Generic_Params ::= "<" (Generic_Param ("," | >">"))* ">"
     /// Generic_Param ::=
     ///     | Lifetime
-    ///     | "const" Common_Ident ":" Type
-    ///     | Common_Ident (":" Bounds)?
+    ///     | "const" Common_Ident ":" Type ("=" Const_Arg)?
+    ///     | Common_Ident (":" Bounds)? ("=" Ty)?
     /// ```
     pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
-        if !self.consume(TokenKind::SingleLessThan) {
+        if !self.consume_single_less_than() {
             return Ok(Vec::new());
         }
 
-        // FIXME: Doesn't account for DoubleGreaterThan (e.g. bc of `fn f<T = Option<X>>`)
-        const DELIMITER: TokenKind = TokenKind::SingleGreaterThan;
         const SEPARATOR: TokenKind = TokenKind::Comma;
-        self.fin_parse_delimited_sequence(DELIMITER, SEPARATOR, |this| {
-            let (binder, kind) =
-                if let Some(ast::Lifetime(lifetime)) = this.consume_common_lifetime()? {
-                    let bounds = if this.consume(TokenKind::SingleColon) {
-                        this.parse_outlives_bounds()?
+        self.fin_parse_delim_seq_with(
+            Self::consume_single_greater_than,
+            Self::begins_single_greater_than,
+            SEPARATOR,
+            |this| {
+                let (binder, kind) =
+                    if let Some(ast::Lifetime(lifetime)) = this.consume_common_lifetime()? {
+                        let bounds = if this.consume(TokenKind::SingleColon) {
+                            this.parse_outlives_bounds()?
+                        } else {
+                            Vec::new()
+                        };
+                        (lifetime, ast::GenericParamKind::Lifetime(bounds))
                     } else {
-                        Vec::new()
+                        match this.as_ident(this.token) {
+                            Some("const") => {
+                                this.advance();
+                                let binder = this.parse_common_ident()?;
+                                let ty = this.parse_ty_annotation()?;
+                                let default = this
+                                    .consume(TokenKind::SingleEquals)
+                                    .then(|| this.parse_const_arg())
+                                    .transpose()?;
+                                (binder, ast::GenericParamKind::Const { ty, default })
+                            }
+                            Some(ident) if this.ident_is_common(ident) => {
+                                this.advance();
+                                let bounds = if this.consume(TokenKind::SingleColon) {
+                                    this.parse_bounds()?
+                                } else {
+                                    Vec::new()
+                                };
+                                let default = this
+                                    .consume(TokenKind::SingleEquals)
+                                    .then(|| this.parse_ty())
+                                    .transpose()?;
+                                (ident, ast::GenericParamKind::Ty { bounds, default })
+                            }
+                            _ => {
+                                return Err(ParseError::UnexpectedToken(
+                                    this.token,
+                                    one_of![
+                                        ExpectedFragment::GenericParam,
+                                        SEPARATOR,
+                                        TokenKind::SingleGreaterThan
+                                    ],
+                                ));
+                            }
+                        }
                     };
-                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
-                } else {
-                    match this.as_ident(this.token) {
-                        Some("const") => {
-                            this.advance();
-                            let binder = this.parse_common_ident()?;
-                            let ty = this.parse_ty_annotation()?;
-                            (binder, ast::GenericParamKind::Const(ty))
-                        }
-                        Some(ident) if this.ident_is_common(ident) => {
-                            this.advance();
-                            let bounds = if this.consume(TokenKind::SingleColon) {
-                                this.parse_bounds()?
-                            } else {
-                                Vec::new()
-                            };
-                            (ident, ast::GenericParamKind::Ty(bounds))
-                        }
-                        _ => {
-                            return Err(ParseError::UnexpectedToken(
-                                this.token,
-                                one_of![ExpectedFragment::GenericParam, SEPARATOR, DELIMITER],
-                            ));
-                        }
-                    }
-                };
 
-            Ok(ast::GenericParam { binder, kind })
-        })
+                Ok(ast::GenericParam { binder, kind })
+            },
+        )
     }
 
     /// Parse a where clause.

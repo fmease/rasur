@@ -99,16 +99,24 @@ impl Fmt for Vec<ast::GenericParam<'_>> {
 impl Fmt for ast::GenericParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self.kind {
-            ast::GenericParamKind::Ty(bounds) => {
+            ast::GenericParamKind::Ty { bounds, default } => {
                 fmt!(cx, "{}", self.binder);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.fmt(cx);
                 }
+                if let Some(ty) = default {
+                    fmt!(cx, " = ");
+                    ty.fmt(cx);
+                }
             }
-            ast::GenericParamKind::Const(ty) => {
+            ast::GenericParamKind::Const { ty, default } => {
                 fmt!(cx, "const {}: ", self.binder);
                 ty.fmt(cx);
+                if let Some(expr) = default {
+                    fmt!(cx, " = ");
+                    expr.fmt(cx);
+                }
             }
             ast::GenericParamKind::Lifetime(bounds) => {
                 ast::Lifetime(self.binder).fmt(cx);

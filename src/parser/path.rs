@@ -130,76 +130,56 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        // FIXME: Smh use parse_delimited_sequence again
-
         const SEPARATOR: TokenKind = TokenKind::Comma;
 
-        let parse = |this: &mut Self| {
-            let mut arg = if this.begins_ty() {
-                let ty = this.parse_ty()?;
-                ast::GenericArg::Ty(ty)
-            } else if let Some(lt) = this.consume_common_lifetime()? {
-                ast::GenericArg::Lifetime(lt)
-            } else if this.begins_const_arg() {
-                let expr = this.parse_const_arg()?;
-                ast::GenericArg::Const(expr)
-            } else {
-                return Err(ParseError::UnexpectedToken(
-                    this.token,
-                    one_of![
-                        ExpectedFragment::GenericArg,
-                        SEPARATOR,
-                        /*delimiter*/ TokenKind::SingleGreaterThan
-                    ],
-                ));
-            };
-
-            let separator = this.token;
-            let arg = if let TokenKind::SingleColon | TokenKind::SingleEquals = separator.kind
-                && let Some((ident, args)) = extract_assoc_item_seg(&mut arg)
-            {
-                this.advance();
-
-                let kind = match separator.kind {
-                    TokenKind::SingleColon => {
-                        ast::AssocItemConstraintKind::Bound(this.parse_bounds()?)
-                    }
-                    TokenKind::SingleEquals => {
-                        ast::AssocItemConstraintKind::Equality(this.parse_term()?)
-                    }
-                    _ => unreachable!(),
+        Ok(ast::GenericArgs::Angle(self.fin_parse_delim_seq_with(
+            Self::consume_single_greater_than,
+            Self::begins_single_greater_than,
+            SEPARATOR,
+            |this: &mut Self| {
+                let mut arg = if this.begins_ty() {
+                    let ty = this.parse_ty()?;
+                    ast::GenericArg::Ty(ty)
+                } else if let Some(lt) = this.consume_common_lifetime()? {
+                    ast::GenericArg::Lifetime(lt)
+                } else if this.begins_const_arg() {
+                    let expr = this.parse_const_arg()?;
+                    ast::GenericArg::Const(expr)
+                } else {
+                    return Err(ParseError::UnexpectedToken(
+                        this.token,
+                        one_of![
+                            ExpectedFragment::GenericArg,
+                            SEPARATOR,
+                            /*delimiter*/ TokenKind::SingleGreaterThan
+                        ],
+                    ));
                 };
 
-                ast::AngleGenericArg::Constraint(ast::AssocItemConstraint { ident, args, kind })
-            } else {
-                ast::AngleGenericArg::Argument(arg)
-            };
+                let separator = this.token;
+                let arg = if let TokenKind::SingleColon | TokenKind::SingleEquals = separator.kind
+                    && let Some((ident, args)) = extract_assoc_item_seg(&mut arg)
+                {
+                    this.advance();
 
-            Ok(arg)
-        };
+                    let kind = match separator.kind {
+                        TokenKind::SingleColon => {
+                            ast::AssocItemConstraintKind::Bound(this.parse_bounds()?)
+                        }
+                        TokenKind::SingleEquals => {
+                            ast::AssocItemConstraintKind::Equality(this.parse_term()?)
+                        }
+                        _ => unreachable!(),
+                    };
 
-        let mut args = Vec::new();
+                    ast::AngleGenericArg::Constraint(ast::AssocItemConstraint { ident, args, kind })
+                } else {
+                    ast::AngleGenericArg::Argument(arg)
+                };
 
-        while
-        /*delimiter*/
-        !self.consume_single_greater_than() {
-            // FIXME: Add delimiter and separator to "the list of expected tokens".
-            args.push(parse(self)?);
-
-            // FIXME: This list isn't scalable
-            if !matches!(
-                self.token.kind,
-                /*delimiter*/
-                TokenKind::SingleGreaterThan
-                    | TokenKind::DoubleGreaterThan
-                    | TokenKind::GreaterThanEquals
-                    | TokenKind::DoubleGreaterThanEquals
-            ) {
-                self.parse(SEPARATOR)?;
-            }
-        }
-
-        Ok(ast::GenericArgs::Angle(args))
+                Ok(arg)
+            },
+        )?))
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
@@ -209,7 +189,7 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::GenericArgs::ParenElided);
         }
 
-        let inputs = self.fin_parse_delimited_sequence(
+        let inputs = self.fin_parse_delim_seq(
             TokenKind::CloseRoundBracket,
             TokenKind::Comma,
             Self::parse_ty,
@@ -229,7 +209,7 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
+    pub(crate) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_const_arg`.
 
         // FIXME: Leading dash (unary minus)
@@ -315,7 +295,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(match self.token.kind {
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                ast::PathTreeKind::Branch(self.fin_parse_delimited_sequence(
+                ast::PathTreeKind::Branch(self.fin_parse_delim_seq(
                     TokenKind::CloseCurlyBracket,
                     TokenKind::Comma,
                     Self::parse_path_tree,

@@ -102,7 +102,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(tuple(nodes))
     }
 
-    fn fin_parse_delimited_sequence<T>(
+    fn fin_parse_delim_seq<T>(
         &mut self,
         delimiter: TokenKind,
         separator: TokenKind,
@@ -115,6 +115,27 @@ impl<'a, 'src> Parser<'a, 'src> {
             nodes.push(parse(self)?);
 
             if self.token.kind != delimiter {
+                self.parse(separator)?;
+            }
+        }
+
+        Ok(nodes)
+    }
+
+    fn fin_parse_delim_seq_with<T>(
+        &mut self,
+        consume_delimiter: impl Fn(&mut Self) -> bool,
+        check_delimiter: impl Fn(&Self) -> bool,
+        separator: TokenKind,
+        mut parse: impl FnMut(&mut Self) -> Result<T>,
+    ) -> Result<Vec<T>> {
+        let mut nodes = Vec::new();
+
+        while !consume_delimiter(self) {
+            // FIXME: Add delimiter and separator to "the list of expected tokens".
+            nodes.push(parse(self)?);
+
+            if !check_delimiter(self) {
                 self.parse(separator)?;
             }
         }
@@ -223,6 +244,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         }
     }
 
+    // FIXME: generalize
     fn consume_single_less_than(&mut self) -> bool {
         match self.token.kind {
             TokenKind::SingleLessThan => {
@@ -245,6 +267,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         }
     }
 
+    // FIXME: generalize
     fn consume_single_greater_than(&mut self) -> bool {
         match self.token.kind {
             TokenKind::SingleGreaterThan => {
@@ -265,6 +288,16 @@ impl<'a, 'src> Parser<'a, 'src> {
             }
             _ => false,
         }
+    }
+
+    fn begins_single_greater_than(&self) -> bool {
+        matches!(
+            self.token.kind,
+            TokenKind::SingleGreaterThan
+                | TokenKind::DoubleGreaterThan
+                | TokenKind::GreaterThanEquals
+                | TokenKind::DoubleGreaterThanEquals
+        )
     }
 
     fn consume(&mut self, expected: TokenKind) -> bool {

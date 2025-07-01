@@ -96,7 +96,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
-                    let fields = self.fin_parse_delimited_sequence(
+                    let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
                         |this| this.parse_pat(),
