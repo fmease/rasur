@@ -44,6 +44,9 @@ impl<'src> Parser<'_, 'src> {
         let self_ty = if self.consume_single_less_than() {
             let ty = self.parse_ty()?;
             if self.consume_ident_if("as") {
+                // FIXME: Pass `ast::GenericArgsPolicy::Allowed` instead of `A`.
+                //        However that won't compile rn, our types are too strict.
+                // We're in a "type context" now and can parse generic args unambiguously.
                 path = self.parse_path::<A>()?;
             }
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
@@ -308,8 +311,10 @@ impl<'src> Parser<'_, 'src> {
             _ if let Some(ident) = self.as_path_seg_ident() => {
                 self.advance();
                 path.segs.push(ast::PathSeg::ident(ident));
-                let binder =
-                    self.consume_ident_if("as").then(|| self.parse_common_ident()).transpose()?;
+                let binder = self
+                    .consume_ident_if("as")
+                    .then(|| self.parse_ident_where_common_or("_"))
+                    .transpose()?;
                 ast::PathTreeKind::Stump(binder)
             }
             _ => {

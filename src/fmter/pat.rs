@@ -22,6 +22,34 @@ impl Fmt for ast::Pat<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
             Self::TupleStruct(pat) => pat.fmt(cx),
+            // FIXME: Eliminate unnecessary parens.
+            Self::Or(left, right) => {
+                fmt!(cx, "(");
+                left.fmt(cx);
+                fmt!(cx, ") | (");
+                right.fmt(cx);
+                fmt!(cx, ")");
+            }
+
+            Self::Range(left, right, kind) => {
+                // FIXME: Temporary: Don't render unnecessary parentheses!
+                if let Some(left) = left {
+                    fmt!(cx, "(");
+                    left.fmt(cx);
+                    fmt!(cx, ")");
+                }
+                let symbol = match kind {
+                    ast::RangePatKind::Exclusive => "..",
+                    ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Normal) => "..=",
+                    ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Legacy) => "...",
+                };
+                fmt!(cx, "{symbol}");
+                if let Some(right) = right {
+                    fmt!(cx, "(");
+                    right.fmt(cx);
+                    fmt!(cx, ")");
+                }
+            }
         }
     }
 }

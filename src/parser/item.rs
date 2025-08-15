@@ -1,4 +1,6 @@
-use super::{ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, one_of};
+use super::{
+    ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, one_of, pat::OrPolicy,
+};
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {
@@ -498,7 +500,7 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(ast::FnParam { pat, ty });
             };
 
-            let pat = this.parse_pat()?;
+            let pat = this.parse_pat(OrPolicy::Allowed)?;
             let ty = this.parse_ty_annotation()?;
 
             Ok(ast::FnParam { pat, ty })

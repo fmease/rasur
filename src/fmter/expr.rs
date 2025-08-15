@@ -31,8 +31,8 @@ impl Fmt for ast::Expr<'_> {
                     fmt!(cx, ")");
                 }
                 let symbol = match kind {
-                    ast::RangeKind::Exclusive => "..",
-                    ast::RangeKind::Inclusive => "..=",
+                    ast::RangeExprKind::Exclusive => "..",
+                    ast::RangeExprKind::Inclusive => "..=",
                 };
                 fmt!(cx, "{symbol}");
                 if let Some(right) = right {
@@ -41,7 +41,6 @@ impl Fmt for ast::Expr<'_> {
                     fmt!(cx, ")");
                 }
             }
-
             Self::Wildcard => fmt!(cx, "_"),
             Self::Continue => fmt!(cx, "continue"),
             Self::Break(label, expr) => {
@@ -191,8 +190,12 @@ impl Fmt for ast::MatchExpr<'_> {
 
 impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, body } = self;
+        let Self { attrs, pat, body } = self;
 
+        for attr in attrs {
+            attr.fmt(cx);
+            cx.line_break();
+        }
         pat.fmt(cx);
         fmt!(cx, " => ");
         body.fmt(cx);

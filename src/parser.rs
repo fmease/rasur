@@ -416,7 +416,8 @@ pub(crate) enum ParseError {
     InvalidExternItemKind(Span),
     MisplacedReceiver,
     ModifierOnOutlivesBound,
-    OpCannotBeChained(expr::Op),
+    // FIXME: &'static str over String
+    OpCannotBeChained(String),
     ReservedLifetime(Span),
     TyRelMacroCall,
     UnexpectedToken(Token, ExpectedFragment),
@@ -464,8 +465,7 @@ impl ParseError {
             Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
             Self::MisplacedReceiver => lvl.title("misplaced receiver"),
             Self::OpCannotBeChained(op) => {
-                // FIXME: Don't use Debug repr of op but its symbol instead
-                super let title = format!("operator `{op:?}` cannot be chained");
+                super let title = format!("operator `{op}` cannot be chained");
                 lvl.title(&title)
             }
             Self::TyRelMacroCall => lvl.title("type-relative macro call"),

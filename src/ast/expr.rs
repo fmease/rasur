@@ -26,7 +26,7 @@ pub(crate) enum Expr<'src> {
     Match(Box<MatchExpr<'src>>),
     MethodCall(Box<MethodCallExpr<'src>>),
     Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
-    Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeKind),
+    Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
     Return(Option<Box<Expr<'src>>>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
@@ -156,12 +156,6 @@ impl BinOp {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum RangeKind {
-    Inclusive,
-    Exclusive,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum TrailingBlockMode {
     Normal,
@@ -183,6 +177,7 @@ pub(crate) struct MatchExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct MatchArm<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) body: Expr<'src>,
 }
@@ -251,4 +246,10 @@ pub(crate) enum Lit<'src> {
     Char(&'src str),
     Num(&'src str),
     Str(&'src str),
+}
+
+#[derive(Debug)]
+pub(crate) enum RangeExprKind {
+    Inclusive,
+    Exclusive,
 }

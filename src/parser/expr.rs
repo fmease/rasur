@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
+use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of, pat::OrPolicy};
 use crate::{ast, parser::path::ParseGenericArgs};
 use std::cmp::Ordering;
 
@@ -102,7 +102,7 @@ impl<'src> Parser<'_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            self.fin_parse_prefix_op(op, structs)
+            self.fin_parse_prefix_op_expr(op, structs)
         } else {
             self.parse_lower_expr(structs, lets)
         }?;
@@ -151,18 +151,23 @@ impl<'src> Parser<'_, 'src> {
             let left_level = op.left_level().unwrap();
             match left_level.cmp(&level) {
                 Ordering::Less => break,
-                Ordering::Equal => return Err(ParseError::OpCannotBeChained(op)),
+                // FIXME: Don't use Debug repr of op, use surface-language symbol.
+                Ordering::Equal => return Err(ParseError::OpCannotBeChained(format!("{op:?}"))),
                 Ordering::Greater => {}
             }
             self.advance();
 
-            left = self.fin_parse_op(op, left, structs)?;
+            left = self.fin_parse_op_expr(op, left, structs)?;
         }
 
         Ok(left)
     }
 
-    fn fin_parse_prefix_op(&mut self, op: Op, structs: StructPolicy) -> Result<ast::Expr<'src>> {
+    fn fin_parse_prefix_op_expr(
+        &mut self,
+        op: Op,
+        structs: StructPolicy,
+    ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level().unwrap();
 
         let ast_op = match op {
@@ -189,7 +194,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::Expr::UnOp(ast_op, Box::new(right)))
     }
 
-    fn fin_parse_op(
+    fn fin_parse_op_expr(
         &mut self,
         op: Op,
         left: ast::Expr<'src>,
@@ -315,7 +320,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let mut_ = self.parse_mutability();
         let expr = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        return Ok(ast::Expr::Borrow(mut_, Box::new(expr)));
+        Ok(ast::Expr::Borrow(mut_, Box::new(expr)))
     }
 
     fn fin_parse_range_exclusive_expr(
@@ -329,7 +334,7 @@ impl<'src> Parser<'_, 'src> {
             .begins_expr()
             .then(|| self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden))
             .transpose()?;
-        Ok(ast::Expr::Range(left, right.map(Box::new), ast::RangeKind::Exclusive))
+        Ok(ast::Expr::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive))
     }
 
     fn fin_parse_range_inclusive_expr(
@@ -339,7 +344,7 @@ impl<'src> Parser<'_, 'src> {
         structs: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
         let right = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        return Ok(ast::Expr::Range(left, Some(Box::new(right)), ast::RangeKind::Inclusive));
+        return Ok(ast::Expr::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive));
     }
 
     #[expect(clippy::too_many_lines)]
@@ -381,7 +386,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "for" => {
                     self.advance();
-                    let pat = self.parse_pat()?;
+                    let pat = self.parse_pat(OrPolicy::Allowed)?;
                     self.parse_ident_where("in")?;
                     let expr =
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
@@ -426,8 +431,7 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Only under LetPolicy::Allowed
                 "let" if let LetPolicy::Allowed = lets => {
                     self.advance();
-                    // FIXME: Allow top alt
-                    let pat = self.parse_pat()?;
+                    let pat = self.parse_pat(OrPolicy::Allowed)?;
                     self.parse(TokenKind::SingleEquals)?;
                     // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
                     let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
@@ -448,7 +452,8 @@ impl<'src> Parser<'_, 'src> {
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     while !self.consume(DELIMITER) {
-                        let pat = self.parse_pat()?;
+                        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+                        let pat = self.parse_pat(OrPolicy::Allowed)?;
                         self.parse(TokenKind::WideArrow)?;
 
                         let body =
@@ -462,7 +467,7 @@ impl<'src> Parser<'_, 'src> {
                             self.parse(TokenKind::Comma)?;
                         }
 
-                        arms.push(ast::MatchArm { pat, body });
+                        arms.push(ast::MatchArm { attrs, pat, body });
                     }
 
                     return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
@@ -517,7 +522,7 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Maybe reuse parse_fn_params smh?
                 let params =
                     self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
-                        let pat = this.parse_pat()?;
+                        let pat = this.parse_pat(OrPolicy::Forbidden)?;
                         let ty = this
                             .consume(TokenKind::SingleColon)
                             .then(|| this.parse_ty())

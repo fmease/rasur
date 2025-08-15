@@ -12,6 +12,8 @@ pub(crate) enum Pat<'src> {
     Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
     MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
     TupleStruct(Box<TupleStructPat<'src>>),
+    Or(Box<Pat<'src>>, Box<Pat<'src>>),
+    Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
 }
 
 // FIXME: I hate this name
@@ -32,4 +34,16 @@ pub(crate) enum ByRef {
 pub(crate) struct TupleStructPat<'src> {
     pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
     pub(crate) fields: Vec<Pat<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum RangePatKind {
+    Inclusive(RangeInclusivePatKind),
+    Exclusive,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RangeInclusivePatKind {
+    Normal,
+    Legacy,
 }
