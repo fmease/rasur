@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 walkdir = "2.5.0"
 ---
-#![feature(let_chains)]
 #![feature(exit_status_error)]
 
 #[cfg(not(unix))]

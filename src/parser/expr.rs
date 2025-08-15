@@ -58,7 +58,7 @@ impl<'src> Parser<'_, 'src> {
         match self.token.kind {
             #[rustfmt::skip]
             TokenKind::Ident => {
-                // We can ignore `let` from let-exprs.
+                // We intentionally ignore `let` from let-exprs.
                 matches!(
                     self.source(self.token.span),
                     | "_" | "const" | "continue" | "break" | "false" | "for" | "if"

@@ -23,10 +23,38 @@ impl<'src> Parser<'_, 'src> {
     /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
     /// ```
     pub(super) fn parse_pat(&mut self, ors: OrPolicy) -> Result<ast::Pat<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_pat`.
+
         self.parse_pat_at_level(Level::Initial, ors)
     }
 
-    // FIXME: Optional leading pipe unless OrPolicy::Forbidden
+    // FIXME: Unused policy.
+    fn begins_pat(&self, _ors: OrPolicy) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_pat`.
+
+        if self.begins_ext_path() {
+            return true;
+        }
+
+        // NOTE: We intentionally skip SinglePipe because leading pipes are only permitted
+        //       at the top-level.
+        match self.token.kind {
+            TokenKind::Ident => matches!(self.source(self.token.span), "_" | "mut" | "ref"),
+            | TokenKind::SingleAmpersand
+            | TokenKind::DoubleAmpersand
+            | TokenKind::DoubleDot
+            | TokenKind::DoubleDotEquals
+            | TokenKind::NumLit
+            | TokenKind::StrLit
+            | TokenKind::OpenRoundBracket => true,
+            _ => false,
+        }
+    }
+
+    // FIXME: Optional (top-level) leading pipe unless OrPolicy::Forbidden
+    //        OrPolicy might not cut it, it's definitely not a prefix op.
+    //        Tho not sure. Think about cases like `..|0` and `..0|0`. How
+    //        should they be parsed?
     fn parse_pat_at_level(&mut self, level: Level, ors: OrPolicy) -> Result<ast::Pat<'src>> {
         let op = match self.token.kind {
             // FIXME: SingleHyphen
@@ -134,7 +162,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::Pat<'src>> {
         // FIXME: "begins_pat_at(right_level)"?
         let right =
-            self.begins_expr().then(|| self.parse_pat_at_level(right_level, ors)).transpose()?;
+            self.begins_pat(ors).then(|| self.parse_pat_at_level(right_level, ors)).transpose()?;
         Ok(ast::Pat::Range(left, right.map(Box::new), ast::RangePatKind::Exclusive))
     }
 
@@ -149,6 +177,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::Pat::Range(left, Some(Box::new(right)), ast::RangePatKind::Inclusive(kind)))
     }
 
+    // FIXME: What about BoolLit?
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
         match self.token.kind {
             TokenKind::Ident => match self.source(self.token.span) {

@@ -12,6 +12,8 @@ mod item;
 mod pat;
 mod path;
 mod stmt;
+#[cfg(test)]
+mod test;
 mod ty;
 
 pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
@@ -408,6 +410,7 @@ fn is_path_seg_keyword(ident: &str) -> bool {
     matches!(ident, "_" | "self" | "Self" | "super" | "crate")
 }
 
+#[cfg_attr(test, derive(Debug))]
 pub(crate) enum ParseError {
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
@@ -521,6 +524,7 @@ macro one_of($( $frag:expr ),+ $(,)?) {
     ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
 }
 
+#[cfg_attr(test, derive(Debug))]
 pub(crate) enum ExpectedFragment {
     Raw(&'static str),
     Token(TokenKind),

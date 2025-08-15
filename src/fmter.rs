@@ -26,9 +26,9 @@ impl Default for Cfg {
 #[derive(Default)]
 pub(crate) enum SkipMarker {
     None,
-    #[default]
     All,
     Rustfmt,
+    #[default]
     Rasur,
 }
 

@@ -1,4 +1,5 @@
 // Features
+#![feature(assert_matches)]
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
 #![feature(if_let_guard)]
