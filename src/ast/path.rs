@@ -2,7 +2,7 @@ use super::{Bound, Expr, Lifetime, Ty};
 
 #[derive(Debug)]
 pub(crate) struct Path<'src, M: GenericArgsMode> {
-    // Invariant: Has not be non-empty!
+    // Invariant: Has to be non-empty!
     pub(crate) segs: Vec<PathSeg<'src, M>>,
 }
 

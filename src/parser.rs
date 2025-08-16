@@ -1,12 +1,13 @@
-use crate::ast;
-use crate::edition::Edition;
-use crate::span::Span;
-use crate::token::{Token, TokenKind};
-use std::borrow::Cow;
-use std::fmt;
-use std::path::Path;
+use crate::{
+    ast,
+    edition::Edition,
+    span::Span,
+    token::{Token, TokenKind},
+};
+use std::{borrow::Cow, fmt};
 
 mod attr;
+mod error;
 mod expr;
 mod item;
 mod pat;
@@ -16,7 +17,7 @@ mod stmt;
 mod test;
 mod ty;
 
-pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
+pub(crate) type Result<T, E = error::ParseError> = std::result::Result<T, E>;
 
 pub(crate) fn parse<'src>(
     tokens: &[Token],
@@ -67,7 +68,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             if lifetime == "'_" || lifetime == "'static" || self.ident_is_common(&lifetime[1..]) {
                 Ok(Some(ast::Lifetime(lifetime)))
             } else {
-                Err(ParseError::ReservedLifetime(token.span))
+                Err(error::ParseError::ReservedLifetime(token.span))
             }
         } else {
             Ok(None)
@@ -159,7 +160,7 @@ impl<'a, 'src> Parser<'a, 'src> {
                 self.advance();
                 self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
             }
-            _ => Err(ParseError::UnexpectedToken(
+            _ => Err(error::ParseError::UnexpectedToken(
                 self.token,
                 one_of![
                     TokenKind::OpenRoundBracket,
@@ -221,7 +222,7 @@ impl<'a, 'src> Parser<'a, 'src> {
                         match stack.pop() {
                             Some(open_delim) if open_delim == close_delim => {}
                             // FIXME: Better error.
-                            _ => return Err(ParseError::InvalidDelimiter),
+                            _ => return Err(error::ParseError::InvalidDelimiter),
                         }
                     }
                 }
@@ -235,7 +236,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             Ok(tokens)
         } else {
             // FIXME: Better error.
-            Err(ParseError::InvalidDelimiter)
+            Err(error::ParseError::InvalidDelimiter)
         }
     }
 
@@ -317,7 +318,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             return Ok(());
         }
 
-        Err(ParseError::UnexpectedToken(self.token, expected.into()))
+        Err(error::ParseError::UnexpectedToken(self.token, expected.into()))
     }
 
     // FIXME: likely no longer correct
@@ -408,94 +409,6 @@ fn is_reserved(ident: &str, edition: Edition) -> bool {
 
 fn is_path_seg_keyword(ident: &str) -> bool {
     matches!(ident, "_" | "self" | "Self" | "super" | "crate")
-}
-
-#[cfg_attr(test, derive(Debug))]
-pub(crate) enum ParseError {
-    ExpectedTraitFoundTy,
-    GenericArgsOnFieldExpr(Span),
-    InvalidAssocItemKind(Span),
-    InvalidDelimiter,
-    InvalidExternItemKind(Span),
-    MisplacedReceiver,
-    ModifierOnOutlivesBound,
-    // FIXME: &'static str over String
-    OpCannotBeChained(String),
-    ReservedLifetime(Span),
-    TyRelMacroCall,
-    UnexpectedToken(Token, ExpectedFragment),
-}
-
-impl ParseError {
-    pub(crate) fn print(&self, source: &str, path: &Path) {
-        use annotate_snippets as ann;
-        let lvl = ann::Level::Error;
-        let msg = match self {
-            Self::UnexpectedToken(token, expected) => {
-                let found = token.to_diag_str(Some(source));
-                super let title = format!("found {found} but expected {expected}");
-                super let path = path.to_string_lossy();
-
-                lvl.title(&title).snippet(
-                    ann::Snippet::source(source)
-                        .origin(&path)
-                        .annotation(lvl.span(token.span.range()).label("unexpected token"))
-                        .fold(true),
-                )
-            }
-            Self::InvalidAssocItemKind(span) => {
-                super let path = path.to_string_lossy();
-
-                lvl.title("invalid associated item kind").snippet(
-                    ann::Snippet::source(source)
-                        .origin(&path)
-                        .annotation(lvl.span(span.range()))
-                        .fold(true),
-                )
-            }
-            Self::InvalidDelimiter => lvl.title("invalid delimiter"),
-            Self::InvalidExternItemKind(span) => {
-                super let path = path.to_string_lossy();
-
-                lvl.title("invalid extern item kind").snippet(
-                    ann::Snippet::source(source)
-                        .origin(&path)
-                        .annotation(lvl.span(span.range()))
-                        .fold(true),
-                )
-            }
-            Self::ExpectedTraitFoundTy => lvl.title("found type expected trait"),
-            Self::ModifierOnOutlivesBound => lvl.title("only trait bounds may have modifiers"),
-            Self::MisplacedReceiver => lvl.title("misplaced receiver"),
-            Self::OpCannotBeChained(op) => {
-                super let title = format!("operator `{op}` cannot be chained");
-                lvl.title(&title)
-            }
-            Self::TyRelMacroCall => lvl.title("type-relative macro call"),
-            Self::ReservedLifetime(span) => {
-                super let path = path.to_string_lossy();
-
-                lvl.title("reserved lifetime").snippet(
-                    ann::Snippet::source(source)
-                        .origin(&path)
-                        .annotation(lvl.span(span.range()))
-                        .fold(true),
-                )
-            }
-            Self::GenericArgsOnFieldExpr(span) => {
-                super let path = path.to_string_lossy();
-
-                lvl.title("generic args on field expression").snippet(
-                    ann::Snippet::source(source)
-                        .origin(&path)
-                        .annotation(lvl.span(span.range()))
-                        .fold(true),
-                )
-            }
-        };
-        let renderer = ann::Renderer::styled();
-        eprintln!("{}", renderer.render(msg));
-    }
 }
 
 impl Token {

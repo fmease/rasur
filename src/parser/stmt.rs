@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, ParseError, Parser, Result, TokenKind, pat::OrPolicy,
+    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy,
 };
 use crate::ast;
 

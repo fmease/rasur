@@ -1,4 +1,6 @@
-use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of, pat::OrPolicy};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
+};
 use crate::{ast, parser::path::GenericArgsMode};
 use std::cmp::Ordering;
 

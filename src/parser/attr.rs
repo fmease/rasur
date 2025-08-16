@@ -1,4 +1,4 @@
-use super::{ParseError, Parser, Result, TokenKind, one_of};
+use super::{Parser, Result, TokenKind, error::ParseError, one_of};
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {

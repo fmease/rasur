@@ -1,4 +1,4 @@
-use super::ParseError;
+use super::error::ParseError;
 use crate::{
     ast,
     edition::Edition::{self, *},

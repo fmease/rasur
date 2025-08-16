@@ -171,9 +171,14 @@ impl Fmt for Vec<ast::Bound<'_>> {
 impl Fmt for ast::Bound<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Trait(mods, path) => {
-                mods.fmt(cx);
-                path.fmt(cx);
+            Self::Trait { bound_vars, modifiers, trait_ref } => {
+                if !bound_vars.is_empty() {
+                    fmt!(cx, "for");
+                    bound_vars.fmt(cx);
+                    fmt!(cx, " ");
+                }
+                modifiers.fmt(cx);
+                trait_ref.fmt(cx);
             }
             Self::Outlives(lt) => lt.fmt(cx),
         }
@@ -182,7 +187,13 @@ impl Fmt for ast::Bound<'_> {
 
 impl Fmt for ast::TraitBoundModifiers {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { polarity } = self;
+        let Self { constness, polarity } = self;
+
+        match constness {
+            ast::BoundConstness::Never => {}
+            ast::BoundConstness::Maybe => fmt!(cx, "[const] "),
+            ast::BoundConstness::Always => fmt!(cx, "const "),
+        }
 
         match polarity {
             ast::BoundPolarity::Positive => {}

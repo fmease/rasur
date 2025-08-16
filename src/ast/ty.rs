@@ -1,4 +1,4 @@
-use super::{Expr, ExtPath, UnambiguousGenericArgs, Ident, MacroCall, Mutability, Path};
+use super::{Expr, ExtPath, Ident, MacroCall, Mutability, Path, UnambiguousGenericArgs};
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
@@ -60,19 +60,31 @@ pub(crate) struct OutlivesPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Trait(TraitBoundModifiers, Path<'src, UnambiguousGenericArgs>),
+    Trait {
+        bound_vars: Vec<GenericParam<'src>>,
+        modifiers: TraitBoundModifiers,
+        trait_ref: Path<'src, UnambiguousGenericArgs>,
+    },
     Outlives(Lifetime<'src>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TraitBoundModifiers {
+    pub(crate) constness: BoundConstness,
+    // FIXME: pub(crate) asyncness: BoundAsyncness,
     pub(crate) polarity: BoundPolarity,
-    // constness
-    // asyncness
 }
 
 impl TraitBoundModifiers {
-    pub(crate) const NONE: Self = Self { polarity: BoundPolarity::Positive };
+    pub(crate) const NONE: Self =
+        Self { constness: BoundConstness::Never, polarity: BoundPolarity::Positive };
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum BoundConstness {
+    Never,
+    Maybe,
+    Always,
 }
 
 #[derive(Debug, PartialEq, Eq)]

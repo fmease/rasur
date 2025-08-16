@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of};
+use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of};
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {
@@ -35,7 +35,8 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     return Ok(ast::Ty::Inferred);
                 }
-                // In Rust 2015, we would have already taken `parse_path`, so all is good.
+                // FIXME: In Rust 2015, we want to take `parse_ext_path` instead unless
+                //        `dyn` is followed by some specific tokens.
                 "dyn" => {
                     self.advance();
                     let bounds = self.parse_bounds()?;
@@ -319,21 +320,31 @@ impl<'src> Parser<'_, 'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        // FIXME: Bound modifiers
-        // FIXME: for<>
-
-        let mods = self.parse_trait_bound_modifiers();
-
-        if self.begins_path() {
-            let path = self.parse_path::<ast::UnambiguousGenericArgs>()?;
-            return Ok(ast::Bound::Trait(mods, path));
-        }
+        // We parse these for all bound kinds to reject them afterwards with a better diagnostic.
+        let bound_vars = self.parse_higher_ranked_binder()?;
+        let modifiers = self.parse_trait_bound_modifiers()?;
 
         if let Some(lt) = self.consume_common_lifetime()? {
-            if let ast::TraitBoundModifiers::NONE = mods {
-                return Ok(ast::Bound::Outlives(lt));
+            if bound_vars.is_some() {
+                return Err(ParseError::HigherRankedBinderOnOutlivesBound);
             }
-            return Err(ParseError::ModifierOnOutlivesBound);
+            if modifiers != ast::TraitBoundModifiers::NONE {
+                return Err(ParseError::ModifiersOnOutlivesBound);
+            }
+
+            return Ok(ast::Bound::Outlives(lt));
+        }
+
+        // FIXME: Parse use-bounds (don't forget to reject modifiers & binder)
+
+        // FIXME: Also support parentheses around trait bounds
+        if self.begins_path() {
+            let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>()?;
+            return Ok(ast::Bound::Trait {
+                bound_vars: bound_vars.unwrap_or_default(),
+                modifiers,
+                trait_ref,
+            });
         }
 
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Bound))
@@ -342,14 +353,33 @@ impl<'src> Parser<'_, 'src> {
     fn begins_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        self.begins_trait_bound_modifiers()
+        // FIXME: Intro `begins_trait_bound` abstracting over for<>, TBMs, path
+        self.as_ident(self.token).is_some_and(|ident| ident == "for")
+            || self.begins_trait_bound_modifiers()
             || self.begins_path()
-            || matches!(self.token.kind, TokenKind::Lifetime)
+            || matches!(self.token.kind, TokenKind::Lifetime) // FIXME: swap about with begins_outlives_bound
     }
 
-    fn parse_trait_bound_modifiers(&mut self) -> ast::TraitBoundModifiers {
+    fn parse_trait_bound_modifiers(&mut self) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
+        let constness = match self.token.kind {
+            TokenKind::Ident if let "const" = self.source(self.token.span) => {
+                self.advance();
+                ast::BoundConstness::Always
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                self.parse_ident_where("const")?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                ast::BoundConstness::Maybe
+            }
+            _ => ast::BoundConstness::Never,
+        };
+
+        // FIXME: asyncness
+
+        // FIMXE: Make polarity incompatible with higher-ranked binders, constness & asyncness
         let polarity = match self.token.kind {
             TokenKind::SingleBang => {
                 self.advance();
@@ -362,13 +392,22 @@ impl<'src> Parser<'_, 'src> {
             _ => ast::BoundPolarity::Positive,
         };
 
-        ast::TraitBoundModifiers { polarity }
+        Ok(ast::TraitBoundModifiers { constness, polarity })
     }
 
     fn begins_trait_bound_modifiers(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
-        matches!(self.token.kind, TokenKind::SingleBang | TokenKind::QuestionMark)
+        match self.token.kind {
+            TokenKind::Ident => self.source(self.token.span) == "const",
+            TokenKind::OpenSquareBracket => {
+                self.look_ahead(1, |token| {
+                    self.as_ident(token).is_some_and(|ident| ident == "const")
+                }) && self.look_ahead(2, |token| token.kind == TokenKind::CloseSquareBracket)
+            }
+            TokenKind::SingleBang | TokenKind::QuestionMark => true,
+            _ => false,
+        }
     }
 
     fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
@@ -383,5 +422,13 @@ impl<'src> Parser<'_, 'src> {
         }
 
         Ok(bounds)
+    }
+
+    fn parse_higher_ranked_binder(&mut self) -> Result<Option<Vec<ast::GenericParam<'src>>>> {
+        if !self.consume_ident_if("for") {
+            return Ok(None);
+        }
+
+        self.parse_generic_params().map(Some)
     }
 }

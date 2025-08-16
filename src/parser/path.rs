@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, ParseError, Parser, Result, Token, TokenKind, is_path_seg_keyword,
+    ExpectedFragment, Parser, Result, Token, TokenKind, error::ParseError, is_path_seg_keyword,
     is_reserved, one_of,
 };
 use crate::ast;
