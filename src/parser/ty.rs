@@ -273,13 +273,17 @@ impl<'src> Parser<'_, 'src> {
     fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
-        // FIXME: for<>
+        let bound_vars = self.parse_higher_ranked_binder()?;
 
-        if self.begins_ty() {
+        if bound_vars.is_some() || self.begins_ty() {
             let ty = self.parse_ty()?;
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_bounds()?;
-            return Ok(ast::Predicate::Trait(ast::TraitPredicate { ty, bounds }));
+            return Ok(ast::Predicate::Trait(ast::TraitPredicate {
+                bound_vars: bound_vars.unwrap_or_default(),
+                ty,
+                bounds,
+            }));
         }
         if let Some(lt) = self.consume_common_lifetime()? {
             self.parse(TokenKind::SingleColon)?;
@@ -293,7 +297,9 @@ impl<'src> Parser<'_, 'src> {
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        self.begins_ty() || matches!(self.token.kind, TokenKind::Lifetime)
+        self.as_ident(self.token).is_some_and(|ident| ident == "for")
+            || self.begins_ty()
+            || matches!(self.token.kind, TokenKind::Lifetime)
     }
 
     /// Parse a bounds annotation if available.

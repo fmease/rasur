@@ -142,21 +142,27 @@ impl Fmt for Vec<ast::Predicate<'_>> {
 impl Fmt for ast::Predicate<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Trait(pred) => {
-                pred.ty.fmt(cx);
-                fmt!(cx, ":");
-                if !pred.bounds.is_empty() {
+            Self::Trait(ast::TraitPredicate { bound_vars, ty, bounds }) => {
+                if !bound_vars.is_empty() {
+                    fmt!(cx, "for");
+                    bound_vars.fmt(cx);
                     fmt!(cx, " ");
                 }
-                pred.bounds.fmt(cx);
+
+                ty.fmt(cx);
+                fmt!(cx, ":");
+                if !bounds.is_empty() {
+                    fmt!(cx, " ");
+                }
+                bounds.fmt(cx);
             }
-            Self::Outlives(pred) => {
-                pred.lt.fmt(cx);
+            Self::Outlives(ast::OutlivesPredicate { lt, bounds }) => {
+                lt.fmt(cx);
                 fmt!(cx, ":");
-                if !pred.bounds.is_empty() {
+                if !bounds.is_empty() {
                     fmt!(cx, " ");
                 }
-                Punctuated::new(pred.bounds, " + ").fmt(cx);
+                Punctuated::new(bounds, " + ").fmt(cx);
             }
         }
     }

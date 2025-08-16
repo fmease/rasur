@@ -48,6 +48,7 @@ pub(crate) enum Predicate<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TraitPredicate<'src> {
+    pub(crate) bound_vars: Vec<GenericParam<'src>>,
     pub(crate) ty: Ty<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
 }
