@@ -1,306 +1,292 @@
 use crate::{
-    span::{ByteIndex, Span},
+    span::Span,
     token::{Token, TokenKind},
 };
 use iter::PeekableCharIndices;
 
 pub(crate) fn lex(source: &str) -> Vec<Token> {
-    Lexer::new(source).run()
-}
+    let mut chars = PeekableCharIndices::new(source);
+    let mut tokens = Vec::new();
 
-struct Lexer<'src> {
-    chars: iter::PeekableCharIndices<'src>,
-    tokens: Vec<Token>,
-}
+    loop {
+        let token = chars.lex();
 
-impl<'src> Lexer<'src> {
-    fn new(source: &'src str) -> Self {
-        Self { chars: PeekableCharIndices::new(source), tokens: Vec::new() }
+        if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment = token.kind
+        {
+            continue;
+        }
+
+        tokens.push(token);
+
+        if token.kind == TokenKind::EndOfInput {
+            break;
+        }
     }
 
-    #[expect(clippy::too_many_lines)]
-    fn run(mut self) -> Vec<Token> {
-        while let Some((start, char)) = self.next() {
-            match char {
-                _ if char.is_whitespace() => {}
-                '/' => {
-                    match self.peek() {
-                        Some('/') => {
+    tokens
+}
+
+impl iter::PeekableCharIndices<'_> {
+    fn lex(&mut self) -> Token {
+        let Some((start, char)) = self.next() else {
+            let index = self.index();
+            return Token::new(TokenKind::EndOfInput, Span::new(index, index));
+        };
+
+        let kind = match char {
+            _ if char.is_whitespace() => {
+                while self.peek().is_some_and(|char| char.is_whitespace()) {
+                    self.advance();
+                }
+
+                TokenKind::Whitespace
+            }
+            '/' => {
+                match self.peek() {
+                    Some('/') => {
+                        self.advance();
+                        while self.peek().is_some_and(|char| char != '\n') {
                             self.advance();
-                            while self.peek().is_some_and(|char| char != '\n') {
+                        }
+
+                        TokenKind::LineComment
+                    }
+                    // FIXME: Support nested multi-line comments!
+                    // FIXME: Smh. taint unterminated m-l comments (but don't fatal!)
+                    Some('*') => {
+                        self.advance();
+
+                        // FIXME: Use next()? instead of "uncond_peek+advance"?
+                        while let Some(prev) = self.peek() {
+                            self.advance();
+
+                            if let ('*', Some('/')) = (prev, self.peek()) {
                                 self.advance();
+                                break;
                             }
                         }
-                        // FIXME: Support nested multi-line comments!
-                        // FIXME: Smh. taint unterminated m-l comments (but don't fatal!)
-                        Some('*') => {
+
+                        TokenKind::BlockComment
+                    }
+                    Some('=') => {
+                        self.advance();
+                        TokenKind::SlashEquals
+                    }
+                    _ => TokenKind::SingleSlash,
+                }
+            }
+            'b' if self.peek() == Some('\'') => {
+                self.advance();
+                self.fin_lex_char_lit()
+            }
+            'a'..='z' | 'A'..='Z' | '_' => {
+                while let Some(IdentMiddle![]) = self.peek() {
+                    self.advance();
+                }
+
+                TokenKind::Ident
+            }
+            '0'..='9' => {
+                // FIXME: Float literals
+                while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
+                    self.advance();
+                }
+
+                TokenKind::NumLit
+            }
+            '"' => {
+                // FIXME: Escape sequences
+                while self.next().is_some_and(|(_, char)| char != '"') {}
+
+                // FIXME: Suffixes
+
+                // FIXME: We currently don't mark unterminated str lits
+                //        and the parser doesn't report them.
+                TokenKind::StrLit
+            }
+            '@' => TokenKind::At,
+            ',' => TokenKind::Comma,
+            ';' => TokenKind::Semicolon,
+            '.' => {
+                if let Some('.') = self.peek() {
+                    self.advance();
+                    match self.peek() {
+                        Some('.') => {
                             self.advance();
-
-                            // FIXME: Use next()? instead of "uncond_peek+advance"?
-                            while let Some(prev) = self.peek() {
-                                self.advance();
-
-                                if let ('*', Some('/')) = (prev, self.peek()) {
-                                    self.advance();
-                                    break;
-                                }
-                            }
+                            TokenKind::TripleDot
                         }
                         Some('=') => {
                             self.advance();
-                            self.add(TokenKind::SlashEquals, start);
+                            TokenKind::DoubleDotEquals
                         }
-                        _ => {
-                            self.add(TokenKind::SingleSlash, start);
-                        }
+                        _ => TokenKind::DoubleDot,
                     }
+                } else {
+                    TokenKind::SingleDot
                 }
-                'b' if self.peek() == Some('\'') => {
-                    self.advance();
-                    self.fin_lex_char_lit(start);
-                }
-                'a'..='z' | 'A'..='Z' | '_' => {
-                    while let Some(IdentMiddle![]) = self.peek() {
-                        self.advance();
-                    }
-
-                    self.add(TokenKind::Ident, start);
-                }
-                '0'..='9' => {
-                    // FIXME: Float literals
-                    while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
-                        self.advance();
-                    }
-
-                    self.add(TokenKind::NumLit, start);
-                }
-                '"' => {
-                    // FIXME: Escape sequences
-                    while self.next().is_some_and(|(_, char)| char != '"') {}
-
-                    // FIXME: Suffixes
-
-                    // FIXME: We currently don't mark unterminated str lits
-                    //        and the parser doesn't report them.
-                    self.add(TokenKind::StrLit, start);
-                }
-                '@' => self.add(TokenKind::At, start),
-                ',' => self.add(TokenKind::Comma, start),
-                ';' => self.add(TokenKind::Semicolon, start),
-                '.' => {
-                    if let Some('.') = self.peek() {
-                        self.advance();
-                        match self.peek() {
-                            Some('.') => {
-                                self.advance();
-                                self.add(TokenKind::TripleDot, start);
-                            }
-                            Some('=') => {
-                                self.advance();
-                                self.add(TokenKind::DoubleDotEquals, start);
-                            }
-                            _ => {
-                                self.add(TokenKind::DoubleDot, start);
-                            }
-                        }
-                    } else {
-                        self.add(TokenKind::SingleDot, start);
-                    }
-                }
-                ':' => {
-                    if let Some(':') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::DoubleColon, start);
-                    } else {
-                        self.add(TokenKind::SingleColon, start);
-                    }
-                }
-                '!' => {
-                    if let Some('=') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::BangEquals, start);
-                    } else {
-                        self.add(TokenKind::SingleBang, start);
-                    }
-                }
-                '?' => self.add(TokenKind::QuestionMark, start),
-                '+' => {
-                    if let Some('=') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::PlusEquals, start);
-                    } else {
-                        self.add(TokenKind::Plus, start);
-                    }
-                }
-                '*' => {
-                    if let Some('=') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::AsteriskEquals, start);
-                    } else {
-                        self.add(TokenKind::SingleAsterisk, start)
-                    }
-                }
-                '-' => match self.peek() {
-                    Some('>') => {
-                        self.advance();
-                        self.add(TokenKind::ThinArrow, start);
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::HypenEquals, start);
-                    }
-                    _ => {
-                        self.add(TokenKind::SingleHyphen, start);
-                    }
-                },
-                '=' => match self.peek() {
-                    Some('>') => {
-                        self.advance();
-                        self.add(TokenKind::WideArrow, start);
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::DoubleEquals, start);
-                    }
-                    _ => self.add(TokenKind::SingleEquals, start),
-                },
-                '#' => self.add(TokenKind::Hash, start),
-                '&' => match self.peek() {
-                    Some('&') => {
-                        self.advance();
-                        self.add(TokenKind::DoubleAmpersand, start);
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::AmpersandEquals, start);
-                    }
-                    _ => {
-                        self.add(TokenKind::SingleAmpersand, start);
-                    }
-                },
-                '|' => match self.peek() {
-                    Some('|') => {
-                        self.advance();
-                        self.add(TokenKind::DoublePipe, start);
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::PipeEquals, start);
-                    }
-                    _ => {
-                        self.add(TokenKind::SinglePipe, start);
-                    }
-                },
-                '%' => {
-                    if let Some('=') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::PercentEquals, start)
-                    } else {
-                        self.add(TokenKind::SinglePercent, start)
-                    }
-                }
-                '^' => {
-                    if let Some('=') = self.peek() {
-                        self.advance();
-                        self.add(TokenKind::CaretEquals, start);
-                    } else {
-                        self.add(TokenKind::SingleCaret, start)
-                    }
-                }
-                '(' => self.add(TokenKind::OpenRoundBracket, start),
-                ')' => self.add(TokenKind::CloseRoundBracket, start),
-                '[' => self.add(TokenKind::OpenSquareBracket, start),
-                ']' => self.add(TokenKind::CloseSquareBracket, start),
-                '{' => self.add(TokenKind::OpenCurlyBracket, start),
-                '}' => self.add(TokenKind::CloseCurlyBracket, start),
-                '<' => match self.peek() {
-                    Some('<') => {
-                        self.advance();
-                        if let Some('=') = self.peek() {
-                            self.advance();
-                            self.add(TokenKind::DoubleLessThanEquals, start);
-                        } else {
-                            self.add(TokenKind::DoubleLessThan, start);
-                        }
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::LessThanEquals, start);
-                    }
-                    _ => {
-                        self.add(TokenKind::SingleLessThan, start);
-                    }
-                },
-                '>' => match self.peek() {
-                    Some('>') => {
-                        self.advance();
-                        if let Some('=') = self.peek() {
-                            self.advance();
-                            self.add(TokenKind::DoubleGreaterThanEquals, start);
-                        } else {
-                            self.add(TokenKind::DoubleGreaterThan, start);
-                        }
-                    }
-                    Some('=') => {
-                        self.advance();
-                        self.add(TokenKind::GreaterThanEquals, start);
-                    }
-                    _ => {
-                        self.add(TokenKind::SingleGreaterThan, start);
-                    }
-                },
-                '\'' => match self.peek() {
-                    Some(IdentMiddle![]) => {
-                        self.advance();
-                        let kind = loop {
-                            match self.peek() {
-                                Some(IdentMiddle![]) => self.advance(),
-                                // FIXME: Escaped apostrophe
-                                Some('\'') => {
-                                    self.advance();
-                                    break TokenKind::CharLit;
-                                }
-                                _ => break TokenKind::Lifetime,
-                            }
-                        };
-                        self.add(kind, start);
-                    }
-                    _ => self.fin_lex_char_lit(start),
-                },
-                _ => self.add(TokenKind::Error, start),
             }
-        }
+            ':' => {
+                if let Some(':') = self.peek() {
+                    self.advance();
+                    TokenKind::DoubleColon
+                } else {
+                    TokenKind::SingleColon
+                }
+            }
+            '!' => {
+                if let Some('=') = self.peek() {
+                    self.advance();
+                    TokenKind::BangEquals
+                } else {
+                    TokenKind::SingleBang
+                }
+            }
+            '?' => TokenKind::QuestionMark,
+            '+' => {
+                if let Some('=') = self.peek() {
+                    self.advance();
+                    TokenKind::PlusEquals
+                } else {
+                    TokenKind::Plus
+                }
+            }
+            '*' => {
+                if let Some('=') = self.peek() {
+                    self.advance();
+                    TokenKind::AsteriskEquals
+                } else {
+                    TokenKind::SingleAsterisk
+                }
+            }
+            '-' => match self.peek() {
+                Some('>') => {
+                    self.advance();
+                    TokenKind::ThinArrow
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::HypenEquals
+                }
+                _ => TokenKind::SingleHyphen,
+            },
+            '=' => match self.peek() {
+                Some('>') => {
+                    self.advance();
+                    TokenKind::WideArrow
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::DoubleEquals
+                }
+                _ => TokenKind::SingleEquals,
+            },
+            '#' => TokenKind::Hash,
+            '&' => match self.peek() {
+                Some('&') => {
+                    self.advance();
+                    TokenKind::DoubleAmpersand
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::AmpersandEquals
+                }
+                _ => TokenKind::SingleAmpersand,
+            },
+            '|' => match self.peek() {
+                Some('|') => {
+                    self.advance();
+                    TokenKind::DoublePipe
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::PipeEquals
+                }
+                _ => TokenKind::SinglePipe,
+            },
+            '%' => {
+                if let Some('=') = self.peek() {
+                    self.advance();
+                    TokenKind::PercentEquals
+                } else {
+                    TokenKind::SinglePercent
+                }
+            }
+            '^' => {
+                if let Some('=') = self.peek() {
+                    self.advance();
+                    TokenKind::CaretEquals
+                } else {
+                    TokenKind::SingleCaret
+                }
+            }
+            '(' => TokenKind::OpenRoundBracket,
+            ')' => TokenKind::CloseRoundBracket,
+            '[' => TokenKind::OpenSquareBracket,
+            ']' => TokenKind::CloseSquareBracket,
+            '{' => TokenKind::OpenCurlyBracket,
+            '}' => TokenKind::CloseCurlyBracket,
+            '<' => match self.peek() {
+                Some('<') => {
+                    self.advance();
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        TokenKind::DoubleLessThanEquals
+                    } else {
+                        TokenKind::DoubleLessThan
+                    }
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::LessThanEquals
+                }
+                _ => TokenKind::SingleLessThan,
+            },
+            '>' => match self.peek() {
+                Some('>') => {
+                    self.advance();
+                    if let Some('=') = self.peek() {
+                        self.advance();
+                        TokenKind::DoubleGreaterThanEquals
+                    } else {
+                        TokenKind::DoubleGreaterThan
+                    }
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::GreaterThanEquals
+                }
+                _ => TokenKind::SingleGreaterThan,
+            },
+            '\'' => match self.peek() {
+                Some(IdentMiddle![]) => {
+                    self.advance();
+                    loop {
+                        match self.peek() {
+                            Some(IdentMiddle![]) => self.advance(),
+                            // FIXME: Escaped apostrophe
+                            Some('\'') => {
+                                self.advance();
+                                break TokenKind::CharLit;
+                            }
+                            _ => break TokenKind::Lifetime,
+                        }
+                    }
+                }
+                _ => self.fin_lex_char_lit(),
+            },
+            _ => TokenKind::Error,
+        };
 
-        self.add(TokenKind::EndOfInput, self.index());
-
-        self.tokens
+        Token::new(kind, Span::new(start, self.index()))
     }
 
-    fn fin_lex_char_lit(&mut self, start: ByteIndex) {
+    fn fin_lex_char_lit(&mut self) -> TokenKind {
         // FIXME: Escape sequences, most importantly escaped apostrophe.
         while self.next().is_some_and(|(_, char)| char != '\'') {}
 
         // FIXME: We currently don't mark unterminated str lits
         //        and the parser doesn't report them.
-        self.add(TokenKind::CharLit, start);
-    }
-
-    fn add(&mut self, kind: TokenKind, start: ByteIndex) {
-        self.tokens.push(Token { kind, span: Span { start, end: self.index() } });
-    }
-}
-
-impl<'src> std::ops::Deref for Lexer<'src> {
-    type Target = PeekableCharIndices<'src>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.chars
-    }
-}
-
-impl std::ops::DerefMut for Lexer<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.chars
+        TokenKind::CharLit
     }
 }
 

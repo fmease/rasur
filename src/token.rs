@@ -7,6 +7,12 @@ pub(crate) struct Token {
     pub(crate) span: Span,
 }
 
+impl Token {
+    pub(crate) const fn new(kind: TokenKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
+
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}@{:?}", self.kind, self.span)
@@ -19,6 +25,7 @@ pub(crate) enum TokenKind {
     AsteriskEquals,
     At,
     BangEquals,
+    BlockComment,
     CaretEquals,
     CharLit,
     CloseCurlyBracket,
@@ -43,6 +50,7 @@ pub(crate) enum TokenKind {
     Ident,
     LessThanEquals,
     Lifetime,
+    LineComment,
     NumLit,
     OpenCurlyBracket,
     OpenRoundBracket,
@@ -70,6 +78,7 @@ pub(crate) enum TokenKind {
     StrLit,
     ThinArrow,
     TripleDot,
+    Whitespace,
     WideArrow,
 }
 
@@ -80,6 +89,7 @@ impl TokenKind {
             Self::AsteriskEquals => Repr::Src("*="),
             Self::At => Repr::Src("@"),
             Self::BangEquals => Repr::Src("!="),
+            Self::BlockComment => Repr::Tag("block comment"),
             Self::CaretEquals => Repr::Src("^="),
             Self::CharLit => Repr::Tag("char literal"),
             Self::CloseCurlyBracket => Repr::Src("}"),
@@ -104,6 +114,7 @@ impl TokenKind {
             Self::Ident => Repr::Tag("identifier"),
             Self::LessThanEquals => Repr::Src("`<=`"),
             Self::Lifetime => Repr::Tag("lifetime"),
+            Self::LineComment => Repr::Tag("line comment"),
             Self::NumLit => Repr::Tag("number literal"),
             Self::OpenCurlyBracket => Repr::Src("{"),
             Self::OpenRoundBracket => Repr::Src("("),
@@ -131,6 +142,7 @@ impl TokenKind {
             Self::StrLit => Repr::Tag("string literal"),
             Self::ThinArrow => Repr::Src("->"),
             Self::TripleDot => Repr::Src("..."),
+            Self::Whitespace => Repr::Tag("whitespace"),
             Self::WideArrow => Repr::Src("=>"),
         }
     }

@@ -22,6 +22,12 @@ pub(crate) struct Span {
 }
 
 impl Span {
+    pub(crate) const fn new(start: ByteIndex, end: ByteIndex) -> Self {
+        Self { start, end }
+    }
+}
+
+impl Span {
     pub(crate) fn to(self, other: impl Into<Option<Self>>) -> Self {
         Self { end: other.into().unwrap_or(self).end, ..self }
     }
