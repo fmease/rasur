@@ -1,4 +1,4 @@
-use super::{Expr, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Path};
+use super::{Expr, ExtPath, UnambiguousGenericArgs, Ident, MacroCall, Mutability, Path};
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
@@ -7,14 +7,14 @@ pub(crate) enum Ty<'src> {
     DynTrait(Vec<Bound<'src>>),
     FnPtr((), Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
-    Path(Box<ExtPath<'src, GenericArgsPolicy::Allowed>>),
+    Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
     Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
     Ptr(Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
     Tup(Vec<Ty<'src>>),
     Grouped(Box<Ty<'src>>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::Allowed>),
+    MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Error,
 }
 
@@ -60,7 +60,7 @@ pub(crate) struct OutlivesPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Trait(TraitBoundModifiers, Path<'src, GenericArgsPolicy::Allowed>),
+    Trait(TraitBoundModifiers, Path<'src, UnambiguousGenericArgs>),
     Outlives(Lifetime<'src>),
 }
 

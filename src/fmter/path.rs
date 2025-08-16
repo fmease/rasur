@@ -1,66 +1,74 @@
 use super::{Cx, Fmt, Punctuated, fmt};
 use crate::ast;
 
-impl<A: FmtGenericArgs> Fmt for ast::Path<'_, A> {
+impl<M: GenericArgsMode> Fmt for ast::Path<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { segs } = self;
         Punctuated::new(segs, "::").fmt(cx);
     }
 }
 
-impl<A: FmtGenericArgs> Fmt for ast::PathSeg<'_, A> {
+impl<M: GenericArgsMode> Fmt for ast::PathSeg<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ident, args } = self;
 
         fmt!(cx, "{ident}");
-        A::fmt(args, cx);
+        M::fmt(args, cx);
     }
 }
 
-impl<A: FmtGenericArgs> Fmt for ast::ExtPath<'_, A> {
+impl<S: GenericArgsStyle> Fmt for ast::ExtPath<'_, S> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { self_ty, mut path } = self;
-        if let Some(self_ty) = self_ty {
+        let Self { ext, path } = self;
+        if let Some(ast::PathExt { self_ty, trait_ref }) = ext {
             fmt!(cx, "<");
-            self_ty.ty.fmt(cx);
-            let segs = path.segs.split_off(self_ty.offset);
-            if !path.segs.is_empty() {
+            self_ty.fmt(cx);
+            if let Some(trait_ref) = trait_ref {
                 fmt!(cx, " as ");
-                path.fmt(cx);
+                trait_ref.fmt(cx);
             }
             fmt!(cx, ">::");
-            ast::Path { segs }.fmt(cx);
-        } else {
-            path.fmt(cx);
         }
+        path.fmt(cx);
     }
 }
 
-pub(super) trait FmtGenericArgs: ast::GenericArgsPolicy::Kind {
+pub(super) trait GenericArgsMode: ast::GenericArgsMode {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>);
 }
 
-impl FmtGenericArgs for ast::GenericArgsPolicy::Forbidden {
+impl GenericArgsMode for ast::NoGenericArgs {
     fn fmt((): Self::Args<'_>, _: &mut Cx<'_>) {}
 }
 
-impl FmtGenericArgs for ast::GenericArgsPolicy::Allowed {
+impl GenericArgsMode for ast::UnambiguousGenericArgs {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
         args.fmt(cx);
     }
 }
 
-impl FmtGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
+impl GenericArgsMode for ast::ObligatorilyDisambiguatedGenericArgs {
     fn fmt(args: Self::Args<'_>, cx: &mut Cx<'_>) {
-        if let Some(args) = args {
-            let is_empty = match &args {
-                ast::GenericArgs::Angle(args) => args.is_empty(),
-                ast::GenericArgs::Paren { .. } | ast::GenericArgs::ParenElided => true,
-            };
-            if !is_empty {
-                fmt!(cx, "::");
-            }
+        if let Some(args) = args
+            && !args.is_empty()
+        {
+            fmt!(cx, "::");
             args.fmt(cx);
+        }
+    }
+}
+
+pub(super) trait GenericArgsStyle: ast::GenericArgsStyle + GenericArgsMode {}
+
+impl GenericArgsStyle for ast::UnambiguousGenericArgs {}
+impl GenericArgsStyle for ast::ObligatorilyDisambiguatedGenericArgs {}
+
+impl ast::GenericArgs<'_> {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Angle(args) => args.is_empty(),
+            Self::Paren { inputs, output } => inputs.is_empty() && output.is_none(),
+            Self::ParenElided => false,
         }
     }
 }
@@ -85,11 +93,9 @@ impl Fmt for ast::GenericArgs<'_> {
 
 impl Fmt for Vec<ast::AngleGenericArg<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if !self.is_empty() {
-            fmt!(cx, "<");
-            Punctuated::new(self, ", ").fmt(cx);
-            fmt!(cx, ">");
-        }
+        fmt!(cx, "<");
+        Punctuated::new(self, ", ").fmt(cx);
+        fmt!(cx, ">");
     }
 }
 

@@ -1,7 +1,9 @@
+use super::ParseError;
 use crate::{
     ast,
     edition::Edition::{self, *},
     lexer::lex,
+    token::{Token, TokenKind},
 };
 use std::assert_matches::assert_matches;
 
@@ -17,8 +19,20 @@ fn parse_via<'src, T>(
     let tokens = lex(source);
     let mut parser = super::Parser::new(&tokens, source, edition);
     let result = parse(&mut parser)?;
-    assert_eq!(parser.token.kind, super::TokenKind::EndOfInput);
+    parser.parse(TokenKind::EndOfInput)?;
     Ok(result)
+}
+
+fn parse_item(source: &str, edition: Edition) -> super::Result<ast::Item<'_>> {
+    parse_via(source, edition, |this| this.parse_item())
+}
+
+fn parse_ty(source: &str, edition: Edition) -> super::Result<ast::Ty<'_>> {
+    parse_via(source, edition, |this| this.parse_ty())
+}
+
+fn parse_stmt(source: &str, edition: Edition) -> super::Result<ast::Stmt<'_>> {
+    parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
 }
 
 fn parse_expr(source: &str, edition: Edition) -> super::Result<ast::Expr<'_>> {
@@ -30,7 +44,7 @@ fn parse_pat(source: &str, edition: Edition) -> super::Result<ast::Pat<'_>> {
 }
 
 #[test]
-fn empty() {
+fn file_empty() {
     assert_matches!(
         parse_file("", Rust2015),
         Ok(ast::File { attrs: deref!([]), items: deref!([]), span: _ })
@@ -38,7 +52,7 @@ fn empty() {
 }
 
 #[test]
-fn double_borrow_and_double_borrow() {
+fn expr_double_borrow_and_double_borrow() {
     assert_matches!(
         parse_expr("&&0&&&&1", Rust2015),
         Ok(ast::Expr::BinOp(
@@ -56,7 +70,7 @@ fn double_borrow_and_double_borrow() {
 }
 
 #[test]
-fn or_nullary_closure() {
+fn expr_or_nullary_closure() {
     assert_matches!(
         parse_expr("()||||()", Rust2015),
         Ok(ast::Expr::BinOp(
@@ -73,7 +87,7 @@ fn or_nullary_closure() {
 
 // Unstable feature: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>.
 #[test]
-fn mut_ref_mut() {
+fn pat_mut_ref_mut() {
     assert_matches!(
         parse_pat("mut ref mut x", Rust2015),
         Ok(ast::Pat::Ident(ast::IdentPat {
@@ -85,11 +99,149 @@ fn mut_ref_mut() {
 }
 
 #[test]
-fn expr_pat_path_paren_gen_args_arrow() {
+fn expr_false_angle_gen_args() {
+    assert_matches!(
+        parse_expr("f<i32>()", Rust2015),
+        // FIXME: We should report sth. like OpCannotBeChained(Level::Compare) instead
+        //        since we have {`<`, `>`} here, not {`>`, `>`}.
+        Err(ParseError::OpCannotBeChained(deref!("Gt"))),
+    );
+
+    assert_matches!(
+        parse_expr("f<i32>", Rust2015),
+        // FIXME: Same here.
+        Err(ParseError::OpCannotBeChained(deref!("Gt"))),
+    );
+}
+
+#[test]
+fn pat_false_angle_gen_args() {
+    assert_matches!(
+        parse_pat("Some<i32>(0)", Rust2015),
+        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+    );
+}
+
+#[test]
+fn expr_angle_gen_args() {
+    assert_matches!(
+        parse_expr("f::<i32>()", Rust2015),
+        Ok(ast::Expr::Call(
+            deref!(ast::Expr::Path(ast::ExtPath {
+                ext: None,
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: "f",
+                        args: Some(ast::GenericArgs::Angle(deref!([
+                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Path(
+                                ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: deref!([ast::PathSeg { ident: "i32", args: None }])
+                                    },
+                                }
+                            )))
+                        ])))
+                    }])
+                }
+            })),
+            deref!([])
+        ))
+    );
+}
+
+#[test]
+fn pat_angle_gen_args() {
+    assert_matches!(
+        parse_pat("Some::<i32>(0)", Rust2015),
+        Ok(ast::Pat::TupleStruct(deref!(ast::TupleStructPat {
+            path: ast::ExtPath {
+                ext: None,
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: "Some",
+                        args: Some(ast::GenericArgs::Angle(deref!([
+                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Path(
+                                ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: deref!([ast::PathSeg { ident: "i32", args: None }]),
+                                    }
+                                }
+                            )))
+                        ])))
+                    }])
+                }
+            },
+            fields: deref!([ast::Pat::Lit(ast::Lit::Num("0"))])
+        }))),
+    );
+}
+
+#[test]
+fn ty_angle_gen_args() {
+    assert_matches!(
+        parse_ty("Ty<'a, (), 0>", Rust2015),
+        Ok(ast::Ty::Path(ast::ExtPath {
+            ext: None,
+            path: ast::Path {
+                segs: deref!([ast::PathSeg {
+                    ident: "Ty",
+                    args: Some(ast::GenericArgs::Angle(deref!([
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Lifetime(
+                            "'a"
+                        ))),
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tup(deref!(
+                            []
+                        )))),
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr::Lit(
+                            ast::Lit::Num("0")
+                        ))),
+                    ])))
+                }])
+            }
+        }))
+    );
+
+    assert_matches!(parse_ty("Ty::<'a, (), 0>", Rust2015), Ok(_));
+}
+
+// While typically angle generic args have to be introduced with `::<` instead of `<`
+// in exprs (and pats), the trait ref of an ext path gets treated to a "type context"
+// and it's unambiguous that angle generic args are meant for the trait ref when
+// encountering just `<`.
+#[test]
+fn expr_angle_args_in_path_ext() {
+    assert_matches!(
+        parse_expr("<() as TraitRef<()>>::assoc", Rust2015),
+        Ok(ast::Expr::Path(ast::ExtPath {
+            ext: Some(ast::PathExt {
+                self_ty: ast::Ty::Tup(deref!([])),
+                trait_ref: Some(ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: "TraitRef",
+                        args: Some(ast::GenericArgs::Angle(deref!([
+                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tup(
+                                deref!([])
+                            )))
+                        ])))
+                    },])
+                })
+            }),
+            path: ast::Path { segs: deref!([ast::PathSeg { ident: "assoc", args: None }]) }
+        }))
+    );
+}
+
+// This demonstrates a very odd consequence of Rust's grammar:
+// Not only are parenthesized generic args permitted in expression and
+// pattern position but trailing `-> $Type` is also permitted.
+#[test]
+fn expr_pat_paren_gen_args_arrow() {
     assert_matches!(
         parse_expr("x::()->()", Rust2015),
         Ok(ast::Expr::Path(deref!(ast::ExtPath {
-            self_ty: None,
+            ext: None,
             path: ast::Path {
                 segs: deref!([ast::PathSeg {
                     ident: "x",
@@ -105,7 +257,7 @@ fn expr_pat_path_paren_gen_args_arrow() {
     assert_matches!(
         parse_pat("x::()->!::X", Rust2015),
         Ok(ast::Pat::Path(deref!(ast::ExtPath {
-            self_ty: None,
+            ext: None,
             path: ast::Path {
                 segs: deref!([
                     ast::PathSeg {
@@ -122,7 +274,48 @@ fn expr_pat_path_paren_gen_args_arrow() {
     );
 }
 
-// FIXME: macro call expr with args
+#[test]
+fn item_macro_call_gen_args() {
+    assert_matches!(
+        parse_item("path::to::<>::call!();", Rust2015),
+        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+    );
+
+    assert_matches!(
+        parse_item("path::to::call<()>!();", Rust2015),
+        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+    );
+}
+
+#[test]
+fn stmt_macro_call_gen_args() {
+    assert_matches!(
+        parse_stmt("path::to::<>::call::<>!();", Rust2015),
+        Ok(ast::Stmt::Expr(
+            ast::Expr::MacroCall(deref!(ast::MacroCall {
+                path: ast::Path {
+                    segs: deref!([
+                        ast::PathSeg { ident: "path", args: None },
+                        ast::PathSeg {
+                            ident: "to",
+                            args: Some(ast::GenericArgs::Angle(deref!([])))
+                        },
+                        ast::PathSeg {
+                            ident: "call",
+                            args: Some(ast::GenericArgs::Angle(deref!([])))
+                        },
+                    ])
+                },
+                bracket: ast::Bracket::Round,
+                stream: deref!([]),
+            })),
+            ast::Semicolon::Yes
+        ))
+    );
+
+    assert_matches!(parse_stmt("path::to::<>::call::()!();", Rust2015), Ok(_));
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt)
 // FIXME: const {  } vs const item
 // FIXME: ops
@@ -132,7 +325,7 @@ fn expr_pat_path_paren_gen_args_arrow() {
 // FIXME: A bunch of negative behavior tests!
 
 #[test]
-fn smoke_binding_modes() {
+fn binding_modes() {
     assert_matches!(
         parse_file(
             "
@@ -162,7 +355,7 @@ fn main() {
 // FIXME: Expand this smoke test.
 #[test]
 #[ignore] // FIXME: Make it work.
-fn smoke_item_modifiers() {
+fn item_modifiers() {
     assert_matches!(
         parse_file(
             r#"

@@ -39,7 +39,9 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: We intentionally skip SinglePipe because leading pipes are only permitted
         //       at the top-level.
         match self.token.kind {
-            TokenKind::Ident => matches!(self.source(self.token.span), "_" | "mut" | "ref"),
+            TokenKind::Ident => {
+                matches!(self.source(self.token.span), "_" | "false" | "mut" | "ref" | "true")
+            }
             | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
@@ -177,13 +179,16 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::Pat::Range(left, Some(Box::new(right)), ast::RangePatKind::Inclusive(kind)))
     }
 
-    // FIXME: What about BoolLit?
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
         match self.token.kind {
             TokenKind::Ident => match self.source(self.token.span) {
                 "_" => {
                     self.advance();
                     return Ok(ast::Pat::Wildcard);
+                }
+                "false" => {
+                    self.advance();
+                    return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
                 }
                 "mut" => {
                     self.advance();
@@ -210,17 +215,21 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
                 }
+                "true" => {
+                    self.advance();
+                    return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
+                }
                 _ => {}
             },
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Pat::NumLit(lit));
+                return Ok(ast::Pat::Lit(ast::Lit::Num(lit)));
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Pat::StrLit(lit));
+                return Ok(ast::Pat::Lit(ast::Lit::Str(lit)));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -234,11 +243,11 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.begins_ext_path() {
-            let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
+            let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {
                 TokenKind::SingleBang => {
-                    let ast::ExtPath { self_ty: None, path } = path else {
+                    let ast::ExtPath { ext: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
                     };
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -261,7 +270,7 @@ impl<'src> Parser<'_, 'src> {
 
             return Ok(match path {
                 ast::ExtPath {
-                    self_ty: None,
+                    ext: None,
                     path: ast::Path { segs: deref!([ast::PathSeg { ident, args: None }]) },
                 } => ast::Pat::Ident(ast::IdentPat {
                     by_ref: ast::ByRef::No,

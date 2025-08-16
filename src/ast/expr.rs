@@ -1,5 +1,6 @@
 use super::{
-    Attr, Bracket, ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability, Pat, PathSeg, Stmt, Ty,
+    Attr, Bracket, ExtPath, Ident, Lit, MacroCall, Mutability,
+    ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
 
 #[derive(Debug)]
@@ -22,10 +23,10 @@ pub(crate) enum Expr<'src> {
     Let(Box<LetExpr<'src>>),
     Lit(Lit<'src>),
     Loop(Box<BlockExpr<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>>),
+    MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Match(Box<MatchExpr<'src>>),
     MethodCall(Box<MethodCallExpr<'src>>),
-    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
+    Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
     Return(Option<Box<Expr<'src>>>),
     Struct(Box<StructExpr<'src>>),
@@ -196,7 +197,7 @@ pub(crate) struct BlockExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructExpr<'src> {
-    pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) fields: Vec<StructExprField<'src>>,
 }
 
@@ -209,7 +210,7 @@ pub(crate) struct StructExprField<'src> {
 #[derive(Debug)]
 pub(crate) struct MethodCallExpr<'src> {
     pub(crate) receiver: Expr<'src>,
-    pub(crate) seg: PathSeg<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) seg: PathSeg<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) args: Vec<Expr<'src>>,
 }
 
@@ -237,15 +238,6 @@ pub(crate) struct ForLoopExpr<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) expr: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
-}
-
-#[derive(Debug)]
-pub(crate) enum Lit<'src> {
-    Bool(bool),
-    // FIXME: char
-    Char(&'src str),
-    Num(&'src str),
-    Str(&'src str),
 }
 
 #[derive(Debug)]

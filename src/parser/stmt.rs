@@ -19,6 +19,7 @@ impl<'src> Parser<'_, 'src> {
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
     //       macro expansion.
+    // FIXME: Try to get of param `delimiter`.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         // FIXME: Outer attrs on let stmt
         if self.begins_item(MacroCallPolicy::Forbidden) {

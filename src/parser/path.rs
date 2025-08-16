@@ -12,7 +12,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```grammar
     /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
     /// ```
-    pub(super) fn parse_path<A: ParseGenericArgs>(&mut self) -> Result<ast::Path<'src, A>> {
+    pub(super) fn parse_path<M: GenericArgsMode>(&mut self) -> Result<ast::Path<'src, M>> {
         // NOTE: To be kept in sync with `Self::begins_path`.
 
         let mut path = ast::Path { segs: Vec::new() };
@@ -21,10 +21,10 @@ impl<'src> Parser<'_, 'src> {
             path.segs.push(ast::PathSeg::ident(""));
         }
 
-        path.segs.push(self.parse_path_seg::<A>()?);
+        path.segs.push(self.parse_path_seg::<M>()?);
 
         while self.consume(TokenKind::DoubleColon) {
-            path.segs.push(self.parse_path_seg::<A>()?);
+            path.segs.push(self.parse_path_seg::<M>()?);
         }
 
         Ok(path)
@@ -36,35 +36,34 @@ impl<'src> Parser<'_, 'src> {
         self.token.kind == TokenKind::DoubleColon || self.as_path_seg_ident().is_some()
     }
 
-    pub(super) fn parse_ext_path<A: ParseGenericArgs>(&mut self) -> Result<ast::ExtPath<'src, A>> {
+    /// Parse an extended path.
+    pub(super) fn parse_ext_path<S: GenericArgsStyle>(&mut self) -> Result<ast::ExtPath<'src, S>> {
         // NOTE: To be kept in sync with `Self::begins_ext_path`.
 
         let mut path = ast::Path { segs: Vec::new() };
 
+        // FIXME: Add `<` to list of expected tokens
         let self_ty = if self.consume_single_less_than() {
             let ty = self.parse_ty()?;
-            if self.consume_ident_if("as") {
-                // FIXME: Pass `ast::GenericArgsPolicy::Allowed` instead of `A`.
-                //        However that won't compile rn, our types are too strict.
-                // We're in a "type context" now and can parse generic args unambiguously.
-                path = self.parse_path::<A>()?;
-            }
+            // We're in a "type context" now and can parse generic args unambiguously.
+            let trait_ref = self
+                .consume_ident_if("as")
+                .then(|| self.parse_path::<ast::UnambiguousGenericArgs>())
+                .transpose()?;
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
             self.parse(TokenKind::DoubleColon)?;
-            Some(ast::SelfTy { ty, offset: path.segs.len() })
+            Some(ast::PathExt { self_ty: ty, trait_ref })
         } else {
             None
         };
 
-        // FIXME: Add `<` to list of expected tokens
-
-        path.segs.push(self.parse_path_seg::<A>()?);
+        path.segs.push(self.parse_path_seg::<S>()?);
 
         while self.consume(TokenKind::DoubleColon) {
-            path.segs.push(self.parse_path_seg::<A>()?);
+            path.segs.push(self.parse_path_seg::<S>()?);
         }
 
-        Ok(ast::ExtPath { self_ty, path })
+        Ok(ast::ExtPath { ext: self_ty, path })
     }
 
     pub(super) fn begins_ext_path(&self) -> bool {
@@ -79,11 +78,11 @@ impl<'src> Parser<'_, 'src> {
         ) || self.begins_path()
     }
 
-    fn parse_path_seg<A: ParseGenericArgs>(&mut self) -> Result<ast::PathSeg<'src, A>> {
+    fn parse_path_seg<M: GenericArgsMode>(&mut self) -> Result<ast::PathSeg<'src, M>> {
         let ident = self.as_path_seg_ident().inspect(|_| self.advance()).ok_or_else(|| {
             ParseError::UnexpectedToken(self.token, ExpectedFragment::PathSegIdent)
         })?;
-        let args = A::parse(self)?;
+        let args = M::parse(self)?;
         Ok(ast::PathSeg { ident, args })
     }
 
@@ -94,7 +93,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_generic_args(
         &mut self,
-        requires_disambiguation: RequiresDisambiguation,
+        ambiguity: GenericArgsAmbiguity,
     ) -> Result<Option<ast::GenericArgs<'src>>> {
         let disambiguated = if self.token.kind == TokenKind::DoubleColon
             && self.look_ahead(1, |token| {
@@ -111,7 +110,7 @@ impl<'src> Parser<'_, 'src> {
             false
         };
 
-        if disambiguated || requires_disambiguation == RequiresDisambiguation::No {
+        if disambiguated || ambiguity == GenericArgsAmbiguity::No {
             return Ok(match self.token.kind {
                 TokenKind::SingleLessThan => {
                     self.advance();
@@ -293,7 +292,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_path_tree_kind(
         &mut self,
-        path: &mut ast::Path<'src, ast::GenericArgsPolicy::Forbidden>,
+        path: &mut ast::Path<'src, ast::NoGenericArgs>,
     ) -> Result<ast::PathTreeKind<'src>> {
         Ok(match self.token.kind {
             TokenKind::OpenCurlyBracket => {
@@ -388,30 +387,35 @@ impl<'src> Parser<'_, 'src> {
     }
 }
 
-pub(super) trait ParseGenericArgs: ast::GenericArgsPolicy::Kind {
+pub(super) trait GenericArgsMode: ast::GenericArgsMode {
     fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>>;
 }
 
-impl ParseGenericArgs for ast::GenericArgsPolicy::Forbidden {
+impl GenericArgsMode for ast::NoGenericArgs {
     fn parse<'src>(_: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
         Ok(())
     }
 }
 
-impl ParseGenericArgs for ast::GenericArgsPolicy::Allowed {
+impl GenericArgsMode for ast::UnambiguousGenericArgs {
     fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
-        parser.parse_generic_args(RequiresDisambiguation::No)
+        parser.parse_generic_args(GenericArgsAmbiguity::No)
     }
 }
 
-impl ParseGenericArgs for ast::GenericArgsPolicy::DisambiguatedOnly {
+impl GenericArgsMode for ast::ObligatorilyDisambiguatedGenericArgs {
     fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
-        parser.parse_generic_args(RequiresDisambiguation::Yes)
+        parser.parse_generic_args(GenericArgsAmbiguity::Yes)
     }
 }
+
+pub(super) trait GenericArgsStyle: ast::GenericArgsStyle + GenericArgsMode {}
+
+impl GenericArgsStyle for ast::UnambiguousGenericArgs {}
+impl GenericArgsStyle for ast::ObligatorilyDisambiguatedGenericArgs {}
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-enum RequiresDisambiguation {
+enum GenericArgsAmbiguity {
     Yes,
     No,
 }
@@ -421,7 +425,7 @@ fn extract_assoc_item_seg<'src>(
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
     if let ast::GenericArg::Ty(ty) = arg
         && let ast::Ty::Path(path) = ty
-        && let ast::ExtPath { self_ty: None, path } = path
+        && let ast::ExtPath { ext: None, path } = path
         && let ast::Path { segs: deref!([seg]) } = path
     {
         Some((seg.ident, seg.args.take()))

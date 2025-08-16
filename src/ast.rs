@@ -24,8 +24,8 @@ pub(crate) struct File<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct MacroCall<'src, A: GenericArgsPolicy::Kind> {
-    pub(crate) path: Path<'src, A>,
+pub(crate) struct MacroCall<'src, M: GenericArgsMode> {
+    pub(crate) path: Path<'src, M>,
     pub(crate) bracket: Bracket,
     pub(crate) stream: TokenStream,
 }
@@ -49,4 +49,13 @@ pub(crate) enum Orientation {
 pub(crate) enum Mutability {
     Mut,
     Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum Lit<'src> {
+    Bool(bool),
+    // FIXME: char
+    Char(&'src str),
+    Num(&'src str),
+    Str(&'src str),
 }

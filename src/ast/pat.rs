@@ -1,16 +1,15 @@
-use super::{ExtPath, GenericArgsPolicy, Ident, MacroCall, Mutability};
+use super::{ExtPath, Ident, Lit, MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs};
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
     Ident(IdentPat<'src>),
     Wildcard,
-    NumLit(Ident<'src>),
-    StrLit(Ident<'src>),
+    Lit(Lit<'src>),
     Tup(Vec<Pat<'src>>),
     Borrow(Mutability, Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
-    Path(Box<ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>>),
-    MacroCall(MacroCall<'src, GenericArgsPolicy::DisambiguatedOnly>),
+    Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
+    MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
     TupleStruct(Box<TupleStructPat<'src>>),
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
@@ -32,7 +31,7 @@ pub(crate) enum ByRef {
 
 #[derive(Debug)]
 pub(crate) struct TupleStructPat<'src> {
-    pub(crate) path: ExtPath<'src, GenericArgsPolicy::DisambiguatedOnly>,
+    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) fields: Vec<Pat<'src>>,
 }
 

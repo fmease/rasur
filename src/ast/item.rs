@@ -1,6 +1,6 @@
 use super::{
-    Attr, BlockExpr, Bound, Expr, GenericArgsPolicy, Generics, Ident, MacroCall, Mutability, Pat,
-    Path, PathTree, Span, TokenStream, Ty,
+    Attr, BlockExpr, Bound, Expr, Generics, Ident, MacroCall, Mutability, NoGenericArgs, Pat, Path,
+    PathTree, Span, TokenStream, Ty, UnambiguousGenericArgs,
 };
 
 // FIXME: Maybe represent as Item<Free>?
@@ -20,7 +20,7 @@ pub(crate) enum ItemKind<'src> {
     ExternCrate(Box<ExternCrateItem<'src>>),
     Fn(Box<FnItem<'src>>),
     Impl(Box<ImplItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
+    MacroCall(Box<MacroCall<'src, NoGenericArgs>>),
     MacroDef(Box<MacroDef<'src>>),
     Mod(Box<ModItem<'src>>),
     Static(Box<StaticItem<'src>>),
@@ -100,7 +100,7 @@ pub(crate) struct ExternItem<'src> {
 #[derive(Debug)]
 pub(crate) enum ExternItemKind<'src> {
     Fn(Box<FnItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
+    MacroCall(Box<MacroCall<'src, NoGenericArgs>>),
     Static(Box<StaticItem<'src>>),
     Ty(Box<TyAliasItem<'src>>),
 }
@@ -148,7 +148,7 @@ pub(crate) struct ImplItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) constness: Constness,
     pub(crate) polarity: ImplPolarity,
-    pub(crate) trait_ref: Option<Path<'src, GenericArgsPolicy::Allowed>>,
+    pub(crate) trait_ref: Option<Path<'src, UnambiguousGenericArgs>>,
     pub(crate) self_ty: Ty<'src>,
     pub(crate) body: Vec<AssocItem<'src>>,
 }
@@ -202,7 +202,7 @@ pub(crate) struct AssocItem<'src> {
 pub(crate) enum AssocItemKind<'src> {
     Const(Box<ConstItem<'src>>),
     Fn(Box<FnItem<'src>>),
-    MacroCall(Box<MacroCall<'src, GenericArgsPolicy::Forbidden>>),
+    MacroCall(Box<MacroCall<'src, NoGenericArgs>>),
     Ty(Box<TyAliasItem<'src>>),
 }
 
@@ -245,6 +245,6 @@ pub(crate) enum MacroDefStyle {
 #[derive(Debug)]
 pub(crate) enum Visibility<'src> {
     Inherited,
-    Restricted(Path<'src, GenericArgsPolicy::Forbidden>),
+    Restricted(Path<'src, NoGenericArgs>),
     Public,
 }

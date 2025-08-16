@@ -537,7 +537,7 @@ impl<'src> Parser<'_, 'src> {
                 true => ast::Ty::Error,
                 false => self.parse_ty()?,
             };
-            let ast::Ty::Path(deref!(ast::ExtPath { self_ty: None, path: trait_ref })) = ty else {
+            let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty else {
                 return Err(ParseError::ExpectedTraitFoundTy);
             };
             (Some(trait_ref), self_ty)
@@ -753,7 +753,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path::<ast::GenericArgsPolicy::Forbidden>()?;
+        let path = self.parse_path::<ast::NoGenericArgs>()?;
         self.parse(TokenKind::SingleBang)?;
 
         let binder = if let [ast::PathSeg { ident: "macro_rules", args: () }] = *path.segs {

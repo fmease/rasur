@@ -143,6 +143,16 @@ impl Fmt for ast::Attr<'_> {
     }
 }
 
+impl Fmt for ast::Lit<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Bool(lit) => fmt!(cx, "{lit}"),
+            Self::Char(lit) => fmt!(cx, "{lit}"),
+            Self::Num(lit) | Self::Str(lit) => fmt!(cx, "{lit}"),
+        }
+    }
+}
+
 impl Fmt for ast::TokenStream {
     // FIXME: Actually just print as is for now
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -160,7 +170,7 @@ impl Fmt for token::Token {
     }
 }
 
-impl<A: path::FmtGenericArgs> Fmt for ast::MacroCall<'_, A> {
+impl<M: path::GenericArgsMode> Fmt for ast::MacroCall<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { path, bracket, stream } = self;
 

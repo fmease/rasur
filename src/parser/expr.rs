@@ -1,5 +1,5 @@
 use super::{ExpectedFragment, ParseError, Parser, Result, TokenKind, one_of, pat::OrPolicy};
-use crate::{ast, parser::path::ParseGenericArgs};
+use crate::{ast, parser::path::GenericArgsMode};
 use std::cmp::Ordering;
 
 impl<'src> Parser<'_, 'src> {
@@ -282,7 +282,7 @@ impl<'src> Parser<'_, 'src> {
             _ if let Some(ident) = self.as_common_ident(self.token) => {
                 self.advance();
                 let gen_args_start = self.token.span;
-                let gen_args = ast::GenericArgsPolicy::DisambiguatedOnly::parse(self)?;
+                let gen_args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
                 Ok(if self.consume(TokenKind::OpenRoundBracket) {
                     let args = self.fin_parse_fn_args()?;
                     ast::Expr::MethodCall(Box::new(ast::MethodCallExpr {
@@ -561,11 +561,11 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.begins_ext_path() {
-            let path = self.parse_ext_path::<ast::GenericArgsPolicy::DisambiguatedOnly>()?;
+            let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {
                 TokenKind::SingleBang => {
-                    let ast::ExtPath { self_ty: None, path } = path else {
+                    let ast::ExtPath { ext: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
                     };
 

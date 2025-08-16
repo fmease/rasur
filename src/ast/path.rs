@@ -1,23 +1,24 @@
 use super::{Bound, Expr, Lifetime, Ty};
 
 #[derive(Debug)]
-pub(crate) struct Path<'src, A: GenericArgsPolicy::Kind> {
-    pub(crate) segs: Vec<PathSeg<'src, A>>,
+pub(crate) struct Path<'src, M: GenericArgsMode> {
+    // Invariant: Has not be non-empty!
+    pub(crate) segs: Vec<PathSeg<'src, M>>,
 }
 
-impl<'src, A: GenericArgsPolicy::Kind> Path<'src, A> {
+impl<'src, M: GenericArgsMode> Path<'src, M> {
     pub(crate) fn ident(ident: Ident<'src>) -> Self {
         Self { segs: vec![PathSeg::ident(ident)] }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct PathSeg<'src, A: GenericArgsPolicy::Kind> {
+pub(crate) struct PathSeg<'src, M: GenericArgsMode> {
     pub(crate) ident: Ident<'src>,
-    pub(crate) args: A::Args<'src>,
+    pub(crate) args: M::Args<'src>,
 }
 
-impl<'src, A: GenericArgsPolicy::Kind> PathSeg<'src, A> {
+impl<'src, M: GenericArgsMode> PathSeg<'src, M> {
     pub(crate) fn ident(ident: Ident<'src>) -> Self {
         Self { ident, args: Default::default() }
     }
@@ -27,27 +28,26 @@ impl<'src, A: GenericArgsPolicy::Kind> PathSeg<'src, A> {
 pub(crate) type Ident<'src> = &'src str;
 
 #[derive(Debug)]
-pub(crate) struct ExtPath<'src, A: GenericArgsPolicy::Kind> {
-    pub(crate) self_ty: Option<SelfTy<'src>>,
-    pub(crate) path: Path<'src, A>,
+pub(crate) struct ExtPath<'src, S: GenericArgsStyle> {
+    pub(crate) ext: Option<PathExt<'src>>,
+    pub(crate) path: Path<'src, S>,
 }
 
-impl<'src, A: GenericArgsPolicy::Kind> ExtPath<'src, A> {
+impl<'src, S: GenericArgsStyle> ExtPath<'src, S> {
     pub(crate) fn ident(ident: Ident<'src>) -> Self {
-        Self { self_ty: None, path: Path::ident(ident) }
+        Self { ext: None, path: Path::ident(ident) }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct SelfTy<'src> {
-    pub(crate) ty: Ty<'src>,
-    // FIXME: Better name, this doesn't make any sense
-    pub(crate) offset: usize,
+pub(crate) struct PathExt<'src> {
+    pub(crate) self_ty: Ty<'src>,
+    pub(crate) trait_ref: Option<Path<'src, UnambiguousGenericArgs>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct PathTree<'src> {
-    pub(crate) path: Path<'src, GenericArgsPolicy::Forbidden>,
+    pub(crate) path: Path<'src, NoGenericArgs>,
     pub(crate) kind: PathTreeKind<'src>,
 }
 
@@ -65,6 +65,8 @@ pub(crate) enum GenericArgs<'src> {
     ParenElided,
 }
 
+// FIXME: Merge AngleGenericArg & GenericArg?
+//        So we end up with { Lt, Ty, Ct, Eq, Bd }?.
 #[derive(Debug)]
 pub(crate) enum AngleGenericArg<'src> {
     Argument(GenericArg<'src>),
@@ -97,28 +99,30 @@ pub(crate) enum Term<'src> {
     Const(Expr<'src>),
 }
 
-#[expect(non_snake_case)]
-pub(crate) mod GenericArgsPolicy {
-    #[derive(Debug)]
-    pub(crate) enum Forbidden {}
-    #[derive(Debug)]
-    pub(crate) enum Allowed {}
-    #[derive(Debug)]
-    pub(crate) enum DisambiguatedOnly {}
+#[derive(Debug)]
+pub(crate) enum NoGenericArgs {}
+#[derive(Debug)]
+pub(crate) enum UnambiguousGenericArgs {}
+#[derive(Debug)]
+pub(crate) enum ObligatorilyDisambiguatedGenericArgs {}
 
-    pub(crate) trait Kind {
-        type Args<'src>: Default + std::fmt::Debug;
-    }
-
-    impl Kind for Allowed {
-        type Args<'src> = Option<super::GenericArgs<'src>>;
-    }
-
-    impl Kind for DisambiguatedOnly {
-        type Args<'src> = <Allowed as Kind>::Args<'src>;
-    }
-
-    impl Kind for Forbidden {
-        type Args<'src> = ();
-    }
+pub(crate) trait GenericArgsMode {
+    type Args<'src>: Default + std::fmt::Debug;
 }
+
+impl GenericArgsMode for NoGenericArgs {
+    type Args<'src> = ();
+}
+
+impl GenericArgsMode for UnambiguousGenericArgs {
+    type Args<'src> = Option<super::GenericArgs<'src>>;
+}
+
+impl GenericArgsMode for ObligatorilyDisambiguatedGenericArgs {
+    type Args<'src> = <UnambiguousGenericArgs as GenericArgsMode>::Args<'src>;
+}
+
+pub(crate) trait GenericArgsStyle: GenericArgsMode {}
+
+impl GenericArgsStyle for UnambiguousGenericArgs {}
+impl GenericArgsStyle for ObligatorilyDisambiguatedGenericArgs {}

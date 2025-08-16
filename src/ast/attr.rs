@@ -1,9 +1,9 @@
-use super::{Bracket, Expr, GenericArgsPolicy, Path, TokenStream};
+use super::{Bracket, Expr, NoGenericArgs, Path, TokenStream};
 
 #[derive(Debug)]
 pub(crate) struct Attr<'src> {
     pub(crate) style: AttrStyle,
-    pub(crate) path: Path<'src, GenericArgsPolicy::Forbidden>,
+    pub(crate) path: Path<'src, NoGenericArgs>,
     pub(crate) kind: AttrKind<'src>,
 }
 

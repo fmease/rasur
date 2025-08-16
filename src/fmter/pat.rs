@@ -6,8 +6,7 @@ impl Fmt for ast::Pat<'_> {
         match self {
             Self::Ident(ident) => ident.fmt(cx),
             Self::Wildcard => fmt!(cx, "_"),
-            Self::NumLit(lit) => fmt!(cx, "{lit}"),
-            Self::StrLit(lit) => fmt!(cx, "{lit:?}"),
+            Self::Lit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, pat) => {
                 fmt!(cx, "&");
                 mut_.trailing_space().fmt(cx);

@@ -330,13 +330,3 @@ impl Fmt for ast::LetExpr<'_> {
         expr.fmt(cx);
     }
 }
-
-impl Fmt for ast::Lit<'_> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        match self {
-            Self::Bool(lit) => fmt!(cx, "{lit}"),
-            Self::Char(lit) => fmt!(cx, "{lit}"),
-            Self::Num(lit) | Self::Str(lit) => fmt!(cx, "{lit}"),
-        }
-    }
-}

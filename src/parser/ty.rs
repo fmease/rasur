@@ -115,10 +115,10 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.begins_ext_path() {
-            let path = self.parse_ext_path::<ast::GenericArgsPolicy::Allowed>()?;
+            let path = self.parse_ext_path::<ast::UnambiguousGenericArgs>()?;
 
             if self.consume(TokenKind::SingleBang) {
-                let ast::ExtPath { self_ty: None, path } = path else {
+                let ast::ExtPath { ext: None, path } = path else {
                     return Err(ParseError::TyRelMacroCall);
                 };
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -325,7 +325,7 @@ impl<'src> Parser<'_, 'src> {
         let mods = self.parse_trait_bound_modifiers();
 
         if self.begins_path() {
-            let path = self.parse_path::<ast::GenericArgsPolicy::Allowed>()?;
+            let path = self.parse_path::<ast::UnambiguousGenericArgs>()?;
             return Ok(ast::Bound::Trait(mods, path));
         }
 
