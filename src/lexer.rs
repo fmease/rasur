@@ -4,8 +4,9 @@ use crate::{
 };
 use iter::PeekableCharIndices;
 
-pub(crate) fn lex(source: &str) -> Vec<Token> {
-    let mut chars = PeekableCharIndices::new(source);
+pub(crate) fn lex(source: &str, strip_shebang: StripShebang) -> Vec<Token> {
+    let offset = strip_shebang.apply(source);
+    let mut chars = PeekableCharIndices::new(source, offset);
     let mut tokens = Vec::new();
 
     loop {
@@ -24,6 +25,37 @@ pub(crate) fn lex(source: &str) -> Vec<Token> {
     }
 
     tokens
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum StripShebang {
+    Yes,
+    #[allow(dead_code)] // used in tests
+    No,
+}
+
+impl StripShebang {
+    fn apply(self, source: &str) -> usize {
+        let Self::Yes = self else { return 0 };
+        let Some(suffix) = source.strip_prefix("#!") else { return 0 };
+        let mut chars = PeekableCharIndices::new(suffix, 0);
+
+        loop {
+            let token = chars.lex();
+
+            if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment =
+                token.kind
+            {
+                continue;
+            }
+
+            if token.kind == TokenKind::OpenSquareBracket {
+                return 0;
+            }
+
+            return source.lines().next().unwrap_or_default().len();
+        }
+    }
 }
 
 impl iter::PeekableCharIndices<'_> {
@@ -302,11 +334,13 @@ mod iter {
     pub(super) struct PeekableCharIndices<'src> {
         chars: CharIndices<'src>,
         peeked: Option<Option<(usize, char)>>,
+        // FIXME: Awkward!
+        offset: usize,
     }
 
     impl<'src> PeekableCharIndices<'src> {
-        pub(super) fn new(source: &'src str) -> Self {
-            Self { chars: source.char_indices(), peeked: None }
+        pub(super) fn new(source: &'src str, offset: usize) -> Self {
+            Self { chars: source[offset..].char_indices(), peeked: None, offset }
         }
 
         pub(super) fn peek(&mut self) -> Option<char> {
@@ -317,7 +351,7 @@ mod iter {
             self.peeked
                 .take()
                 .unwrap_or_else(|| self.chars.next())
-                .map(|(index, char)| (ByteIndex::new(index), char))
+                .map(|(index, char)| (ByteIndex::new(index + self.offset), char))
         }
 
         pub(super) fn advance(&mut self) {
@@ -331,7 +365,7 @@ mod iter {
                 Some(Some((index, _))) => index,
                 _ => self.chars.offset(),
             };
-            ByteIndex::new(index)
+            ByteIndex::new(index + self.offset)
         }
     }
 }

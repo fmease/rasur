@@ -108,7 +108,7 @@ fn try_main() -> Result<(), ()> {
     let source = std::fs::read_to_string(&path)
         .map_err(|error| eprintln!("error: failed to read `{}`: {error}", path.display()))?;
 
-    let tokens = lexer::lex(&source);
+    let tokens = lexer::lex(&source, lexer::StripShebang::Yes);
 
     if opts.emit_tokens {
         let mut stderr = std::io::stderr().lock();
