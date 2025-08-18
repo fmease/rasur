@@ -316,8 +316,93 @@ fn stmt_macro_call_gen_args() {
     assert_matches!(parse_stmt("path::to::<>::call::()!();", Rust2015), Ok(_));
 }
 
+#[test]
+fn stmts_const_item_const_block() {
+    assert_matches!(
+        parse_expr(
+            "{
+    const { }
+    const fn f() {}
+}",
+            Rust2015
+        ),
+        Ok(ast::Expr::Block(deref!(ast::BlockExpr {
+            attrs: deref!([]),
+            stmts: deref!([
+                ast::Stmt::Expr(
+                    ast::Expr::ConstBlock(deref!(ast::BlockExpr {
+                        attrs: deref!([]),
+                        stmts: deref!([])
+                    })),
+                    ast::Semicolon::No
+                ),
+                ast::Stmt::Item(ast::Item {
+                    attrs: deref!([]),
+                    vis: ast::Visibility::Inherited,
+                    kind: ast::ItemKind::Fn(ast::FnItem {
+                        constness: ast::Constness::Const,
+                        safety: ast::Safety::Inherited,
+                        externness: ast::Externness::Not,
+                        binder: "f",
+                        ..
+                    }),
+                    span: _
+                }),
+            ])
+        })))
+    );
+}
+
+#[test]
+fn expr_control_flow_ops_block() {
+    assert_matches!(
+        parse_expr("if return {}", Rust2015),
+        Err(ParseError::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, span: _ },
+            super::ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
+        ))
+    );
+    assert_matches!(
+        parse_expr("if return {} {}", Rust2015),
+        Ok(ast::Expr::If(deref!(ast::IfExpr {
+            condition: ast::Expr::Return(Some(deref!(ast::Expr::Block(ast::BlockExpr {
+                attrs: deref!([]),
+                stmts: deref!([])
+            })))),
+            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+            alternate: None
+        })))
+    );
+
+    // FIXME: Explainer, once I have one.
+    assert_matches!(
+        parse_expr("if break {}", Rust2015),
+        Ok(ast::Expr::If(deref!(ast::IfExpr {
+            condition: ast::Expr::Break(None, None),
+            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+            alternate: None
+        })))
+    );
+
+    assert_matches!(
+        parse_expr("break {}", Rust2015),
+        Ok(ast::Expr::Break(
+            None,
+            Some(ast::Expr::Block(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }))
+        ))
+    );
+
+    assert_matches!(
+        parse_expr("if continue {}", Rust2015),
+        Ok(ast::Expr::If(deref!(ast::IfExpr {
+            condition: ast::Expr::Continue,
+            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+            alternate: None
+        })))
+    );
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt)
-// FIXME: const {  } vs const item
 // FIXME: ops
 // FIXME: structs in ifs etc.
 // FIXME: almost-assoc-item-constraint due to (  )

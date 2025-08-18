@@ -364,14 +364,18 @@ impl<'src> Parser<'_, 'src> {
                 "break" => {
                     self.advance();
                     let label = self.consume_common_lifetime()?.map(|ast::Lifetime(label)| label);
-                    let expr = self
-                        .begins_expr()
-                        // NOTE: Yes indeed, allowed! Plz add test for this!
-                        .then(|| {
-                            self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
-                                .map(Box::new)
-                        })
-                        .transpose()?;
+                    let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
+                        || structs == StructPolicy::Allowed)
+                        && self.begins_expr()
+                    {
+                        // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
+                        //       Add test where the break is inside an if!
+                        let expr =
+                            self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                        Some(Box::new(expr))
+                    } else {
+                        None
+                    };
                     return Ok(ast::Expr::Break(label, expr));
                 }
                 "const" => {
@@ -380,6 +384,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "continue" => {
                     self.advance();
+                    // FIXME: Parse optional label.
                     return Ok(ast::Expr::Continue);
                 }
                 "false" => {
@@ -394,7 +399,6 @@ impl<'src> Parser<'_, 'src> {
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                     let body = self.parse_block_expr()?;
                     return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr { pat, expr, body })));
-                    // return Ok(ast::Expr::ForLoop(Box::new()));
                 }
                 "if" => {
                     self.advance();
@@ -476,7 +480,8 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "return" => {
                     self.advance();
-                    // NOTE: Re. StructPolicy::Allowed -- yes, indeed. Add test.
+                    // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
+                    //       Add test where the break is inside an if!
                     let expr = self
                         .begins_expr()
                         .then(|| {
@@ -650,7 +655,7 @@ impl<'src> Parser<'_, 'src> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum StructPolicy {
     Allowed,
     Forbidden,
