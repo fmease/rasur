@@ -40,6 +40,7 @@ pub(crate) struct TupleStructPat<'src> {
 pub(crate) struct StructPat<'src> {
     pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) fields: Vec<StructPatField<'src>>,
+    pub(crate) rest: bool,
 }
 
 #[derive(Debug)]

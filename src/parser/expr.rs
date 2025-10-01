@@ -605,6 +605,7 @@ impl<'src> Parser<'_, 'src> {
                                     )
                                 })
                                 .transpose()?;
+                            // FIXME: rest / base
                             Ok(ast::StructExprField { binder, body })
                         },
                     )?;

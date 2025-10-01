@@ -85,11 +85,18 @@ impl Fmt for ast::TupleStructPat<'_> {
 
 impl Fmt for ast::StructPat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { path, fields } = self;
+        let Self { path, fields, rest } = self;
+        let non_empty = !fields.is_empty();
 
         path.fmt(cx);
         fmt!(cx, " {{ ");
         Punctuated::new(fields, ", ").fmt(cx);
+        if rest {
+            if non_empty {
+                fmt!(cx, ", ");
+            }
+            fmt!(cx, "..");
+        }
         fmt!(cx, " }}");
     }
 }

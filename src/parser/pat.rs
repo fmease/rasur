@@ -207,7 +207,7 @@ impl<'src> Parser<'_, 'src> {
                         }
                         _ => Err(ParseError::UnexpectedToken(
                             self.token,
-                            one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent,],
+                            one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent],
                         )),
                     };
                 }
@@ -267,20 +267,34 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
-                    let fields = self.fin_parse_delim_seq(
-                        TokenKind::CloseCurlyBracket,
-                        TokenKind::Comma,
-                        |this| {
-                            // FIXME: NumLit fields
-                            let binder = this.parse_common_ident()?;
-                            let body = this
-                                .consume(TokenKind::SingleColon)
-                                .then(|| this.parse_pat(OrPolicy::Allowed))
-                                .transpose()?;
-                            Ok(ast::StructPatField { binder, body })
-                        },
-                    )?;
-                    return Ok(ast::Pat::Struct(Box::new(ast::StructPat { path, fields })));
+                    const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+                    const SEPARATOR: TokenKind = TokenKind::Comma;
+                    let mut fields = Vec::new();
+                    let mut rest = false;
+
+                    while !self.consume(DELIMITER) {
+                        if self.consume(TokenKind::DoubleDot) {
+                            rest = true;
+                            self.parse(DELIMITER)?;
+                            break;
+                        }
+
+                        // FIXME: NumLit fields
+                        // FIXME:
+                        // FIXME: Parse mut? ref? mut? (a following `":" Pat` is not permitted)
+                        let binder = self.parse_common_ident()?;
+                        let body = self
+                            .consume(TokenKind::SingleColon)
+                            .then(|| self.parse_pat(OrPolicy::Allowed))
+                            .transpose()?;
+                        fields.push(ast::StructPatField { binder, body });
+
+                        if self.token.kind != DELIMITER {
+                            self.parse(SEPARATOR)?;
+                        }
+                    }
+
+                    return Ok(ast::Pat::Struct(Box::new(ast::StructPat { path, fields, rest })));
                 }
                 _ => {}
             }
