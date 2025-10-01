@@ -265,6 +265,23 @@ impl<'src> Parser<'_, 'src> {
                         fields,
                     })));
                 }
+                TokenKind::OpenCurlyBracket => {
+                    self.advance();
+                    let fields = self.fin_parse_delim_seq(
+                        TokenKind::CloseCurlyBracket,
+                        TokenKind::Comma,
+                        |this| {
+                            // FIXME: NumLit fields
+                            let binder = this.parse_common_ident()?;
+                            let body = this
+                                .consume(TokenKind::SingleColon)
+                                .then(|| this.parse_pat(OrPolicy::Allowed))
+                                .transpose()?;
+                            Ok(ast::StructPatField { binder, body })
+                        },
+                    )?;
+                    return Ok(ast::Pat::Struct(Box::new(ast::StructPat { path, fields })));
+                }
                 _ => {}
             }
 

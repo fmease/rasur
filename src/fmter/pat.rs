@@ -21,6 +21,7 @@ impl Fmt for ast::Pat<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
             Self::TupleStruct(pat) => pat.fmt(cx),
+            Self::Struct(pat) => pat.fmt(cx),
             // FIXME: Eliminate unnecessary parens.
             Self::Or(left, right) => {
                 fmt!(cx, "(");
@@ -79,5 +80,28 @@ impl Fmt for ast::TupleStructPat<'_> {
         fmt!(cx, "(");
         Punctuated::new(fields, ", ").fmt(cx);
         fmt!(cx, ")");
+    }
+}
+
+impl Fmt for ast::StructPat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path, fields } = self;
+
+        path.fmt(cx);
+        fmt!(cx, " {{ ");
+        Punctuated::new(fields, ", ").fmt(cx);
+        fmt!(cx, " }}");
+    }
+}
+
+impl Fmt for ast::StructPatField<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { binder, body } = self;
+
+        fmt!(cx, "{binder}");
+        if let Some(body) = body {
+            fmt!(cx, ": ");
+            body.fmt(cx);
+        }
     }
 }

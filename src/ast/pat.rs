@@ -11,6 +11,7 @@ pub(crate) enum Pat<'src> {
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
     TupleStruct(Box<TupleStructPat<'src>>),
+    Struct(Box<StructPat<'src>>),
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
 }
@@ -33,6 +34,18 @@ pub(crate) enum ByRef {
 pub(crate) struct TupleStructPat<'src> {
     pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) fields: Vec<Pat<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructPat<'src> {
+    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub(crate) fields: Vec<StructPatField<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructPatField<'src> {
+    pub(crate) binder: Ident<'src>,
+    pub(crate) body: Option<Pat<'src>>,
 }
 
 #[derive(Debug)]

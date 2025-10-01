@@ -590,18 +590,22 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::OpenCurlyBracket if let StructPolicy::Allowed = structs => {
                     self.advance();
 
-                    // FIXME: NumLit fields
                     let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseCurlyBracket,
                         TokenKind::Comma,
                         |this| {
-                            let ident = this.parse_common_ident()?;
-                            let expr = if this.consume(TokenKind::SingleColon) {
-                                this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?
-                            } else {
-                                ast::Expr::Path(Box::new(ast::ExtPath::ident(ident)))
-                            };
-                            Ok(ast::StructExprField { ident, expr })
+                            // FIXME: NumLit fields
+                            let binder = this.parse_common_ident()?;
+                            let body = this
+                                .consume(TokenKind::SingleColon)
+                                .then(|| {
+                                    this.parse_expr_where(
+                                        StructPolicy::Allowed,
+                                        LetPolicy::Forbidden,
+                                    )
+                                })
+                                .transpose()?;
+                            Ok(ast::StructExprField { binder, body })
                         },
                     )?;
 

@@ -226,10 +226,13 @@ impl Fmt for ast::StructExpr<'_> {
 
 impl Fmt for ast::StructExprField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { ident, expr } = self;
+        let Self { binder, body } = self;
 
-        fmt!(cx, "{ident}: ");
-        expr.fmt(cx);
+        fmt!(cx, "{binder}");
+        if let Some(body) = body {
+            fmt!(cx, ": ");
+            body.fmt(cx);
+        }
     }
 }
 

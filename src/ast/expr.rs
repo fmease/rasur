@@ -203,8 +203,8 @@ pub(crate) struct StructExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructExprField<'src> {
-    pub(crate) ident: Ident<'src>,
-    pub(crate) expr: Expr<'src>,
+    pub(crate) binder: Ident<'src>,
+    pub(crate) body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
