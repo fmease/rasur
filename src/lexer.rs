@@ -107,17 +107,18 @@ impl iter::PeekableCharIndices<'_> {
                     _ => TokenKind::SingleSlash,
                 }
             }
-            'b' if self.peek() == Some('\'') => {
-                self.advance();
-                self.fin_lex_char_lit()
-            }
-            'a'..='z' | 'A'..='Z' | '_' => {
-                while let Some(IdentMiddle![]) = self.peek() {
+            'b' => match self.peek() {
+                Some('\'') => {
                     self.advance();
+                    self.fin_lex_char_lit()
                 }
-
-                TokenKind::Ident
-            }
+                Some('"') => {
+                    self.advance();
+                    self.fin_lex_str_lit()
+                }
+                _ => self.fin_lex_ident(),
+            },
+            'a'..='z' | 'A'..='Z' | '_' => self.fin_lex_ident(),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -126,16 +127,7 @@ impl iter::PeekableCharIndices<'_> {
 
                 TokenKind::NumLit
             }
-            '"' => {
-                // FIXME: Escape sequences
-                while self.next().is_some_and(|(_, char)| char != '"') {}
-
-                // FIXME: Suffixes
-
-                // FIXME: We currently don't mark unterminated str lits
-                //        and the parser doesn't report them.
-                TokenKind::StrLit
-            }
+            '"' => self.fin_lex_str_lit(),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
@@ -319,6 +311,25 @@ impl iter::PeekableCharIndices<'_> {
         // FIXME: We currently don't mark unterminated str lits
         //        and the parser doesn't report them.
         TokenKind::CharLit
+    }
+
+    fn fin_lex_str_lit(&mut self) -> TokenKind {
+        // FIXME: Escape sequences
+        while self.next().is_some_and(|(_, char)| char != '"') {}
+
+        // FIXME: Suffixes
+
+        // FIXME: We currently don't mark unterminated str lits
+        //        and the parser doesn't report them.
+        TokenKind::StrLit
+    }
+
+    fn fin_lex_ident(&mut self) -> TokenKind {
+        while let Some(IdentMiddle![]) = self.peek() {
+            self.advance();
+        }
+
+        TokenKind::Ident
     }
 }
 

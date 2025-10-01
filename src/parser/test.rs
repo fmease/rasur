@@ -402,7 +402,7 @@ fn expr_control_flow_ops_block() {
     );
 }
 
-// FIXME: macro_rules! in stmt pos (-> item not stmt)
+// FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.
 // FIXME: almost-assoc-item-constraint due to (  )
