@@ -42,6 +42,7 @@ fn try_main() -> Result<(), ()> {
                         eprintln!("error: missing required argument `<EDITION>`")
                     })?);
                 }
+                b"verbose" => opts.verbose = true,
                 _ => {
                     eprintln!("error: unknown flag `{}`", arg.display());
                     return Err(());
@@ -84,6 +85,11 @@ fn try_main() -> Result<(), ()> {
             && let Some(ext) = path.extension()
             && ext == "rs"
         {
+            if opts.verbose {
+                print!("{}: ", path.display());
+                use std::io::Write as _;
+                std::io::stdout().flush().unwrap();
+            }
             let result = compare(path, &rasur_path, &rustc_path, &opts);
             if let Some(result) = result {
                 total += 1;
@@ -97,11 +103,15 @@ fn try_main() -> Result<(), ()> {
 
                     let op = if opts.invert { "==" } else { "/=" };
 
-                    println!(
-                        "{}: rasur({rasur_exit_code}) {op} rustc({rustc_exit_code})",
-                        path.display()
-                    );
+                    if !opts.verbose {
+                        print!("{}: ", path.display());
+                    }
+                    println!("rasur({rasur_exit_code}) {op} rustc({rustc_exit_code})");
+                } else if opts.verbose {
+                    println!("OK");
                 }
+            } else if opts.verbose {
+                println!("SKIPPED");
             }
         }
     }
@@ -129,6 +139,7 @@ struct Opts {
     skip_true_ill: bool,
     invert: bool,
     edition: Option<OsString>,
+    verbose: bool,
 }
 
 fn compare(

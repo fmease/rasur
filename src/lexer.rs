@@ -1,16 +1,17 @@
 use crate::{
+    edition::Edition,
     span::Span,
     token::{Token, TokenKind},
 };
 use iter::PeekableCharIndices;
 
-pub(crate) fn lex(source: &str, strip_shebang: StripShebang) -> Vec<Token> {
-    let offset = strip_shebang.apply(source);
+pub(crate) fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
+    let offset = strip_shebang.apply(source, edition);
     let mut chars = PeekableCharIndices::new(source, offset);
     let mut tokens = Vec::new();
 
     loop {
-        let token = chars.lex();
+        let token = chars.lex(edition);
 
         if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment = token.kind
         {
@@ -35,13 +36,13 @@ pub(crate) enum StripShebang {
 }
 
 impl StripShebang {
-    fn apply(self, source: &str) -> usize {
+    fn apply(self, source: &str, edition: Edition) -> usize {
         let Self::Yes = self else { return 0 };
         let Some(suffix) = source.strip_prefix("#!") else { return 0 };
         let mut chars = PeekableCharIndices::new(suffix, 0);
 
         loop {
-            let token = chars.lex();
+            let token = chars.lex(edition);
 
             if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment =
                 token.kind
@@ -59,7 +60,7 @@ impl StripShebang {
 }
 
 impl iter::PeekableCharIndices<'_> {
-    fn lex(&mut self) -> Token {
+    fn lex(&mut self, edition: Edition) -> Token {
         let Some((start, char)) = self.next() else {
             let index = self.index();
             return Token::new(TokenKind::EndOfInput, Span::new(index, index));
@@ -114,10 +115,26 @@ impl iter::PeekableCharIndices<'_> {
                 }
                 Some('"') => {
                     self.advance();
-                    self.fin_lex_str_lit()
+                    self.fin_lex_str_lit(SkipBackslashes::Yes)
+                }
+                Some('r') => {
+                    self.advance();
+                    self.fin_lex_raw_str_lit_or_ident()
                 }
                 _ => self.fin_lex_ident(),
             },
+            'c' if edition >= Edition::Rust2021 => match self.peek() {
+                Some('"') => {
+                    self.advance();
+                    self.fin_lex_str_lit(SkipBackslashes::Yes)
+                }
+                Some('r') => {
+                    self.advance();
+                    self.fin_lex_raw_str_lit_or_ident()
+                }
+                _ => self.fin_lex_ident(),
+            },
+            'r' => self.fin_lex_raw_str_lit_or_ident(),
             'a'..='z' | 'A'..='Z' | '_' => self.fin_lex_ident(),
             '0'..='9' => {
                 // FIXME: Float literals
@@ -127,7 +144,7 @@ impl iter::PeekableCharIndices<'_> {
 
                 TokenKind::NumLit
             }
-            '"' => self.fin_lex_str_lit(),
+            '"' => self.fin_lex_str_lit(SkipBackslashes::Yes),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
@@ -313,9 +330,57 @@ impl iter::PeekableCharIndices<'_> {
         TokenKind::CharLit
     }
 
-    fn fin_lex_str_lit(&mut self) -> TokenKind {
-        // FIXME: Escape sequences
-        while self.next().is_some_and(|(_, char)| char != '"') {}
+    // FIXME: Support raw idents without accepting `br#ident` or `cr#ident`
+    // FIXME: Do the 256 `#` max validation in the parser.
+    fn fin_lex_raw_str_lit_or_ident(&mut self) -> TokenKind {
+        match self.peek() {
+            Some('"') => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::No)
+            }
+            Some('#') => {
+                self.advance();
+
+                let mut open = 1usize;
+                while let Some('#') = self.peek() {
+                    self.advance();
+                    open += 1;
+                }
+
+                'outer: loop {
+                    while self.next().is_some_and(|(_, char)| char != '"') {}
+
+                    let mut close = 0usize;
+
+                    loop {
+                        match self.peek() {
+                            Some('#') => {
+                                self.advance();
+                                close += 1;
+                                if open == close {
+                                    break 'outer;
+                                }
+                            }
+                            Some(_) => break,
+                            None => break 'outer,
+                        }
+                    }
+                }
+
+                TokenKind::StrLit
+            }
+            _ => self.fin_lex_ident(),
+        }
+    }
+
+    fn fin_lex_str_lit(&mut self, skip: SkipBackslashes) -> TokenKind {
+        while let Some((_, char)) = self.next() {
+            match char {
+                '\\' if let SkipBackslashes::Yes = skip => self.advance(),
+                '"' => break,
+                _ => {}
+            }
+        }
 
         // FIXME: Suffixes
 
@@ -335,6 +400,11 @@ impl iter::PeekableCharIndices<'_> {
 
 macro IdentMiddle() {
     'a'..='z' | 'A'..='Z' | '0'..='9' | '_'
+}
+
+enum SkipBackslashes {
+    Yes,
+    No,
 }
 
 mod iter {

@@ -108,7 +108,9 @@ fn try_main() -> Result<(), ()> {
     let source = std::fs::read_to_string(&path)
         .map_err(|error| eprintln!("error: failed to read `{}`: {error}", path.display()))?;
 
-    let tokens = lexer::lex(&source, lexer::StripShebang::Yes);
+    let edition = opts.edition.unwrap_or_default();
+
+    let tokens = lexer::lex(&source, edition, lexer::StripShebang::Yes);
 
     if opts.emit_tokens {
         let mut stderr = std::io::stderr().lock();
@@ -123,8 +125,8 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = parser::parse(&tokens, &source, opts.edition.unwrap_or_default())
-        .map_err(|error| error.print(&source, &path))?;
+    let file =
+        parser::parse(&tokens, &source, edition).map_err(|error| error.print(&source, &path))?;
 
     if opts.emit_ast {
         eprintln!("{file:#?}");

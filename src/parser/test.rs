@@ -8,7 +8,7 @@ use crate::{
 use std::assert_matches::assert_matches;
 
 fn parse_file(source: &str, edition: Edition) -> super::Result<ast::File<'_>> {
-    super::parse(&lex(source, StripShebang::Yes), source, edition)
+    super::parse(&lex(source, edition, StripShebang::Yes), source, edition)
 }
 
 fn parse_via<'src, T>(
@@ -16,7 +16,7 @@ fn parse_via<'src, T>(
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, 'src>) -> super::Result<T>,
 ) -> super::Result<T> {
-    let tokens = lex(source, StripShebang::No);
+    let tokens = lex(source, edition, StripShebang::No);
     let mut parser = super::Parser::new(&tokens, source, edition);
     let result = parse(&mut parser)?;
     parser.parse(TokenKind::EndOfInput)?;
