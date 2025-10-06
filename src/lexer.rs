@@ -119,7 +119,7 @@ impl iter::PeekableCharIndices<'_> {
                 }
                 Some('r') => {
                     self.advance();
-                    self.fin_lex_raw_str_lit_or_ident()
+                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Byte)
                 }
                 _ => self.fin_lex_ident(),
             },
@@ -130,12 +130,12 @@ impl iter::PeekableCharIndices<'_> {
                 }
                 Some('r') => {
                     self.advance();
-                    self.fin_lex_raw_str_lit_or_ident()
+                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Cee)
                 }
                 _ => self.fin_lex_ident(),
             },
-            'r' => self.fin_lex_raw_str_lit_or_ident(),
-            'a'..='z' | 'A'..='Z' | '_' => self.fin_lex_ident(),
+            'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal),
+            IdentStart!() => self.fin_lex_ident(),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -330,9 +330,8 @@ impl iter::PeekableCharIndices<'_> {
         TokenKind::CharLit
     }
 
-    // FIXME: Support raw idents without accepting `br#ident` or `cr#ident`
     // FIXME: Do the 256 `#` max validation in the parser.
-    fn fin_lex_raw_str_lit_or_ident(&mut self) -> TokenKind {
+    fn fin_lex_raw_str_lit_or_ident(&mut self, kind: RawStrKind) -> TokenKind {
         match self.peek() {
             Some('"') => {
                 self.advance();
@@ -340,6 +339,13 @@ impl iter::PeekableCharIndices<'_> {
             }
             Some('#') => {
                 self.advance();
+
+                if let RawStrKind::Normal = kind
+                    && let Some(IdentStart!()) = self.peek()
+                {
+                    self.advance();
+                    return self.fin_lex_ident();
+                }
 
                 let mut open = 1usize;
                 while let Some('#') = self.peek() {
@@ -398,13 +404,23 @@ impl iter::PeekableCharIndices<'_> {
     }
 }
 
+macro IdentStart() {
+    'a'..='z' | 'A'..='Z' | '_'
+}
+
 macro IdentMiddle() {
-    'a'..='z' | 'A'..='Z' | '0'..='9' | '_'
+    IdentStart!() | '0'..='9'
 }
 
 enum SkipBackslashes {
     Yes,
     No,
+}
+
+enum RawStrKind {
+    Normal,
+    Byte,
+    Cee,
 }
 
 mod iter {

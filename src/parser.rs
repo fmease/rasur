@@ -175,7 +175,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         &mut self,
         bracket: ast::Bracket,
     ) -> Result<(ast::Bracket, ast::TokenStream)> {
-        let stream = self.parse_token_strean(bracket)?;
+        let stream = self.parse_token_stream(bracket)?;
         self.parse(match bracket {
             ast::Bracket::Round => TokenKind::CloseRoundBracket,
             ast::Bracket::Square => TokenKind::CloseSquareBracket,
@@ -184,7 +184,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok((bracket, stream))
     }
 
-    fn parse_token_strean(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
+    fn parse_token_stream(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
         let mut tokens = Vec::new();
         let mut stack = Vec::new();
         let mut is_delimited = false;
@@ -216,7 +216,7 @@ impl<'a, 'src> Parser<'a, 'src> {
                 match orient {
                     Open => stack.push(act_delim),
                     Close => match stack.pop() {
-                        Some(open_delim) if open_delim == exp_close_delim => {}
+                        Some(open_delim) if act_delim == open_delim => {}
                         _ => return Err(error::ParseError::UnexpectedClosingDelimiter(self.token)),
                     },
                 }
