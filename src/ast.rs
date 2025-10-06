@@ -39,7 +39,7 @@ pub(crate) enum Bracket {
 
 pub(crate) type TokenStream = Vec<Token>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Orientation {
     Open,
     Close,

@@ -184,16 +184,17 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok((bracket, stream))
     }
 
-    fn parse_token_strean(&mut self, exp_delim: ast::Bracket) -> Result<ast::TokenStream> {
+    fn parse_token_strean(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
         let mut tokens = Vec::new();
         let mut stack = Vec::new();
         let mut is_delimited = false;
 
+        #[expect(clippy::enum_glob_use)]
         loop {
-            #[expect(clippy::enum_glob_use)]
+            use ast::Bracket::*;
+            use ast::Orientation::*;
+
             let act_delim = {
-                use ast::Bracket::*;
-                use ast::Orientation::*;
                 match self.token.kind {
                     TokenKind::OpenRoundBracket => Some((Round, Open)),
                     TokenKind::OpenSquareBracket => Some((Square, Open)),
@@ -207,24 +208,17 @@ impl<'a, 'src> Parser<'a, 'src> {
             };
 
             if let Some((act_delim, orient)) = act_delim {
-                if stack.is_empty()
-                    && act_delim == exp_delim
-                    && let ast::Orientation::Close = orient
-                {
+                if stack.is_empty() && (act_delim, orient) == (exp_close_delim, Close) {
                     is_delimited = true;
                     break;
                 }
 
                 match orient {
-                    ast::Orientation::Open => stack.push(act_delim),
-                    ast::Orientation::Close => {
-                        let close_delim = act_delim;
-                        match stack.pop() {
-                            Some(open_delim) if open_delim == close_delim => {}
-                            // FIXME: Better error.
-                            _ => return Err(error::ParseError::InvalidDelimiter),
-                        }
-                    }
+                    Open => stack.push(act_delim),
+                    Close => match stack.pop() {
+                        Some(open_delim) if open_delim == exp_close_delim => {}
+                        _ => return Err(error::ParseError::UnexpectedClosingDelimiter(self.token)),
+                    },
                 }
             }
 
@@ -235,8 +229,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         if is_delimited && stack.is_empty() {
             Ok(tokens)
         } else {
-            // FIXME: Better error.
-            Err(error::ParseError::InvalidDelimiter)
+            Err(error::ParseError::MissingClosingDelimiters(self.token.span))
         }
     }
 

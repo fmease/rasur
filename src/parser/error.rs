@@ -8,7 +8,8 @@ pub(crate) enum ParseError {
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
     InvalidAssocItemKind(Span),
-    InvalidDelimiter,
+    UnexpectedClosingDelimiter(Token),
+    MissingClosingDelimiters(Span),
     InvalidExternItemKind(Span),
     MisplacedReceiver,
     ModifiersOnOutlivesBound,
@@ -23,15 +24,24 @@ pub(crate) enum ParseError {
 impl ParseError {
     pub(crate) fn print(self, source: &str, path: &Path) {
         let diag = match self {
-            Self::UnexpectedToken(token, expected) => {
-                let found = token.to_diag_str(Some(source));
-                Diag::new(format!("found {found} but expected {expected}"))
-                    .highlight(token.span, "unexpected token")
+            Self::UnexpectedToken(actual, expected) => {
+                let span = actual.span;
+                let actual = actual.to_diag_str(Some(source));
+                Diag::new(format!("found {actual} but expected {expected}"))
+                    .highlight(span, "unexpected token")
             }
             Self::InvalidAssocItemKind(span) => {
                 Diag::new("invalid associated item kind").unlabeled_highlight(span)
             }
-            Self::InvalidDelimiter => Diag::new("invalid delimiter"),
+            Self::MissingClosingDelimiters(span) => {
+                Diag::new("missing closing delimiter(s)").highlight(span, "missing delimiter(s)")
+            }
+            Self::UnexpectedClosingDelimiter(actual) => {
+                let span = actual.span;
+                let actual = actual.to_diag_str(Some(source));
+                Diag::new(format!("found unexpected closing delimiter {actual}"))
+                    .highlight(span, "unexpected delimiter")
+            }
             Self::InvalidExternItemKind(span) => {
                 Diag::new("invalid extern item kind").unlabeled_highlight(span)
             }
