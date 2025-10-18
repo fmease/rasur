@@ -35,7 +35,7 @@ impl<'src> Parser<'_, 'src> {
     ///     | Extern_Block_Item
     ///     | Fn_Item
     ///     | Impl_Item
-    ///     | Macro_Def // FIXME
+    ///     | Macro_Def
     ///     | Mod_Item
     ///     | Static_Item
     ///     | Struct_Item
@@ -44,8 +44,8 @@ impl<'src> Parser<'_, 'src> {
     ///     | Ty_Item
     ///     | Union_Item
     ///     | Use_Item
-    ///     | Macro_Call // FIXME
-    ///     | Macro_Def // FIXME
+    ///     | Macro_Call
+    ///     | Macro_Def
     /// ```
     #[expect(clippy::too_many_lines)]
     pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
@@ -108,6 +108,7 @@ impl<'src> Parser<'_, 'src> {
             }
         }
 
+        // FIXME: Better span for InvalidItemPrefix
         match &*self.parse_item_keyword()? {
             [] => {}
             [ItemKeyword::Const] => return self.fin_parse_const_item(),
@@ -233,7 +234,6 @@ impl<'src> Parser<'_, 'src> {
         loop {
             candidates.push(match self.token.kind {
                 TokenKind::Ident => match self.source(self.token.span) {
-                    // FIXME: Unless it's followed by `{`
                     "const" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
                         ItemKeyword::Const
                     }

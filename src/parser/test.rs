@@ -476,17 +476,14 @@ fn wrap() { safe fn f() {} } // rustc rejects things (wrongly imo, rust-lang/rus
 impl !Trait for () {}
 impl Trait for () {}
 impl const Trait for () {}
-impl const Trait for () {}
 pub const extern "C" fn f() {}
 pub const fn f() {}
-pub const unsafe extern "C" fn f() {}
 pub const unsafe extern "C" fn f() {}
 pub const unsafe fn f() {}
 pub fn f() {}
 safe extern "C" fn f() {}
 safe extern fn f() {}
 safe fn f() {}
-trait Trait {}
 trait Trait {}
 unsafe auto trait Trait {}
 unsafe extern "C" fn f() {}

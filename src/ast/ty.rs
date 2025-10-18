@@ -61,12 +61,13 @@ pub(crate) struct OutlivesPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
+    Outlives(Lifetime<'src>),
+    Use(Vec<&'src str>),
     Trait {
         bound_vars: Vec<GenericParam<'src>>,
         modifiers: TraitBoundModifiers,
         trait_ref: Path<'src, UnambiguousGenericArgs>,
     },
-    Outlives(Lifetime<'src>),
 }
 
 #[derive(Debug, PartialEq, Eq)]

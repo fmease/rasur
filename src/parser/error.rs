@@ -13,12 +13,14 @@ pub(crate) enum ParseError {
     InvalidExternItemKind(Span),
     MisplacedReceiver,
     ModifiersOnOutlivesBound,
+    ModifiersOnUseBound,
     // FIXME: &'static str over String
     OpCannotBeChained(String),
     ReservedLifetime(Span),
     TyRelMacroCall,
     UnexpectedToken(Token, ExpectedFragment),
-    HigherRankedBinderOnOutlivesBound,
+    HigherRankedBinderOnOutlivesBound(Span),
+    HigherRankedBinderOnUseBound(Span),
     // FIXME: Temporary (replace with InvalidModifiersForItem)
     InvalidItemPrefix(Span),
 }
@@ -49,8 +51,12 @@ impl ParseError {
             }
             Self::ExpectedTraitFoundTy => Diag::new("found type expected trait"),
             Self::ModifiersOnOutlivesBound => Diag::new("outlives-bounds may not have modifiers"),
-            Self::HigherRankedBinderOnOutlivesBound => {
-                Diag::new("outlives-bounds may not have a binder")
+            Self::HigherRankedBinderOnOutlivesBound(span) => {
+                Diag::new("outlives-bounds may not have a binder").unlabeled_highlight(span)
+            }
+            Self::ModifiersOnUseBound => Diag::new("use-bounds may not have modifiers"),
+            Self::HigherRankedBinderOnUseBound(span) => {
+                Diag::new("use-bounds may not have a binder").unlabeled_highlight(span)
             }
             Self::MisplacedReceiver => Diag::new("misplaced receiver"),
             Self::OpCannotBeChained(op) => Diag::new(format!("operator `{op}` cannot be chained")),

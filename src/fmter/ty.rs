@@ -177,6 +177,18 @@ impl Fmt for Vec<ast::Bound<'_>> {
 impl Fmt for ast::Bound<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
+            Self::Outlives(lt) => lt.fmt(cx),
+            Self::Use(captures) => {
+                fmt!(cx, "use<");
+                let mut captures = captures.into_iter();
+                if let Some(capture) = captures.next() {
+                    fmt!(cx, "{capture}");
+                }
+                for capture in captures {
+                    fmt!(cx, ", {capture}");
+                }
+                fmt!(cx, ">");
+            }
             Self::Trait { bound_vars, modifiers, trait_ref } => {
                 if !bound_vars.is_empty() {
                     fmt!(cx, "for");
@@ -186,7 +198,6 @@ impl Fmt for ast::Bound<'_> {
                 modifiers.fmt(cx);
                 trait_ref.fmt(cx);
             }
-            Self::Outlives(lt) => lt.fmt(cx),
         }
     }
 }
