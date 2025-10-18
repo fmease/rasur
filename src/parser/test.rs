@@ -437,26 +437,68 @@ fn main() {
     );
 }
 
-// FIXME: Expand this smoke test.
 #[test]
-#[ignore] // FIXME: Make it work.
 fn item_modifiers() {
     assert_matches!(
         parse_file(
             r#"
-pub const unsafe extern "C" fn f() {}
+async extern fn f() {}
+async fn f() {}
+async safe extern fn f() {}
+async safe fn f() {}
+async unsafe extern fn f() {}
+async unsafe fn f() {}
+auto trait Trait {}
+const F: () = ();
+const async fn f() {}
+const async safe extern fn f() {}
+const async safe fn f() {}
+const async unsafe extern fn f() {}
+const async unsafe fn f() {}
+const auto trait Trait {}
+const auto: () = (); // !
+const extern "C" fn f() {}
+const extern fn f() {}
+const safe extern fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
+const safe fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
+const safe: () = ();
+const trait Trait {}
+const unsafe auto trait Trait {} // rustc rejects things (wrongly, rust-lang/rust#146122
 const unsafe extern "C" fn f() {}
-unsafe extern "C" fn f() {}
+const unsafe trait Trait {} // rustc rejects things (wrongly, rust-lang/rust#146122)
 extern "C" fn f() {}
+extern "C" {}
+extern crate krate;
+extern fn f() {}
+extern {}
 fn f() {}
+fn wrap() { safe fn f() {} } // rustc rejects things (wrongly imo, rust-lang/rust#146122)
+impl !Trait for () {}
+impl Trait for () {}
+impl const Trait for () {}
+impl const Trait for () {}
+pub const extern "C" fn f() {}
+pub const fn f() {}
+pub const unsafe extern "C" fn f() {}
 pub const unsafe extern "C" fn f() {}
 pub const unsafe fn f() {}
-pub const fn f() {}
 pub fn f() {}
-pub const extern "C" fn f() {}
-const extern "C" fn f() {}
+safe extern "C" fn f() {}
+safe extern fn f() {}
+safe fn f() {}
+trait Trait {}
+trait Trait {}
+unsafe auto trait Trait {}
+unsafe extern "C" fn f() {}
+unsafe extern "C" {}
+unsafe extern {}
+unsafe fn f() {}
+unsafe impl Trait for () {}
+unsafe impl const !Trait for () {}
+unsafe impl const Trait for () {}
+unsafe trait Trait {}
 "#,
-            Rust2015
+            Rust2018 // for async
         ),
         Ok(_)
     );

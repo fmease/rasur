@@ -78,6 +78,8 @@ pub(crate) struct StructFieldDef<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ExternBlockItem<'src> {
+    // FIXME: This can never be Safety::Safe, so maybe split Safety type?
+    pub(crate) safety: Safety,
     pub(crate) abi: Option<&'src str>,
     pub(crate) body: Vec<ExternItem<'src>>,
 }
@@ -108,6 +110,7 @@ pub(crate) enum ExternItemKind<'src> {
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
     pub(crate) constness: Constness,
+    pub(crate) asyncness: Asyncness,
     pub(crate) safety: Safety,
     pub(crate) externness: Externness<'src>,
     pub(crate) binder: Ident<'src>,
@@ -120,6 +123,12 @@ pub(crate) struct FnItem<'src> {
 #[derive(Debug)]
 pub(crate) enum Constness {
     Const,
+    Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum Asyncness {
+    Async,
     Not,
 }
 
@@ -182,11 +191,19 @@ pub(crate) struct StructItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TraitItem<'src> {
+    pub(crate) constness: Constness,
     pub(crate) safety: Safety,
+    pub(crate) autoness: Autoness,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
     pub(crate) body: Vec<AssocItem<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Autoness {
+    Auto,
+    Not,
 }
 
 // FIXME: Maybe represent as Item<Assoc>?

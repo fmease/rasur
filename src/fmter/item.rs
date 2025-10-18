@@ -171,9 +171,13 @@ impl Fmt for ast::StructFieldDef<'_> {
 
 impl Fmt for ast::ExternBlockItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { abi, body } = self;
+        let Self { safety, abi, body } = self;
 
-        fmt!(cx, "extern {}", abi.unwrap_or(r#""C""#));
+        safety.trailing_space().fmt(cx);
+        fmt!(cx, "extern ");
+        if let Some(abi) = abi {
+            fmt!(cx, "{abi} ");
+        }
         body.fmt(cx);
     }
 }
@@ -192,7 +196,7 @@ impl Fmt for ast::ExternCrateItem<'_> {
 
 impl Fmt for Vec<ast::ExternItem<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, " {{");
+        fmt!(cx, "{{");
         if !self.is_empty() {
             cx.indent();
             cx.line_break();
@@ -243,17 +247,22 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, safety, externness, binder, generics, params, ret_ty, body } = self;
+        let Self {
+            constness,
+            asyncness,
+            safety,
+            externness,
+            binder,
+            generics,
+            params,
+            ret_ty,
+            body,
+        } = self;
 
         constness.trailing_space().fmt(cx);
+        asyncness.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
-
-        match externness {
-            ast::Externness::Extern(abi) => {
-                fmt!(cx, "extern {} ", abi.unwrap_or(r#""C""#));
-            }
-            ast::Externness::Not => {}
-        }
+        externness.trailing_space().fmt(cx);
 
         fmt!(cx, "fn {binder}");
         generics.params.fmt(cx);
@@ -370,9 +379,11 @@ impl Fmt for ast::StructItem<'_> {
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { safety, binder, generics, bounds, body } = self;
+        let Self { constness, safety, autoness, binder, generics, bounds, body } = self;
 
+        constness.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
+        autoness.trailing_space().fmt(cx);
 
         fmt!(cx, "trait {binder}");
         generics.params.fmt(cx);
@@ -550,6 +561,16 @@ impl Fmt for TrailingSpace<ast::Constness> {
     }
 }
 
+impl Fmt for TrailingSpace<ast::Asyncness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(asyncness) = self;
+        match asyncness {
+            ast::Asyncness::Async => fmt!(cx, "async "),
+            ast::Asyncness::Not => {}
+        }
+    }
+}
+
 impl Fmt for TrailingSpace<ast::Safety> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(safety) = self;
@@ -557,6 +578,31 @@ impl Fmt for TrailingSpace<ast::Safety> {
             ast::Safety::Inherited => {}
             ast::Safety::Safe => fmt!(cx, "safe "),
             ast::Safety::Unsafe => fmt!(cx, "unsafe "),
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Externness<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(externness) = self;
+        match externness {
+            ast::Externness::Extern(abi) => {
+                fmt!(cx, "extern ");
+                if let Some(abi) = abi {
+                    fmt!(cx, "{abi} ");
+                }
+            }
+            ast::Externness::Not => {}
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Autoness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(autoness) = self;
+        match autoness {
+            ast::Autoness::Auto => fmt!(cx, "auto "),
+            ast::Autoness::Not => {}
         }
     }
 }

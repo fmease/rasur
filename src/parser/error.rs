@@ -19,6 +19,8 @@ pub(crate) enum ParseError {
     TyRelMacroCall,
     UnexpectedToken(Token, ExpectedFragment),
     HigherRankedBinderOnOutlivesBound,
+    // FIXME: Temporary (replace with InvalidModifiersForItem)
+    InvalidItemPrefix(Span),
 }
 
 impl ParseError {
@@ -58,6 +60,9 @@ impl ParseError {
             }
             Self::GenericArgsOnFieldExpr(span) => {
                 Diag::new("generic args on field expression").unlabeled_highlight(span)
+            }
+            Self::InvalidItemPrefix(span) => {
+                Diag::new(format!("invalid item modifiers")).unlabeled_highlight(span)
             }
         };
         eprintln!("{}", diag.render(source, path));

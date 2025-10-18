@@ -1,8 +1,7 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, one_of,
-    pat::OrPolicy,
+    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy,
 };
-use crate::ast;
+use crate::{ast, edition::Edition};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a sequence of items.
@@ -55,182 +54,9 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-
         // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
         let vis = self.parse_visibility()?;
-
-        let kind = 'kind: {
-            if let Some(ident) = self.as_ident(self.token) {
-                match ident {
-                    "const" => {
-                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
-                            self.advance();
-                            break 'kind if self.consume_ident_if("fn") {
-                                self.fin_parse_fn_item(
-                                    ast::Constness::Const,
-                                    ast::Safety::Inherited,
-                                    ast::Externness::Not,
-                                )
-                            } else {
-                                self.fin_parse_const_item()
-                            };
-                        }
-                    }
-                    "enum" => {
-                        self.advance();
-                        break 'kind self.fin_parse_enum_item();
-                    }
-                    "extern" => {
-                        self.advance();
-
-                        let abi = {
-                            let token = self.token;
-                            self.consume(TokenKind::StrLit).then(|| self.source(token.span))
-                        };
-
-                        match self.token.kind {
-                            TokenKind::OpenCurlyBracket => {
-                                self.advance();
-                                break 'kind self.fin_parse_extern_block_item(abi);
-                            }
-                            TokenKind::Ident => match self.source(self.token.span) {
-                                "crate" => {
-                                    self.advance();
-
-                                    break 'kind self.fin_parse_extern_crate_item();
-                                }
-                                "fn" => {
-                                    self.advance();
-
-                                    break 'kind self.fin_parse_fn_item(
-                                        ast::Constness::Not,
-                                        ast::Safety::Inherited,
-                                        ast::Externness::Extern(abi),
-                                    );
-                                }
-                                _ => {}
-                            },
-                            _ => {}
-                        }
-
-                        break 'kind Err(ParseError::UnexpectedToken(
-                            self.token,
-                            one_of![
-                                TokenKind::OpenCurlyBracket,
-                                ExpectedFragment::Raw("crate"),
-                                ExpectedFragment::Raw("fn")
-                            ],
-                        ));
-                    }
-                    "fn" => {
-                        self.advance();
-                        break 'kind self.fin_parse_fn_item(
-                            ast::Constness::Not,
-                            ast::Safety::Inherited,
-                            ast::Externness::Not,
-                        );
-                    }
-                    "impl" => {
-                        self.advance();
-                        break 'kind self.fin_parse_impl_item(ast::Safety::Inherited);
-                    }
-                    "macro" => {
-                        self.advance();
-                        break 'kind self.fin_parse_macro_def();
-                    }
-                    "mod" => {
-                        self.advance();
-                        break 'kind self.fin_parse_mod_item();
-                    }
-                    "safe" => {
-                        // FIXME: Or "extern"
-                        if self.look_ahead(1, |token| {
-                            self.as_ident(token).is_some_and(|ident| ident == "fn")
-                        }) {
-                            self.advance();
-                            self.advance();
-                            break 'kind self.fin_parse_fn_item(
-                                ast::Constness::Not,
-                                ast::Safety::Safe,
-                                ast::Externness::Not,
-                            );
-                        }
-                    }
-                    "static" => {
-                        self.advance();
-                        break 'kind self.fin_parse_static_item();
-                    }
-                    "struct" => {
-                        self.advance();
-                        break 'kind self.fin_parse_struct_item();
-                    }
-                    "trait" => {
-                        self.advance();
-                        break 'kind self.fin_parse_trait_item(ast::Safety::Inherited);
-                    }
-                    "type" => {
-                        self.advance();
-                        break 'kind self.fin_parse_ty_alias_item();
-                    }
-                    "union" => {
-                        if let Some(binder) =
-                            self.look_ahead(1, |token| self.as_common_ident(token))
-                        {
-                            self.advance();
-                            self.advance();
-                            break 'kind self.fin_parse_union_item(binder);
-                        }
-                    }
-                    "unsafe" => {
-                        if self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket) {
-                            self.advance();
-
-                            // FIXME: Doesn't account for `unsafe extern ...` (extern block, fn)
-                            // FIXME: `unsafe impl`
-                            match self.as_ident(self.token) {
-                                Some("fn") => {
-                                    self.advance();
-                                    break 'kind self.fin_parse_fn_item(
-                                        ast::Constness::Not,
-                                        ast::Safety::Unsafe,
-                                        ast::Externness::Not,
-                                    );
-                                }
-                                Some("trait") => {
-                                    self.advance();
-                                    break 'kind self.fin_parse_trait_item(ast::Safety::Unsafe);
-                                }
-                                Some("impl") => {
-                                    self.advance();
-                                    break 'kind self.fin_parse_impl_item(ast::Safety::Unsafe);
-                                }
-                                _ => {
-                                    return Err(ParseError::UnexpectedToken(
-                                        self.token,
-                                        one_of![
-                                            ExpectedFragment::Raw("fn"),
-                                            ExpectedFragment::Raw("trait"),
-                                            ExpectedFragment::Raw("impl"),
-                                        ],
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    "use" => {
-                        self.advance();
-                        break 'kind self.fin_parse_use_item();
-                    }
-                    _ => {}
-                }
-            }
-
-            if self.begins_path() {
-                break 'kind self.parse_macro_call_item();
-            }
-
-            Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
-        }?;
+        let kind = self.parse_item_kind()?;
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
@@ -249,16 +75,201 @@ impl<'src> Parser<'_, 'src> {
         match ident {
             "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
             | "type" | "use" => true,
+            "auto" => self.look_ahead(1, |t| self.as_ident(t) == Some("trait")),
+            "async" => self.edition >= Edition::Rust2018,
             "const" | "unsafe" => {
                 self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket)
             }
             "union" => self.look_ahead(1, |token| self.as_common_ident(token).is_some()),
             "safe" => {
-                // FIXME: or "extern"
-                self.look_ahead(1, |token| self.as_ident(token).is_some_and(|ident| ident == "fn"))
+                self.look_ahead(1, |token| matches!(self.as_ident(token), Some("fn" | "extern")))
             }
             _ => false,
         }
+    }
+
+    fn parse_item_kind(&mut self) -> Result<ast::ItemKind<'src>> {
+        let start = self.token.span;
+
+        fn parse_const<'a, 'b>(
+            modifiers: &'a [ItemKeyword<'b>],
+        ) -> (ast::Constness, &'a [ItemKeyword<'b>]) {
+            match modifiers {
+                [ItemKeyword::Const, modifiers @ ..] => (ast::Constness::Const, modifiers),
+                _ => (ast::Constness::Not, modifiers),
+            }
+        }
+        fn parse_unsafe<'a, 'b>(
+            modifiers: &'a [ItemKeyword<'b>],
+        ) -> (ast::Safety, &'a [ItemKeyword<'b>]) {
+            match modifiers {
+                [ItemKeyword::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
+                _ => (ast::Safety::Inherited, modifiers),
+            }
+        }
+
+        match &*self.parse_item_keyword()? {
+            [] => {}
+            [ItemKeyword::Const] => return self.fin_parse_const_item(),
+            [ItemKeyword::Extern(None), ItemKeyword::Crate] => {
+                return self.fin_parse_extern_crate_item();
+            }
+            [modifiers @ .., ItemKeyword::Fn] => {
+                let (constness, modifiers) = parse_const(modifiers);
+                let (asyncness, modifiers) = match modifiers {
+                    [ItemKeyword::Async, modifiers @ ..] => (ast::Asyncness::Async, modifiers),
+                    _ => (ast::Asyncness::Not, modifiers),
+                };
+                let (safety, modifiers) = match modifiers {
+                    [ItemKeyword::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
+                    [ItemKeyword::Safe, modifiers @ ..] => (ast::Safety::Safe, modifiers),
+                    _ => (ast::Safety::Inherited, modifiers),
+                };
+                let (externness, modifiers) = match modifiers {
+                    [ItemKeyword::Extern(abi), modifiers @ ..] => {
+                        (ast::Externness::Extern(*abi), modifiers)
+                    }
+                    _ => (ast::Externness::Not, modifiers),
+                };
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_fn_item(constness, asyncness, safety, externness);
+            }
+            [modifiers @ .., ItemKeyword::Trait] => {
+                let (constness, modifiers) = parse_const(modifiers);
+                let (safety, modifiers) = parse_unsafe(modifiers);
+                let (autoness, modifiers) = match modifiers {
+                    [ItemKeyword::Auto, modifiers @ ..] => (ast::Autoness::Auto, modifiers),
+                    _ => (ast::Autoness::Not, modifiers),
+                };
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_trait_item(constness, safety, autoness);
+            }
+            [modifiers @ .., ItemKeyword::Impl] => {
+                let (safety, modifiers) = parse_unsafe(modifiers);
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_impl_item(safety, ast::Constness::Not);
+            }
+            [modifiers @ .., ItemKeyword::Impl, ItemKeyword::Const] => {
+                let (safety, modifiers) = parse_unsafe(modifiers);
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_impl_item(safety, ast::Constness::Const);
+            }
+            [modifiers @ .., ItemKeyword::Extern(abi)] => {
+                let (safety, modifiers) = parse_unsafe(modifiers);
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_extern_block_item(safety, *abi);
+            }
+            _ => {
+                return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+            }
+        }
+
+        if let Some(ident) = self.as_ident(self.token) {
+            match ident {
+                "enum" => {
+                    self.advance();
+                    return self.fin_parse_enum_item();
+                }
+                "macro" => {
+                    self.advance();
+                    return self.fin_parse_macro_def();
+                }
+                "mod" => {
+                    self.advance();
+                    return self.fin_parse_mod_item();
+                }
+                "static" => {
+                    self.advance();
+                    return self.fin_parse_static_item();
+                }
+                "struct" => {
+                    self.advance();
+                    return self.fin_parse_struct_item();
+                }
+                "type" => {
+                    self.advance();
+                    return self.fin_parse_ty_alias_item();
+                }
+                "union" => {
+                    if let Some(binder) = self.look_ahead(1, |token| self.as_common_ident(token)) {
+                        self.advance();
+                        self.advance();
+                        return self.fin_parse_union_item(binder);
+                    }
+                }
+                "use" => {
+                    self.advance();
+                    return self.fin_parse_use_item();
+                }
+                _ => {}
+            }
+        }
+
+        if self.begins_path() {
+            return self.parse_macro_call_item();
+        }
+
+        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
+    }
+
+    fn parse_item_keyword(&mut self) -> Result<Vec<ItemKeyword<'src>>> {
+        let mut candidates = Vec::new();
+
+        loop {
+            candidates.push(match self.token.kind {
+                TokenKind::Ident => match self.source(self.token.span) {
+                    // FIXME: Unless it's followed by `{`
+                    "const" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+                        ItemKeyword::Const
+                    }
+                    "unsafe" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+                        ItemKeyword::Unsafe
+                    }
+                    "auto" if self.look_ahead(1, |t| self.as_ident(t) == Some("trait")) => {
+                        ItemKeyword::Auto
+                    }
+                    "async" if self.edition >= Edition::Rust2018 => ItemKeyword::Async,
+                    "fn" => ItemKeyword::Fn,
+                    "trait" => ItemKeyword::Trait,
+                    "impl" => ItemKeyword::Impl,
+                    "extern" => {
+                        self.advance();
+                        let token = self.token;
+                        let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
+                        candidates.push(ItemKeyword::Extern(abi));
+                        continue;
+                    }
+                    "crate" => ItemKeyword::Crate,
+                    "safe"
+                        if self.look_ahead(1, |t| {
+                            matches!(self.as_ident(t), Some("fn" | "extern"))
+                        }) =>
+                    {
+                        ItemKeyword::Safe
+                    }
+                    _ => break,
+                },
+                _ => break,
+            });
+            self.advance();
+        }
+
+        Ok(candidates)
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -359,17 +370,19 @@ impl<'src> Parser<'_, 'src> {
         })
     }
 
-    /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit? "{"` has been parsed already.
+    /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit?` has been parsed already.
     ///
     /// # Grammar
     ///
     /// ```grammar
-    /// Extern_Block_Item ::= "extern" #Str_Lit? "{" … "}"
+    /// Extern_Block_Item ::= "unsafe"? "extern" #Str_Lit? "{" … "}"
     /// ```
     fn fin_parse_extern_block_item(
         &mut self,
+        safety: ast::Safety,
         abi: Option<&'src str>,
     ) -> Result<ast::ItemKind<'src>> {
+        self.parse(TokenKind::OpenCurlyBracket)?;
         let items = self
             .parse_items(TokenKind::CloseCurlyBracket)?
             .into_iter()
@@ -389,7 +402,7 @@ impl<'src> Parser<'_, 'src> {
             })
             .collect::<Result<_>>()?;
 
-        Ok(ast::ItemKind::ExternBlock(Box::new(ast::ExternBlockItem { abi, body: items })))
+        Ok(ast::ItemKind::ExternBlock(Box::new(ast::ExternBlockItem { safety, abi, body: items })))
     }
 
     /// Finish parsing an extern crate item assuming the leading `extern crate` has been parsed already.
@@ -424,6 +437,7 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_fn_item(
         &mut self,
         constness: ast::Constness,
+        asyncness: ast::Asyncness,
         safety: ast::Safety,
         externness: ast::Externness<'src>,
     ) -> Result<ast::ItemKind<'src>> {
@@ -442,6 +456,7 @@ impl<'src> Parser<'_, 'src> {
 
         Ok(ast::ItemKind::Fn(Box::new(ast::FnItem {
             constness,
+            asyncness,
             safety,
             externness,
             binder,
@@ -508,22 +523,25 @@ impl<'src> Parser<'_, 'src> {
         })
     }
 
-    /// Finish parsing an implementation item assuming the leading `impl` has been parsed already.
+    /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
     ///
     /// # Grammar
     ///
     /// ```grammar
-    /// Impl_Item ::= "impl" Generic_Params Path for Ty Where_Clause? "{" … "}"
+    /// Impl_Item ::=
+    ///     "unsafe"? "impl" "const"?
+    ///     Generic_Params
+    ///     Path "for" Ty
+    ///     Where_Clause? "{" … "}"
     /// ```
     // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
-    fn fin_parse_impl_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_impl_item(
+        &mut self,
+        safety: ast::Safety,
+        constness: ast::Constness,
+    ) -> Result<ast::ItemKind<'src>> {
         // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
         let params = self.parse_generic_params()?;
-
-        let constness = match self.consume_ident_if("const") {
-            true => ast::Constness::Const,
-            false => ast::Constness::Not,
-        };
 
         let polarity = match self.consume(TokenKind::SingleBang) {
             true => ast::ImplPolarity::Negative,
@@ -656,6 +674,7 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// ```grammar
     /// Trait_Item ::=
+    ///     "const"? "unsafe"? "auto"?
     ///     "trait" Common_Ident
     ///     Generic_Params
     ///     (":" Bounds)?
@@ -663,7 +682,12 @@ impl<'src> Parser<'_, 'src> {
     ///     "{" … "}"
     /// ```
     // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
-    fn fin_parse_trait_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_trait_item(
+        &mut self,
+        constness: ast::Constness,
+        safety: ast::Safety,
+        autoness: ast::Autoness,
+    ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_params()?;
 
@@ -677,7 +701,9 @@ impl<'src> Parser<'_, 'src> {
         let items = self.parse_delimited_assoc_items()?;
 
         Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
+            constness,
             safety,
+            autoness,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
@@ -787,7 +813,7 @@ impl<'src> Parser<'_, 'src> {
         match policy {
             MacroCallPolicy::Allowed => self.begins_path(),
             MacroCallPolicy::Forbidden => {
-                self.as_ident(self.token).is_some_and(|ident| ident == "macro_rules")
+                self.as_ident(self.token) == Some("macro_rules")
                     && self.look_ahead(1, |token| token.kind == TokenKind::SingleBang)
                     && self.look_ahead(2, |token| self.as_common_ident(token).is_some())
             }
@@ -854,6 +880,19 @@ impl<'src> Parser<'_, 'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        self.as_ident(self.token).is_some_and(|ident| ident == "pub")
+        self.as_ident(self.token) == Some("pub")
     }
+}
+
+enum ItemKeyword<'src> {
+    Async,
+    Auto,
+    Const,
+    Crate,
+    Extern(Option<&'src str>),
+    Fn,
+    Impl,
+    Safe,
+    Trait,
+    Unsafe,
 }
