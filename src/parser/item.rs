@@ -449,7 +449,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let target = self.parse_ident_where_common_or("self")?;
-        let binder = self.consume_ident_if("as").then(|| self.parse_common_ident()).transpose()?;
+        let binder = self.consume_ident("as").then(|| self.parse_common_ident()).transpose()?;
 
         self.parse(TokenKind::Semicolon)?;
 
@@ -516,7 +516,7 @@ impl<'src> Parser<'_, 'src> {
                     .consume(TokenKind::SingleAmpersand)
                     .then(|| this.consume_common_lifetime());
                 let mut_ = this.parse_mutability();
-                this.parse_ident_where("self").ok()?;
+                this.parse_ident("self").ok()?;
                 Some((ref_, mut_))
             }) {
                 if !first {
@@ -579,7 +579,7 @@ impl<'src> Parser<'_, 'src> {
 
         let ty = self.parse_ty()?;
 
-        let (trait_ref, self_ty) = if self.consume_ident_if("for") {
+        let (trait_ref, self_ty) = if self.consume_ident("for") {
             let self_ty = match self.consume(TokenKind::DoubleDot) {
                 // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
                 true => ast::Ty::Error,
@@ -875,7 +875,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
         // To kept in sync with `Self::begins_visibility`.
 
-        if !self.consume_ident_if("pub") {
+        if !self.consume_ident("pub") {
             return Ok(ast::Visibility::Inherited);
         }
 

@@ -26,7 +26,7 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Stmt::Item(self.parse_item()?));
         }
 
-        if self.consume_ident_if("let") {
+        if self.consume_ident("let") {
             let pat = self.parse_pat(OrPolicy::Forbidden)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             let body =

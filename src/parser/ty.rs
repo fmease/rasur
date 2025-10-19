@@ -44,14 +44,15 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "fn" => {
                     self.advance();
-                    self.parse(TokenKind::OpenRoundBracket)?;
-                    // FIXME: Parse type params (opt name)
-                    self.parse(TokenKind::CloseRoundBracket)?;
-                    let ret_ty = self
-                        .consume(TokenKind::ThinArrow)
-                        .then(|| self.parse_ty().map(Box::new))
-                        .transpose()?;
-                    return Ok(ast::Ty::FnPtr((), ret_ty));
+                    return self.fin_parse_fn_ptr_ty(Vec::new());
+                }
+                "for" => {
+                    self.advance();
+                    let bound_vars = self.parse_generic_params()?;
+
+                    // FIXME: Expect bare trait object types, too.
+                    self.parse_ident("fn")?;
+                    return self.fin_parse_fn_ptr_ty(bound_vars);
                 }
                 "impl" => {
                     self.advance();
@@ -142,7 +143,9 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.token.kind {
-            TokenKind::Ident => matches!(self.source(self.token.span), "_" | "dyn" | "fn" | "impl"),
+            TokenKind::Ident => {
+                matches!(self.source(self.token.span), "_" | "dyn" | "fn" | "for" | "impl")
+            }
             TokenKind::SingleBang
             | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
@@ -151,6 +154,25 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::OpenRoundBracket => true,
             _ => false,
         }
+    }
+
+    fn fin_parse_fn_ptr_ty(
+        &mut self,
+        bound_vars: Vec<ast::GenericParam<'src>>,
+    ) -> Result<ast::Ty<'src>> {
+        self.parse(TokenKind::OpenRoundBracket)?;
+        // FIXME: Actually parse the parameters using `Self::parse_fn_params`
+        //        to capture the full grammar (for that, the functions needs to
+        //        be able to parse optional parameter *patterns* (!)).
+        let params =
+            self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+                this.parse_ty()
+            })?;
+        let ret_ty = self
+            .consume(TokenKind::ThinArrow)
+            .then(|| self.parse_ty().map(Box::new))
+            .transpose()?;
+        return Ok(ast::Ty::FnPtr(bound_vars, params, ret_ty));
     }
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
@@ -265,7 +287,7 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
 
-        if !self.consume_ident_if("where") {
+        if !self.consume_ident("where") {
             return Ok(preds);
         }
 
@@ -352,7 +374,7 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Bound::Outlives(lt));
         }
 
-        if self.consume_ident_if("use") {
+        if self.consume_ident("use") {
             self.parse(TokenKind::SingleLessThan)?;
             let captures =
                 self.fin_parse_delim_seq(TokenKind::SingleGreaterThan, TokenKind::Comma, |this| {
@@ -411,7 +433,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
-                self.parse_ident_where("const")?;
+                self.parse_ident("const")?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::BoundConstness::Maybe
             }
@@ -470,7 +492,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
         let start = self.token.span;
 
-        if !self.consume_ident_if("for") {
+        if !self.consume_ident("for") {
             return Ok(None);
         }
 

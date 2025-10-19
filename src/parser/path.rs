@@ -47,7 +47,7 @@ impl<'src> Parser<'_, 'src> {
             let ty = self.parse_ty()?;
             // We're in a "type context" now and can parse generic args unambiguously.
             let trait_ref = self
-                .consume_ident_if("as")
+                .consume_ident("as")
                 .then(|| self.parse_path::<ast::UnambiguousGenericArgs>())
                 .transpose()?;
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
@@ -314,7 +314,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 path.segs.push(ast::PathSeg::ident(ident));
                 let binder = self
-                    .consume_ident_if("as")
+                    .consume_ident("as")
                     .then(|| self.parse_ident_where_common_or("_"))
                     .transpose()?;
                 ast::PathTreeKind::Stump(binder)
@@ -333,7 +333,7 @@ impl<'src> Parser<'_, 'src> {
         })
     }
 
-    pub(super) fn parse_ident_where(&mut self, expected: &'static str) -> Result<()> {
+    pub(super) fn parse_ident(&mut self, expected: &'static str) -> Result<()> {
         if self.as_ident(self.token) == Some(expected) {
             self.advance();
             Ok(())
@@ -359,8 +359,8 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    pub(super) fn consume_ident_if(&mut self, expected: &str) -> bool {
-        if self.as_ident(self.token).is_some_and(|ident| ident == expected) {
+    pub(super) fn consume_ident(&mut self, expected: &str) -> bool {
+        if self.as_ident(self.token) == Some(expected) {
             self.advance();
             true
         } else {

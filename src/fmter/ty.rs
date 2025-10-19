@@ -6,8 +6,16 @@ impl Fmt for ast::Ty<'_> {
         match self {
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
-            Self::FnPtr((), ret_ty) => {
-                fmt!(cx, "fn()");
+            Self::FnPtr(bound_vars, params, ret_ty) => {
+                if !bound_vars.is_empty() {
+                    fmt!(cx, "for");
+                    bound_vars.fmt(cx);
+                    fmt!(cx, " ");
+                }
+
+                fmt!(cx, "fn(");
+                Punctuated::new(params, ", ").fmt(cx);
+                fmt!(cx, ")");
                 if let Some(ret_ty) = ret_ty {
                     fmt!(cx, " -> ");
                     ret_ty.fmt(cx);
@@ -31,7 +39,6 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
             }
             Self::Never => fmt!(cx, "!"),
-            // FIXME: In Rust 2015 if `bounds.is_empty()`, you need to render it as `r#dyn`.
             Self::DynTrait(bounds) => {
                 fmt!(cx, "dyn");
                 if !bounds.is_empty() {

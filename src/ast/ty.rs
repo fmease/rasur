@@ -5,7 +5,7 @@ pub(crate) enum Ty<'src> {
     Never,
     Inferred,
     DynTrait(Vec<Bound<'src>>),
-    FnPtr((), Option<Box<Ty<'src>>>),
+    FnPtr(Vec<GenericParam<'src>>, Vec<Ty<'src>>, Option<Box<Ty<'src>>>),
     ImplTrait(Vec<Bound<'src>>),
     Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
     Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),

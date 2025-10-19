@@ -368,7 +368,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "async" if self.edition >= Edition::Rust2018 => {
                     self.advance();
-                    let gen_ = self.edition >= Edition::Rust2024 && self.consume_ident_if("gen");
+                    let gen_ = self.edition >= Edition::Rust2024 && self.consume_ident("gen");
                     return Ok(ast::Expr::Block(
                         match gen_ {
                             true => ast::BlockKind::AsyncGen,
@@ -413,7 +413,7 @@ impl<'src> Parser<'_, 'src> {
                 "for" => {
                     self.advance();
                     let pat = self.parse_pat(OrPolicy::Allowed)?;
-                    self.parse_ident_where("in")?;
+                    self.parse_ident("in")?;
                     let expr =
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                     let body = self.parse_block_expr()?;
@@ -433,7 +433,7 @@ impl<'src> Parser<'_, 'src> {
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
                     let consequent = self.parse_block_expr()?;
 
-                    let alternate = if self.consume_ident_if("else") {
+                    let alternate = if self.consume_ident("else") {
                         match self.token.kind {
                             TokenKind::OpenCurlyBracket => {}
                             TokenKind::Ident if let "if" = self.source(self.token.span) => {}

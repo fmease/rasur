@@ -234,7 +234,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn parse_mutability(&mut self) -> ast::Mutability {
-        match self.consume_ident_if("mut") {
+        match self.consume_ident("mut") {
             true => ast::Mutability::Mut,
             false => ast::Mutability::Not,
         }
