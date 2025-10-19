@@ -326,30 +326,31 @@ fn stmts_const_item_const_block() {
 }",
             Rust2015
         ),
-        Ok(ast::Expr::Block(deref!(ast::BlockExpr {
-            attrs: deref!([]),
-            stmts: deref!([
-                ast::Stmt::Expr(
-                    ast::Expr::ConstBlock(deref!(ast::BlockExpr {
+        Ok(ast::Expr::Block(
+            ast::BlockKind::Bare,
+            deref!(ast::BlockExpr {
+                attrs: deref!([]),
+                stmts: deref!([
+                    ast::Stmt::Expr(
+                        ast::Expr::Block(
+                            ast::BlockKind::Const,
+                            deref!(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) })
+                        ),
+                        ast::Semicolon::No
+                    ),
+                    ast::Stmt::Item(ast::Item {
                         attrs: deref!([]),
-                        stmts: deref!([])
-                    })),
-                    ast::Semicolon::No
-                ),
-                ast::Stmt::Item(ast::Item {
-                    attrs: deref!([]),
-                    vis: ast::Visibility::Inherited,
-                    kind: ast::ItemKind::Fn(ast::FnItem {
-                        constness: ast::Constness::Const,
-                        safety: ast::Safety::Inherited,
-                        externness: ast::Externness::Not,
-                        binder: "f",
-                        ..
+                        vis: ast::Visibility::Inherited,
+                        kind: ast::ItemKind::Fn(ast::FnItem {
+                            modifiers: ast::FnModifiers { constness: ast::Constness::Const, .. },
+                            binder: "f",
+                            ..
+                        }),
+                        span: _
                     }),
-                    span: _
-                }),
-            ])
-        })))
+                ])
+            })
+        ))
     );
 }
 
@@ -365,10 +366,10 @@ fn expr_control_flow_ops_block() {
     assert_matches!(
         parse_expr("if return {} {}", Rust2015),
         Ok(ast::Expr::If(deref!(ast::IfExpr {
-            condition: ast::Expr::Return(Some(deref!(ast::Expr::Block(ast::BlockExpr {
-                attrs: deref!([]),
-                stmts: deref!([])
-            })))),
+            condition: ast::Expr::Return(Some(deref!(ast::Expr::Block(
+                ast::BlockKind::Bare,
+                ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+            )))),
             consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
             alternate: None
         })))
@@ -388,7 +389,10 @@ fn expr_control_flow_ops_block() {
         parse_expr("break {}", Rust2015),
         Ok(ast::Expr::Break(
             None,
-            Some(ast::Expr::Block(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }))
+            Some(ast::Expr::Block(
+                ast::BlockKind::Bare,
+                ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+            ))
         ))
     );
 
@@ -444,6 +448,9 @@ fn item_modifiers() {
             r#"
 async extern fn f() {}
 async fn f() {}
+async gen fn f() {}
+async gen safe fn f() {}
+async gen unsafe fn f() {}
 async safe extern fn f() {}
 async safe fn f() {}
 async unsafe extern fn f() {}
@@ -451,6 +458,8 @@ async unsafe fn f() {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
+const async gen safe fn f() {}
+const async gen safe extern "C" fn f() {}
 const async safe extern fn f() {}
 const async safe fn f() {}
 const async unsafe extern fn f() {}
@@ -459,6 +468,7 @@ const auto trait Trait {}
 const auto: () = (); // !
 const extern "C" fn f() {}
 const extern fn f() {}
+const gen fn f() {}
 const safe extern fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
 const safe fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
 const safe: () = ();
@@ -473,6 +483,9 @@ extern fn f() {}
 extern {}
 fn f() {}
 fn wrap() { safe fn f() {} } // rustc rejects things (wrongly imo, rust-lang/rust#146122)
+gen fn f() {}
+gen extern fn f() {}
+gen unsafe fn f() {}
 impl !Trait for () {}
 impl Trait for () {}
 impl const Trait for () {}
@@ -495,7 +508,7 @@ unsafe impl const !Trait for () {}
 unsafe impl const Trait for () {}
 unsafe trait Trait {}
 "#,
-            Rust2018 // for async
+            Rust2024 // for `async` and `gen`
         ),
         Ok(_)
     );

@@ -73,17 +73,24 @@ impl<'src> Parser<'_, 'src> {
         let Some(ident) = self.as_ident(self.token) else { return false };
 
         match ident {
-            "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
-            | "type" | "use" => true,
-            "auto" => self.look_ahead(1, |t| self.as_ident(t) == Some("trait")),
-            "async" => self.edition >= Edition::Rust2018,
-            "const" | "unsafe" => {
-                self.look_ahead(1, |token| token.kind != TokenKind::OpenCurlyBracket)
+            "async" => {
+                self.edition >= Edition::Rust2018
+                    && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
+                    // for `async gen {`
+                    && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket)
             }
-            "union" => self.look_ahead(1, |token| self.as_common_ident(token).is_some()),
+            "auto" => self.look_ahead(1, |t| self.as_ident(t) == Some("trait")),
+            "const" | "unsafe" => self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket),
+            "gen" => {
+                self.edition >= Edition::Rust2024
+                    && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
+            }
             "safe" => {
                 self.look_ahead(1, |token| matches!(self.as_ident(token), Some("fn" | "extern")))
             }
+            "union" => self.look_ahead(1, |t| self.as_common_ident(t).is_some()),
+            "enum" | "extern" | "fn" | "impl" | "macro" | "mod" | "static" | "struct" | "trait"
+            | "type" | "use" => true,
             _ => false,
         }
     }
@@ -121,6 +128,10 @@ impl<'src> Parser<'_, 'src> {
                     [ItemKeyword::Async, modifiers @ ..] => (ast::Asyncness::Async, modifiers),
                     _ => (ast::Asyncness::Not, modifiers),
                 };
+                let (genness, modifiers) = match modifiers {
+                    [ItemKeyword::Gen, modifiers @ ..] => (ast::Genness::Gen, modifiers),
+                    _ => (ast::Genness::Not, modifiers),
+                };
                 let (safety, modifiers) = match modifiers {
                     [ItemKeyword::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
                     [ItemKeyword::Safe, modifiers @ ..] => (ast::Safety::Safe, modifiers),
@@ -136,7 +147,13 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_fn_item(constness, asyncness, safety, externness);
+                return self.fin_parse_fn_item(ast::FnModifiers {
+                    constness,
+                    asyncness,
+                    genness,
+                    safety,
+                    externness,
+                });
             }
             [modifiers @ .., ItemKeyword::Trait] => {
                 let (constness, modifiers) = parse_const(modifiers);
@@ -175,6 +192,14 @@ impl<'src> Parser<'_, 'src> {
 
                 return self.fin_parse_extern_block_item(safety, *abi);
             }
+            [modifiers @ .., ItemKeyword::Mod] => {
+                let (safety, modifiers) = parse_unsafe(modifiers);
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_mod_item(safety);
+            }
             _ => {
                 return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
             }
@@ -189,10 +214,6 @@ impl<'src> Parser<'_, 'src> {
                 "macro" => {
                     self.advance();
                     return self.fin_parse_macro_def();
-                }
-                "mod" => {
-                    self.advance();
-                    return self.fin_parse_mod_item();
                 }
                 "static" => {
                     self.advance();
@@ -234,19 +255,21 @@ impl<'src> Parser<'_, 'src> {
         loop {
             candidates.push(match self.token.kind {
                 TokenKind::Ident => match self.source(self.token.span) {
-                    "const" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                        ItemKeyword::Const
-                    }
-                    "unsafe" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                        ItemKeyword::Unsafe
+                    "async"
+                        if self.edition >= Edition::Rust2018
+                            && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
+                            // for async gen {
+                            && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket) =>
+                    {
+                        ItemKeyword::Async
                     }
                     "auto" if self.look_ahead(1, |t| self.as_ident(t) == Some("trait")) => {
                         ItemKeyword::Auto
                     }
-                    "async" if self.edition >= Edition::Rust2018 => ItemKeyword::Async,
-                    "fn" => ItemKeyword::Fn,
-                    "trait" => ItemKeyword::Trait,
-                    "impl" => ItemKeyword::Impl,
+                    "const" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+                        ItemKeyword::Const
+                    }
+                    "crate" => ItemKeyword::Crate,
                     "extern" => {
                         self.advance();
                         let token = self.token;
@@ -254,13 +277,25 @@ impl<'src> Parser<'_, 'src> {
                         candidates.push(ItemKeyword::Extern(abi));
                         continue;
                     }
-                    "crate" => ItemKeyword::Crate,
+                    "fn" => ItemKeyword::Fn,
+                    "gen"
+                        if self.edition >= Edition::Rust2024
+                            && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
+                    {
+                        ItemKeyword::Gen
+                    }
+                    "impl" => ItemKeyword::Impl,
+                    "mod" => ItemKeyword::Mod,
                     "safe"
                         if self.look_ahead(1, |t| {
                             matches!(self.as_ident(t), Some("fn" | "extern"))
                         }) =>
                     {
                         ItemKeyword::Safe
+                    }
+                    "trait" => ItemKeyword::Trait,
+                    "unsafe" if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+                        ItemKeyword::Unsafe
                     }
                     _ => break,
                 },
@@ -436,10 +471,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_fn_item(
         &mut self,
-        constness: ast::Constness,
-        asyncness: ast::Asyncness,
-        safety: ast::Safety,
-        externness: ast::Externness<'src>,
+        modifiers: ast::FnModifiers<'src>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_params()?;
@@ -455,10 +487,7 @@ impl<'src> Parser<'_, 'src> {
         };
 
         Ok(ast::ItemKind::Fn(Box::new(ast::FnItem {
-            constness,
-            asyncness,
-            safety,
-            externness,
+            modifiers,
             binder,
             generics: ast::Generics { params: gen_params, preds },
             params,
@@ -609,9 +638,9 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Mod_Item ::= "mod" Common_Ident ("{" … "}" | ";")
+    /// Mod_Item ::= "unsafe"? "mod" Common_Ident ("{" … "}" | ";")
     /// ```
-    fn fin_parse_mod_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_mod_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
             // FIXME: Smh. merge with outer attrs?
@@ -623,7 +652,7 @@ impl<'src> Parser<'_, 'src> {
             None
         };
 
-        Ok(ast::ItemKind::Mod(Box::new(ast::ModItem { binder, body: items })))
+        Ok(ast::ItemKind::Mod(Box::new(ast::ModItem { safety, binder, body: items })))
     }
 
     /// Finish parsing a static item assuming the leading `static` has been parsed already.
@@ -891,7 +920,9 @@ enum ItemKeyword<'src> {
     Crate,
     Extern(Option<&'src str>),
     Fn,
+    Gen,
     Impl,
+    Mod,
     Safe,
     Trait,
     Unsafe,

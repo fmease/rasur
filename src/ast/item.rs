@@ -109,15 +109,21 @@ pub(crate) enum ExternItemKind<'src> {
 
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
-    pub(crate) constness: Constness,
-    pub(crate) asyncness: Asyncness,
-    pub(crate) safety: Safety,
-    pub(crate) externness: Externness<'src>,
+    pub(crate) modifiers: FnModifiers<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<FnParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
     pub(crate) body: Option<BlockExpr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FnModifiers<'src> {
+    pub(crate) constness: Constness,
+    pub(crate) asyncness: Asyncness,
+    pub(crate) genness: Genness,
+    pub(crate) safety: Safety,
+    pub(crate) externness: Externness<'src>,
 }
 
 #[derive(Debug)]
@@ -129,6 +135,13 @@ pub(crate) enum Constness {
 #[derive(Debug)]
 pub(crate) enum Asyncness {
     Async,
+    Not,
+}
+
+// FIXME: Awful name, rethink whole naming scheme here
+#[derive(Debug)]
+pub(crate) enum Genness {
+    Gen,
     Not,
 }
 
@@ -170,6 +183,8 @@ pub(crate) enum ImplPolarity {
 
 #[derive(Debug)]
 pub(crate) struct ModItem<'src> {
+    // FIXME: Add r-l/r PR for why this is a thing.
+    pub(crate) safety: Safety,
     pub(crate) binder: Ident<'src>,
     pub(crate) body: Option<Vec<Item<'src>>>,
 }

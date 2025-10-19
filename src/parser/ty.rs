@@ -325,7 +325,7 @@ impl<'src> Parser<'_, 'src> {
         while self.begins_bound() {
             bounds.push(self.parse_bound()?);
 
-            if !self.consume(TokenKind::Plus) {
+            if !self.consume_single_plus() {
                 break;
             }
         }
@@ -457,7 +457,7 @@ impl<'src> Parser<'_, 'src> {
         while let Some(lt) = self.consume_common_lifetime()? {
             bounds.push(lt);
 
-            if !self.consume(TokenKind::Plus) {
+            if !self.consume(TokenKind::SinglePlus) {
                 break;
             }
         }

@@ -7,13 +7,12 @@ use super::{
 pub(crate) enum Expr<'src> {
     Array(Vec<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
-    Block(Box<BlockExpr<'src>>),
+    Block(BlockKind, Box<BlockExpr<'src>>),
     Borrow(Mutability, Box<Expr<'src>>),
     Break(Option<&'src str>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Closure(Box<ClosureExpr<'src>>),
-    ConstBlock(Box<BlockExpr<'src>>),
     Continue,
     Field(Box<Expr<'src>>, Ident<'src>),
     ForLoop(Box<ForLoopExpr<'src>>),
@@ -33,21 +32,18 @@ pub(crate) enum Expr<'src> {
     Try(Box<Expr<'src>>),
     Tup(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
-    UnsafeBlock(Box<BlockExpr<'src>>),
     While(Box<WhileExpr<'src>>),
     Wildcard,
 }
 
 impl Expr<'_> {
-    // FIXME: Bad name (e.g. `break {}` is `false` despite "ha[ving] [æ] trailing block")
+    // FIXME: Bad name (e.g. `break {}` / `async {}` is `false` despite "ha[ving] [æ] trailing block")
     pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
         match self {
-            | Self::Block(_)
-            | Self::ConstBlock(_)
+            | Self::Block(BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe, _)
             | Self::If(_)
             | Self::Loop(_)
             | Self::Match(_)
-            | Self::UnsafeBlock(_)
             | Self::While(_)
             | Self::ForLoop(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
@@ -55,6 +51,7 @@ impl Expr<'_> {
                 TrailingBlockMode::Match => false,
             },
             | Self::Array(_)
+            | Self::Block(BlockKind::Async | BlockKind::AsyncGen | BlockKind::Gen, _) // indeed
             | Self::BinOp(..)
             | Self::Borrow(..)
             | Self::Break(..)
@@ -187,6 +184,17 @@ pub(crate) struct MatchArm<'src> {
 pub(crate) struct WhileExpr<'src> {
     pub(crate) condition: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum BlockKind {
+    Async,
+    AsyncGen,
+    Bare,
+    Const,
+    Gen,
+    Try,
+    Unsafe,
 }
 
 #[derive(Debug)]

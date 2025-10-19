@@ -296,6 +296,21 @@ impl<'a, 'src> Parser<'a, 'src> {
         )
     }
 
+    // FIXME: generalize
+    fn consume_single_plus(&mut self) -> bool {
+        match self.token.kind {
+            TokenKind::SinglePlus => {
+                self.advance();
+                true
+            }
+            TokenKind::PlusEquals => {
+                self.modify_in_place(TokenKind::SingleEquals);
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn consume(&mut self, expected: TokenKind) -> bool {
         if self.token.kind == expected {
             self.advance();

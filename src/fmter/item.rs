@@ -247,23 +247,9 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self {
-            constness,
-            asyncness,
-            safety,
-            externness,
-            binder,
-            generics,
-            params,
-            ret_ty,
-            body,
-        } = self;
+        let Self { modifiers, binder, generics, params, ret_ty, body } = self;
 
-        constness.trailing_space().fmt(cx);
-        asyncness.trailing_space().fmt(cx);
-        safety.trailing_space().fmt(cx);
-        externness.trailing_space().fmt(cx);
-
+        modifiers.trailing_space().fmt(cx);
         fmt!(cx, "fn {binder}");
         generics.params.fmt(cx);
         fmt!(cx, "(");
@@ -280,6 +266,17 @@ impl Fmt for ast::FnItem<'_> {
         } else {
             fmt!(cx, ";");
         }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::FnModifiers<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::FnModifiers { constness, asyncness, genness, safety, externness }) = self;
+        constness.trailing_space().fmt(cx);
+        asyncness.trailing_space().fmt(cx);
+        genness.trailing_space().fmt(cx);
+        safety.trailing_space().fmt(cx);
+        externness.trailing_space().fmt(cx);
     }
 }
 
@@ -318,8 +315,9 @@ impl Fmt for ast::ImplItem<'_> {
 
 impl Fmt for ast::ModItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, body } = self;
+        let Self { safety, binder, body } = self;
 
+        safety.trailing_space().fmt(cx);
         fmt!(cx, "mod {binder}");
         match body {
             Some(items) => {
@@ -567,6 +565,16 @@ impl Fmt for TrailingSpace<ast::Asyncness> {
         match asyncness {
             ast::Asyncness::Async => fmt!(cx, "async "),
             ast::Asyncness::Not => {}
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Genness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(genness) = self;
+        match genness {
+            ast::Genness::Gen => fmt!(cx, "gen "),
+            ast::Genness::Not => {}
         }
     }
 }

@@ -84,18 +84,26 @@ impl iter::PeekableCharIndices<'_> {
 
                         TokenKind::LineComment
                     }
-                    // FIXME: Support nested multi-line comments!
                     // FIXME: Smh. taint unterminated m-l comments (but don't fatal!)
                     Some('*') => {
                         self.advance();
 
-                        // FIXME: Use next()? instead of "uncond_peek+advance"?
-                        while let Some(prev) = self.peek() {
-                            self.advance();
+                        let mut depth = 0;
 
-                            if let ('*', Some('/')) = (prev, self.peek()) {
-                                self.advance();
-                                break;
+                        while let Some((_, prev)) = self.next() {
+                            match (prev, self.peek()) {
+                                ('/', Some('*')) => {
+                                    self.advance();
+                                    depth += 1;
+                                }
+                                ('*', Some('/')) => {
+                                    self.advance();
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                    depth -= 1;
+                                }
+                                _ => (),
                             }
                         }
 
@@ -188,7 +196,7 @@ impl iter::PeekableCharIndices<'_> {
                     self.advance();
                     TokenKind::PlusEquals
                 } else {
-                    TokenKind::Plus
+                    TokenKind::SinglePlus
                 }
             }
             '*' => {

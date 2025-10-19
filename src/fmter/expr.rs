@@ -1,5 +1,5 @@
 use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
-use crate::ast;
+use crate::{ast, fmter::TrailingSpace};
 
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -106,13 +106,8 @@ impl Fmt for ast::Expr<'_> {
                 index.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Block(block) => block.fmt(cx),
-            Self::ConstBlock(block) => {
-                fmt!(cx, "const ");
-                block.fmt(cx);
-            }
-            Self::UnsafeBlock(block) => {
-                fmt!(cx, "unsafe ");
+            Self::Block(kind, block) => {
+                kind.trailing_space().fmt(cx);
                 block.fmt(cx);
             }
             Self::Closure(expr) => expr.fmt(cx),
@@ -291,6 +286,23 @@ impl Fmt for ast::ForLoopExpr<'_> {
         expr.fmt(cx);
         fmt!(cx, " ");
         body.fmt(cx);
+    }
+}
+
+impl Fmt for TrailingSpace<ast::BlockKind> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(kind) = self;
+        let kind = match kind {
+            ast::BlockKind::Async => "async ",
+            ast::BlockKind::AsyncGen => "async gen ",
+            ast::BlockKind::Bare => return,
+            ast::BlockKind::Const => "const ",
+            ast::BlockKind::Gen => "gen ",
+            ast::BlockKind::Try => "try ",
+            ast::BlockKind::Unsafe => "unsafe ",
+        };
+
+        fmt!(cx, "{kind}");
     }
 }
 

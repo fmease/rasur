@@ -1,8 +1,10 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
 };
-use crate::{ast, parser::path::GenericArgsMode};
+use crate::{ast, edition::Edition, parser::path::GenericArgsMode};
 use std::cmp::Ordering;
+
+// FIXME: Next up, closure modifiers (move, async)
 
 impl<'src> Parser<'_, 'src> {
     /// Parse an expression.
@@ -58,14 +60,17 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.token.kind {
-            #[rustfmt::skip]
             TokenKind::Ident => {
                 // We intentionally ignore `let` from let-exprs.
-                matches!(
-                    self.source(self.token.span),
-                    | "_" | "const" | "continue" | "break" | "false" | "for" | "if"
-                    | "loop" | "match" | "return" | "true" | "while" | "unsafe"
-                )
+                match self.source(self.token.span) {
+                    | "_" | "const" | "continue" | "break" | "false" | "for" | "if" | "loop"
+                    | "match" | "return" | "true" | "while" | "unsafe" => true,
+                    // Let-exprs are but an impl detail of if/let, while/let and let-chains.
+                    "let" => false,
+                    "async" | "try" => self.edition >= Edition::Rust2018,
+                    "gen" => self.edition >= Edition::Rust2024,
+                    _ => false,
+                }
             }
             | TokenKind::SingleAsterisk
             | TokenKind::CharLit
@@ -132,7 +137,7 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::OpenSquareBracket => Op::Index,
                 TokenKind::PercentEquals => Op::RemAssign,
                 TokenKind::PipeEquals => Op::BitOrAssign,
-                TokenKind::Plus => Op::Add,
+                TokenKind::SinglePlus => Op::Add,
                 TokenKind::PlusEquals => Op::AddAssign,
                 TokenKind::QuestionMark => Op::Try,
                 TokenKind::SingleAmpersand => Op::BitAnd,
@@ -361,6 +366,17 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     return Ok(ast::Expr::Wildcard);
                 }
+                "async" if self.edition >= Edition::Rust2018 => {
+                    self.advance();
+                    let gen_ = self.edition >= Edition::Rust2024 && self.consume_ident_if("gen");
+                    return Ok(ast::Expr::Block(
+                        match gen_ {
+                            true => ast::BlockKind::AsyncGen,
+                            false => ast::BlockKind::Async,
+                        },
+                        Box::new(self.parse_block_expr()?),
+                    ));
+                }
                 "break" => {
                     self.advance();
                     let label = self.consume_common_lifetime()?.map(|ast::Lifetime(label)| label);
@@ -380,7 +396,10 @@ impl<'src> Parser<'_, 'src> {
                 }
                 "const" => {
                     self.advance();
-                    return Ok(ast::Expr::ConstBlock(Box::new(self.parse_block_expr()?)));
+                    return Ok(ast::Expr::Block(
+                        ast::BlockKind::Const,
+                        Box::new(self.parse_block_expr()?),
+                    ));
                 }
                 "continue" => {
                     self.advance();
@@ -399,6 +418,13 @@ impl<'src> Parser<'_, 'src> {
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                     let body = self.parse_block_expr()?;
                     return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr { pat, expr, body })));
+                }
+                "gen" if self.edition >= Edition::Rust2024 => {
+                    self.advance();
+                    return Ok(ast::Expr::Block(
+                        ast::BlockKind::Gen,
+                        Box::new(self.parse_block_expr()?),
+                    ));
                 }
                 "if" => {
                     self.advance();
@@ -495,9 +521,19 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
                 }
+                "try" if self.edition >= Edition::Rust2018 => {
+                    self.advance();
+                    return Ok(ast::Expr::Block(
+                        ast::BlockKind::Try,
+                        Box::new(self.parse_block_expr()?),
+                    ));
+                }
                 "unsafe" => {
                     self.advance();
-                    return Ok(ast::Expr::UnsafeBlock(Box::new(self.parse_block_expr()?)));
+                    return Ok(ast::Expr::Block(
+                        ast::BlockKind::Unsafe,
+                        Box::new(self.parse_block_expr()?),
+                    ));
                 }
                 "while" => {
                     self.advance();
@@ -554,7 +590,10 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return Ok(ast::Expr::Block(Box::new(self.fin_parse_block_expr()?)));
+                return Ok(ast::Expr::Block(
+                    ast::BlockKind::Bare,
+                    Box::new(self.fin_parse_block_expr()?),
+                ));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -652,7 +691,7 @@ impl<'src> Parser<'_, 'src> {
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         let body = match ret_ty {
-            Some(_) => ast::Expr::Block(Box::new(self.parse_block_expr()?)),
+            Some(_) => ast::Expr::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?)),
             None => self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?,
         };
 
