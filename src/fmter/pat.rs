@@ -30,7 +30,6 @@ impl Fmt for ast::Pat<'_> {
                 right.fmt(cx);
                 fmt!(cx, ")");
             }
-
             Self::Range(left, right, kind) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 if let Some(left) = left {
@@ -49,6 +48,11 @@ impl Fmt for ast::Pat<'_> {
                     right.fmt(cx);
                     fmt!(cx, ")");
                 }
+            }
+            Self::Slice(elems) => {
+                fmt!(cx, "[");
+                Punctuated::new(elems, ", ").fmt(cx);
+                fmt!(cx, "]");
             }
         }
     }

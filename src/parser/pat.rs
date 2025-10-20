@@ -48,7 +48,8 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::DoubleDotEquals
             | TokenKind::NumLit
             | TokenKind::StrLit
-            | TokenKind::OpenRoundBracket => true,
+            | TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket => true,
             _ => false,
         }
     }
@@ -238,6 +239,15 @@ impl<'src> Parser<'_, 'src> {
                     ast::Pat::Grouped,
                     ast::Pat::Tup,
                 );
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let elems = self.fin_parse_delim_seq(
+                    TokenKind::CloseSquareBracket,
+                    TokenKind::Comma,
+                    |this| this.parse_pat(OrPolicy::Allowed),
+                )?;
+                return Ok(ast::Pat::Slice(elems));
             }
             _ => {}
         }

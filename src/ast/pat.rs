@@ -2,18 +2,19 @@ use super::{ExtPath, Ident, Lit, MacroCall, Mutability, ObligatorilyDisambiguate
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
-    Ident(IdentPat<'src>),
-    Wildcard,
-    Lit(Lit<'src>),
-    Tup(Vec<Pat<'src>>),
     Borrow(Mutability, Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
-    Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
+    Ident(IdentPat<'src>),
+    Lit(Lit<'src>),
     MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
-    TupleStruct(Box<TupleStructPat<'src>>),
-    Struct(Box<StructPat<'src>>),
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
+    Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
+    Slice(Vec<Pat<'src>>),
+    Struct(Box<StructPat<'src>>),
+    Tup(Vec<Pat<'src>>),
+    TupleStruct(Box<TupleStructPat<'src>>),
+    Wildcard,
 }
 
 // FIXME: I hate this name
