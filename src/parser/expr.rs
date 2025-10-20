@@ -1,7 +1,8 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
+    path::GenericArgsMode,
 };
-use crate::{ast, edition::Edition, parser::path::GenericArgsMode};
+use crate::{ast, edition::Edition};
 use std::cmp::Ordering;
 
 // FIXME: Next up, closure modifiers (move, async)
@@ -417,7 +418,11 @@ impl<'src> Parser<'_, 'src> {
                     let expr =
                         self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                     let body = self.parse_block_expr()?;
-                    return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr { pat, expr, body })));
+                    return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr {
+                        pat,
+                        head: expr,
+                        body,
+                    })));
                 }
                 "gen" if self.edition >= Edition::Rust2024 => {
                     self.advance();
@@ -467,7 +472,7 @@ impl<'src> Parser<'_, 'src> {
                     self.parse(TokenKind::SingleEquals)?;
                     // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
                     let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
-                    return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, expr })));
+                    return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, body: expr })));
                 }
                 "loop" => {
                     self.advance();
@@ -491,9 +496,7 @@ impl<'src> Parser<'_, 'src> {
                         let body =
                             self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
 
-                        if body.has_trailing_block(ast::TrailingBlockMode::Match)
-                            || self.token.kind == DELIMITER
-                        {
+                        if self.token.kind == DELIMITER || !body.needs_comma_as_match_arm_body() {
                             self.consume(TokenKind::Comma);
                         } else {
                             self.parse(TokenKind::Comma)?;

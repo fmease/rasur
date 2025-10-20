@@ -37,19 +37,23 @@ pub(crate) enum Expr<'src> {
 }
 
 impl Expr<'_> {
-    // FIXME: Bad name (e.g. `break {}` / `async {}` is `false` despite "ha[ving] [æ] trailing block")
-    pub(crate) fn has_trailing_block(&self, mode: TrailingBlockMode) -> bool {
+    pub(crate) fn needs_semicolon_as_stmt(&self) -> bool {
+        self.needs_delimiter(false)
+    }
+
+    pub(crate) fn needs_comma_as_match_arm_body(&self) -> bool {
+        self.needs_delimiter(true)
+    }
+
+    fn needs_delimiter(&self, curly_macro_call_counts: bool) -> bool {
         match self {
             | Self::Block(BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe, _)
             | Self::If(_)
             | Self::Loop(_)
             | Self::Match(_)
             | Self::While(_)
-            | Self::ForLoop(_) => true,
-            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match mode {
-                TrailingBlockMode::Normal => true,
-                TrailingBlockMode::Match => false,
-            },
+            | Self::ForLoop(_) => false,
+            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => curly_macro_call_counts,
             | Self::Array(_)
             | Self::Block(BlockKind::Async | BlockKind::AsyncGen | BlockKind::Gen, _) // indeed
             | Self::BinOp(..)
@@ -73,7 +77,7 @@ impl Expr<'_> {
             | Self::Try(_)
             | Self::Tup(_)
             | Self::UnOp(..)
-            | Self::Wildcard => false,
+            | Self::Wildcard => true,
         }
     }
 }
@@ -154,12 +158,6 @@ impl BinOp {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum TrailingBlockMode {
-    Normal,
-    Match,
-}
-
 #[derive(Debug)]
 pub(crate) struct IfExpr<'src> {
     pub(crate) condition: Expr<'src>,
@@ -238,13 +236,13 @@ pub(crate) struct ClosureParam<'src> {
 #[derive(Debug)]
 pub(crate) struct LetExpr<'src> {
     pub(crate) pat: Pat<'src>,
-    pub(crate) expr: Expr<'src>,
+    pub(crate) body: Expr<'src>,
 }
 
 #[derive(Debug)]
 pub(crate) struct ForLoopExpr<'src> {
     pub(crate) pat: Pat<'src>,
-    pub(crate) expr: Expr<'src>,
+    pub(crate) head: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
 }
 

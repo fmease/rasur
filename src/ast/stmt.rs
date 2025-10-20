@@ -1,4 +1,4 @@
-use super::{Expr, Item, Pat, Ty};
+use super::{BlockExpr, Expr, Item, Pat, Ty};
 
 #[derive(Debug)]
 pub(crate) enum Stmt<'src> {
@@ -12,7 +12,7 @@ pub(crate) enum Stmt<'src> {
 pub(crate) struct LetStmt<'src> {
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Option<Ty<'src>>,
-    pub(crate) body: Option<Expr<'src>>,
+    pub(crate) body: Option<(Expr<'src>, Option<BlockExpr<'src>>)>,
 }
 
 #[derive(Debug)]

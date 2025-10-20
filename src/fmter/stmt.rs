@@ -7,7 +7,8 @@ impl Fmt for ast::Stmt<'_> {
             Self::Item(item) => item.fmt(cx),
             Self::Let(stmt) => stmt.fmt(cx),
             Self::Expr(expr, semi) => {
-                let needs_semi = matches!(semi, ast::Semicolon::Yes if !expr.has_trailing_block(ast::TrailingBlockMode::Normal));
+                let needs_semi =
+                    matches!(semi, ast::Semicolon::Yes if expr.needs_semicolon_as_stmt());
                 expr.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");
@@ -28,9 +29,13 @@ impl Fmt for ast::LetStmt<'_> {
             fmt!(cx, ": ");
             ty.fmt(cx);
         }
-        if let Some(body) = body {
+        if let Some((body, alternate)) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
+            if let Some(alternate) = alternate {
+                fmt!(cx, " else ");
+                alternate.fmt(cx);
+            }
         }
         fmt!(cx, ";");
     }

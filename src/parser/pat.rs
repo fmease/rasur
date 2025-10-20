@@ -1,5 +1,5 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError};
-use crate::{ast, parser::one_of};
+use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of};
+use crate::ast;
 use std::cmp::Ordering;
 
 impl<'src> Parser<'_, 'src> {

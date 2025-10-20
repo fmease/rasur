@@ -1,5 +1,5 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
-use crate::{ast, fmter::TrailingSpace};
+use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
+use crate::ast;
 
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -167,7 +167,7 @@ impl Fmt for ast::MatchExpr<'_> {
             cx.line_break();
             let mut arms = arms.into_iter().peekable();
             while let Some(arm) = arms.next() {
-                let needs_comma = !arm.body.has_trailing_block(ast::TrailingBlockMode::Match);
+                let needs_comma = arm.body.needs_comma_as_match_arm_body();
                 arm.fmt(cx);
                 if needs_comma {
                     fmt!(cx, ",");
@@ -278,7 +278,7 @@ impl Fmt for ast::ClosureParam<'_> {
 
 impl Fmt for ast::ForLoopExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, expr, body } = self;
+        let Self { pat, head: expr, body } = self;
 
         fmt!(cx, "for ");
         pat.fmt(cx);
@@ -337,7 +337,7 @@ impl Fmt for ast::BlockExpr<'_> {
 
 impl Fmt for ast::LetExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, expr } = self;
+        let Self { pat, body: expr } = self;
 
         fmt!(cx, "let ");
         pat.fmt(cx);
