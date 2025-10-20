@@ -222,9 +222,16 @@ pub(crate) struct MethodCallExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ClosureExpr<'src> {
+    pub(crate) kind: ClosureKind,
     pub(crate) params: Vec<ClosureParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
     pub(crate) body: Expr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum ClosureKind {
+    Normal,
+    Move,
 }
 
 #[derive(Debug)]

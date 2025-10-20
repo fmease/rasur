@@ -248,7 +248,12 @@ impl Fmt for ast::MethodCallExpr<'_> {
 
 impl Fmt for ast::ClosureExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { params, ret_ty, body } = self;
+        let Self { kind, params, ret_ty, body } = self;
+
+        match kind {
+            ast::ClosureKind::Normal => {}
+            ast::ClosureKind::Move => fmt!(cx, "move "),
+        }
 
         fmt!(cx, "|");
         Punctuated::new(params, ", ").fmt(cx);

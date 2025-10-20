@@ -77,6 +77,7 @@ fn expr_or_nullary_closure() {
             ast::BinOp::Or,
             deref!(ast::Expr::Tup(deref!([]))),
             deref!(ast::Expr::Closure(deref!(ast::ClosureExpr {
+                kind: ast::ClosureKind::Normal,
                 params: deref!([]),
                 ret_ty: None,
                 body: ast::Expr::Tup(deref!([]))

@@ -241,51 +241,6 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: generalize
-    fn consume_single_less_than(&mut self) -> bool {
-        match self.token.kind {
-            TokenKind::SingleLessThan => {
-                self.advance();
-                true
-            }
-            TokenKind::DoubleLessThan => {
-                self.modify_in_place(TokenKind::SingleLessThan);
-                true
-            }
-            TokenKind::LessThanEquals => {
-                self.modify_in_place(TokenKind::SingleEquals);
-                true
-            }
-            TokenKind::DoubleLessThanEquals => {
-                self.modify_in_place(TokenKind::LessThanEquals);
-                true
-            }
-            _ => false,
-        }
-    }
-
-    // FIXME: generalize
-    fn consume_single_greater_than(&mut self) -> bool {
-        match self.token.kind {
-            TokenKind::SingleGreaterThan => {
-                self.advance();
-                true
-            }
-            TokenKind::DoubleGreaterThan => {
-                self.modify_in_place(TokenKind::SingleGreaterThan);
-                true
-            }
-            TokenKind::GreaterThanEquals => {
-                self.modify_in_place(TokenKind::SingleEquals);
-                true
-            }
-            TokenKind::DoubleGreaterThanEquals => {
-                self.modify_in_place(TokenKind::GreaterThanEquals);
-                true
-            }
-            _ => false,
-        }
-    }
-
     fn begins_single_greater_than(&self) -> bool {
         matches!(
             self.token.kind,
@@ -294,21 +249,6 @@ impl<'a, 'src> Parser<'a, 'src> {
                 | TokenKind::GreaterThanEquals
                 | TokenKind::DoubleGreaterThanEquals
         )
-    }
-
-    // FIXME: generalize
-    fn consume_single_plus(&mut self) -> bool {
-        match self.token.kind {
-            TokenKind::SinglePlus => {
-                self.advance();
-                true
-            }
-            TokenKind::PlusEquals => {
-                self.modify_in_place(TokenKind::SingleEquals);
-                true
-            }
-            _ => false,
-        }
     }
 
     fn consume(&mut self, expected: TokenKind) -> bool {
@@ -329,7 +269,29 @@ impl<'a, 'src> Parser<'a, 'src> {
         Err(error::ParseError::UnexpectedToken(self.token, expected.into()))
     }
 
-    // FIXME: likely no longer correct
+    // FIXME: Temporary
+    fn consume_relaxed(&mut self, expected: TokenKind) -> bool {
+        let replacement = match (expected, self.token.kind) {
+            (TokenKind::SingleLessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
+            (TokenKind::SingleLessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
+            (TokenKind::SingleLessThan, TokenKind::DoubleLessThanEquals) => {
+                TokenKind::LessThanEquals
+            }
+            (TokenKind::SingleGreaterThan, TokenKind::DoubleGreaterThan) => {
+                TokenKind::SingleGreaterThan
+            }
+            (TokenKind::SingleGreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
+            (TokenKind::SingleGreaterThan, TokenKind::DoubleGreaterThanEquals) => {
+                TokenKind::GreaterThanEquals
+            }
+            (TokenKind::SinglePlus, TokenKind::PlusEquals) => TokenKind::SingleEquals,
+            _ => return self.consume(expected),
+        };
+        self.modify_in_place(replacement);
+        true
+    }
+
+    // FIXME: likely no longer correct due to modify_in_place
     fn prev_token(&self) -> Option<Token> {
         Some(self.tokens[self.index.checked_sub(1)?])
     }

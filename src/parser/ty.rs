@@ -212,13 +212,13 @@ impl<'src> Parser<'_, 'src> {
     ///     | Common_Ident (":" Bounds)? ("=" Ty)?
     /// ```
     pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
-        if !self.consume_single_less_than() {
+        if !self.consume_relaxed(TokenKind::SingleLessThan) {
             return Ok(Vec::new());
         }
 
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.fin_parse_delim_seq_with(
-            Self::consume_single_greater_than,
+            |this| this.consume_relaxed(TokenKind::SingleGreaterThan),
             Self::begins_single_greater_than,
             SEPARATOR,
             |this| {
@@ -347,7 +347,7 @@ impl<'src> Parser<'_, 'src> {
         while self.begins_bound() {
             bounds.push(self.parse_bound()?);
 
-            if !self.consume_single_plus() {
+            if !self.consume_relaxed(TokenKind::SinglePlus) {
                 break;
             }
         }

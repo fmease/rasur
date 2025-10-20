@@ -43,7 +43,7 @@ impl<'src> Parser<'_, 'src> {
         let mut path = ast::Path { segs: Vec::new() };
 
         // FIXME: Add `<` to list of expected tokens
-        let self_ty = if self.consume_single_less_than() {
+        let self_ty = if self.consume_relaxed(TokenKind::SingleLessThan) {
             let ty = self.parse_ty()?;
             // We're in a "type context" now and can parse generic args unambiguously.
             let trait_ref = self
@@ -135,7 +135,7 @@ impl<'src> Parser<'_, 'src> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
 
         Ok(ast::GenericArgs::Angle(self.fin_parse_delim_seq_with(
-            Self::consume_single_greater_than,
+            |this| this.consume_relaxed(TokenKind::SingleGreaterThan),
             Self::begins_single_greater_than,
             SEPARATOR,
             |this: &mut Self| {
