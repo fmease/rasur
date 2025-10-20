@@ -27,6 +27,7 @@ pub(crate) enum Expr<'src> {
     MethodCall(Box<MethodCallExpr<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
+    Repeat(Box<Expr<'src>>, Box<Expr<'src>>),
     Return(Option<Box<Expr<'src>>>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
@@ -72,6 +73,7 @@ impl Expr<'_> {
             | Self::MethodCall(_)
             | Self::Path(_)
             | Self::Range(..)
+            | Self::Repeat(..)
             | Self::Return(_)
             | Self::Struct(_)
             | Self::Try(_)

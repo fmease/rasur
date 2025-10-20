@@ -407,6 +407,40 @@ fn expr_control_flow_ops_block() {
     );
 }
 
+// `for<` doesn't necessarily begin a closure expr with a binder.
+// FIXME: Also add test for `for<()>::AssocTy in () {}`.
+// FIXME: However, `for <Ty>::AssocTy in () {}` should actually get rejected b/c
+//        it doesn't parse as a closure with binder.
+#[test]
+fn expr_qualified_struct_pat_in_for_loop() {
+    assert_matches!(
+        parse_expr("for<Ty as Trait>::AssocTy {} in () {}", Rust2015),
+        Ok(ast::Expr::ForLoop(deref!(ast::ForLoopExpr {
+            pat: ast::Pat::Struct(ast::StructPat {
+                path: ast::ExtPath {
+                    ext: Some(ast::PathExt {
+                        self_ty: ast::Ty::Path(ast::ExtPath {
+                            ext: None,
+                            path: ast::Path {
+                                segs: deref!([ast::PathSeg { ident: "Ty", args: None }])
+                            },
+                        }),
+                        trait_ref: Some(ast::Path {
+                            segs: deref!([ast::PathSeg { ident: "Trait", args: None }])
+                        })
+                    }),
+                    path: ast::Path {
+                        segs: deref!([ast::PathSeg { ident: "AssocTy", args: None }])
+                    }
+                },
+                fields: deref!([]),
+                rest: false
+            }),
+            ..
+        })))
+    );
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.

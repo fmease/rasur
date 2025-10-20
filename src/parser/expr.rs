@@ -579,11 +579,26 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
-                let elems = self.fin_parse_delim_seq(
-                    TokenKind::CloseSquareBracket,
-                    TokenKind::Comma,
-                    |this| this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden),
-                )?;
+                let mut elems = Vec::new();
+
+                while !self.consume(TokenKind::CloseSquareBracket) {
+                    let elem =
+                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+
+                    if elems.is_empty() && self.consume(TokenKind::Semicolon) {
+                        let count = self.parse_expr()?;
+                        self.parse(TokenKind::CloseSquareBracket)?;
+
+                        return Ok(ast::Expr::Repeat(Box::new(elem), Box::new(count)));
+                    }
+
+                    elems.push(elem);
+
+                    if self.token.kind != TokenKind::CloseSquareBracket {
+                        self.parse(TokenKind::Comma)?;
+                    }
+                }
+
                 return Ok(ast::Expr::Array(elems));
             }
             TokenKind::OpenCurlyBracket => {

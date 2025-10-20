@@ -82,10 +82,11 @@ fn else_may_follow(expr: &ast::Expr<'_>) -> bool {
         | ast::Expr::Continue
         | ast::Expr::Field(..)
         | ast::Expr::Grouped(_)
-        | ast::Expr::Index(_, _)
+        | ast::Expr::Index(..)
         | ast::Expr::Lit(_)
         | ast::Expr::MethodCall(_)
         | ast::Expr::Path(_)
+        | ast::Expr::Repeat(..)
         | ast::Expr::Try(_)
         | ast::Expr::Tup(_)
         | ast::Expr::Wildcard => true,

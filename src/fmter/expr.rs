@@ -118,6 +118,13 @@ impl Fmt for ast::Expr<'_> {
                 Punctuated::new(elems, ", ").fmt(cx);
                 fmt!(cx, "]");
             }
+            Self::Repeat(elem, count) => {
+                fmt!(cx, "[");
+                elem.fmt(cx);
+                fmt!(cx, "; ");
+                count.fmt(cx);
+                fmt!(cx, "]");
+            }
             Self::Grouped(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
