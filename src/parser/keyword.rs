@@ -6,7 +6,6 @@ pub(crate) enum Keyword {
     Abstract,
     As,
     Async,
-    Auto,
     Await,
     Become,
     Box,
@@ -35,12 +34,10 @@ pub(crate) enum Keyword {
     Move,
     Mut,
     Override,
-    Pin,
     Priv,
     Pub,
     Ref,
     Return,
-    Safe,
     SelfLower,
     SelfUpper,
     Static,
@@ -52,7 +49,6 @@ pub(crate) enum Keyword {
     Type,
     Typeof,
     Underscore,
-    Union,
     Unsafe,
     Use,
     Virtual,
@@ -86,7 +82,6 @@ map! {
     "abstract" <=> Abstract,
     "as" <=> As,
     "async" <=> Async,
-    "auto" <=> Auto,
     "await" <=> Await,
     "become" <=> Become,
     "box" <=> Box,
@@ -115,12 +110,10 @@ map! {
     "move" <=> Move,
     "mut" <=> Mut,
     "override" <=> Override,
-    "pin" <=> Pin,
     "priv" <=> Priv,
     "pub" <=> Pub,
     "ref" <=> Ref,
     "return" <=> Return,
-    "safe" <=> Safe,
     "self" <=> SelfLower,
     "static" <=> Static,
     "struct" <=> Struct,
@@ -130,7 +123,6 @@ map! {
     "try" <=> Try,
     "type" <=> Type,
     "typeof" <=> Typeof,
-    "union" <=> Union,
     "unsafe" <=> Unsafe,
     "use" <=> Use,
     "virtual" <=> Virtual,
@@ -140,13 +132,8 @@ map! {
 }
 
 impl Keyword {
-    pub(crate) fn parse(source: &str, edition: Edition, quality: Quality) -> Option<Self> {
-        Self::from_str(source).filter(|keyword| edition >= keyword.edition()).filter(|keyword| {
-            match quality {
-                Quality::Hard => !keyword.is_soft(),
-                Quality::Any => true,
-            }
-        })
+    pub(crate) fn parse(source: &str, edition: Edition) -> Option<Self> {
+        Self::from_str(source).filter(|keyword| edition >= keyword.edition())
     }
 
     fn edition(self) -> Edition {
@@ -157,16 +144,14 @@ impl Keyword {
         }
     }
 
-    fn is_soft(self) -> bool {
-        matches!(self, Self::Auto | Self::Pin | Self::Safe | Self::Union)
-    }
-
     pub(crate) fn is_path_seg(self) -> bool {
         matches!(self, Self::Crate | Self::Super | Self::SelfLower | Self::SelfUpper)
     }
 }
 
-pub(crate) enum Quality {
-    Hard,
-    Any,
+pub(crate) mod soft {
+    pub(crate) const AUTO: &str = "auto";
+    pub(crate) const DYN: &str = "dyn"; // in Rust 2015
+    pub(crate) const SAFE: &str = "safe";
+    pub(crate) const UNION: &str = "union";
 }

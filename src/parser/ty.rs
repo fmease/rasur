@@ -1,5 +1,7 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, error::ParseError, keyword::Keyword,
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
+    error::ParseError,
+    keyword::{Keyword, soft::DYN},
     one_of,
 };
 use crate::{ast, edition::Edition, span::Span, token::Token};
@@ -99,7 +101,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
-            Err(Some("dyn"))
+            Err(Some(DYN))
                 if self.edition == Edition::Rust2015
                     && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
             {
@@ -263,8 +265,8 @@ impl<'src> Parser<'_, 'src> {
                         };
                         (lifetime, ast::GenericParamKind::Lifetime(bounds))
                     } else {
-                        match this.as_ident(this.token) {
-                            Some("const") => {
+                        match this.as_keyword(this.token) {
+                            Ok(Keyword::Const) => {
                                 this.advance();
                                 let binder = this.parse_common_ident()?;
                                 let ty = this.parse_ty_annotation()?;
@@ -274,7 +276,7 @@ impl<'src> Parser<'_, 'src> {
                                     .transpose()?;
                                 (binder, ast::GenericParamKind::Const { ty, default })
                             }
-                            Some(ident) if this.ident_is_common(ident) => {
+                            Err(Some(ident)) => {
                                 this.advance();
                                 let bounds = if this.consume(TokenKind::SingleColon) {
                                     this.parse_bounds()?

@@ -4,7 +4,7 @@ use crate::{
     span::Span,
     token::{Token, TokenKind},
 };
-use keyword::{Keyword, Quality};
+use keyword::Keyword;
 use std::{borrow::Cow, fmt};
 
 mod attr;
@@ -293,16 +293,16 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: Temporary API
-    fn parse_ident_where_common_or(&mut self, exception: &'static str) -> Result<ast::Ident<'src>> {
+    fn parse_common_ident_or(&mut self, exception: Keyword) -> Result<ast::Ident<'src>> {
         if let Some(ident) = self.as_ident(self.token)
-            && (ident == exception || self.ident_is_common(ident))
+            && self.ident_as_keyword(ident).map_or(true, |k| k == exception)
         {
             self.advance();
             Ok(ident)
         } else {
             Err(error::ParseError::UnexpectedToken(
                 self.token,
-                one_of![ExpectedFragment::CommonIdent, ExpectedFragment::Raw(exception)],
+                one_of![ExpectedFragment::CommonIdent, exception],
             ))
         }
     }
@@ -313,14 +313,14 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: Temporary API.
-    fn ident_as_keyword(&self, ident: &str, quality: Quality) -> Option<Keyword> {
-        Keyword::parse(ident, self.edition, quality)
+    fn ident_as_keyword(&self, ident: &str) -> Option<Keyword> {
+        Keyword::parse(ident, self.edition)
     }
 
     // FIXME: Temporary API, replace w sth like check(xyz, Keyword::X)
     fn as_keyword(&self, token: Token) -> Result<Keyword, Option<ast::Ident<'src>>> {
         let Some(ident) = self.as_ident(token) else { return Err(None) };
-        match self.ident_as_keyword(ident, Quality::Any) {
+        match self.ident_as_keyword(ident) {
             Some(keyword) => Ok(keyword),
             _ => Err(Some(ident)),
         }
@@ -345,7 +345,7 @@ impl<'a, 'src> Parser<'a, 'src> {
 
     // FIXME: Temporary API
     fn ident_is_common(&self, ident: &str) -> bool {
-        Keyword::parse(ident, self.edition, Quality::Hard).is_none()
+        self.ident_as_keyword(ident).is_none()
     }
 }
 

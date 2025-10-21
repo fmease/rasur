@@ -1,8 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix,
-    error::ParseError,
-    keyword::{Keyword, Quality},
-    one_of,
+    ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix, error::ParseError,
+    keyword::Keyword, one_of,
 };
 use crate::ast;
 
@@ -91,9 +89,8 @@ impl<'src> Parser<'_, 'src> {
 
     // FIXME: Temporary API.
     pub(super) fn as_path_seg_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        self.as_ident(token).filter(|ident| {
-            self.ident_as_keyword(ident, Quality::Hard).map_or(true, Keyword::is_path_seg)
-        })
+        self.as_ident(token)
+            .filter(|ident| self.ident_as_keyword(ident).map_or(true, Keyword::is_path_seg))
     }
 
     fn parse_generic_args(
@@ -323,7 +320,7 @@ impl<'src> Parser<'_, 'src> {
                 path.segs.push(ast::PathSeg::ident(ident));
                 let binder = self
                     .consume(Keyword::As)
-                    .then(|| self.parse_ident_where_common_or("_"))
+                    .then(|| self.parse_common_ident_or(Keyword::Underscore))
                     .transpose()?;
                 ast::PathTreeKind::Stump(binder)
             }
