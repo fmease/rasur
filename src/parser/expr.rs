@@ -8,33 +8,7 @@ use std::cmp::Ordering;
 impl<'src> Parser<'_, 'src> {
     /// Parse an expression.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Expr ::=
-    ///     | Path
-    ///     | Macro_Call
-    ///     | Wildcard_Expr
-    ///     | Bool_Expr
-    ///     | If_Expr
-    ///     | Loop_Expr
-    ///     | Match_Expr
-    ///     | While_Expr
-    ///     | #Num_Lit
-    ///     | #Str_Lit
-    ///     | Borrow_Expr
-    ///     | Block_Expr
-    ///     | Paren_Or_Tuple_Expr
-    /// Wildcard_Expr ::= "_"
-    /// Bool_Expr ::= "false" | "true"
-    /// If_Expr ::= "if" Expr__ Block_Expr ("else" (Block_Expr | If_Expr))?
-    /// Loop_Expr ::= "loop" Block_Expr
-    /// # FIXME: Doesn't include trailing-block logic
-    /// Match_Expr ::= "match" Expr__ "{" (Pat "=>" Expr ("," | >"}"))* "}"
-    /// While_Expr ::= "while" Expr__ "Block_Expr
-    /// Borrow_Expr ::= "&" "mut"? Expr
-    /// Paren_Or_Tuple_Expr ::= "(" (Expr ("," | >")"))* ")"
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 

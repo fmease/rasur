@@ -7,23 +7,7 @@ use std::cmp::Ordering;
 impl<'src> Parser<'_, 'src> {
     /// Parse a pattern.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Pat ::=
-    ///     | Wildcard_Pat
-    ///     | Ident_Pat
-    ///     | #Num_Lit
-    ///     | #Str_Lit
-    ///     | Borrow_Pat
-    ///     | Paren_Or_Tup_Pat
-    ///     | Ext_Path
-    ///     | Macro_Call
-    /// Wildcard_Pat ::= "_"
-    /// Ident_Pat ::= "mut"? ("ref" "mut"?)? Common_Ident
-    /// Borrow_Pat ::= "&" "mut"? Pat
-    /// Paren_Or_Tup_Pat ::= "(" (Pat ("," | >")"))* ")"
-    /// ```
+    /// <!-- FIXME: Add EBNF section back in -->
     pub(super) fn parse_pat(&mut self, ors: OrPolicy) -> Result<ast::Pat<'src>> {
         // NOTE: To be kept in sync with `Self::begins_pat`.
 

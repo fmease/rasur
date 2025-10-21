@@ -9,28 +9,7 @@ use crate::{ast, edition::Edition, span::Span, token::Token};
 impl<'src> Parser<'_, 'src> {
     /// Parse a type.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Ty ::=
-    ///     | Path
-    ///     | Inferred_Ty
-    ///     | Dyn_Trait_Ty
-    ///     | Fn_Ptr_Ty
-    ///     | Impl_Trait_Ty
-    ///     | Never_Ty
-    ///     | Ref_Ty
-    ///     | Ptr_Ty
-    ///     | Paren_Or_Tuple_Ty
-    /// Inferred_Ty ::= "_"
-    /// Dyn_Trait_Ty ::= "dyn" Bounds
-    /// Fn_Ptr_Ty ::= "fn" "(" ")" ("->" Ty)?
-    /// Impl_Trait_Ty ::= "impl" Bounds
-    /// Never_Ty ::= "!"
-    /// Ref_Ty ::= "&" Lifetime? "mut"? Ty
-    /// Ptr_Ty ::= "*" ("const" | "mut") Ty
-    /// Paren_Or_Tuple_Ty ::= "(" (Ty ("," | >")"))* ")"
-    /// ```
+    /// <!-- FIXME: Add EBNF section back in -->
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 

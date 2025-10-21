@@ -32,28 +32,7 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// # Grammar
     ///
-    /// ```grammar
-    /// Item ::= Attrs⟨Outer⟩ Visibility Bare_Item
-    /// Visibility ::= "pub"?
-    /// Bare_Item ::=
-    ///     | Const_Item
-    ///     | Enum_Item
-    ///     | Extern_Block_Item
-    ///     | Fn_Item
-    ///     | Impl_Item
-    ///     | Macro_Def
-    ///     | Mod_Item
-    ///     | Static_Item
-    ///     | Struct_Item
-    ///     | Static_Item
-    ///     | Trait_Item
-    ///     | Ty_Item
-    ///     | Union_Item
-    ///     | Use_Item
-    ///     | Macro_Call
-    ///     | Macro_Def
-    /// ```
-    #[expect(clippy::too_many_lines)]
+    /// <!-- FIXME: Add EBNF section back in -->
     pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
 
@@ -441,7 +420,7 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Extern_Crate_Item ::= "extern crate" (Common_Ident | "self") ("as" Common_Ident) ";"
+    /// Extern_Crate_Item ::= "extern" "crate" (Common_Ident | "self") ("as" Common_Ident) ";"
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let target = self.parse_common_ident_or(Keyword::SelfLower)?;
@@ -458,12 +437,13 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// ```grammar
     /// Fn_Item ::=
-    ///     Fn_Modifiers "fn" Common_Ident
+    ///     Fn_Modifiers
+    ///     "fn" Common_Ident
     ///     Generic_Params Fn_Params
     ///     ("->" Ty)?
     ///     Where_Clause?
     ///     (Block_Expr | ";")
-    /// Fn_Modifiers ::= "const"? ("extern" #Str_Lit)?
+    /// Fn_Modifiers ::= …
     /// ```
     fn fin_parse_fn_item(
         &mut self,
@@ -494,12 +474,7 @@ impl<'src> Parser<'_, 'src> {
 
     /// Parse function parameters.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Fn_Params ::= "(" (Fn_Param ("," | >")"))* ")"
-    /// Fn_Param ::= Pat ":" Ty
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     fn parse_fn_params(&mut self) -> Result<Vec<ast::FnParam<'src>>> {
         self.parse(TokenKind::OpenRoundBracket)?;
 
@@ -549,15 +524,7 @@ impl<'src> Parser<'_, 'src> {
 
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Impl_Item ::=
-    ///     "unsafe"? "impl" "const"?
-    ///     Generic_Params
-    ///     Path "for" Ty
-    ///     Where_Clause? "{" … "}"
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
     fn fin_parse_impl_item(
         &mut self,
@@ -669,15 +636,7 @@ impl<'src> Parser<'_, 'src> {
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Struct_Item ::=
-    ///     "struct" Common_Ident
-    ///     Generics
-    ///     ("{" (Struct_Field ("," | >"}"))* "}" | ";")
-    /// Struct_Field ::= Visibility Common_Ident ":" Ty
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         // FIXME: For tuple structs the where clause is trailing, not leading!
