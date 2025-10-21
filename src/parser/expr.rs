@@ -1,8 +1,8 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
-    path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, keyword::Keyword, one_of,
+    pat::OrPolicy, path::GenericArgsMode,
 };
-use crate::{ast, edition::Edition};
+use crate::ast;
 use std::cmp::Ordering;
 
 impl<'src> Parser<'_, 'src> {
@@ -54,9 +54,6 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
-        if self.begins_ext_path() {
-            return true;
-        }
         match self.token.kind {
             | TokenKind::CharLit // Lit(Char)
             | TokenKind::DoubleAmpersand // Borrow
@@ -72,18 +69,39 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::SingleBang // UnOp(Not)
             | TokenKind::SingleHyphen // UnOp(Neg)
             | TokenKind::SinglePipe // Closure
-            | TokenKind::StrLit => true, // Lit(Str)
-            | TokenKind::Ident => match self.source(self.token.span) {
-                | "_" | "break" | "const" | "continue" | "false" | "for" | "if"
-                | "loop" | "match" | "move" | "return" | "true" | "unsafe" | "while" => true,
-                // Let-exprs are but an impl detail of if/let, while/let and let-chains.
-                "let" => false,
-                "async" | "try" => self.edition >= Edition::Rust2018,
-                "gen" => self.edition >= Edition::Rust2024,
-                _ => false,
-            },
-            _ => false,
+            | TokenKind::StrLit => return true, // Lit(Str)
+            _ => {}
         }
+
+        // Keyword::Let isn't included here because Let-exprs are but an impl detail.
+        if let Some(
+            Keyword::Underscore
+            | Keyword::Break
+            | Keyword::Const
+            | Keyword::Continue
+            | Keyword::False
+            | Keyword::For
+            | Keyword::If
+            | Keyword::Loop
+            | Keyword::Match
+            | Keyword::Move
+            | Keyword::Return
+            | Keyword::True
+            | Keyword::Unsafe
+            | Keyword::While
+            | Keyword::Async
+            | Keyword::Try
+            | Keyword::Gen,
+        ) = self.as_keyword(self.token)
+        {
+            return true;
+        }
+
+        if self.begins_ext_path() {
+            return true;
+        }
+
+        false
     }
 
     fn parse_expr_at_level(
@@ -126,7 +144,7 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::DoublePipe => Op::Or,
                 TokenKind::GreaterThanEquals => Op::Ge,
                 TokenKind::HypenEquals => Op::SubAssign,
-                TokenKind::Ident if let "as" = self.source(self.token.span) => Op::Cast,
+                TokenKind::Ident if let Some(Keyword::As) = self.as_keyword(self.token) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
@@ -356,203 +374,6 @@ impl<'src> Parser<'_, 'src> {
         lets: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
         match self.token.kind {
-            TokenKind::Ident => match self.source(self.token.span) {
-                "_" => {
-                    self.advance();
-                    return Ok(ast::Expr::Wildcard);
-                }
-                // FIXME: Also support async move? closures.
-                "async" if self.edition >= Edition::Rust2018 => {
-                    self.advance();
-                    let gen_ = self.edition >= Edition::Rust2024 && self.consume_ident("gen");
-                    return Ok(ast::Expr::Block(
-                        match gen_ {
-                            true => ast::BlockKind::AsyncGen,
-                            false => ast::BlockKind::Async,
-                        },
-                        Box::new(self.parse_block_expr()?),
-                    ));
-                }
-                "break" => {
-                    self.advance();
-                    let label = self.consume_common_lifetime()?.map(|ast::Lifetime(label)| label);
-                    let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
-                        || structs == StructPolicy::Allowed)
-                        && self.begins_expr()
-                    {
-                        // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
-                        //       Add test where the break is inside an if!
-                        let expr =
-                            self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
-                        Some(Box::new(expr))
-                    } else {
-                        None
-                    };
-                    return Ok(ast::Expr::Break(label, expr));
-                }
-                "const" => {
-                    self.advance();
-                    return Ok(ast::Expr::Block(
-                        ast::BlockKind::Const,
-                        Box::new(self.parse_block_expr()?),
-                    ));
-                }
-                "continue" => {
-                    self.advance();
-                    // FIXME: Parse optional label.
-                    return Ok(ast::Expr::Continue);
-                }
-                "false" => {
-                    self.advance();
-                    return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
-                }
-                "for" => {
-                    self.advance();
-                    let pat = self.parse_pat(OrPolicy::Allowed)?;
-                    self.parse_ident("in")?;
-                    let expr =
-                        self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
-                    let body = self.parse_block_expr()?;
-                    return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr {
-                        pat,
-                        head: expr,
-                        body,
-                    })));
-                }
-                "gen" if self.edition >= Edition::Rust2024 => {
-                    self.advance();
-                    return Ok(ast::Expr::Block(
-                        ast::BlockKind::Gen,
-                        Box::new(self.parse_block_expr()?),
-                    ));
-                }
-                "if" => {
-                    self.advance();
-
-                    let condition =
-                        self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
-                    let consequent = self.parse_block_expr()?;
-
-                    let alternate = if self.consume_ident("else") {
-                        match self.token.kind {
-                            TokenKind::OpenCurlyBracket => {}
-                            TokenKind::Ident if let "if" = self.source(self.token.span) => {}
-                            _ => {
-                                return Err(ParseError::UnexpectedToken(
-                                    self.token,
-                                    one_of![
-                                        TokenKind::OpenCurlyBracket,
-                                        ExpectedFragment::Raw("if")
-                                    ],
-                                ));
-                            }
-                        }
-
-                        // FIXME: Think about this again. StructPolicy::Allowed?
-                        Some(self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?)
-                    } else {
-                        None
-                    };
-
-                    return Ok(ast::Expr::If(Box::new(ast::IfExpr {
-                        condition,
-                        consequent,
-                        alternate,
-                    })));
-                }
-                // FIXME: Only under LetPolicy::Allowed
-                "let" if let LetPolicy::Allowed = lets => {
-                    self.advance();
-                    let pat = self.parse_pat(OrPolicy::Allowed)?;
-                    self.parse(TokenKind::SingleEquals)?;
-                    // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
-                    let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
-                    return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, body: expr })));
-                }
-                "loop" => {
-                    self.advance();
-                    return Ok(ast::Expr::Loop(Box::new(self.parse_block_expr()?)));
-                }
-                "match" => {
-                    self.advance();
-
-                    let scrutinee =
-                        self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
-                    let mut arms = Vec::new();
-
-                    self.parse(TokenKind::OpenCurlyBracket)?;
-
-                    const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
-                    while !self.consume(DELIMITER) {
-                        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-                        let pat = self.parse_pat(OrPolicy::Allowed)?;
-                        self.parse(TokenKind::WideArrow)?;
-
-                        let body =
-                            self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
-
-                        if self.token.kind == DELIMITER || !body.needs_comma_as_match_arm_body() {
-                            self.consume(TokenKind::Comma);
-                        } else {
-                            self.parse(TokenKind::Comma)?;
-                        }
-
-                        arms.push(ast::MatchArm { attrs, pat, body });
-                    }
-
-                    return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
-                }
-                "move" => {
-                    self.advance();
-                    // FIXME: Hack. Make+use `parse_relaxed(SinglePipe)` or `parse(TokenPrefix::Pipe)`
-                    //        if we go for a `trait TokenClass` again.
-                    if self.token.kind == TokenKind::DoublePipe {
-                        self.modify_in_place(TokenKind::SinglePipe);
-                    } else {
-                        self.parse(TokenKind::SinglePipe)?;
-                    }
-                    return self.fin_parse_closure_expr(ast::ClosureKind::Move);
-                }
-                "return" => {
-                    self.advance();
-                    // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
-                    //       Add test where the break is inside an if!
-                    let expr = self
-                        .begins_expr()
-                        .then(|| {
-                            self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
-                                .map(Box::new)
-                        })
-                        .transpose()?;
-                    return Ok(ast::Expr::Return(expr));
-                }
-                "true" => {
-                    self.advance();
-                    return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
-                }
-                "try" if self.edition >= Edition::Rust2018 => {
-                    self.advance();
-                    return Ok(ast::Expr::Block(
-                        ast::BlockKind::Try,
-                        Box::new(self.parse_block_expr()?),
-                    ));
-                }
-                "unsafe" => {
-                    self.advance();
-                    return Ok(ast::Expr::Block(
-                        ast::BlockKind::Unsafe,
-                        Box::new(self.parse_block_expr()?),
-                    ));
-                }
-                "while" => {
-                    self.advance();
-                    let condition =
-                        self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
-                    let body = self.parse_block_expr()?;
-                    return Ok(ast::Expr::While(Box::new(ast::WhileExpr { condition, body })));
-                }
-                _ => {}
-            },
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
@@ -615,6 +436,201 @@ impl<'src> Parser<'_, 'src> {
                     ast::Expr::Grouped,
                     ast::Expr::Tup,
                 );
+            }
+            _ => {}
+        }
+
+        match self.as_keyword(self.token) {
+            Some(Keyword::Underscore) => {
+                self.advance();
+                return Ok(ast::Expr::Wildcard);
+            }
+            // FIXME: Also support async move? closures.
+            Some(Keyword::Async) => {
+                self.advance();
+                let gen_ = self.consume(Keyword::Gen);
+                return Ok(ast::Expr::Block(
+                    match gen_ {
+                        true => ast::BlockKind::AsyncGen,
+                        false => ast::BlockKind::Async,
+                    },
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
+            Some(Keyword::Break) => {
+                self.advance();
+                let label = self.parse_common_lifetime()?.map(|ast::Lifetime(label)| label);
+                let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
+                    || structs == StructPolicy::Allowed)
+                    && self.begins_expr()
+                {
+                    // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
+                    //       Add test where the break is inside an if!
+                    let expr =
+                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                    Some(Box::new(expr))
+                } else {
+                    None
+                };
+                return Ok(ast::Expr::Break(label, expr));
+            }
+            Some(Keyword::Const) => {
+                self.advance();
+                return Ok(ast::Expr::Block(
+                    ast::BlockKind::Const,
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
+            Some(Keyword::Continue) => {
+                self.advance();
+                // FIXME: Parse optional label.
+                return Ok(ast::Expr::Continue);
+            }
+            Some(Keyword::False) => {
+                self.advance();
+                return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
+            }
+            // FIXME: Also support closure expr with binder.
+            Some(Keyword::For) => {
+                self.advance();
+                let pat = self.parse_pat(OrPolicy::Allowed)?;
+                self.parse(Keyword::In)?;
+                let expr = self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
+                let body = self.parse_block_expr()?;
+                return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr {
+                    pat,
+                    head: expr,
+                    body,
+                })));
+            }
+            Some(Keyword::Gen) => {
+                self.advance();
+                return Ok(ast::Expr::Block(
+                    ast::BlockKind::Gen,
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
+            Some(Keyword::If) => {
+                self.advance();
+
+                let condition =
+                    self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
+                let consequent = self.parse_block_expr()?;
+
+                let alternate = if self.consume(Keyword::Else) {
+                    match self.token.kind {
+                        TokenKind::OpenCurlyBracket => {}
+                        TokenKind::Ident if let Some(Keyword::If) = self.as_keyword(self.token) => {
+                        }
+                        _ => {
+                            return Err(ParseError::UnexpectedToken(
+                                self.token,
+                                one_of![TokenKind::OpenCurlyBracket, ExpectedFragment::Raw("if")],
+                            ));
+                        }
+                    }
+
+                    // FIXME: Think about this again. StructPolicy::Allowed?
+                    Some(self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?)
+                } else {
+                    None
+                };
+
+                return Ok(ast::Expr::If(Box::new(ast::IfExpr {
+                    condition,
+                    consequent,
+                    alternate,
+                })));
+            }
+            Some(Keyword::Let) if let LetPolicy::Allowed = lets => {
+                self.advance();
+                let pat = self.parse_pat(OrPolicy::Allowed)?;
+                self.parse(TokenKind::SingleEquals)?;
+                // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
+                let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
+                return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, body: expr })));
+            }
+            Some(Keyword::Loop) => {
+                self.advance();
+                return Ok(ast::Expr::Loop(Box::new(self.parse_block_expr()?)));
+            }
+            Some(Keyword::Match) => {
+                self.advance();
+
+                let scrutinee =
+                    self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
+                let mut arms = Vec::new();
+
+                self.parse(TokenKind::OpenCurlyBracket)?;
+
+                const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+                while !self.consume(DELIMITER) {
+                    let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+                    let pat = self.parse_pat(OrPolicy::Allowed)?;
+                    self.parse(TokenKind::WideArrow)?;
+
+                    let body =
+                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+
+                    if self.token.kind == DELIMITER || !body.needs_comma_as_match_arm_body() {
+                        self.consume(TokenKind::Comma);
+                    } else {
+                        self.parse(TokenKind::Comma)?;
+                    }
+
+                    arms.push(ast::MatchArm { attrs, pat, body });
+                }
+
+                return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
+            }
+            Some(Keyword::Move) => {
+                self.advance();
+                // FIXME: Hack. Make+use `parse_relaxed(SinglePipe)` or `parse(TokenPrefix::Pipe)`
+                //        if we go for a `trait TokenClass` again.
+                if self.token.kind == TokenKind::DoublePipe {
+                    self.modify_in_place(TokenKind::SinglePipe);
+                } else {
+                    self.parse(TokenKind::SinglePipe)?;
+                }
+                return self.fin_parse_closure_expr(ast::ClosureKind::Move);
+            }
+            Some(Keyword::Return) => {
+                self.advance();
+                // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
+                //       Add test where the break is inside an if!
+                let expr = self
+                    .begins_expr()
+                    .then(|| {
+                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
+                            .map(Box::new)
+                    })
+                    .transpose()?;
+                return Ok(ast::Expr::Return(expr));
+            }
+            Some(Keyword::True) => {
+                self.advance();
+                return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
+            }
+            Some(Keyword::Try) => {
+                self.advance();
+                return Ok(ast::Expr::Block(
+                    ast::BlockKind::Try,
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
+            Some(Keyword::Unsafe) => {
+                self.advance();
+                return Ok(ast::Expr::Block(
+                    ast::BlockKind::Unsafe,
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
+            Some(Keyword::While) => {
+                self.advance();
+                let condition =
+                    self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
+                let body = self.parse_block_expr()?;
+                return Ok(ast::Expr::While(Box::new(ast::WhileExpr { condition, body })));
             }
             _ => {}
         }

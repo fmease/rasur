@@ -4,12 +4,14 @@ use crate::{
     span::Span,
     token::{Token, TokenKind},
 };
+use keyword::Keyword;
 use std::{borrow::Cow, fmt};
 
 mod attr;
 mod error;
 mod expr;
 mod item;
+mod keyword;
 mod pat;
 mod path;
 mod stmt;
@@ -60,7 +62,8 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    fn consume_common_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
+    /// Optionally parse a common lifetime.
+    fn parse_common_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
         let token = self.token;
         if let TokenKind::Lifetime = token.kind {
             self.advance();
@@ -234,61 +237,22 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn parse_mutability(&mut self) -> ast::Mutability {
-        match self.consume_ident("mut") {
+        match self.consume(Keyword::Mut) {
             true => ast::Mutability::Mut,
             false => ast::Mutability::Not,
         }
     }
 
-    // FIXME: generalize
-    fn begins_single_greater_than(&self) -> bool {
-        matches!(
-            self.token.kind,
-            TokenKind::SingleGreaterThan
-                | TokenKind::DoubleGreaterThan
-                | TokenKind::GreaterThanEquals
-                | TokenKind::DoubleGreaterThanEquals
-        )
+    fn consume(&mut self, category: impl TokenCategory) -> bool {
+        category.consume(self)
     }
 
-    fn consume(&mut self, expected: TokenKind) -> bool {
-        if self.token.kind == expected {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn parse(&mut self, expected: TokenKind) -> Result<()> {
-        if self.token.kind == expected {
-            self.advance();
+    fn parse(&mut self, category: impl TokenCategory) -> Result<()> {
+        if self.consume(category) {
             return Ok(());
         }
 
-        Err(error::ParseError::UnexpectedToken(self.token, expected.into()))
-    }
-
-    // FIXME: Temporary
-    fn consume_relaxed(&mut self, expected: TokenKind) -> bool {
-        let replacement = match (expected, self.token.kind) {
-            (TokenKind::SingleLessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
-            (TokenKind::SingleLessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
-            (TokenKind::SingleLessThan, TokenKind::DoubleLessThanEquals) => {
-                TokenKind::LessThanEquals
-            }
-            (TokenKind::SingleGreaterThan, TokenKind::DoubleGreaterThan) => {
-                TokenKind::SingleGreaterThan
-            }
-            (TokenKind::SingleGreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
-            (TokenKind::SingleGreaterThan, TokenKind::DoubleGreaterThanEquals) => {
-                TokenKind::GreaterThanEquals
-            }
-            (TokenKind::SinglePlus, TokenKind::PlusEquals) => TokenKind::SingleEquals,
-            _ => return self.consume(expected),
-        };
-        self.modify_in_place(replacement);
-        true
+        Err(error::ParseError::UnexpectedToken(self.token, category.fragment()))
     }
 
     // FIXME: likely no longer correct due to modify_in_place
@@ -296,7 +260,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         Some(self.tokens[self.index.checked_sub(1)?])
     }
 
-    // FIXME: Temporary and bad name
+    // FIXME: Temporary API and bad name.
     fn modify_in_place(&mut self, token: TokenKind) {
         self.token.kind = token;
         self.token.span.start += 1;
@@ -339,44 +303,6 @@ enum MacroCallPolicy {
     Forbidden,
 }
 
-// FIXME: Check master if this is still up to date
-fn is_reserved(ident: &str, edition: Edition) -> bool {
-    #[rustfmt::skip]
-    fn is_used_keyword(ident: &str) -> bool {
-        matches!(
-            ident,
-            | "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern" | "false" | "fn"
-            | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move" | "mut"
-            | "pub" | "ref" | "return" | "self" | "Self" | "static" | "struct" | "super" | "trait" | "true"
-            | "type" | "unsafe" | "use" | "where" | "while"
-        )
-    }
-
-    #[rustfmt::skip]
-    fn is_unused_keyword(ident: &str) -> bool {
-        matches!(
-            ident,
-            | "abstract" | "become" | "box" | "do" | "final" | "macro" | "override" | "priv" | "typeof" | "unsized"
-            | "virtual" | "yield"
-        )
-    }
-
-    fn is_used_keyword_if(ident: &str, edition: Edition) -> bool {
-        edition >= Edition::Rust2018 && matches!(ident, "async" | "await" | "dyn")
-    }
-
-    fn is_unused_keyword_if(ident: &str, edition: Edition) -> bool {
-        edition >= Edition::Rust2018 && matches!(ident, "try")
-            || edition >= Edition::Rust2024 && matches!(ident, "gen")
-    }
-
-    ident == "_"
-        || is_used_keyword(ident)
-        || is_unused_keyword(ident)
-        || is_used_keyword_if(ident, edition)
-        || is_unused_keyword_if(ident, edition)
-}
-
 fn is_path_seg_keyword(ident: &str) -> bool {
     matches!(ident, "_" | "self" | "Self" | "super" | "crate")
 }
@@ -403,27 +329,117 @@ impl TokenKind {
     }
 }
 
+trait TokenCategory: Copy {
+    fn consume(self, parser: &mut Parser<'_, '_>) -> bool;
+
+    fn fragment(self) -> ExpectedFragment;
+}
+
+impl TokenCategory for TokenKind {
+    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
+        if self == parser.token.kind {
+            parser.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        self.into()
+    }
+}
+
+impl TokenCategory for Keyword {
+    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
+        if parser.as_keyword(parser.token) == Some(self) {
+            parser.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        self.into()
+    }
+}
+
+impl TokenCategory for TokenPrefix {
+    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
+        let Ok(replacement) = self.strip(parser.token.kind) else { return false };
+        match replacement {
+            Some(replacement) => parser.modify_in_place(replacement),
+            None => parser.advance(),
+        }
+        true
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        // FIXME: List all possibilities.
+        self.single().into()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TokenPrefix {
+    LessThan,
+    GreaterThan,
+    Plus,
+}
+
+impl TokenPrefix {
+    fn single(self) -> TokenKind {
+        match self {
+            Self::LessThan => TokenKind::SingleLessThan,
+            Self::GreaterThan => TokenKind::SingleGreaterThan,
+            Self::Plus => TokenKind::SinglePlus,
+        }
+    }
+
+    fn strip(self, token: TokenKind) -> Result<Option<TokenKind>, ()> {
+        Ok(Some(match (self, token) {
+            (Self::LessThan, TokenKind::SingleLessThan) => return Ok(None),
+            (Self::LessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
+            (Self::LessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
+            (Self::LessThan, TokenKind::DoubleLessThanEquals) => TokenKind::LessThanEquals,
+            (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
+            (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
+            (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
+            (Self::GreaterThan, TokenKind::DoubleGreaterThanEquals) => TokenKind::GreaterThanEquals,
+            (Self::Plus, TokenKind::SinglePlus) => return Ok(None),
+            (Self::Plus, TokenKind::PlusEquals) => TokenKind::SingleEquals,
+            _ => return Err(()),
+        }))
+    }
+
+    fn matches(self, token: TokenKind) -> bool {
+        self.strip(token).is_ok()
+    }
+}
+
 macro one_of($( $frag:expr ),+ $(,)?) {
     ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
 }
 
 #[cfg_attr(test, derive(Debug))]
 pub(crate) enum ExpectedFragment {
-    Raw(&'static str),
-    Token(TokenKind),
     Bound,
     CommonIdent,
     Expr,
     GenericArg,
     GenericParam,
+    Keyword(Keyword),
     Item,
     OneOf(Box<[Self]>),
     Pat,
     PathSegIdent,
     Predicate,
+    Raw(&'static str),
     Stmt,
-    Ty,
     Term,
+    Token(TokenKind),
+    Ty,
 }
 
 impl From<TokenKind> for ExpectedFragment {
@@ -432,17 +448,21 @@ impl From<TokenKind> for ExpectedFragment {
     }
 }
 
+impl From<Keyword> for ExpectedFragment {
+    fn from(keyword: Keyword) -> Self {
+        Self::Keyword(keyword)
+    }
+}
+
 impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Raw(frag) => return write!(f, "`{frag}`"),
-            Self::Token(token) => return write!(f, "{}", token.to_diag_str()),
             Self::Bound => "bound",
-            Self::Predicate => "predicate",
             Self::CommonIdent => "identifier",
             Self::Expr => "expression",
-            Self::GenericParam => "generic parameter",
             Self::GenericArg => "generic argument",
+            Self::GenericParam => "generic parameter",
+            Self::Keyword(keyword) => return write!(f, "keyword `{}`", keyword.to_str()),
             Self::Item => "item",
             Self::OneOf(frags) => {
                 let frags = frags
@@ -452,11 +472,14 @@ impl fmt::Display for ExpectedFragment {
                     .collect::<String>();
                 return write!(f, "{frags}");
             }
-            Self::PathSegIdent => "path segment",
-            Self::Stmt => "statement",
-            Self::Ty => "type",
             Self::Pat => "pattern",
+            Self::PathSegIdent => "path segment",
+            Self::Predicate => "predicate",
+            Self::Raw(frag) => return write!(f, "`{frag}`"),
+            Self::Stmt => "statement",
             Self::Term => "type or const argument",
+            Self::Token(token) => return write!(f, "{}", token.to_diag_str()),
+            Self::Ty => "type",
         })
     }
 }

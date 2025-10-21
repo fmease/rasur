@@ -1,4 +1,6 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, keyword::Keyword, one_of,
+};
 use crate::ast;
 use std::cmp::Ordering;
 
@@ -32,16 +34,9 @@ impl<'src> Parser<'_, 'src> {
     fn begins_pat(&self, _ors: OrPolicy) -> bool {
         // NOTE: To be kept in sync with `Self::parse_pat`.
 
-        if self.begins_ext_path() {
-            return true;
-        }
-
         // NOTE: We intentionally skip SinglePipe because leading pipes are only permitted
         //       at the top-level.
         match self.token.kind {
-            TokenKind::Ident => {
-                matches!(self.source(self.token.span), "_" | "false" | "mut" | "ref" | "true")
-            }
             | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
@@ -49,9 +44,22 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::NumLit
             | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
-            | TokenKind::OpenSquareBracket => true,
-            _ => false,
+            | TokenKind::OpenSquareBracket => return true,
+            _ => {}
         }
+
+        if let Some(
+            Keyword::Underscore | Keyword::False | Keyword::Mut | Keyword::Ref | Keyword::True,
+        ) = self.as_keyword(self.token)
+        {
+            return true;
+        }
+
+        if self.begins_ext_path() {
+            return true;
+        }
+
+        false
     }
 
     // FIXME: Optional (top-level) leading pipe unless OrPolicy::Forbidden
@@ -182,46 +190,6 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
         match self.token.kind {
-            TokenKind::Ident => match self.source(self.token.span) {
-                "_" => {
-                    self.advance();
-                    return Ok(ast::Pat::Wildcard);
-                }
-                "false" => {
-                    self.advance();
-                    return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
-                }
-                "mut" => {
-                    self.advance();
-                    return match self.as_ident(self.token) {
-                        Some("ref") => {
-                            self.advance();
-                            self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
-                        }
-                        Some(ident) if self.ident_is_common(ident) => {
-                            self.advance();
-                            Ok(ast::Pat::Ident(ast::IdentPat {
-                                mut_: ast::Mutability::Mut,
-                                by_ref: ast::ByRef::No,
-                                ident,
-                            }))
-                        }
-                        _ => Err(ParseError::UnexpectedToken(
-                            self.token,
-                            one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent],
-                        )),
-                    };
-                }
-                "ref" => {
-                    self.advance();
-                    return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
-                }
-                "true" => {
-                    self.advance();
-                    return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
-                }
-                _ => {}
-            },
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
@@ -248,6 +216,48 @@ impl<'src> Parser<'_, 'src> {
                     |this| this.parse_pat(OrPolicy::Allowed),
                 )?;
                 return Ok(ast::Pat::Slice(elems));
+            }
+            _ => {}
+        }
+
+        match self.as_keyword(self.token) {
+            Some(Keyword::Underscore) => {
+                self.advance();
+                return Ok(ast::Pat::Wildcard);
+            }
+            Some(Keyword::False) => {
+                self.advance();
+                return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
+            }
+            Some(Keyword::Mut) => {
+                self.advance();
+                // FIXME: Use the Keyword API
+                return match self.as_ident(self.token) {
+                    Some("ref") => {
+                        self.advance();
+                        self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
+                    }
+                    Some(ident) if self.ident_is_common(ident) => {
+                        self.advance();
+                        Ok(ast::Pat::Ident(ast::IdentPat {
+                            mut_: ast::Mutability::Mut,
+                            by_ref: ast::ByRef::No,
+                            ident,
+                        }))
+                    }
+                    _ => Err(ParseError::UnexpectedToken(
+                        self.token,
+                        one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent],
+                    )),
+                };
+            }
+            Some(Keyword::Ref) => {
+                self.advance();
+                return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
+            }
+            Some(Keyword::True) => {
+                self.advance();
+                return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
             }
             _ => {}
         }

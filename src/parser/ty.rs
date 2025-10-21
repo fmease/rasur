@@ -1,4 +1,7 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, error::ParseError, keyword::Keyword,
+    one_of,
+};
 use crate::{ast, span::Span};
 
 impl<'src> Parser<'_, 'src> {
@@ -30,37 +33,6 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
         match self.token.kind {
-            TokenKind::Ident => match self.source(self.token.span) {
-                "_" => {
-                    self.advance();
-                    return Ok(ast::Ty::Inferred);
-                }
-                // FIXME: In Rust 2015, we want to take `parse_ext_path` instead unless
-                //        `dyn` is followed by some specific tokens.
-                "dyn" => {
-                    self.advance();
-                    let bounds = self.parse_bounds()?;
-                    return Ok(ast::Ty::DynTrait(bounds));
-                }
-                "fn" => {
-                    self.advance();
-                    return self.fin_parse_fn_ptr_ty(Vec::new());
-                }
-                "for" => {
-                    self.advance();
-                    let bound_vars = self.parse_generic_params()?;
-
-                    // FIXME: Expect bare trait object types, too.
-                    self.parse_ident("fn")?;
-                    return self.fin_parse_fn_ptr_ty(bound_vars);
-                }
-                "impl" => {
-                    self.advance();
-                    let bounds = self.parse_bounds()?;
-                    return Ok(ast::Ty::ImplTrait(bounds));
-                }
-                _ => {}
-            },
             TokenKind::SingleBang => {
                 self.advance();
                 return Ok(ast::Ty::Never);
@@ -76,19 +48,19 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::SingleAsterisk => {
                 self.advance();
-                let mut_ = match self.as_ident(self.token) {
-                    Some("mut") => {
+                let mut_ = match self.as_keyword(self.token) {
+                    Some(Keyword::Mut) => {
                         self.advance();
                         ast::Mutability::Mut
                     }
-                    Some("const") => {
+                    Some(Keyword::Const) => {
                         self.advance();
                         ast::Mutability::Not
                     }
                     _ => {
                         return Err(ParseError::UnexpectedToken(
                             self.token,
-                            one_of![ExpectedFragment::Raw("mut"), ExpectedFragment::Raw("const")],
+                            one_of![Keyword::Mut, Keyword::Const],
                         ));
                     }
                 };
@@ -118,6 +90,38 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
+        match self.as_keyword(self.token) {
+            Some(Keyword::Underscore) => {
+                self.advance();
+                return Ok(ast::Ty::Inferred);
+            }
+            // FIXME: We actually want to treat `dyn` as a trait object type introducer even in Rust 2015
+            //        where it's not a keyword when certain tokens follow.
+            Some(Keyword::Dyn) => {
+                self.advance();
+                let bounds = self.parse_bounds()?;
+                return Ok(ast::Ty::DynTrait(bounds));
+            }
+            Some(Keyword::Fn) => {
+                self.advance();
+                return self.fin_parse_fn_ptr_ty(Vec::new());
+            }
+            Some(Keyword::For) => {
+                self.advance();
+                let bound_vars = self.parse_generic_params()?;
+
+                // FIXME: Expect bare trait object types, too.
+                self.parse(Keyword::Fn)?;
+                return self.fin_parse_fn_ptr_ty(bound_vars);
+            }
+            Some(Keyword::Impl) => {
+                self.advance();
+                let bounds = self.parse_bounds()?;
+                return Ok(ast::Ty::ImplTrait(bounds));
+            }
+            _ => {}
+        }
+
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::UnambiguousGenericArgs>()?;
 
@@ -135,25 +139,33 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Ty))
     }
 
+    // FIXME: Find ways to get rid of this function or make it return something richer that
+    //        can then be used inside `parse_ty` to perform less work / avoid prefix rechecking.
     pub(super) fn begins_ty(&self) -> bool {
         // FIXME: To be kept in sync with `Self::parse_ty`.
 
-        if self.begins_ext_path() {
-            return true;
-        }
-
         match self.token.kind {
-            TokenKind::Ident => {
-                matches!(self.source(self.token.span), "_" | "dyn" | "fn" | "for" | "impl")
-            }
             TokenKind::SingleBang
             | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
             | TokenKind::SingleAsterisk
             | TokenKind::OpenSquareBracket
-            | TokenKind::OpenRoundBracket => true,
-            _ => false,
+            | TokenKind::OpenRoundBracket => return true,
+            _ => (),
         }
+
+        if let Some(
+            Keyword::Underscore | Keyword::Dyn | Keyword::Fn | Keyword::For | Keyword::Impl,
+        ) = self.as_keyword(self.token)
+        {
+            return true;
+        }
+
+        if self.begins_ext_path() {
+            return true;
+        }
+
+        false
     }
 
     fn fin_parse_fn_ptr_ty(
@@ -176,7 +188,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
-        let lt = self.consume_common_lifetime()?;
+        let lt = self.parse_common_lifetime()?;
         let mut_ = self.parse_mutability();
         let ty = self.parse_ty()?;
         Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)))
@@ -212,18 +224,18 @@ impl<'src> Parser<'_, 'src> {
     ///     | Common_Ident (":" Bounds)? ("=" Ty)?
     /// ```
     pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
-        if !self.consume_relaxed(TokenKind::SingleLessThan) {
+        if !self.consume(TokenPrefix::LessThan) {
             return Ok(Vec::new());
         }
 
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.fin_parse_delim_seq_with(
-            |this| this.consume_relaxed(TokenKind::SingleGreaterThan),
-            Self::begins_single_greater_than,
+            |this| this.consume(TokenPrefix::GreaterThan),
+            |this| TokenPrefix::GreaterThan.matches(this.token.kind),
             SEPARATOR,
             |this| {
                 let (binder, kind) =
-                    if let Some(ast::Lifetime(lifetime)) = this.consume_common_lifetime()? {
+                    if let Some(ast::Lifetime(lifetime)) = this.parse_common_lifetime()? {
                         let bounds = if this.consume(TokenKind::SingleColon) {
                             this.parse_outlives_bounds()?
                         } else {
@@ -287,7 +299,7 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
 
-        if !self.consume_ident("where") {
+        if !self.consume(Keyword::Where) {
             return Ok(preds);
         }
 
@@ -317,7 +329,7 @@ impl<'src> Parser<'_, 'src> {
                 bounds,
             }));
         }
-        if let Some(lt) = self.consume_common_lifetime()? {
+        if let Some(lt) = self.parse_common_lifetime()? {
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_outlives_bounds()?;
             return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
@@ -347,7 +359,7 @@ impl<'src> Parser<'_, 'src> {
         while self.begins_bound() {
             bounds.push(self.parse_bound()?);
 
-            if !self.consume_relaxed(TokenKind::SinglePlus) {
+            if !self.consume(TokenPrefix::Plus) {
                 break;
             }
         }
@@ -362,7 +374,7 @@ impl<'src> Parser<'_, 'src> {
         let bound_vars = self.parse_higher_ranked_binder()?;
         let modifiers = self.parse_trait_bound_modifiers()?;
 
-        if let Some(lt) = self.consume_common_lifetime()? {
+        if let Some(lt) = self.parse_common_lifetime()? {
             if let Some((_, span)) = bound_vars {
                 return Err(ParseError::HigherRankedBinderOnOutlivesBound(span));
             }
@@ -374,11 +386,11 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Bound::Outlives(lt));
         }
 
-        if self.consume_ident("use") {
+        if self.consume(Keyword::Use) {
             self.parse(TokenKind::SingleLessThan)?;
             let captures =
                 self.fin_parse_delim_seq(TokenKind::SingleGreaterThan, TokenKind::Comma, |this| {
-                    if let Some(ast::Lifetime(lifetime)) = this.consume_common_lifetime()? {
+                    if let Some(ast::Lifetime(lifetime)) = this.parse_common_lifetime()? {
                         return Ok(lifetime);
                     }
                     if let Some(ident) = this.as_ident(this.token)
@@ -427,13 +439,13 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
         let constness = match self.token.kind {
-            TokenKind::Ident if let "const" = self.source(self.token.span) => {
+            TokenKind::Ident if let Some(Keyword::Const) = self.as_keyword(self.token) => {
                 self.advance();
                 ast::BoundConstness::Always
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
-                self.parse_ident("const")?;
+                self.parse(Keyword::Const)?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::BoundConstness::Maybe
             }
@@ -462,11 +474,10 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.token.kind {
-            TokenKind::Ident => self.source(self.token.span) == "const",
+            TokenKind::Ident => self.as_keyword(self.token) == Some(Keyword::Const),
             TokenKind::OpenSquareBracket => {
-                self.look_ahead(1, |token| {
-                    self.as_ident(token).is_some_and(|ident| ident == "const")
-                }) && self.look_ahead(2, |token| token.kind == TokenKind::CloseSquareBracket)
+                self.look_ahead(1, |token| self.as_keyword(token) == Some(Keyword::Const))
+                    && self.look_ahead(2, |token| token.kind == TokenKind::CloseSquareBracket)
             }
             TokenKind::SingleBang | TokenKind::QuestionMark => true,
             _ => false,
@@ -476,7 +487,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
         let mut bounds = Vec::new();
 
-        while let Some(lt) = self.consume_common_lifetime()? {
+        while let Some(lt) = self.parse_common_lifetime()? {
             bounds.push(lt);
 
             if !self.consume(TokenKind::SinglePlus) {
@@ -492,7 +503,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
         let start = self.token.span;
 
-        if !self.consume_ident("for") {
+        if !self.consume(Keyword::For) {
             return Ok(None);
         }
 

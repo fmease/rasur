@@ -1,6 +1,9 @@
 use super::{
-    ExpectedFragment, Parser, Result, Token, TokenKind, error::ParseError, is_path_seg_keyword,
-    is_reserved, one_of,
+    ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix,
+    error::ParseError,
+    is_path_seg_keyword,
+    keyword::{Keyword, Quality},
+    one_of,
 };
 use crate::ast;
 
@@ -43,11 +46,11 @@ impl<'src> Parser<'_, 'src> {
         let mut path = ast::Path { segs: Vec::new() };
 
         // FIXME: Add `<` to list of expected tokens
-        let self_ty = if self.consume_relaxed(TokenKind::SingleLessThan) {
+        let self_ty = if self.consume(TokenPrefix::LessThan) {
             let ty = self.parse_ty()?;
             // We're in a "type context" now and can parse generic args unambiguously.
             let trait_ref = self
-                .consume_ident("as")
+                .consume(Keyword::As)
                 .then(|| self.parse_path::<ast::UnambiguousGenericArgs>())
                 .transpose()?;
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
@@ -135,14 +138,14 @@ impl<'src> Parser<'_, 'src> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
 
         Ok(ast::GenericArgs::Angle(self.fin_parse_delim_seq_with(
-            |this| this.consume_relaxed(TokenKind::SingleGreaterThan),
-            Self::begins_single_greater_than,
+            |this| this.consume(TokenPrefix::GreaterThan),
+            |this| TokenPrefix::GreaterThan.matches(this.token.kind),
             SEPARATOR,
             |this: &mut Self| {
                 let mut arg = if this.begins_ty() {
                     let ty = this.parse_ty()?;
                     ast::GenericArg::Ty(ty)
-                } else if let Some(lt) = this.consume_common_lifetime()? {
+                } else if let Some(lt) = this.parse_common_lifetime()? {
                     ast::GenericArg::Lifetime(lt)
                 } else if this.begins_const_arg() {
                     let expr = this.parse_const_arg()?;
@@ -239,12 +242,12 @@ impl<'src> Parser<'_, 'src> {
                     Box::new(self.fin_parse_block_expr()?),
                 ));
             }
-            TokenKind::Ident => match self.source(self.token.span) {
-                "false" => {
+            TokenKind::Ident => match self.as_keyword(self.token) {
+                Some(Keyword::False) => {
                     self.advance();
                     return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
                 }
-                "true" => {
+                Some(Keyword::True) => {
                     self.advance();
                     return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
                 }
@@ -266,7 +269,9 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::StrLit
             | TokenKind::NumLit
             | TokenKind::CharLit => true,
-            TokenKind::Ident => matches!(self.source(self.token.span), "false" | "true"),
+            TokenKind::Ident => {
+                matches!(self.as_keyword(self.token), Some(Keyword::False | Keyword::True))
+            }
             _ => false,
         }
     }
@@ -314,7 +319,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 path.segs.push(ast::PathSeg::ident(ident));
                 let binder = self
-                    .consume_ident("as")
+                    .consume(Keyword::As)
                     .then(|| self.parse_ident_where_common_or("_"))
                     .transpose()?;
                 ast::PathTreeKind::Stump(binder)
@@ -331,15 +336,6 @@ impl<'src> Parser<'_, 'src> {
                 ));
             }
         })
-    }
-
-    pub(super) fn parse_ident(&mut self, expected: &'static str) -> Result<()> {
-        if self.as_ident(self.token) == Some(expected) {
-            self.advance();
-            Ok(())
-        } else {
-            Err(ParseError::UnexpectedToken(self.token, one_of![ExpectedFragment::Raw(expected)]))
-        }
     }
 
     pub(super) fn parse_ident_where_common_or(
@@ -359,17 +355,13 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    pub(super) fn consume_ident(&mut self, expected: &str) -> bool {
-        if self.as_ident(self.token) == Some(expected) {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
     pub(super) fn as_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
+    }
+
+    // FIXME: Temporary API, replace w sth like check(xyz, Keyword::X)
+    pub(super) fn as_keyword(&self, token: Token) -> Option<Keyword> {
+        self.as_ident(token).and_then(|ident| Keyword::parse(ident, self.edition, Quality::Any))
     }
 
     pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
@@ -386,7 +378,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     pub(super) fn ident_is_common(&self, ident: &str) -> bool {
-        !is_reserved(ident, self.edition)
+        Keyword::parse(ident, self.edition, Quality::Hard).is_none()
     }
 }
 
