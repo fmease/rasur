@@ -71,7 +71,7 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        let Some(keyword) = self.as_keyword(self.token) else { return false };
+        let Ok(keyword) = self.as_keyword(self.token) else { return false };
 
         match keyword {
             Keyword::Async => {
@@ -79,13 +79,13 @@ impl<'src> Parser<'_, 'src> {
                     // HACK: for `async gen {`
                     && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket)
             }
-            Keyword::Auto => self.look_ahead(1, |t| self.as_keyword(t) == Some(Keyword::Trait)),
+            Keyword::Auto => self.look_ahead(1, |t| self.as_keyword(t) == Ok(Keyword::Trait)),
             Keyword::Const | Keyword::Unsafe => {
                 self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
             }
             Keyword::Gen => self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket),
             Keyword::Safe => self.look_ahead(1, |token| {
-                matches!(self.as_keyword(token), Some(Keyword::Fn | Keyword::Extern))
+                matches!(self.as_keyword(token), Ok(Keyword::Fn | Keyword::Extern))
             }),
             Keyword::Union => self.look_ahead(1, |t| self.as_common_ident(t).is_some()),
             | Keyword::Enum
@@ -213,44 +213,42 @@ impl<'src> Parser<'_, 'src> {
             }
         }
 
-        if let Some(keyword) = self.as_keyword(self.token) {
-            match keyword {
-                Keyword::Enum => {
-                    self.advance();
-                    return self.fin_parse_enum_item();
-                }
-                Keyword::Macro => {
-                    self.advance();
-                    return self.fin_parse_macro_def();
-                }
-                Keyword::Static => {
-                    self.advance();
-                    return self.fin_parse_static_item();
-                }
-                Keyword::Struct => {
-                    self.advance();
-                    return self.fin_parse_struct_item();
-                }
-                Keyword::Type => {
-                    self.advance();
-                    return self.fin_parse_ty_alias_item();
-                }
-                Keyword::Union => {
-                    if let Some(binder) = self.look_ahead(1, |token| self.as_common_ident(token)) {
-                        self.advance();
-                        self.advance();
-                        return self.fin_parse_union_item(binder);
-                    }
-                }
-                Keyword::Use => {
-                    self.advance();
-                    return self.fin_parse_use_item();
-                }
-                _ => {}
+        match self.as_keyword(self.token) {
+            Ok(Keyword::Enum) => {
+                self.advance();
+                return self.fin_parse_enum_item();
             }
+            Ok(Keyword::Macro) => {
+                self.advance();
+                return self.fin_parse_macro_def();
+            }
+            Ok(Keyword::Static) => {
+                self.advance();
+                return self.fin_parse_static_item();
+            }
+            Ok(Keyword::Struct) => {
+                self.advance();
+                return self.fin_parse_struct_item();
+            }
+            Ok(Keyword::Type) => {
+                self.advance();
+                return self.fin_parse_ty_alias_item();
+            }
+            Ok(Keyword::Union) => {
+                if let Some(binder) = self.look_ahead(1, |token| self.as_common_ident(token)) {
+                    self.advance();
+                    self.advance();
+                    return self.fin_parse_union_item(binder);
+                }
+            }
+            Ok(Keyword::Use) => {
+                self.advance();
+                return self.fin_parse_use_item();
+            }
+            _ => {}
         }
 
-        if self.begins_path() {
+        if self.begins_path(self.token) {
             return self.parse_macro_call_item();
         }
 
@@ -260,7 +258,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_item_keyword(&mut self) -> Result<Vec<ItemKeyword<'src>>> {
         let mut candidates = Vec::new();
 
-        while let Some(keyword) = self.as_keyword(self.token) {
+        while let Ok(keyword) = self.as_keyword(self.token) {
             candidates.push(match keyword {
                 Keyword::Async
                     if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
@@ -270,7 +268,7 @@ impl<'src> Parser<'_, 'src> {
                     ItemKeyword::Async
                 }
                 Keyword::Auto
-                    if self.look_ahead(1, |t| self.as_keyword(t) == Some(Keyword::Trait)) =>
+                    if self.look_ahead(1, |t| self.as_keyword(t) == Ok(Keyword::Trait)) =>
                 {
                     ItemKeyword::Auto
                 }
@@ -293,7 +291,7 @@ impl<'src> Parser<'_, 'src> {
                 Keyword::Mod => ItemKeyword::Mod,
                 Keyword::Safe
                     if self.look_ahead(1, |t| {
-                        matches!(self.as_keyword(t), Some(Keyword::Fn | Keyword::Extern))
+                        matches!(self.as_keyword(t), Ok(Keyword::Fn | Keyword::Extern))
                     }) =>
                 {
                     ItemKeyword::Safe
@@ -844,7 +842,7 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_macro_item`.
 
         match policy {
-            MacroCallPolicy::Allowed => self.begins_path(),
+            MacroCallPolicy::Allowed => self.begins_path(self.token),
             MacroCallPolicy::Forbidden => {
                 self.as_ident(self.token) == Some("macro_rules")
                     && self.look_ahead(1, |token| token.kind == TokenKind::SingleBang)
@@ -886,7 +884,7 @@ impl<'src> Parser<'_, 'src> {
         // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
         // can give better errors on invalid vis restrictions in the common cases.
         if self.token.kind == TokenKind::OpenRoundBracket
-            && let Some(keyword) = self.look_ahead(1, |token| self.as_keyword(token))
+            && let Some(keyword) = self.look_ahead(1, |token| self.as_keyword(token).ok())
         {
             let path = match keyword {
                 Keyword::In => {
@@ -913,7 +911,7 @@ impl<'src> Parser<'_, 'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        self.as_keyword(self.token) == Some(Keyword::Pub)
+        self.as_keyword(self.token) == Ok(Keyword::Pub)
     }
 }
 

@@ -33,7 +33,7 @@ impl<'src> Parser<'_, 'src> {
             // FIXME: Proper diagnostic for the !else_may_follow case.
             let body = if self.consume(TokenKind::SingleEquals) {
                 let body = self.parse_expr()?;
-                let alternate = if let Some(Keyword::Else) = self.as_keyword(self.token)
+                let alternate = if let Ok(Keyword::Else) = self.as_keyword(self.token)
                     && else_may_follow(&body)
                 {
                     self.advance();

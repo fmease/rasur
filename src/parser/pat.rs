@@ -48,7 +48,7 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        if let Some(
+        if let Ok(
             Keyword::Underscore | Keyword::False | Keyword::Mut | Keyword::Ref | Keyword::True,
         ) = self.as_keyword(self.token)
         {
@@ -221,15 +221,15 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.as_keyword(self.token) {
-            Some(Keyword::Underscore) => {
+            Ok(Keyword::Underscore) => {
                 self.advance();
                 return Ok(ast::Pat::Wildcard);
             }
-            Some(Keyword::False) => {
+            Ok(Keyword::False) => {
                 self.advance();
                 return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
             }
-            Some(Keyword::Mut) => {
+            Ok(Keyword::Mut) => {
                 self.advance();
                 // FIXME: Use the Keyword API
                 return match self.as_ident(self.token) {
@@ -251,11 +251,11 @@ impl<'src> Parser<'_, 'src> {
                     )),
                 };
             }
-            Some(Keyword::Ref) => {
+            Ok(Keyword::Ref) => {
                 self.advance();
                 return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
             }
-            Some(Keyword::True) => {
+            Ok(Keyword::True) => {
                 self.advance();
                 return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
             }

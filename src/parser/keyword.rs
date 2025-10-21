@@ -160,6 +160,10 @@ impl Keyword {
     fn is_soft(self) -> bool {
         matches!(self, Self::Auto | Self::Pin | Self::Safe | Self::Union)
     }
+
+    pub(crate) fn is_path_seg(self) -> bool {
+        matches!(self, Self::Crate | Self::Super | Self::SelfLower | Self::SelfUpper)
+    }
 }
 
 pub(crate) enum Quality {

@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, error::ParseError, keyword::Keyword,
     one_of,
 };
-use crate::{ast, span::Span};
+use crate::{ast, edition::Edition, span::Span, token::Token};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a type.
@@ -49,11 +49,11 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::SingleAsterisk => {
                 self.advance();
                 let mut_ = match self.as_keyword(self.token) {
-                    Some(Keyword::Mut) => {
+                    Ok(Keyword::Mut) => {
                         self.advance();
                         ast::Mutability::Mut
                     }
-                    Some(Keyword::Const) => {
+                    Ok(Keyword::Const) => {
                         self.advance();
                         ast::Mutability::Not
                     }
@@ -91,22 +91,26 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.as_keyword(self.token) {
-            Some(Keyword::Underscore) => {
+            Ok(Keyword::Underscore) => {
                 self.advance();
                 return Ok(ast::Ty::Inferred);
             }
-            // FIXME: We actually want to treat `dyn` as a trait object type introducer even in Rust 2015
-            //        where it's not a keyword when certain tokens follow.
-            Some(Keyword::Dyn) => {
+            Ok(Keyword::Dyn) => {
                 self.advance();
-                let bounds = self.parse_bounds()?;
-                return Ok(ast::Ty::DynTrait(bounds));
+                return self.fin_parse_dyn_trait_object_ty();
             }
-            Some(Keyword::Fn) => {
+            Err(Some("dyn"))
+                if self.edition == Edition::Rust2015
+                    && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
+            {
+                self.advance();
+                return self.fin_parse_dyn_trait_object_ty();
+            }
+            Ok(Keyword::Fn) => {
                 self.advance();
                 return self.fin_parse_fn_ptr_ty(Vec::new());
             }
-            Some(Keyword::For) => {
+            Ok(Keyword::For) => {
                 self.advance();
                 let bound_vars = self.parse_generic_params()?;
 
@@ -114,7 +118,7 @@ impl<'src> Parser<'_, 'src> {
                 self.parse(Keyword::Fn)?;
                 return self.fin_parse_fn_ptr_ty(bound_vars);
             }
-            Some(Keyword::Impl) => {
+            Ok(Keyword::Impl) => {
                 self.advance();
                 let bounds = self.parse_bounds()?;
                 return Ok(ast::Ty::ImplTrait(bounds));
@@ -154,9 +158,8 @@ impl<'src> Parser<'_, 'src> {
             _ => (),
         }
 
-        if let Some(
-            Keyword::Underscore | Keyword::Dyn | Keyword::Fn | Keyword::For | Keyword::Impl,
-        ) = self.as_keyword(self.token)
+        if let Ok(Keyword::Underscore | Keyword::Dyn | Keyword::Fn | Keyword::For | Keyword::Impl) =
+            self.as_keyword(self.token)
         {
             return true;
         }
@@ -166,6 +169,23 @@ impl<'src> Parser<'_, 'src> {
         }
 
         false
+    }
+
+    fn begins_2015_dyn_bound(&self, token: Token) -> bool {
+        if let TokenKind::Lifetime | TokenKind::QuestionMark | TokenKind::OpenRoundBracket =
+            token.kind
+        {
+            return true;
+        }
+
+        match self.as_keyword(token) {
+            Ok(keyword) => keyword == Keyword::For || keyword.is_path_seg(),
+            Err(ident) => ident.is_some(),
+        }
+    }
+
+    fn fin_parse_dyn_trait_object_ty(&mut self) -> Result<ast::Ty<'src>> {
+        Ok(ast::Ty::DynTrait(self.parse_bounds()?))
     }
 
     fn fin_parse_fn_ptr_ty(
@@ -413,7 +433,7 @@ impl<'src> Parser<'_, 'src> {
         }
 
         // FIXME: Also support parentheses around trait bounds
-        if self.begins_path() {
+        if self.begins_path(self.token) {
             let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>()?;
             return Ok(ast::Bound::Trait {
                 bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
@@ -431,7 +451,7 @@ impl<'src> Parser<'_, 'src> {
         // FIXME: Intro `begins_trait_bound` abstracting over for<>, TBMs, path
         matches!(self.as_ident(self.token), Some("for" | "use"))
             || self.begins_trait_bound_modifiers()
-            || self.begins_path()
+            || self.begins_path(self.token)
             || matches!(self.token.kind, TokenKind::Lifetime) // FIXME: swap about with begins_outlives_bound
     }
 
@@ -439,7 +459,7 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
         let constness = match self.token.kind {
-            TokenKind::Ident if let Some(Keyword::Const) = self.as_keyword(self.token) => {
+            TokenKind::Ident if let Ok(Keyword::Const) = self.as_keyword(self.token) => {
                 self.advance();
                 ast::BoundConstness::Always
             }
@@ -474,9 +494,9 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.token.kind {
-            TokenKind::Ident => self.as_keyword(self.token) == Some(Keyword::Const),
+            TokenKind::Ident => self.as_keyword(self.token) == Ok(Keyword::Const),
             TokenKind::OpenSquareBracket => {
-                self.look_ahead(1, |token| self.as_keyword(token) == Some(Keyword::Const))
+                self.look_ahead(1, |token| self.as_keyword(token) == Ok(Keyword::Const))
                     && self.look_ahead(2, |token| token.kind == TokenKind::CloseSquareBracket)
             }
             TokenKind::SingleBang | TokenKind::QuestionMark => true,

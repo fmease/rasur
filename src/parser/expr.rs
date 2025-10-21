@@ -74,7 +74,7 @@ impl<'src> Parser<'_, 'src> {
         }
 
         // Keyword::Let isn't included here because Let-exprs are but an impl detail.
-        if let Some(
+        if let Ok(
             Keyword::Underscore
             | Keyword::Break
             | Keyword::Const
@@ -144,7 +144,7 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::DoublePipe => Op::Or,
                 TokenKind::GreaterThanEquals => Op::Ge,
                 TokenKind::HypenEquals => Op::SubAssign,
-                TokenKind::Ident if let Some(Keyword::As) = self.as_keyword(self.token) => Op::Cast,
+                TokenKind::Ident if let Ok(Keyword::As) = self.as_keyword(self.token) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
@@ -441,12 +441,12 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.as_keyword(self.token) {
-            Some(Keyword::Underscore) => {
+            Ok(Keyword::Underscore) => {
                 self.advance();
                 return Ok(ast::Expr::Wildcard);
             }
             // FIXME: Also support async move? closures.
-            Some(Keyword::Async) => {
+            Ok(Keyword::Async) => {
                 self.advance();
                 let gen_ = self.consume(Keyword::Gen);
                 return Ok(ast::Expr::Block(
@@ -457,7 +457,7 @@ impl<'src> Parser<'_, 'src> {
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Some(Keyword::Break) => {
+            Ok(Keyword::Break) => {
                 self.advance();
                 let label = self.parse_common_lifetime()?.map(|ast::Lifetime(label)| label);
                 let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
@@ -474,24 +474,24 @@ impl<'src> Parser<'_, 'src> {
                 };
                 return Ok(ast::Expr::Break(label, expr));
             }
-            Some(Keyword::Const) => {
+            Ok(Keyword::Const) => {
                 self.advance();
                 return Ok(ast::Expr::Block(
                     ast::BlockKind::Const,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Some(Keyword::Continue) => {
+            Ok(Keyword::Continue) => {
                 self.advance();
                 // FIXME: Parse optional label.
                 return Ok(ast::Expr::Continue);
             }
-            Some(Keyword::False) => {
+            Ok(Keyword::False) => {
                 self.advance();
                 return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
             }
             // FIXME: Also support closure expr with binder.
-            Some(Keyword::For) => {
+            Ok(Keyword::For) => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
                 self.parse(Keyword::In)?;
@@ -503,14 +503,14 @@ impl<'src> Parser<'_, 'src> {
                     body,
                 })));
             }
-            Some(Keyword::Gen) => {
+            Ok(Keyword::Gen) => {
                 self.advance();
                 return Ok(ast::Expr::Block(
                     ast::BlockKind::Gen,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Some(Keyword::If) => {
+            Ok(Keyword::If) => {
                 self.advance();
 
                 let condition =
@@ -520,8 +520,7 @@ impl<'src> Parser<'_, 'src> {
                 let alternate = if self.consume(Keyword::Else) {
                     match self.token.kind {
                         TokenKind::OpenCurlyBracket => {}
-                        TokenKind::Ident if let Some(Keyword::If) = self.as_keyword(self.token) => {
-                        }
+                        TokenKind::Ident if let Ok(Keyword::If) = self.as_keyword(self.token) => {}
                         _ => {
                             return Err(ParseError::UnexpectedToken(
                                 self.token,
@@ -542,7 +541,7 @@ impl<'src> Parser<'_, 'src> {
                     alternate,
                 })));
             }
-            Some(Keyword::Let) if let LetPolicy::Allowed = lets => {
+            Ok(Keyword::Let) if let LetPolicy::Allowed = lets => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
                 self.parse(TokenKind::SingleEquals)?;
@@ -550,11 +549,11 @@ impl<'src> Parser<'_, 'src> {
                 let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
                 return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, body: expr })));
             }
-            Some(Keyword::Loop) => {
+            Ok(Keyword::Loop) => {
                 self.advance();
                 return Ok(ast::Expr::Loop(Box::new(self.parse_block_expr()?)));
             }
-            Some(Keyword::Match) => {
+            Ok(Keyword::Match) => {
                 self.advance();
 
                 let scrutinee =
@@ -583,7 +582,7 @@ impl<'src> Parser<'_, 'src> {
 
                 return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
             }
-            Some(Keyword::Move) => {
+            Ok(Keyword::Move) => {
                 self.advance();
                 // FIXME: Hack. Make+use `parse_relaxed(SinglePipe)` or `parse(TokenPrefix::Pipe)`
                 //        if we go for a `trait TokenClass` again.
@@ -594,7 +593,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 return self.fin_parse_closure_expr(ast::ClosureKind::Move);
             }
-            Some(Keyword::Return) => {
+            Ok(Keyword::Return) => {
                 self.advance();
                 // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
                 //       Add test where the break is inside an if!
@@ -607,25 +606,25 @@ impl<'src> Parser<'_, 'src> {
                     .transpose()?;
                 return Ok(ast::Expr::Return(expr));
             }
-            Some(Keyword::True) => {
+            Ok(Keyword::True) => {
                 self.advance();
                 return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
             }
-            Some(Keyword::Try) => {
+            Ok(Keyword::Try) => {
                 self.advance();
                 return Ok(ast::Expr::Block(
                     ast::BlockKind::Try,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Some(Keyword::Unsafe) => {
+            Ok(Keyword::Unsafe) => {
                 self.advance();
                 return Ok(ast::Expr::Block(
                     ast::BlockKind::Unsafe,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Some(Keyword::While) => {
+            Ok(Keyword::While) => {
                 self.advance();
                 let condition =
                     self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
