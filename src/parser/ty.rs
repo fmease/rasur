@@ -1,8 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
-    error::ParseError,
-    keyword::{Keyword, soft::DYN},
-    one_of,
+    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, error::ParseError,
+    ident::DYN, one_of,
 };
 use crate::{ast, edition::Edition, span::Span, token::Token};
 
@@ -29,19 +27,19 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::SingleAsterisk => {
                 self.advance();
-                let mut_ = match self.as_keyword(self.token) {
-                    Ok(Keyword::Mut) => {
-                        self.advance();
-                        ast::Mutability::Mut
-                    }
-                    Ok(Keyword::Const) => {
+                let mut_ = match self.token.kind {
+                    TokenKind::Const => {
                         self.advance();
                         ast::Mutability::Not
+                    }
+                    TokenKind::Mut => {
+                        self.advance();
+                        ast::Mutability::Mut
                     }
                     _ => {
                         return Err(ParseError::UnexpectedToken(
                             self.token,
-                            one_of![Keyword::Mut, Keyword::Const],
+                            one_of![TokenKind::Mut, TokenKind::Const],
                         ));
                     }
                 };
@@ -71,38 +69,39 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        match self.as_keyword(self.token) {
-            Ok(Keyword::Underscore) => {
-                self.advance();
-                return Ok(ast::Ty::Inferred);
-            }
-            Ok(Keyword::Dyn) => {
+        match self.token.kind {
+            TokenKind::Dyn => {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
-            Err(Some(DYN))
-                if self.edition == Edition::Rust2015
+            TokenKind::Fn => {
+                self.advance();
+                return self.fin_parse_fn_ptr_ty(Vec::new());
+            }
+            TokenKind::For => {
+                self.advance();
+                let bound_vars = self.parse_generic_params()?;
+
+                // FIXME: Expect bare trait object types, too.
+                self.parse(TokenKind::Fn)?;
+                return self.fin_parse_fn_ptr_ty(bound_vars);
+            }
+            TokenKind::Ident
+                if let DYN = self.source(self.token.span)
+                    && self.edition == Edition::Rust2015
                     && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
             {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
-            Ok(Keyword::Fn) => {
-                self.advance();
-                return self.fin_parse_fn_ptr_ty(Vec::new());
-            }
-            Ok(Keyword::For) => {
-                self.advance();
-                let bound_vars = self.parse_generic_params()?;
-
-                // FIXME: Expect bare trait object types, too.
-                self.parse(Keyword::Fn)?;
-                return self.fin_parse_fn_ptr_ty(bound_vars);
-            }
-            Ok(Keyword::Impl) => {
+            TokenKind::Impl => {
                 self.advance();
                 let bounds = self.parse_bounds()?;
                 return Ok(ast::Ty::ImplTrait(bounds));
+            }
+            TokenKind::Underscore => {
+                self.advance();
+                return Ok(ast::Ty::Inferred);
             }
             _ => {}
         }
@@ -130,19 +129,18 @@ impl<'src> Parser<'_, 'src> {
         // FIXME: To be kept in sync with `Self::parse_ty`.
 
         match self.token.kind {
-            TokenKind::SingleBang
-            | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
-            | TokenKind::SingleAsterisk
+            | TokenKind::Dyn
+            | TokenKind::Fn
+            | TokenKind::For
+            | TokenKind::Impl
+            | TokenKind::OpenRoundBracket
             | TokenKind::OpenSquareBracket
-            | TokenKind::OpenRoundBracket => return true,
-            _ => (),
-        }
-
-        if let Ok(Keyword::Underscore | Keyword::Dyn | Keyword::Fn | Keyword::For | Keyword::Impl) =
-            self.as_keyword(self.token)
-        {
-            return true;
+            | TokenKind::SingleAmpersand
+            | TokenKind::SingleAsterisk
+            | TokenKind::SingleBang
+            | TokenKind::Underscore => return true,
+            _ => {}
         }
 
         if self.begins_ext_path() {
@@ -153,16 +151,14 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn begins_2015_dyn_bound(&self, token: Token) -> bool {
-        if let TokenKind::Lifetime | TokenKind::QuestionMark | TokenKind::OpenRoundBracket =
-            token.kind
-        {
-            return true;
-        }
-
-        match self.as_keyword(token) {
-            Ok(keyword) => keyword == Keyword::For || keyword.is_path_seg(),
-            Err(ident) => ident.is_some(),
-        }
+        matches!(
+            token.kind,
+            PathSegIdent!()
+                | TokenKind::For
+                | TokenKind::Lifetime
+                | TokenKind::OpenRoundBracket
+                | TokenKind::QuestionMark
+        )
     }
 
     fn fin_parse_dyn_trait_object_ty(&mut self) -> Result<ast::Ty<'src>> {
@@ -189,7 +185,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
-        let lt = self.parse_common_lifetime()?;
+        let lt = self.parse_lifetime()?;
         let mut_ = self.parse_mutability();
         let ty = self.parse_ty()?;
         Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)))
@@ -235,51 +231,51 @@ impl<'src> Parser<'_, 'src> {
             |this| TokenPrefix::GreaterThan.matches(this.token.kind),
             SEPARATOR,
             |this| {
-                let (binder, kind) =
-                    if let Some(ast::Lifetime(lifetime)) = this.parse_common_lifetime()? {
-                        let bounds = if this.consume(TokenKind::SingleColon) {
-                            this.parse_outlives_bounds()?
-                        } else {
-                            Vec::new()
-                        };
-                        (lifetime, ast::GenericParamKind::Lifetime(bounds))
+                let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
+                    let bounds = if this.consume(TokenKind::SingleColon) {
+                        this.parse_outlives_bounds()?
                     } else {
-                        match this.as_keyword(this.token) {
-                            Ok(Keyword::Const) => {
-                                this.advance();
-                                let binder = this.parse_common_ident()?;
-                                let ty = this.parse_ty_annotation()?;
-                                let default = this
-                                    .consume(TokenKind::SingleEquals)
-                                    .then(|| this.parse_const_arg())
-                                    .transpose()?;
-                                (binder, ast::GenericParamKind::Const { ty, default })
-                            }
-                            Err(Some(ident)) => {
-                                this.advance();
-                                let bounds = if this.consume(TokenKind::SingleColon) {
-                                    this.parse_bounds()?
-                                } else {
-                                    Vec::new()
-                                };
-                                let default = this
-                                    .consume(TokenKind::SingleEquals)
-                                    .then(|| this.parse_ty())
-                                    .transpose()?;
-                                (ident, ast::GenericParamKind::Ty { bounds, default })
-                            }
-                            _ => {
-                                return Err(ParseError::UnexpectedToken(
-                                    this.token,
-                                    one_of![
-                                        ExpectedFragment::GenericParam,
-                                        SEPARATOR,
-                                        TokenKind::SingleGreaterThan
-                                    ],
-                                ));
-                            }
-                        }
+                        Vec::new()
                     };
+                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
+                } else {
+                    match this.token.kind {
+                        TokenKind::Const => {
+                            this.advance();
+                            let binder = this.parse_ident()?;
+                            let ty = this.parse_ty_annotation()?;
+                            let default = this
+                                .consume(TokenKind::SingleEquals)
+                                .then(|| this.parse_const_arg())
+                                .transpose()?;
+                            (binder, ast::GenericParamKind::Const { ty, default })
+                        }
+                        TokenKind::Ident => {
+                            let ident = this.source(this.token.span);
+                            this.advance();
+                            let bounds = if this.consume(TokenKind::SingleColon) {
+                                this.parse_bounds()?
+                            } else {
+                                Vec::new()
+                            };
+                            let default = this
+                                .consume(TokenKind::SingleEquals)
+                                .then(|| this.parse_ty())
+                                .transpose()?;
+                            (ident, ast::GenericParamKind::Ty { bounds, default })
+                        }
+                        _ => {
+                            return Err(ParseError::UnexpectedToken(
+                                this.token,
+                                one_of![
+                                    ExpectedFragment::GenericParam,
+                                    SEPARATOR,
+                                    TokenKind::SingleGreaterThan
+                                ],
+                            ));
+                        }
+                    }
+                };
 
                 Ok(ast::GenericParam { binder, kind })
             },
@@ -300,7 +296,7 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
         let mut preds = Vec::new();
 
-        if !self.consume(Keyword::Where) {
+        if !self.consume(TokenKind::Where) {
             return Ok(preds);
         }
 
@@ -330,7 +326,7 @@ impl<'src> Parser<'_, 'src> {
                 bounds,
             }));
         }
-        if let Some(lt) = self.parse_common_lifetime()? {
+        if let Some(lt) = self.parse_lifetime()? {
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_outlives_bounds()?;
             return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
@@ -342,9 +338,7 @@ impl<'src> Parser<'_, 'src> {
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        self.as_ident(self.token).is_some_and(|ident| ident == "for")
-            || self.begins_ty()
-            || matches!(self.token.kind, TokenKind::Lifetime)
+        matches!(self.token.kind, TokenKind::Lifetime | TokenKind::For) || self.begins_ty()
     }
 
     /// Parse a bounds annotation if available.
@@ -375,7 +369,7 @@ impl<'src> Parser<'_, 'src> {
         let bound_vars = self.parse_higher_ranked_binder()?;
         let modifiers = self.parse_trait_bound_modifiers()?;
 
-        if let Some(lt) = self.parse_common_lifetime()? {
+        if let Some(lt) = self.parse_lifetime()? {
             if let Some((_, span)) = bound_vars {
                 return Err(ParseError::HigherRankedBinderOnOutlivesBound(span));
             }
@@ -387,19 +381,20 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Bound::Outlives(lt));
         }
 
-        if self.consume(Keyword::Use) {
+        if self.consume(TokenKind::Use) {
             self.parse(TokenKind::SingleLessThan)?;
             let captures =
                 self.fin_parse_delim_seq(TokenKind::SingleGreaterThan, TokenKind::Comma, |this| {
-                    if let Some(ast::Lifetime(lifetime)) = this.parse_common_lifetime()? {
+                    if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
                         return Ok(lifetime);
                     }
-                    if let Some(ident) = this.as_ident(this.token)
-                        && (this.ident_is_common(ident) || ident == "Self")
-                    {
-                        return Ok(ident);
+                    match this.token.kind {
+                        TokenKind::Ident | TokenKind::SelfUpper => Ok(this.source(this.token.span)),
+                        _ => Err(ParseError::UnexpectedToken(
+                            this.token,
+                            ExpectedFragment::GenericParam,
+                        )),
                     }
-                    Err(ParseError::UnexpectedToken(this.token, ExpectedFragment::GenericParam))
                 })?;
 
             if let Some((_, span)) = bound_vars {
@@ -429,24 +424,23 @@ impl<'src> Parser<'_, 'src> {
     fn begins_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        // FIXME: Intro `begins_trait_bound` abstracting over for<>, TBMs, path
-        matches!(self.as_ident(self.token), Some("for" | "use"))
+        // FIXME: Consider abstracting this a bit (begins_X_bound)
+        matches!(self.token.kind, TokenKind::Lifetime | TokenKind::For | TokenKind::Use)
             || self.begins_trait_bound_modifiers()
             || self.begins_path(self.token)
-            || matches!(self.token.kind, TokenKind::Lifetime) // FIXME: swap about with begins_outlives_bound
     }
 
     fn parse_trait_bound_modifiers(&mut self) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
         let constness = match self.token.kind {
-            TokenKind::Ident if let Ok(Keyword::Const) = self.as_keyword(self.token) => {
+            TokenKind::Const => {
                 self.advance();
                 ast::BoundConstness::Always
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
-                self.parse(Keyword::Const)?;
+                self.parse(TokenKind::Const)?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::BoundConstness::Maybe
             }
@@ -475,12 +469,11 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.token.kind {
-            TokenKind::Ident => self.as_keyword(self.token) == Ok(Keyword::Const),
+            TokenKind::Const | TokenKind::QuestionMark | TokenKind::SingleBang => true,
             TokenKind::OpenSquareBracket => {
-                self.look_ahead(1, |token| self.as_keyword(token) == Ok(Keyword::Const))
-                    && self.look_ahead(2, |token| token.kind == TokenKind::CloseSquareBracket)
+                self.look_ahead(1, |t| t.kind == TokenKind::Const)
+                    && self.look_ahead(2, |t| t.kind == TokenKind::CloseSquareBracket)
             }
-            TokenKind::SingleBang | TokenKind::QuestionMark => true,
             _ => false,
         }
     }
@@ -488,7 +481,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
         let mut bounds = Vec::new();
 
-        while let Some(lt) = self.parse_common_lifetime()? {
+        while let Some(lt) = self.parse_lifetime()? {
             bounds.push(lt);
 
             if !self.consume(TokenKind::SinglePlus) {
@@ -504,7 +497,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
         let start = self.token.span;
 
-        if !self.consume(Keyword::For) {
+        if !self.consume(TokenKind::For) {
             return Ok(None);
         }
 
