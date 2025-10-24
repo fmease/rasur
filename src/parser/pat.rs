@@ -1,6 +1,4 @@
-use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, keyword::Keyword, one_of,
-};
+use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of};
 use crate::ast;
 use std::cmp::Ordering;
 
@@ -21,22 +19,20 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: We intentionally skip SinglePipe because leading pipes are only permitted
         //       at the top-level.
         match self.token.kind {
-            | TokenKind::SingleAmpersand
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
             | TokenKind::DoubleDotEquals
+            | TokenKind::False
+            | TokenKind::Mut
             | TokenKind::NumLit
-            | TokenKind::StrLit
             | TokenKind::OpenRoundBracket
-            | TokenKind::OpenSquareBracket => return true,
+            | TokenKind::OpenSquareBracket
+            | TokenKind::Ref
+            | TokenKind::SingleAmpersand
+            | TokenKind::StrLit
+            | TokenKind::True
+            | TokenKind::Underscore => return true,
             _ => {}
-        }
-
-        if let Ok(
-            Keyword::Underscore | Keyword::False | Keyword::Mut | Keyword::Ref | Keyword::True,
-        ) = self.as_keyword(self.token)
-        {
-            return true;
         }
 
         if self.begins_ext_path() {
@@ -174,15 +170,36 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
         match self.token.kind {
+            TokenKind::False => {
+                self.advance();
+                return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
+            }
+            TokenKind::Mut => {
+                self.advance();
+                return match self.token.kind {
+                    TokenKind::Ref => {
+                        self.advance();
+                        self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
+                    }
+                    TokenKind::Ident => {
+                        let ident = self.source(self.token.span);
+                        self.advance();
+                        Ok(ast::Pat::Ident(ast::IdentPat {
+                            mut_: ast::Mutability::Mut,
+                            by_ref: ast::ByRef::No,
+                            ident,
+                        }))
+                    }
+                    _ => Err(ParseError::UnexpectedToken(
+                        self.token,
+                        one_of![TokenKind::Ref, ExpectedFragment::Ident],
+                    )),
+                };
+            }
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::Pat::Lit(ast::Lit::Num(lit)));
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Str(lit)));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -201,51 +218,25 @@ impl<'src> Parser<'_, 'src> {
                 )?;
                 return Ok(ast::Pat::Slice(elems));
             }
-            _ => {}
-        }
-
-        match self.as_keyword(self.token) {
-            Ok(Keyword::Underscore) => {
-                self.advance();
-                return Ok(ast::Pat::Wildcard);
-            }
-            Ok(Keyword::False) => {
-                self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
-            }
-            Ok(Keyword::Mut) => {
-                self.advance();
-                // FIXME: Use the Keyword API
-                return match self.as_ident(self.token) {
-                    Some("ref") => {
-                        self.advance();
-                        self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
-                    }
-                    Some(ident) if self.ident_is_common(ident) => {
-                        self.advance();
-                        Ok(ast::Pat::Ident(ast::IdentPat {
-                            mut_: ast::Mutability::Mut,
-                            by_ref: ast::ByRef::No,
-                            ident,
-                        }))
-                    }
-                    _ => Err(ParseError::UnexpectedToken(
-                        self.token,
-                        one_of![ExpectedFragment::Raw("ref"), ExpectedFragment::CommonIdent],
-                    )),
-                };
-            }
-            Ok(Keyword::Ref) => {
+            TokenKind::Ref => {
                 self.advance();
                 return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
             }
-            Ok(Keyword::True) => {
+            TokenKind::StrLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::Pat::Lit(ast::Lit::Str(lit)));
+            }
+            TokenKind::True => {
                 self.advance();
                 return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
             }
+            TokenKind::Underscore => {
+                self.advance();
+                return Ok(ast::Pat::Wildcard);
+            }
             _ => {}
         }
-
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
@@ -286,7 +277,7 @@ impl<'src> Parser<'_, 'src> {
                         // FIXME: NumLit fields
                         // FIXME:
                         // FIXME: Parse mut? ref? mut? (a following `":" Pat` is not permitted)
-                        let binder = self.parse_common_ident()?;
+                        let binder = self.parse_ident()?;
                         let body = self
                             .consume(TokenKind::SingleColon)
                             .then(|| self.parse_pat(OrPolicy::Allowed))
@@ -321,7 +312,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_by_ref_ident_pat(&mut self, mut_: ast::Mutability) -> Result<ast::Pat<'src>> {
         let ref_mut = self.parse_mutability();
-        let ident = self.parse_common_ident()?;
+        let ident = self.parse_ident()?;
         Ok(ast::Pat::Ident(ast::IdentPat { by_ref: ast::ByRef::Yes(ref_mut), mut_, ident }))
     }
 }
