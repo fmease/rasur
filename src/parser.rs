@@ -4,7 +4,6 @@ use crate::{
     span::Span,
     token::{Token, TokenKind},
 };
-use keyword::Keyword;
 use std::{borrow::Cow, fmt};
 
 mod attr;
@@ -237,7 +236,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn parse_mutability(&mut self) -> ast::Mutability {
-        match self.consume(Keyword::Mut) {
+        match self.consume(TokenKind::Mut) {
             true => ast::Mutability::Mut,
             false => ast::Mutability::Not,
         }
@@ -293,10 +292,19 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: Temporary API
-    fn parse_common_ident_or(&mut self, exception: Keyword) -> Result<ast::Ident<'src>> {
-        if let Some(ident) = self.as_ident(self.token)
-            && self.ident_as_keyword(ident).map_or(true, |k| k == exception)
-        {
+    // FIXME: This has gotten a lot worse with lex-keywords, rethink this
+    //        exception shouldn't be a TokenKind because we later bake its source repr
+    //        into an ident!
+    // FIXME: All idents are common now!
+    fn parse_common_ident_or(&mut self, exception: TokenKind) -> Result<ast::Ident<'src>> {
+        if self.token.kind == exception {
+            self.advance();
+            // FIXME: Hacky
+            Ok(match exception.repr() {
+                crate::token::Repr::Src(src) => src,
+                _ => panic!(),
+            })
+        } else if let Some(ident) = self.as_ident(self.token) {
             self.advance();
             Ok(ident)
         } else {
@@ -312,20 +320,6 @@ impl<'a, 'src> Parser<'a, 'src> {
         matches!(token.kind, TokenKind::Ident).then(|| self.source(token.span))
     }
 
-    // FIXME: Temporary API.
-    fn ident_as_keyword(&self, ident: &str) -> Option<Keyword> {
-        Keyword::parse(ident, self.edition)
-    }
-
-    // FIXME: Temporary API, replace w sth like check(xyz, Keyword::X)
-    fn as_keyword(&self, token: Token) -> Result<Keyword, Option<ast::Ident<'src>>> {
-        let Some(ident) = self.as_ident(token) else { return Err(None) };
-        match self.ident_as_keyword(ident) {
-            Some(keyword) => Ok(keyword),
-            _ => Err(Some(ident)),
-        }
-    }
-
     // FIXME: Temporary API
     fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         self.consume_common_ident().ok_or_else(|| {
@@ -339,13 +333,15 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: Temporary API
+    // FIXME: Get rid of this
     fn as_common_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        self.as_ident(token).filter(|ident| self.ident_is_common(ident))
+        self.as_ident(token)
     }
 
     // FIXME: Temporary API
-    fn ident_is_common(&self, ident: &str) -> bool {
-        self.ident_as_keyword(ident).is_none()
+    // FIXME: Get rid of this
+    fn ident_is_common(&self, _: &str) -> bool {
+        true
     }
 }
 
@@ -390,21 +386,6 @@ trait TokenCategory: Copy {
 impl TokenCategory for TokenKind {
     fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
         if self == parser.token.kind {
-            parser.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn fragment(self) -> ExpectedFragment {
-        self.into()
-    }
-}
-
-impl TokenCategory for Keyword {
-    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
-        if parser.as_keyword(parser.token) == Ok(self) {
             parser.advance();
             true
         } else {
@@ -481,7 +462,6 @@ pub(crate) enum ExpectedFragment {
     Expr,
     GenericArg,
     GenericParam,
-    Keyword(Keyword),
     Item,
     OneOf(Box<[Self]>),
     Pat,
@@ -500,12 +480,6 @@ impl From<TokenKind> for ExpectedFragment {
     }
 }
 
-impl From<Keyword> for ExpectedFragment {
-    fn from(keyword: Keyword) -> Self {
-        Self::Keyword(keyword)
-    }
-}
-
 impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -514,7 +488,6 @@ impl fmt::Display for ExpectedFragment {
             Self::Expr => "expression",
             Self::GenericArg => "generic argument",
             Self::GenericParam => "generic parameter",
-            Self::Keyword(keyword) => return write!(f, "keyword `{}`", keyword.to_str()),
             Self::Item => "item",
             Self::OneOf(frags) => {
                 let frags = frags

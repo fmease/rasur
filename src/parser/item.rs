@@ -1,10 +1,7 @@
 use super::{
     ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
     error::ParseError,
-    keyword::{
-        Keyword,
-        soft::{AUTO, SAFE, UNION},
-    },
+    keyword::soft::{AUTO, SAFE, UNION},
     pat::OrPolicy,
 };
 use crate::ast;
@@ -55,26 +52,33 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        match self.as_keyword(self.token) {
-            Ok(Keyword::Async) => {
+        match self.token.kind {
+            TokenKind::Async => {
                 self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
-                    // HACK: for `async gen {`
+                    // FIXME: HACK: for `async gen {`
                     && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket)
             }
-            Err(Some(AUTO)) => self.look_ahead(1, |t| self.as_keyword(t) == Ok(Keyword::Trait)),
-            Ok(Keyword::Const) | Ok(Keyword::Unsafe) => {
+            TokenKind::Const | TokenKind::Unsafe => {
                 self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
             }
-            Ok(Keyword::Gen) => self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket),
-            Err(Some(SAFE)) => self.look_ahead(1, |token| {
-                matches!(self.as_keyword(token), Ok(Keyword::Fn | Keyword::Extern))
-            }),
-            Err(Some(UNION)) => self.look_ahead(1, |t| self.as_common_ident(t).is_some()),
-            | Ok(Keyword::Enum) | Ok(Keyword::Extern) | Ok(Keyword::Fn) | Ok(Keyword::Impl)
-            | Ok(Keyword::Macro) | Ok(Keyword::Mod) | Ok(Keyword::Static)
-            | Ok(Keyword::Struct) | Ok(Keyword::Trait) | Ok(Keyword::Type) | Ok(Keyword::Use) => {
-                true
-            }
+            TokenKind::Gen => self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket),
+            | TokenKind::Enum
+            | TokenKind::Extern
+            | TokenKind::Fn
+            | TokenKind::Impl
+            | TokenKind::Macro
+            | TokenKind::Mod
+            | TokenKind::Static
+            | TokenKind::Struct
+            | TokenKind::Trait
+            | TokenKind::Type
+            | TokenKind::Use => true,
+            TokenKind::Ident => match self.source(self.token.span) {
+                AUTO => self.look_ahead(1, |t| t.kind == TokenKind::Trait),
+                SAFE => self.look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)),
+                UNION => self.look_ahead(1, |t| self.as_common_ident(t).is_some()),
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -189,37 +193,39 @@ impl<'src> Parser<'_, 'src> {
             }
         }
 
-        match self.as_keyword(self.token) {
-            Ok(Keyword::Enum) => {
+        match self.token.kind {
+            TokenKind::Enum => {
                 self.advance();
                 return self.fin_parse_enum_item();
             }
-            Ok(Keyword::Macro) => {
+            TokenKind::Macro => {
                 self.advance();
                 return self.fin_parse_macro_def();
             }
-            Ok(Keyword::Static) => {
+            TokenKind::Static => {
                 self.advance();
                 return self.fin_parse_static_item();
             }
-            Ok(Keyword::Struct) => {
+            TokenKind::Struct => {
                 self.advance();
                 return self.fin_parse_struct_item();
             }
-            Ok(Keyword::Type) => {
+            TokenKind::Type => {
                 self.advance();
                 return self.fin_parse_ty_alias_item();
             }
-            Err(Some(UNION)) => {
-                if let Some(binder) = self.look_ahead(1, |token| self.as_common_ident(token)) {
+            TokenKind::Use => {
+                self.advance();
+                return self.fin_parse_use_item();
+            }
+            TokenKind::Ident => {
+                if let UNION = self.source(self.token.span)
+                    && let Some(binder) = self.look_ahead(1, |token| self.as_common_ident(token))
+                {
                     self.advance();
                     self.advance();
                     return self.fin_parse_union_item(binder);
                 }
-            }
-            Ok(Keyword::Use) => {
-                self.advance();
-                return self.fin_parse_use_item();
             }
             _ => {}
         }
@@ -237,41 +243,41 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_item_keyword(&mut self) -> Option<ItemKeyword<'src>> {
         let keyword = match self.as_keyword(self.token) {
-            Ok(Keyword::Async)
+            Ok(TokenKind::Async)
                 if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
                         // HACK: for `async gen {`
                         && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket) =>
             {
                 ItemKeyword::Async
             }
-            Err(Some(AUTO)) if self.look_ahead(1, |t| self.as_keyword(t) == Ok(Keyword::Trait)) => {
+            Err(Some(AUTO)) if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => {
                 ItemKeyword::Auto
             }
-            Ok(Keyword::Const) if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+            Ok(TokenKind::Const)
+                if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
+            {
                 ItemKeyword::Const
             }
-            Ok(Keyword::Crate) => ItemKeyword::Crate,
-            Ok(Keyword::Extern) => {
+            Ok(TokenKind::Crate) => ItemKeyword::Crate,
+            Ok(TokenKind::Extern) => {
                 self.advance();
                 let token = self.token;
                 let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
                 return Some(ItemKeyword::Extern(abi));
             }
-            Ok(Keyword::Fn) => ItemKeyword::Fn,
-            Ok(Keyword::Gen) if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+            Ok(TokenKind::Fn) => ItemKeyword::Fn,
+            Ok(TokenKind::Gen) if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
                 ItemKeyword::Gen
             }
-            Ok(Keyword::Impl) => ItemKeyword::Impl,
-            Ok(Keyword::Mod) => ItemKeyword::Mod,
+            Ok(TokenKind::Impl) => ItemKeyword::Impl,
+            Ok(TokenKind::Mod) => ItemKeyword::Mod,
             Err(Some(SAFE))
-                if self.look_ahead(1, |t| {
-                    matches!(self.as_keyword(t), Ok(Keyword::Fn | Keyword::Extern))
-                }) =>
+                if self.look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
             {
                 ItemKeyword::Safe
             }
-            Ok(Keyword::Trait) => ItemKeyword::Trait,
-            Ok(Keyword::Unsafe)
+            Ok(TokenKind::Trait) => ItemKeyword::Trait,
+            Ok(TokenKind::Unsafe)
                 if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
             {
                 ItemKeyword::Unsafe
@@ -296,7 +302,7 @@ impl<'src> Parser<'_, 'src> {
     ///     ";"
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_common_ident_or(Keyword::Underscore)?;
+        let binder = self.parse_common_ident_or(TokenKind::Underscore)?;
         let params = self.parse_generic_params()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
@@ -423,8 +429,8 @@ impl<'src> Parser<'_, 'src> {
     /// Extern_Crate_Item ::= "extern" "crate" (Common_Ident | "self") ("as" Common_Ident) ";"
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let target = self.parse_common_ident_or(Keyword::SelfLower)?;
-        let binder = self.consume(Keyword::As).then(|| self.parse_common_ident()).transpose()?;
+        let target = self.parse_common_ident_or(TokenKind::SelfLower)?;
+        let binder = self.consume(TokenKind::As).then(|| self.parse_common_ident()).transpose()?;
 
         self.parse(TokenKind::Semicolon)?;
 
@@ -486,7 +492,7 @@ impl<'src> Parser<'_, 'src> {
                 let ref_ =
                     this.consume(TokenKind::SingleAmpersand).then(|| this.parse_common_lifetime());
                 let mut_ = this.parse_mutability();
-                this.parse(Keyword::SelfLower).ok()?;
+                this.parse(TokenKind::SelfLower).ok()?;
                 Some((ref_, mut_))
             }) {
                 if !first {
@@ -541,7 +547,7 @@ impl<'src> Parser<'_, 'src> {
 
         let ty = self.parse_ty()?;
 
-        let (trait_ref, self_ty) = if self.consume(Keyword::For) {
+        let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
             let self_ty = match self.consume(TokenKind::DoubleDot) {
                 // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
                 true => ast::Ty::Error,
@@ -829,7 +835,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
         // To kept in sync with `Self::begins_visibility`.
 
-        if !self.consume(Keyword::Pub) {
+        if !self.consume(TokenKind::Pub) {
             return Ok(ast::Visibility::Inherited);
         }
 
@@ -839,15 +845,19 @@ impl<'src> Parser<'_, 'src> {
             && let Some(keyword) = self.look_ahead(1, |token| self.as_keyword(token).ok())
         {
             let path = match keyword {
-                Keyword::In => {
+                TokenKind::In => {
                     self.advance();
                     self.advance();
                     Some(self.parse_path()?)
                 }
-                Keyword::Crate | Keyword::Super | Keyword::SelfLower => {
+                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
                     self.advance();
                     self.advance();
-                    Some(ast::Path::ident(keyword.to_str()))
+                    // FIXME: Hacky
+                    Some(ast::Path::ident(match keyword.repr() {
+                        crate::token::Repr::Src(src) => src,
+                        _ => unreachable!(),
+                    }))
                 }
                 _ => None,
             };
@@ -863,7 +873,7 @@ impl<'src> Parser<'_, 'src> {
     fn begins_visibility(&self) -> bool {
         // To kept in sync with `Self::parse_visibility`.
 
-        self.as_keyword(self.token) == Ok(Keyword::Pub)
+        self.token.kind == TokenKind::Pub
     }
 }
 

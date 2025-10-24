@@ -1,17 +1,16 @@
 use crate::{
     edition::Edition,
-    span::Span,
+    span::{ByteIndex, Span},
     token::{Token, TokenKind},
 };
-use iter::PeekableCharIndices;
 
 pub(crate) fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
     let offset = strip_shebang.apply(source, edition);
-    let mut chars = PeekableCharIndices::new(source, offset);
+    let mut chars = Lexer::new(source, offset, edition);
     let mut tokens = Vec::new();
 
     loop {
-        let token = chars.lex(edition);
+        let token = chars.lex();
 
         if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment = token.kind
         {
@@ -39,10 +38,10 @@ impl StripShebang {
     fn apply(self, source: &str, edition: Edition) -> usize {
         let Self::Yes = self else { return 0 };
         let Some(suffix) = source.strip_prefix("#!") else { return 0 };
-        let mut chars = PeekableCharIndices::new(suffix, 0);
+        let mut lexer = Lexer::new(suffix, 0, edition);
 
         loop {
-            let token = chars.lex(edition);
+            let token = lexer.lex();
 
             if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment =
                 token.kind
@@ -59,8 +58,18 @@ impl StripShebang {
     }
 }
 
-impl iter::PeekableCharIndices<'_> {
-    fn lex(&mut self, edition: Edition) -> Token {
+struct Lexer<'src> {
+    source: &'src str,
+    edition: Edition,
+    chars: iter::PeekableCharIndices<'src>,
+}
+
+impl<'src> Lexer<'src> {
+    fn new(source: &'src str, offset: usize, edition: Edition) -> Self {
+        Self { source, edition, chars: iter::PeekableCharIndices::new(source, offset) }
+    }
+
+    fn lex(&mut self) -> Token {
         let Some((start, char)) = self.next() else {
             let index = self.index();
             return Token::new(TokenKind::EndOfInput, Span::new(index, index));
@@ -127,23 +136,23 @@ impl iter::PeekableCharIndices<'_> {
                 }
                 Some('r') => {
                     self.advance();
-                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Byte)
+                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Byte, start)
                 }
-                _ => self.fin_lex_ident(),
+                _ => self.fin_lex_ident_or_keyword(start),
             },
-            'c' if edition >= Edition::Rust2021 => match self.peek() {
+            'c' if self.edition >= Edition::Rust2021 => match self.peek() {
                 Some('"') => {
                     self.advance();
                     self.fin_lex_str_lit(SkipBackslashes::Yes)
                 }
                 Some('r') => {
                     self.advance();
-                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Cee)
+                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Cee, start)
                 }
-                _ => self.fin_lex_ident(),
+                _ => self.fin_lex_ident_or_keyword(start),
             },
-            'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal),
-            IdentStart!() => self.fin_lex_ident(),
+            'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal, start),
+            IdentStart!() => self.fin_lex_ident_or_keyword(start),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -339,7 +348,7 @@ impl iter::PeekableCharIndices<'_> {
     }
 
     // FIXME: Do the 256 `#` max validation in the parser.
-    fn fin_lex_raw_str_lit_or_ident(&mut self, kind: RawStrKind) -> TokenKind {
+    fn fin_lex_raw_str_lit_or_ident(&mut self, kind: RawStrKind, start: ByteIndex) -> TokenKind {
         match self.peek() {
             Some('"') => {
                 self.advance();
@@ -352,7 +361,7 @@ impl iter::PeekableCharIndices<'_> {
                     && let Some(IdentStart!()) = self.peek()
                 {
                     self.advance();
-                    return self.fin_lex_ident();
+                    return self.fin_lex_ident_or_keyword(start);
                 }
 
                 let mut open = 1usize;
@@ -383,7 +392,7 @@ impl iter::PeekableCharIndices<'_> {
 
                 TokenKind::StrLit
             }
-            _ => self.fin_lex_ident(),
+            _ => self.fin_lex_ident_or_keyword(start),
         }
     }
 
@@ -403,12 +412,80 @@ impl iter::PeekableCharIndices<'_> {
         TokenKind::StrLit
     }
 
-    fn fin_lex_ident(&mut self) -> TokenKind {
+    fn fin_lex_ident_or_keyword(&mut self, start: ByteIndex) -> TokenKind {
         while let Some(IdentMiddle![]) = self.peek() {
             self.advance();
         }
 
-        TokenKind::Ident
+        match self.source[Span::new(start, self.index()).range()] {
+            "Self" => TokenKind::SelfUpper,
+            "_" => TokenKind::Underscore,
+            "abstract" => TokenKind::Abstract,
+            "as" => TokenKind::As,
+            "async" if self.edition >= Edition::Rust2018 => TokenKind::Async,
+            "await" if self.edition >= Edition::Rust2018 => TokenKind::Await,
+            "become" => TokenKind::Become,
+            "box" => TokenKind::Box,
+            "break" => TokenKind::Break,
+            "const" => TokenKind::Const,
+            "continue" => TokenKind::Continue,
+            "crate" => TokenKind::Crate,
+            "do" => TokenKind::Do,
+            "dyn" if self.edition >= Edition::Rust2018 => TokenKind::Dyn,
+            "else" => TokenKind::Else,
+            "enum" => TokenKind::Enum,
+            "extern" => TokenKind::Extern,
+            "false" => TokenKind::False,
+            "final" => TokenKind::Final,
+            "fn" => TokenKind::Fn,
+            "for" => TokenKind::For,
+            "gen" if self.edition >= Edition::Rust2024 => TokenKind::Gen,
+            "if" => TokenKind::If,
+            "impl" => TokenKind::Impl,
+            "in" => TokenKind::In,
+            "let" => TokenKind::Let,
+            "loop" => TokenKind::Loop,
+            "macro" => TokenKind::Macro,
+            "match" => TokenKind::Match,
+            "mod" => TokenKind::Mod,
+            "move" => TokenKind::Move,
+            "mut" => TokenKind::Mut,
+            "override" => TokenKind::Override,
+            "priv" => TokenKind::Priv,
+            "pub" => TokenKind::Pub,
+            "ref" => TokenKind::Ref,
+            "return" => TokenKind::Return,
+            "self" => TokenKind::SelfLower,
+            "static" => TokenKind::Static,
+            "struct" => TokenKind::Struct,
+            "super" => TokenKind::Super,
+            "trait" => TokenKind::Trait,
+            "true" => TokenKind::True,
+            "try" if self.edition >= Edition::Rust2018 => TokenKind::Try,
+            "type" => TokenKind::Type,
+            "typeof" => TokenKind::Typeof,
+            "unsafe" => TokenKind::Unsafe,
+            "use" => TokenKind::Use,
+            "virtual" => TokenKind::Virtual,
+            "where" => TokenKind::Where,
+            "while" => TokenKind::While,
+            "yield" => TokenKind::Yield,
+            _ => TokenKind::Ident,
+        }
+    }
+}
+
+impl<'src> std::ops::Deref for Lexer<'src> {
+    type Target = iter::PeekableCharIndices<'src>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.chars
+    }
+}
+
+impl<'src> std::ops::DerefMut for Lexer<'src> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.chars
     }
 }
 

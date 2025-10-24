@@ -1,6 +1,5 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError,
-    keyword::Keyword, pat::OrPolicy,
+    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy,
 };
 use crate::ast;
 
@@ -27,13 +26,13 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Stmt::Item(self.parse_item()?));
         }
 
-        if self.consume(Keyword::Let) {
+        if self.consume(TokenKind::Let) {
             let pat = self.parse_pat(OrPolicy::Forbidden)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             // FIXME: Proper diagnostic for the !else_may_follow case.
             let body = if self.consume(TokenKind::SingleEquals) {
                 let body = self.parse_expr()?;
-                let alternate = if let Ok(Keyword::Else) = self.as_keyword(self.token)
+                let alternate = if let TokenKind::Else = self.token.kind
                     && else_may_follow(&body.kind)
                 {
                     self.advance();
