@@ -214,6 +214,7 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
+    // FIXME: Move into mod expr or a new expr::const_arg
     pub(crate) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_const_arg`.
 
@@ -222,34 +223,35 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Num(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)).into());
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Str(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)).into());
             }
             TokenKind::CharLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
                 // FIXME: Validate the char lit.
-                return Ok(ast::Expr::Lit(ast::Lit::Char(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)).into());
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Bare,
                     Box::new(self.fin_parse_block_expr()?),
-                ));
+                )
+                .into());
             }
             TokenKind::Ident => match self.as_keyword(self.token) {
                 Ok(Keyword::False) => {
                     self.advance();
-                    return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
+                    return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)).into());
                 }
                 Ok(Keyword::True) => {
                     self.advance();
-                    return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
+                    return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)).into());
                 }
                 _ => {}
             },

@@ -173,7 +173,7 @@ impl<'src> Parser<'_, 'src> {
             }
             Op::DoubleBorrow => {
                 let borrow = self.fin_parse_borrow_expr(right_level, structs)?;
-                return Ok(ast::Expr::Borrow(ast::Mutability::Not, Box::new(borrow)));
+                return Ok(ast::ExprKind::Borrow(ast::Mutability::Not, Box::new(borrow)).into());
             }
             Op::RangeInclusive => {
                 return self.fin_parse_range_inclusive_expr(None, right_level, structs);
@@ -185,7 +185,7 @@ impl<'src> Parser<'_, 'src> {
         };
 
         let right = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        Ok(ast::Expr::UnOp(ast_op, Box::new(right)))
+        Ok(ast::ExprKind::UnOp(ast_op, Box::new(right)).into())
     }
 
     fn fin_parse_op_expr(
@@ -211,11 +211,11 @@ impl<'src> Parser<'_, 'src> {
             Op::BitXorAssign => ast::BinOp::BitXorAssign,
             Op::Call => {
                 let args = self.fin_parse_fn_args()?;
-                return Ok(ast::Expr::Call(Box::new(left), args));
+                return Ok(ast::ExprKind::Call(Box::new(left), args).into());
             }
             Op::Cast => {
                 let ty = self.parse_ty()?;
-                return Ok(ast::Expr::Cast(Box::new(left), Box::new(ty)));
+                return Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into());
             }
             Op::Div => ast::BinOp::Div,
             Op::DivAssign => ast::BinOp::DivAssign,
@@ -226,9 +226,9 @@ impl<'src> Parser<'_, 'src> {
             Op::Ge => ast::BinOp::Ge,
             Op::Gt => ast::BinOp::Gt,
             Op::Index => {
-                let index = self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                let index = self.parse_expr()?;
                 self.parse(TokenKind::CloseSquareBracket)?;
-                return Ok(ast::Expr::Index(Box::new(left), Box::new(index)));
+                return Ok(ast::ExprKind::Index(Box::new(left), Box::new(index)).into());
             }
             Op::Le => ast::BinOp::Le,
             Op::Lt => ast::BinOp::Lt,
@@ -254,13 +254,13 @@ impl<'src> Parser<'_, 'src> {
             Op::RemAssign => ast::BinOp::RemAssign,
             Op::Sub => ast::BinOp::Sub,
             Op::SubAssign => ast::BinOp::SubAssign,
-            Op::Try => return Ok(ast::Expr::Try(Box::new(left))),
+            Op::Try => return Ok(ast::ExprKind::Try(Box::new(left)).into()),
             _ => unreachable!(),
         };
 
         let right =
             self.parse_expr_at_level(op.right_level().unwrap(), structs, LetPolicy::Forbidden)?;
-        Ok(ast::Expr::BinOp(ast_op, Box::new(left), Box::new(right)))
+        Ok(ast::ExprKind::BinOp(ast_op, Box::new(left), Box::new(right)).into())
     }
 
     fn fin_parse_field_or_method_call_expr(
@@ -271,7 +271,7 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::NumLit => {
                 let ident = self.source(self.token.span);
                 self.advance();
-                Ok(ast::Expr::Field(Box::new(left), ident))
+                Ok(ast::ExprKind::Field(Box::new(left), ident).into())
             }
             _ if let Some(ident) = self.as_common_ident(self.token) => {
                 self.advance();
@@ -279,7 +279,7 @@ impl<'src> Parser<'_, 'src> {
                 let gen_args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
                 Ok(if self.consume(TokenKind::OpenRoundBracket) {
                     let args = self.fin_parse_fn_args()?;
-                    ast::Expr::MethodCall(Box::new(ast::MethodCallExpr {
+                    ast::ExprKind::MethodCall(Box::new(ast::MethodCallExpr {
                         receiver: left,
                         seg: ast::PathSeg { ident, args: gen_args },
                         args,
@@ -289,8 +289,9 @@ impl<'src> Parser<'_, 'src> {
                         gen_args_start.until(self.token.span),
                     ));
                 } else {
-                    ast::Expr::Field(Box::new(left), ident)
-                })
+                    ast::ExprKind::Field(Box::new(left), ident)
+                }
+                .into())
             }
             _ => {
                 return Err(ParseError::UnexpectedToken(
@@ -303,7 +304,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
         self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
-            this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
+            this.parse_expr()
         })
     }
 
@@ -314,7 +315,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let mut_ = self.parse_mutability();
         let expr = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        Ok(ast::Expr::Borrow(mut_, Box::new(expr)))
+        Ok(ast::ExprKind::Borrow(mut_, Box::new(expr)).into())
     }
 
     fn fin_parse_range_exclusive_expr(
@@ -328,7 +329,7 @@ impl<'src> Parser<'_, 'src> {
             .begins_expr()
             .then(|| self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden))
             .transpose()?;
-        Ok(ast::Expr::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive))
+        Ok(ast::ExprKind::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive).into())
     }
 
     fn fin_parse_range_inclusive_expr(
@@ -338,31 +339,46 @@ impl<'src> Parser<'_, 'src> {
         structs: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
         let right = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        return Ok(ast::Expr::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive));
+        return Ok(ast::ExprKind::Range(
+            left,
+            Some(Box::new(right)),
+            ast::RangeExprKind::Inclusive,
+        )
+        .into());
     }
 
-    #[expect(clippy::too_many_lines)]
     fn parse_lower_expr(
         &mut self,
         structs: StructPolicy,
         lets: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
+        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        let kind = self.parse_lower_expr_kind(structs, lets)?;
+        Ok(ast::Expr { attrs, kind })
+    }
+
+    #[expect(clippy::too_many_lines)]
+    fn parse_lower_expr_kind(
+        &mut self,
+        structs: StructPolicy,
+        lets: LetPolicy,
+    ) -> Result<ast::ExprKind<'src>> {
         match self.token.kind {
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Num(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)));
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Str(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)));
             }
             TokenKind::CharLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
                 // FIXME: Validate that the char lit only contains one scalar.
-                return Ok(ast::Expr::Lit(ast::Lit::Char(lit)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
             TokenKind::SinglePipe => {
                 self.advance();
@@ -377,14 +393,13 @@ impl<'src> Parser<'_, 'src> {
                 let mut elems = Vec::new();
 
                 while !self.consume(TokenKind::CloseSquareBracket) {
-                    let elem =
-                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                    let elem = self.parse_expr()?;
 
                     if elems.is_empty() && self.consume(TokenKind::Semicolon) {
                         let count = self.parse_expr()?;
                         self.parse(TokenKind::CloseSquareBracket)?;
 
-                        return Ok(ast::Expr::Repeat(Box::new(elem), Box::new(count)));
+                        return Ok(ast::ExprKind::Repeat(Box::new(elem), Box::new(count)));
                     }
 
                     elems.push(elem);
@@ -394,11 +409,11 @@ impl<'src> Parser<'_, 'src> {
                     }
                 }
 
-                return Ok(ast::Expr::Array(elems));
+                return Ok(ast::ExprKind::Array(elems));
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Bare,
                     Box::new(self.fin_parse_block_expr()?),
                 ));
@@ -406,9 +421,9 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
-                    |this| this.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden),
-                    ast::Expr::Grouped,
-                    ast::Expr::Tup,
+                    |this| this.parse_expr(),
+                    |expr| ast::ExprKind::Grouped(expr),
+                    |exprs| ast::ExprKind::Tuple(exprs),
                 );
             }
             _ => {}
@@ -417,13 +432,13 @@ impl<'src> Parser<'_, 'src> {
         match self.as_keyword(self.token) {
             Ok(Keyword::Underscore) => {
                 self.advance();
-                return Ok(ast::Expr::Wildcard);
+                return Ok(ast::ExprKind::Wildcard);
             }
             // FIXME: Also support async move? closures.
             Ok(Keyword::Async) => {
                 self.advance();
                 let gen_ = self.consume(Keyword::Gen);
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     match gen_ {
                         true => ast::BlockKind::AsyncGen,
                         false => ast::BlockKind::Async,
@@ -440,17 +455,16 @@ impl<'src> Parser<'_, 'src> {
                 {
                     // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
                     //       Add test where the break is inside an if!
-                    let expr =
-                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                    let expr = self.parse_expr()?;
                     Some(Box::new(expr))
                 } else {
                     None
                 };
-                return Ok(ast::Expr::Break(label, expr));
+                return Ok(ast::ExprKind::Break(label, expr));
             }
             Ok(Keyword::Const) => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Const,
                     Box::new(self.parse_block_expr()?),
                 ));
@@ -458,11 +472,11 @@ impl<'src> Parser<'_, 'src> {
             Ok(Keyword::Continue) => {
                 self.advance();
                 // FIXME: Parse optional label.
-                return Ok(ast::Expr::Continue);
+                return Ok(ast::ExprKind::Continue);
             }
             Ok(Keyword::False) => {
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Bool(false)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)));
             }
             // FIXME: Also support closure expr with binder.
             Ok(Keyword::For) => {
@@ -471,7 +485,7 @@ impl<'src> Parser<'_, 'src> {
                 self.parse(Keyword::In)?;
                 let expr = self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                 let body = self.parse_block_expr()?;
-                return Ok(ast::Expr::ForLoop(Box::new(ast::ForLoopExpr {
+                return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr {
                     pat,
                     head: expr,
                     body,
@@ -479,7 +493,7 @@ impl<'src> Parser<'_, 'src> {
             }
             Ok(Keyword::Gen) => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Gen,
                     Box::new(self.parse_block_expr()?),
                 ));
@@ -504,12 +518,12 @@ impl<'src> Parser<'_, 'src> {
                     }
 
                     // FIXME: Think about this again. StructPolicy::Allowed?
-                    Some(self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?)
+                    Some(self.parse_expr()?)
                 } else {
                     None
                 };
 
-                return Ok(ast::Expr::If(Box::new(ast::IfExpr {
+                return Ok(ast::ExprKind::If(Box::new(ast::IfExpr {
                     condition,
                     consequent,
                     alternate,
@@ -521,11 +535,11 @@ impl<'src> Parser<'_, 'src> {
                 self.parse(TokenKind::SingleEquals)?;
                 // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
                 let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
-                return Ok(ast::Expr::Let(Box::new(ast::LetExpr { pat, body: expr })));
+                return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body: expr })));
             }
             Ok(Keyword::Loop) => {
                 self.advance();
-                return Ok(ast::Expr::Loop(Box::new(self.parse_block_expr()?)));
+                return Ok(ast::ExprKind::Loop(Box::new(self.parse_block_expr()?)));
             }
             Ok(Keyword::Match) => {
                 self.advance();
@@ -542,10 +556,9 @@ impl<'src> Parser<'_, 'src> {
                     let pat = self.parse_pat(OrPolicy::Allowed)?;
                     self.parse(TokenKind::WideArrow)?;
 
-                    let body =
-                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?;
+                    let body = self.parse_expr()?;
 
-                    if self.token.kind == DELIMITER || !body.needs_comma_as_match_arm_body() {
+                    if self.token.kind == DELIMITER || !body.kind.needs_comma_as_match_arm_body() {
                         self.consume(TokenKind::Comma);
                     } else {
                         self.parse(TokenKind::Comma)?;
@@ -554,7 +567,7 @@ impl<'src> Parser<'_, 'src> {
                     arms.push(ast::MatchArm { attrs, pat, body });
                 }
 
-                return Ok(ast::Expr::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
+                return Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
             }
             Ok(Keyword::Move) => {
                 self.advance();
@@ -571,29 +584,24 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
                 //       Add test where the break is inside an if!
-                let expr = self
-                    .begins_expr()
-                    .then(|| {
-                        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)
-                            .map(Box::new)
-                    })
-                    .transpose()?;
-                return Ok(ast::Expr::Return(expr));
+                let expr =
+                    self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                return Ok(ast::ExprKind::Return(expr));
             }
             Ok(Keyword::True) => {
                 self.advance();
-                return Ok(ast::Expr::Lit(ast::Lit::Bool(true)));
+                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)));
             }
             Ok(Keyword::Try) => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Try,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
             Ok(Keyword::Unsafe) => {
                 self.advance();
-                return Ok(ast::Expr::Block(
+                return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Unsafe,
                     Box::new(self.parse_block_expr()?),
                 ));
@@ -603,7 +611,7 @@ impl<'src> Parser<'_, 'src> {
                 let condition =
                     self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
                 let body = self.parse_block_expr()?;
-                return Ok(ast::Expr::While(Box::new(ast::WhileExpr { condition, body })));
+                return Ok(ast::ExprKind::While(Box::new(ast::WhileExpr { condition, body })));
             }
             _ => {}
         }
@@ -620,9 +628,7 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 
-                    // FIXME: Proper error
-
-                    return Ok(ast::Expr::MacroCall(Box::new(ast::MacroCall {
+                    return Ok(ast::ExprKind::MacroCall(Box::new(ast::MacroCall {
                         path,
                         bracket,
                         stream,
@@ -639,24 +645,19 @@ impl<'src> Parser<'_, 'src> {
                             let binder = this.parse_common_ident()?;
                             let body = this
                                 .consume(TokenKind::SingleColon)
-                                .then(|| {
-                                    this.parse_expr_where(
-                                        StructPolicy::Allowed,
-                                        LetPolicy::Forbidden,
-                                    )
-                                })
+                                .then(|| this.parse_expr())
                                 .transpose()?;
                             // FIXME: rest / base
                             Ok(ast::StructExprField { binder, body })
                         },
                     )?;
 
-                    return Ok(ast::Expr::Struct(Box::new(ast::StructExpr { path, fields })));
+                    return Ok(ast::ExprKind::Struct(Box::new(ast::StructExpr { path, fields })));
                 }
                 _ => {}
             }
 
-            return Ok(ast::Expr::Path(Box::new(path)));
+            return Ok(ast::ExprKind::Path(Box::new(path)));
         }
 
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Expr))
@@ -686,7 +687,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::BlockExpr { attrs, stmts })
     }
 
-    fn fin_parse_closure_expr(&mut self, kind: ast::ClosureKind) -> Result<ast::Expr<'src>> {
+    fn fin_parse_closure_expr(&mut self, kind: ast::ClosureKind) -> Result<ast::ExprKind<'src>> {
         // FIXME: Maybe reuse parse_fn_params smh?
         let params = self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
             let pat = this.parse_pat(OrPolicy::Forbidden)?;
@@ -697,11 +698,14 @@ impl<'src> Parser<'_, 'src> {
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         let body = match ret_ty {
-            Some(_) => ast::Expr::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?)),
-            None => self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden)?,
+            Some(_) => {
+                ast::ExprKind::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?))
+                    .into()
+            }
+            None => self.parse_expr()?,
         };
 
-        Ok(ast::Expr::Closure(Box::new(ast::ClosureExpr { kind, params, ret_ty, body })))
+        Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr { kind, params, ret_ty, body })))
     }
 }
 

@@ -7,6 +7,8 @@ use crate::{
 };
 use std::assert_matches::assert_matches;
 
+// FIXME: Replace these tests with golden tests of ~debug fmt'ed nodes (custom fmt, derived, compact)
+
 fn parse_file(source: &str, edition: Edition) -> super::Result<ast::File<'_>> {
     super::parse(&lex(source, edition, StripShebang::Yes), source, edition)
 }
@@ -55,17 +57,32 @@ fn file_empty() {
 fn expr_double_borrow_and_double_borrow() {
     assert_matches!(
         parse_expr("&&0&&&&1", Rust2015),
-        Ok(ast::Expr::BinOp(
-            ast::BinOp::And,
-            deref!(ast::Expr::Borrow(
-                ast::Mutability::Not,
-                deref!(ast::Expr::Borrow(ast::Mutability::Not, _))
-            )),
-            deref!(ast::Expr::Borrow(
-                ast::Mutability::Not,
-                deref!(ast::Expr::Borrow(ast::Mutability::Not, _))
-            ))
-        ))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::And,
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Borrow(
+                        ast::Mutability::Not,
+                        deref!(ast::Expr {
+                            kind: ast::ExprKind::Borrow(ast::Mutability::Not, _),
+                            ..
+                        })
+                    ),
+                    ..
+                }),
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Borrow(
+                        ast::Mutability::Not,
+                        deref!(ast::Expr {
+                            kind: ast::ExprKind::Borrow(ast::Mutability::Not, _),
+                            ..
+                        }),
+                    ),
+                    ..
+                })
+            ),
+            ..
+        }),
     );
 }
 
@@ -73,16 +90,22 @@ fn expr_double_borrow_and_double_borrow() {
 fn expr_or_nullary_closure() {
     assert_matches!(
         parse_expr("()||||()", Rust2015),
-        Ok(ast::Expr::BinOp(
-            ast::BinOp::Or,
-            deref!(ast::Expr::Tup(deref!([]))),
-            deref!(ast::Expr::Closure(deref!(ast::ClosureExpr {
-                kind: ast::ClosureKind::Normal,
-                params: deref!([]),
-                ret_ty: None,
-                body: ast::Expr::Tup(deref!([]))
-            })))
-        ))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Or,
+                deref!(ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }),
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Closure(deref!(ast::ClosureExpr {
+                        kind: ast::ClosureKind::Normal,
+                        params: deref!([]),
+                        ret_ty: None,
+                        body: ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }
+                    })),
+                    ..
+                })
+            ),
+            ..
+        })
     );
 }
 
@@ -127,27 +150,36 @@ fn pat_false_angle_gen_args() {
 fn expr_angle_gen_args() {
     assert_matches!(
         parse_expr("f::<i32>()", Rust2015),
-        Ok(ast::Expr::Call(
-            deref!(ast::Expr::Path(ast::ExtPath {
-                ext: None,
-                path: ast::Path {
-                    segs: deref!([ast::PathSeg {
-                        ident: "f",
-                        args: Some(ast::GenericArgs::Angle(deref!([
-                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Path(
-                                ast::ExtPath {
-                                    ext: None,
-                                    path: ast::Path {
-                                        segs: deref!([ast::PathSeg { ident: "i32", args: None }])
-                                    },
-                                }
-                            )))
-                        ])))
-                    }])
-                }
-            })),
-            deref!([])
-        ))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Call(
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Path(ast::ExtPath {
+                        ext: None,
+                        path: ast::Path {
+                            segs: deref!([ast::PathSeg {
+                                ident: "f",
+                                args: Some(ast::GenericArgs::Angle(deref!([
+                                    ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
+                                        ast::Ty::Path(ast::ExtPath {
+                                            ext: None,
+                                            path: ast::Path {
+                                                segs: deref!([ast::PathSeg {
+                                                    ident: "i32",
+                                                    args: None
+                                                }])
+                                            },
+                                        })
+                                    ))
+                                ])))
+                            }])
+                        }
+                    }),
+                    ..
+                }),
+                deref!([])
+            ),
+            ..
+        })
     );
 }
 
@@ -192,12 +224,13 @@ fn ty_angle_gen_args() {
                         ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Lifetime(
                             "'a"
                         ))),
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tup(deref!(
-                            []
-                        )))),
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr::Lit(
-                            ast::Lit::Num("0")
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(
+                            deref!([])
                         ))),
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr {
+                            kind: ast::ExprKind::Lit(ast::Lit::Num("0")),
+                            ..
+                        })),
                     ])))
                 }])
             }
@@ -215,22 +248,25 @@ fn ty_angle_gen_args() {
 fn expr_angle_args_in_path_ext() {
     assert_matches!(
         parse_expr("<() as TraitRef<()>>::assoc", Rust2015),
-        Ok(ast::Expr::Path(ast::ExtPath {
-            ext: Some(ast::PathExt {
-                self_ty: ast::Ty::Tup(deref!([])),
-                trait_ref: Some(ast::Path {
-                    segs: deref!([ast::PathSeg {
-                        ident: "TraitRef",
-                        args: Some(ast::GenericArgs::Angle(deref!([
-                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tup(
-                                deref!([])
-                            )))
-                        ])))
-                    },])
-                })
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Path(ast::ExtPath {
+                ext: Some(ast::PathExt {
+                    self_ty: ast::Ty::Tuple(deref!([])),
+                    trait_ref: Some(ast::Path {
+                        segs: deref!([ast::PathSeg {
+                            ident: "TraitRef",
+                            args: Some(ast::GenericArgs::Angle(deref!([
+                                ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
+                                    ast::Ty::Tuple(deref!([]))
+                                ))
+                            ])))
+                        },])
+                    })
+                }),
+                path: ast::Path { segs: deref!([ast::PathSeg { ident: "assoc", args: None }]) }
             }),
-            path: ast::Path { segs: deref!([ast::PathSeg { ident: "assoc", args: None }]) }
-        }))
+            ..
+        })
     );
 }
 
@@ -241,18 +277,21 @@ fn expr_angle_args_in_path_ext() {
 fn expr_pat_paren_gen_args_arrow() {
     assert_matches!(
         parse_expr("x::()->()", Rust2015),
-        Ok(ast::Expr::Path(deref!(ast::ExtPath {
-            ext: None,
-            path: ast::Path {
-                segs: deref!([ast::PathSeg {
-                    ident: "x",
-                    args: Some(ast::GenericArgs::Paren {
-                        inputs: deref!([]),
-                        output: Some(ast::Ty::Tup(deref!([]))),
-                    })
-                }])
-            }
-        })))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Path(deref!(ast::ExtPath {
+                ext: None,
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: "x",
+                        args: Some(ast::GenericArgs::Paren {
+                            inputs: deref!([]),
+                            output: Some(ast::Ty::Tuple(deref!([]))),
+                        })
+                    }])
+                }
+            })),
+            ..
+        })
     );
 
     assert_matches!(
@@ -293,23 +332,26 @@ fn stmt_macro_call_gen_args() {
     assert_matches!(
         parse_stmt("path::to::<>::call::<>!();", Rust2015),
         Ok(ast::Stmt::Expr(
-            ast::Expr::MacroCall(deref!(ast::MacroCall {
-                path: ast::Path {
-                    segs: deref!([
-                        ast::PathSeg { ident: "path", args: None },
-                        ast::PathSeg {
-                            ident: "to",
-                            args: Some(ast::GenericArgs::Angle(deref!([])))
-                        },
-                        ast::PathSeg {
-                            ident: "call",
-                            args: Some(ast::GenericArgs::Angle(deref!([])))
-                        },
-                    ])
-                },
-                bracket: ast::Bracket::Round,
-                stream: deref!([]),
-            })),
+            ast::Expr {
+                kind: ast::ExprKind::MacroCall(deref!(ast::MacroCall {
+                    path: ast::Path {
+                        segs: deref!([
+                            ast::PathSeg { ident: "path", args: None },
+                            ast::PathSeg {
+                                ident: "to",
+                                args: Some(ast::GenericArgs::Angle(deref!([])))
+                            },
+                            ast::PathSeg {
+                                ident: "call",
+                                args: Some(ast::GenericArgs::Angle(deref!([])))
+                            },
+                        ])
+                    },
+                    bracket: ast::Bracket::Round,
+                    stream: deref!([]),
+                })),
+                ..
+            },
             ast::Semicolon::Yes
         ))
     );
@@ -327,31 +369,40 @@ fn stmts_const_item_const_block() {
 }",
             Rust2015
         ),
-        Ok(ast::Expr::Block(
-            ast::BlockKind::Bare,
-            deref!(ast::BlockExpr {
-                attrs: deref!([]),
-                stmts: deref!([
-                    ast::Stmt::Expr(
-                        ast::Expr::Block(
-                            ast::BlockKind::Const,
-                            deref!(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) })
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Block(
+                ast::BlockKind::Bare,
+                deref!(ast::BlockExpr {
+                    attrs: deref!([]),
+                    stmts: deref!([
+                        ast::Stmt::Expr(
+                            ast::Expr {
+                                kind: ast::ExprKind::Block(
+                                    ast::BlockKind::Const,
+                                    deref!(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) })
+                                ),
+                                ..
+                            },
+                            ast::Semicolon::No
                         ),
-                        ast::Semicolon::No
-                    ),
-                    ast::Stmt::Item(ast::Item {
-                        attrs: deref!([]),
-                        vis: ast::Visibility::Inherited,
-                        kind: ast::ItemKind::Fn(ast::FnItem {
-                            modifiers: ast::FnModifiers { constness: ast::Constness::Const, .. },
-                            binder: "f",
-                            ..
+                        ast::Stmt::Item(ast::Item {
+                            attrs: deref!([]),
+                            vis: ast::Visibility::Inherited,
+                            kind: ast::ItemKind::Fn(ast::FnItem {
+                                modifiers: ast::FnModifiers {
+                                    constness: ast::Constness::Const,
+                                    ..
+                                },
+                                binder: "f",
+                                ..
+                            }),
+                            span: _
                         }),
-                        span: _
-                    }),
-                ])
-            })
-        ))
+                    ])
+                })
+            ),
+            ..
+        })
     );
 }
 
@@ -366,44 +417,65 @@ fn expr_control_flow_ops_block() {
     );
     assert_matches!(
         parse_expr("if return {} {}", Rust2015),
-        Ok(ast::Expr::If(deref!(ast::IfExpr {
-            condition: ast::Expr::Return(Some(deref!(ast::Expr::Block(
-                ast::BlockKind::Bare,
-                ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
-            )))),
-            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
-            alternate: None
-        })))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+                condition: ast::Expr {
+                    kind: ast::ExprKind::Return(Some(deref!(ast::Expr {
+                        kind: ast::ExprKind::Block(
+                            ast::BlockKind::Bare,
+                            ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+                        ),
+                        ..
+                    }))),
+                    ..
+                },
+                consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+                alternate: None
+            })),
+            ..
+        })
     );
 
     // FIXME: Explainer, once I have one.
     assert_matches!(
         parse_expr("if break {}", Rust2015),
-        Ok(ast::Expr::If(deref!(ast::IfExpr {
-            condition: ast::Expr::Break(None, None),
-            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
-            alternate: None
-        })))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+                condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
+                consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+                alternate: None
+            })),
+            ..
+        })
     );
 
     assert_matches!(
         parse_expr("break {}", Rust2015),
-        Ok(ast::Expr::Break(
-            None,
-            Some(ast::Expr::Block(
-                ast::BlockKind::Bare,
-                ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
-            ))
-        ))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Break(
+                None,
+                Some(ast::Expr {
+                    kind: ast::ExprKind::Block(
+                        ast::BlockKind::Bare,
+                        ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+                    ),
+                    ..
+                })
+            ),
+            ..
+        })
     );
 
     assert_matches!(
         parse_expr("if continue {}", Rust2015),
-        Ok(ast::Expr::If(deref!(ast::IfExpr {
-            condition: ast::Expr::Continue,
-            consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
-            alternate: None
-        })))
+        Ok(ast::Expr {
+            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+                condition: ast::Expr { kind: ast::ExprKind::Continue, .. },
+                consequent: ast::BlockExpr { stmts: deref!([]), .. },
+                alternate: None
+            })),
+            ..
+        })
     );
 }
 
@@ -415,29 +487,32 @@ fn expr_control_flow_ops_block() {
 fn expr_qualified_struct_pat_in_for_loop() {
     assert_matches!(
         parse_expr("for<Ty as Trait>::AssocTy {} in () {}", Rust2015),
-        Ok(ast::Expr::ForLoop(deref!(ast::ForLoopExpr {
-            pat: ast::Pat::Struct(ast::StructPat {
-                path: ast::ExtPath {
-                    ext: Some(ast::PathExt {
-                        self_ty: ast::Ty::Path(ast::ExtPath {
-                            ext: None,
-                            path: ast::Path {
-                                segs: deref!([ast::PathSeg { ident: "Ty", args: None }])
-                            },
+        Ok(ast::Expr {
+            kind: ast::ExprKind::ForLoop(deref!(ast::ForLoopExpr {
+                pat: ast::Pat::Struct(ast::StructPat {
+                    path: ast::ExtPath {
+                        ext: Some(ast::PathExt {
+                            self_ty: ast::Ty::Path(ast::ExtPath {
+                                ext: None,
+                                path: ast::Path {
+                                    segs: deref!([ast::PathSeg { ident: "Ty", args: None }])
+                                },
+                            }),
+                            trait_ref: Some(ast::Path {
+                                segs: deref!([ast::PathSeg { ident: "Trait", args: None }])
+                            })
                         }),
-                        trait_ref: Some(ast::Path {
-                            segs: deref!([ast::PathSeg { ident: "Trait", args: None }])
-                        })
-                    }),
-                    path: ast::Path {
-                        segs: deref!([ast::PathSeg { ident: "AssocTy", args: None }])
-                    }
-                },
-                fields: deref!([]),
-                rest: false
-            }),
+                        path: ast::Path {
+                            segs: deref!([ast::PathSeg { ident: "AssocTy", args: None }])
+                        }
+                    },
+                    fields: deref!([]),
+                    rest: false
+                }),
+                ..
+            })),
             ..
-        })))
+        })
     );
 }
 

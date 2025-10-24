@@ -8,7 +8,7 @@ impl Fmt for ast::Stmt<'_> {
             Self::Let(stmt) => stmt.fmt(cx),
             Self::Expr(expr, semi) => {
                 let needs_semi =
-                    matches!(semi, ast::Semicolon::Yes if expr.needs_semicolon_as_stmt());
+                    matches!(semi, ast::Semicolon::Yes if expr.kind.needs_semicolon_as_stmt());
                 expr.fmt(cx);
                 if needs_semi {
                     fmt!(cx, ";");

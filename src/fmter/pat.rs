@@ -12,7 +12,7 @@ impl Fmt for ast::Pat<'_> {
                 mut_.trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
-            Self::Tup(pats) => Tup(pats).fmt(cx),
+            Self::Tuple(pats) => Tup(pats).fmt(cx),
             Self::Grouped(pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);

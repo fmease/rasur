@@ -65,7 +65,7 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_grouped_or_tuple(
                     Self::parse_ty,
                     ast::Ty::Grouped,
-                    ast::Ty::Tup,
+                    ast::Ty::Tuple,
                 );
             }
             _ => {}

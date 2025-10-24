@@ -3,6 +3,18 @@ use crate::ast;
 
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, kind } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+        kind.fmt(cx);
+    }
+}
+
+impl Fmt for ast::ExprKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::UnOp(op, expr) => {
                 // FIXME: Temporary: Don't render unnecessary parentheses!
@@ -112,7 +124,7 @@ impl Fmt for ast::Expr<'_> {
             }
             Self::Closure(expr) => expr.fmt(cx),
             Self::ForLoop(expr) => expr.fmt(cx),
-            Self::Tup(exprs) => Tup(exprs).fmt(cx),
+            Self::Tuple(exprs) => Tup(exprs).fmt(cx),
             Self::Array(elems) => {
                 fmt!(cx, "[");
                 Punctuated::new(elems, ", ").fmt(cx);
@@ -174,7 +186,7 @@ impl Fmt for ast::MatchExpr<'_> {
             cx.line_break();
             let mut arms = arms.into_iter().peekable();
             while let Some(arm) = arms.next() {
-                let needs_comma = arm.body.needs_comma_as_match_arm_body();
+                let needs_comma = arm.body.kind.needs_comma_as_match_arm_body();
                 arm.fmt(cx);
                 if needs_comma {
                     fmt!(cx, ",");

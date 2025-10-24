@@ -65,7 +65,7 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Tup(tys) => Tup(tys).fmt(cx),
+            Self::Tuple(tys) => Tup(tys).fmt(cx),
             Self::Grouped(ty) => {
                 fmt!(cx, "(");
                 ty.fmt(cx);

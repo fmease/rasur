@@ -189,7 +189,7 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_grouped_or_tuple(
                     |this| this.parse_pat(OrPolicy::Allowed),
                     ast::Pat::Grouped,
-                    ast::Pat::Tup,
+                    ast::Pat::Tuple,
                 );
             }
             TokenKind::OpenSquareBracket => {

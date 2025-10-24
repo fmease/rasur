@@ -34,7 +34,7 @@ impl<'src> Parser<'_, 'src> {
             let body = if self.consume(TokenKind::SingleEquals) {
                 let body = self.parse_expr()?;
                 let alternate = if let Ok(Keyword::Else) = self.as_keyword(self.token)
-                    && else_may_follow(&body)
+                    && else_may_follow(&body.kind)
                 {
                     self.advance();
                     Some(self.parse_block_expr()?)
@@ -53,7 +53,7 @@ impl<'src> Parser<'_, 'src> {
         if self.begins_expr() {
             let expr = self.parse_expr()?;
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
-            let semi = if self.token.kind == delimiter || !expr.needs_semicolon_as_stmt() {
+            let semi = if self.token.kind == delimiter || !expr.kind.needs_semicolon_as_stmt() {
                 match self.consume(TokenKind::Semicolon) {
                     true => ast::Semicolon::Yes,
                     false => ast::Semicolon::No,
@@ -75,41 +75,43 @@ impl<'src> Parser<'_, 'src> {
     }
 }
 
-fn else_may_follow(expr: &ast::Expr<'_>) -> bool {
+fn else_may_follow(expr: &ast::ExprKind<'_>) -> bool {
     match expr {
-        | ast::Expr::Array(_)
-        | ast::Expr::Call(..)
-        | ast::Expr::Cast(..)
-        | ast::Expr::Continue
-        | ast::Expr::Field(..)
-        | ast::Expr::Grouped(_)
-        | ast::Expr::Index(..)
-        | ast::Expr::Lit(_)
-        | ast::Expr::MethodCall(_)
-        | ast::Expr::Path(_)
-        | ast::Expr::Repeat(..)
-        | ast::Expr::Try(_)
-        | ast::Expr::Tup(_)
-        | ast::Expr::Wildcard => true,
-        | ast::Expr::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
-        | ast::Expr::Block(..)
-        | ast::Expr::ForLoop(_)
-        | ast::Expr::If(_)
-        | ast::Expr::Loop(_)
-        | ast::Expr::Match(_)
-        | ast::Expr::Struct(_)
-        | ast::Expr::While(_) => false,
-        ast::Expr::MacroCall(call) => match call.bracket {
+        | ast::ExprKind::Array(_)
+        | ast::ExprKind::Call(..)
+        | ast::ExprKind::Cast(..)
+        | ast::ExprKind::Continue
+        | ast::ExprKind::Field(..)
+        | ast::ExprKind::Grouped(_)
+        | ast::ExprKind::Index(..)
+        | ast::ExprKind::Lit(_)
+        | ast::ExprKind::MethodCall(_)
+        | ast::ExprKind::Path(_)
+        | ast::ExprKind::Repeat(..)
+        | ast::ExprKind::Try(_)
+        | ast::ExprKind::Tuple(_)
+        | ast::ExprKind::Wildcard => true,
+        | ast::ExprKind::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
+        | ast::ExprKind::Block(..)
+        | ast::ExprKind::ForLoop(_)
+        | ast::ExprKind::If(_)
+        | ast::ExprKind::Loop(_)
+        | ast::ExprKind::Match(_)
+        | ast::ExprKind::Struct(_)
+        | ast::ExprKind::While(_) => false,
+        | ast::ExprKind::MacroCall(call) => match call.bracket {
             ast::Bracket::Round | ast::Bracket::Square => true,
             ast::Bracket::Curly => false,
         },
-        ast::Expr::BinOp(.., expr) | ast::Expr::Borrow(_, expr) | ast::Expr::UnOp(_, expr) => {
-            else_may_follow(expr)
-        }
-        ast::Expr::Closure(expr) => else_may_follow(&expr.body),
-        ast::Expr::Let(expr) => else_may_follow(&expr.body),
-        ast::Expr::Break(_, expr) | ast::Expr::Range(_, expr, _) | ast::Expr::Return(expr) => {
-            expr.as_ref().is_none_or(|expr| else_may_follow(expr))
+        | ast::ExprKind::BinOp(.., expr)
+        | ast::ExprKind::Borrow(_, expr)
+        | ast::ExprKind::UnOp(_, expr) => else_may_follow(&expr.kind),
+        | ast::ExprKind::Closure(expr) => else_may_follow(&expr.body.kind),
+        | ast::ExprKind::Let(expr) => else_may_follow(&expr.body.kind),
+        | ast::ExprKind::Break(_, expr)
+        | ast::ExprKind::Range(_, expr, _)
+        | ast::ExprKind::Return(expr) => {
+            expr.as_ref().is_none_or(|expr| else_may_follow(&expr.kind))
         }
     }
 }

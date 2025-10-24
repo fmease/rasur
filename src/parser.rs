@@ -78,12 +78,12 @@ impl<'a, 'src> Parser<'a, 'src> {
         }
     }
 
-    fn fin_parse_grouped_or_tuple<T>(
+    fn fin_parse_grouped_or_tuple<T, U>(
         &mut self,
         parse: impl Fn(&mut Self) -> Result<T>,
-        grouped: impl FnOnce(Box<T>) -> T,
-        tuple: impl FnOnce(Vec<T>) -> T,
-    ) -> Result<T> {
+        grouped: impl FnOnce(Box<T>) -> U,
+        tuple: impl FnOnce(Vec<T>) -> U,
+    ) -> Result<U> {
         let mut nodes = Vec::new();
 
         const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;

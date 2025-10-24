@@ -4,7 +4,19 @@ use super::{
 };
 
 #[derive(Debug)]
-pub(crate) enum Expr<'src> {
+pub(crate) struct Expr<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) kind: ExprKind<'src>,
+}
+
+impl<'src> From<ExprKind<'src>> for Expr<'src> {
+    fn from(kind: ExprKind<'src>) -> Self {
+        Self { attrs: Vec::new(), kind }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(BlockKind, Box<BlockExpr<'src>>),
@@ -31,13 +43,13 @@ pub(crate) enum Expr<'src> {
     Return(Option<Box<Expr<'src>>>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
-    Tup(Vec<Expr<'src>>),
+    Tuple(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
     While(Box<WhileExpr<'src>>),
     Wildcard,
 }
 
-impl Expr<'_> {
+impl ExprKind<'_> {
     pub(crate) fn needs_semicolon_as_stmt(&self) -> bool {
         self.needs_delimiter(false)
     }
@@ -77,7 +89,7 @@ impl Expr<'_> {
             | Self::Return(_)
             | Self::Struct(_)
             | Self::Try(_)
-            | Self::Tup(_)
+            | Self::Tuple(_)
             | Self::UnOp(..)
             | Self::Wildcard => true,
         }

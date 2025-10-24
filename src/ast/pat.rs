@@ -12,7 +12,7 @@ pub(crate) enum Pat<'src> {
     Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
-    Tup(Vec<Pat<'src>>),
+    Tuple(Vec<Pat<'src>>),
     TupleStruct(Box<TupleStructPat<'src>>),
     Wildcard,
 }

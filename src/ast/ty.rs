@@ -12,7 +12,7 @@ pub(crate) enum Ty<'src> {
     Ptr(Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
     Slice(Box<Ty<'src>>),
-    Tup(Vec<Ty<'src>>),
+    Tuple(Vec<Ty<'src>>),
     Grouped(Box<Ty<'src>>),
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Error,
