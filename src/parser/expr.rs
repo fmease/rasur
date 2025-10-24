@@ -1,6 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, keyword::Keyword, one_of,
-    pat::OrPolicy, path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
+    path::GenericArgsMode,
 };
 use crate::ast;
 use std::cmp::Ordering;
@@ -28,47 +28,41 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
+        // `TokenKind::Let` isn't included here because let-exprs are but an impl detail.
         match self.token.kind {
-            | TokenKind::CharLit // Lit(Char)
-            | TokenKind::DoubleAmpersand // Borrow
-            | TokenKind::DoubleDot // Range(Exclusive)
-            | TokenKind::DoubleDotEquals // Range(Inclusive)
-            | TokenKind::DoublePipe // BinOp(Or), Closure
-            | TokenKind::NumLit // Lit(Num)
-            | TokenKind::OpenCurlyBracket // Block(Bare)
-            | TokenKind::OpenRoundBracket // Grouped, Tup
-            | TokenKind::OpenSquareBracket // Array
-            | TokenKind::SingleAmpersand // Borrow
-            | TokenKind::SingleAsterisk // UnOp(Deref)
-            | TokenKind::SingleBang // UnOp(Not)
-            | TokenKind::SingleHyphen // UnOp(Neg)
-            | TokenKind::SinglePipe // Closure
-            | TokenKind::StrLit => return true, // Lit(Str)
+            | TokenKind::Async
+            | TokenKind::Break
+            | TokenKind::CharLit
+            | TokenKind::Const
+            | TokenKind::Continue
+            | TokenKind::DoubleAmpersand
+            | TokenKind::DoubleDot
+            | TokenKind::DoubleDotEquals
+            | TokenKind::DoublePipe
+            | TokenKind::False
+            | TokenKind::For
+            | TokenKind::Gen
+            | TokenKind::If
+            | TokenKind::Loop
+            | TokenKind::Match
+            | TokenKind::Move
+            | TokenKind::NumLit
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::Return
+            | TokenKind::SingleAmpersand
+            | TokenKind::SingleAsterisk
+            | TokenKind::SingleBang
+            | TokenKind::SingleHyphen
+            | TokenKind::SinglePipe
+            | TokenKind::StrLit
+            | TokenKind::True
+            | TokenKind::Try
+            | TokenKind::Underscore
+            | TokenKind::Unsafe
+            | TokenKind::While => return true,
             _ => {}
-        }
-
-        // Keyword::Let isn't included here because Let-exprs are but an impl detail.
-        if let Ok(
-            Keyword::Underscore
-            | Keyword::Break
-            | Keyword::Const
-            | Keyword::Continue
-            | Keyword::False
-            | Keyword::For
-            | Keyword::If
-            | Keyword::Loop
-            | Keyword::Match
-            | Keyword::Move
-            | Keyword::Return
-            | Keyword::True
-            | Keyword::Unsafe
-            | Keyword::While
-            | Keyword::Async
-            | Keyword::Try
-            | Keyword::Gen,
-        ) = self.as_keyword(self.token)
-        {
-            return true;
         }
 
         if self.begins_ext_path() {
@@ -104,6 +98,7 @@ impl<'src> Parser<'_, 'src> {
         loop {
             let op = match self.token.kind {
                 TokenKind::AmpersandEquals => Op::BitAndAssign,
+                TokenKind::As => Op::Cast,
                 TokenKind::AsteriskEquals => Op::MulAssign,
                 TokenKind::BangEquals => Op::Ne,
                 TokenKind::CaretEquals => Op::BitXorAssign,
@@ -118,13 +113,11 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::DoublePipe => Op::Or,
                 TokenKind::GreaterThanEquals => Op::Ge,
                 TokenKind::HypenEquals => Op::SubAssign,
-                TokenKind::Ident if let Ok(Keyword::As) = self.as_keyword(self.token) => Op::Cast,
                 TokenKind::LessThanEquals => Op::Le,
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
                 TokenKind::PercentEquals => Op::RemAssign,
                 TokenKind::PipeEquals => Op::BitOrAssign,
-                TokenKind::SinglePlus => Op::Add,
                 TokenKind::PlusEquals => Op::AddAssign,
                 TokenKind::QuestionMark => Op::Try,
                 TokenKind::SingleAmpersand => Op::BitAnd,
@@ -137,6 +130,7 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::SingleLessThan => Op::Lt,
                 TokenKind::SinglePercent => Op::Rem,
                 TokenKind::SinglePipe => Op::BitOr,
+                TokenKind::SinglePlus => Op::Add,
                 TokenKind::SingleSlash => Op::Div,
                 TokenKind::SlashEquals => Op::DivAssign,
                 _ => break,
@@ -364,80 +358,10 @@ impl<'src> Parser<'_, 'src> {
         lets: LetPolicy,
     ) -> Result<ast::ExprKind<'src>> {
         match self.token.kind {
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)));
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)));
-            }
-            TokenKind::CharLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                // FIXME: Validate that the char lit only contains one scalar.
-                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
-            }
-            TokenKind::SinglePipe => {
-                self.advance();
-                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
-            }
-            TokenKind::DoublePipe => {
-                self.modify_in_place(TokenKind::SinglePipe);
-                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
-            }
-            TokenKind::OpenSquareBracket => {
-                self.advance();
-                let mut elems = Vec::new();
-
-                while !self.consume(TokenKind::CloseSquareBracket) {
-                    let elem = self.parse_expr()?;
-
-                    if elems.is_empty() && self.consume(TokenKind::Semicolon) {
-                        let count = self.parse_expr()?;
-                        self.parse(TokenKind::CloseSquareBracket)?;
-
-                        return Ok(ast::ExprKind::Repeat(Box::new(elem), Box::new(count)));
-                    }
-
-                    elems.push(elem);
-
-                    if self.token.kind != TokenKind::CloseSquareBracket {
-                        self.parse(TokenKind::Comma)?;
-                    }
-                }
-
-                return Ok(ast::ExprKind::Array(elems));
-            }
-            TokenKind::OpenCurlyBracket => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Bare,
-                    Box::new(self.fin_parse_block_expr()?),
-                ));
-            }
-            TokenKind::OpenRoundBracket => {
-                self.advance();
-                return self.fin_parse_grouped_or_tuple(
-                    |this| this.parse_expr(),
-                    |expr| ast::ExprKind::Grouped(expr),
-                    |exprs| ast::ExprKind::Tuple(exprs),
-                );
-            }
-            _ => {}
-        }
-
-        match self.as_keyword(self.token) {
-            Ok(Keyword::Underscore) => {
-                self.advance();
-                return Ok(ast::ExprKind::Wildcard);
-            }
             // FIXME: Also support async move? closures.
-            Ok(Keyword::Async) => {
+            TokenKind::Async => {
                 self.advance();
-                let gen_ = self.consume(Keyword::Gen);
+                let gen_ = self.consume(TokenKind::Gen);
                 return Ok(ast::ExprKind::Block(
                     match gen_ {
                         true => ast::BlockKind::AsyncGen,
@@ -446,7 +370,7 @@ impl<'src> Parser<'_, 'src> {
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Ok(Keyword::Break) => {
+            TokenKind::Break => {
                 self.advance();
                 let label = self.parse_common_lifetime()?.map(|ast::Lifetime(label)| label);
                 let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
@@ -462,27 +386,44 @@ impl<'src> Parser<'_, 'src> {
                 };
                 return Ok(ast::ExprKind::Break(label, expr));
             }
-            Ok(Keyword::Const) => {
+            TokenKind::CharLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                // FIXME: Validate that the char lit only contains one scalar.
+                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
+            }
+            TokenKind::Const => {
                 self.advance();
                 return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Const,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Ok(Keyword::Continue) => {
+            TokenKind::Continue => {
                 self.advance();
                 // FIXME: Parse optional label.
                 return Ok(ast::ExprKind::Continue);
             }
-            Ok(Keyword::False) => {
+            TokenKind::DoublePipe => {
+                self.modify_in_place(TokenKind::SinglePipe);
+                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
+            }
+            TokenKind::False => {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)));
             }
+            TokenKind::Gen => {
+                self.advance();
+                return Ok(ast::ExprKind::Block(
+                    ast::BlockKind::Gen,
+                    Box::new(self.parse_block_expr()?),
+                ));
+            }
             // FIXME: Also support closure expr with binder.
-            Ok(Keyword::For) => {
+            TokenKind::For => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
-                self.parse(Keyword::In)?;
+                self.parse(TokenKind::In)?;
                 let expr = self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Forbidden)?;
                 let body = self.parse_block_expr()?;
                 return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr {
@@ -491,31 +432,20 @@ impl<'src> Parser<'_, 'src> {
                     body,
                 })));
             }
-            Ok(Keyword::Gen) => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Gen,
-                    Box::new(self.parse_block_expr()?),
-                ));
-            }
-            Ok(Keyword::If) => {
+            TokenKind::If => {
                 self.advance();
 
                 let condition =
                     self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;
                 let consequent = self.parse_block_expr()?;
 
-                let alternate = if self.consume(Keyword::Else) {
-                    match self.token.kind {
-                        TokenKind::OpenCurlyBracket => {}
-                        TokenKind::Ident if let Ok(Keyword::If) = self.as_keyword(self.token) => {}
-                        _ => {
-                            return Err(ParseError::UnexpectedToken(
-                                self.token,
-                                one_of![TokenKind::OpenCurlyBracket, ExpectedFragment::Raw("if")],
-                            ));
-                        }
-                    }
+                let alternate = if self.consume(TokenKind::Else) {
+                    let (TokenKind::If | TokenKind::OpenCurlyBracket) = self.token.kind else {
+                        return Err(ParseError::UnexpectedToken(
+                            self.token,
+                            one_of![TokenKind::OpenCurlyBracket, TokenKind::If],
+                        ));
+                    };
 
                     // FIXME: Think about this again. StructPolicy::Allowed?
                     Some(self.parse_expr()?)
@@ -529,7 +459,7 @@ impl<'src> Parser<'_, 'src> {
                     alternate,
                 })));
             }
-            Ok(Keyword::Let) if let LetPolicy::Allowed = lets => {
+            TokenKind::Let if let LetPolicy::Allowed = lets => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
                 self.parse(TokenKind::SingleEquals)?;
@@ -537,11 +467,11 @@ impl<'src> Parser<'_, 'src> {
                 let expr = self.parse_expr_where(structs, LetPolicy::Forbidden)?;
                 return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body: expr })));
             }
-            Ok(Keyword::Loop) => {
+            TokenKind::Loop => {
                 self.advance();
                 return Ok(ast::ExprKind::Loop(Box::new(self.parse_block_expr()?)));
             }
-            Ok(Keyword::Match) => {
+            TokenKind::Match => {
                 self.advance();
 
                 let scrutinee =
@@ -569,10 +499,9 @@ impl<'src> Parser<'_, 'src> {
 
                 return Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
             }
-            Ok(Keyword::Move) => {
+            TokenKind::Move => {
                 self.advance();
-                // FIXME: Hack. Make+use `parse_relaxed(SinglePipe)` or `parse(TokenPrefix::Pipe)`
-                //        if we go for a `trait TokenClass` again.
+                // FIXME: Hack. Create+use `parse(TokenPrefix::Pipe)`
                 if self.token.kind == TokenKind::DoublePipe {
                     self.modify_in_place(TokenKind::SinglePipe);
                 } else {
@@ -580,7 +509,50 @@ impl<'src> Parser<'_, 'src> {
                 }
                 return self.fin_parse_closure_expr(ast::ClosureKind::Move);
             }
-            Ok(Keyword::Return) => {
+            TokenKind::NumLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)));
+            }
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                return Ok(ast::ExprKind::Block(
+                    ast::BlockKind::Bare,
+                    Box::new(self.fin_parse_block_expr()?),
+                ));
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+                return self.fin_parse_grouped_or_tuple(
+                    |this| this.parse_expr(),
+                    |expr| ast::ExprKind::Grouped(expr),
+                    |exprs| ast::ExprKind::Tuple(exprs),
+                );
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let mut elems = Vec::new();
+
+                while !self.consume(TokenKind::CloseSquareBracket) {
+                    let elem = self.parse_expr()?;
+
+                    if elems.is_empty() && self.consume(TokenKind::Semicolon) {
+                        let count = self.parse_expr()?;
+                        self.parse(TokenKind::CloseSquareBracket)?;
+
+                        return Ok(ast::ExprKind::Repeat(Box::new(elem), Box::new(count)));
+                    }
+
+                    elems.push(elem);
+
+                    if self.token.kind != TokenKind::CloseSquareBracket {
+                        self.parse(TokenKind::Comma)?;
+                    }
+                }
+
+                return Ok(ast::ExprKind::Array(elems));
+            }
+            TokenKind::Return => {
                 self.advance();
                 // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
                 //       Add test where the break is inside an if!
@@ -588,25 +560,38 @@ impl<'src> Parser<'_, 'src> {
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Return(expr));
             }
-            Ok(Keyword::True) => {
+            TokenKind::SinglePipe => {
+                self.advance();
+                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)));
+            }
+            TokenKind::True => {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)));
             }
-            Ok(Keyword::Try) => {
+            TokenKind::Try => {
                 self.advance();
                 return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Try,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Ok(Keyword::Unsafe) => {
+            TokenKind::Underscore => {
+                self.advance();
+                return Ok(ast::ExprKind::Wildcard);
+            }
+            TokenKind::Unsafe => {
                 self.advance();
                 return Ok(ast::ExprKind::Block(
                     ast::BlockKind::Unsafe,
                     Box::new(self.parse_block_expr()?),
                 ));
             }
-            Ok(Keyword::While) => {
+            TokenKind::While => {
                 self.advance();
                 let condition =
                     self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed)?;

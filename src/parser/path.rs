@@ -1,6 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix, error::ParseError,
-    keyword::Keyword, one_of,
+    ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix, error::ParseError, one_of,
 };
 use crate::ast;
 
@@ -47,7 +46,7 @@ impl<'src> Parser<'_, 'src> {
             let ty = self.parse_ty()?;
             // We're in a "type context" now and can parse generic args unambiguously.
             let trait_ref = self
-                .consume(Keyword::As)
+                .consume(TokenKind::As)
                 .then(|| self.parse_path::<ast::UnambiguousGenericArgs>())
                 .transpose()?;
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
@@ -89,8 +88,9 @@ impl<'src> Parser<'_, 'src> {
 
     // FIXME: Temporary API.
     pub(super) fn as_path_seg_ident(&self, token: Token) -> Option<ast::Ident<'src>> {
-        self.as_ident(token)
-            .filter(|ident| self.ident_as_keyword(ident).map_or(true, Keyword::is_path_seg))
+        // self.as_ident(token)
+        // .filter(|ident| self.ident_as_keyword(ident).map_or(true, TokenKind::is_path_seg))
+        todo!() // FIXME
     }
 
     fn parse_generic_args(
@@ -220,21 +220,20 @@ impl<'src> Parser<'_, 'src> {
 
         // FIXME: Leading dash (unary minus)
         match self.token.kind {
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)).into());
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)).into());
-            }
             TokenKind::CharLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
                 // FIXME: Validate the char lit.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)).into());
+            }
+            TokenKind::False => {
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)).into());
+            }
+            TokenKind::NumLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)).into());
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
@@ -244,17 +243,15 @@ impl<'src> Parser<'_, 'src> {
                 )
                 .into());
             }
-            TokenKind::Ident => match self.as_keyword(self.token) {
-                Ok(Keyword::False) => {
-                    self.advance();
-                    return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)).into());
-                }
-                Ok(Keyword::True) => {
-                    self.advance();
-                    return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)).into());
-                }
-                _ => {}
-            },
+            TokenKind::StrLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)).into());
+            }
+            TokenKind::True => {
+                self.advance();
+                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)).into());
+            }
             _ => {}
         }
 
@@ -267,13 +264,12 @@ impl<'src> Parser<'_, 'src> {
 
         // FIXME: Leading dash (unary minus)
         match self.token.kind {
-            TokenKind::OpenCurlyBracket
-            | TokenKind::StrLit
+            | TokenKind::CharLit
+            | TokenKind::False
             | TokenKind::NumLit
-            | TokenKind::CharLit => true,
-            TokenKind::Ident => {
-                matches!(self.as_keyword(self.token), Ok(Keyword::False | Keyword::True))
-            }
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::StrLit
+            | TokenKind::True => true,
             _ => false,
         }
     }
@@ -321,8 +317,8 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 path.segs.push(ast::PathSeg::ident(ident));
                 let binder = self
-                    .consume(Keyword::As)
-                    .then(|| self.parse_common_ident_or(Keyword::Underscore))
+                    .consume(TokenKind::As)
+                    .then(|| self.parse_common_ident_or(TokenKind::Underscore))
                     .transpose()?;
                 ast::PathTreeKind::Stump(binder)
             }
