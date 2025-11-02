@@ -26,15 +26,22 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(param);
             }
 
-            let should_parse_pat =
-                matches!(mode, FnParamMode::Required) || this.is_restricted_param_pat();
-
-            // FIXME: Variadics
-
-            let (pat, ty) = if should_parse_pat {
-                (this.parse_pat(OrPolicy::Forbidden)?, this.parse_ty_annotation()?)
+            let pat = if (matches!(mode, FnParamMode::Required)
+                && this.token.kind != TokenKind::TripleDot)
+                || this.is_restricted_param_pat()
+            {
+                let pat = this.parse_pat(OrPolicy::Forbidden)?;
+                this.parse(TokenKind::SingleColon)?;
+                pat
             } else {
-                (ast::Pat::Wildcard(ast::WildcardKind::Empty), this.parse_ty()?)
+                ast::Pat::Wildcard(ast::WildcardKind::Empty)
+            };
+
+            // FIXME: Better expectation.
+            let ty = if this.consume(TokenKind::TripleDot) {
+                ast::Ty::CVariadics
+            } else {
+                this.parse_ty()?
             };
 
             Ok(ast::FnParam { pat, ty })
@@ -62,6 +69,7 @@ impl<'src> Parser<'_, 'src> {
             let ty = match ref_ {
                 Some(lt) => ast::Ty::Ref(lt?, mut_, Box::new(self_ty())),
                 None => match self.consume(TokenKind::SingleColon) {
+                    // Indeed, C-variadics are not permitted here.
                     true => self.parse_ty()?,
                     false => self_ty(),
                 },

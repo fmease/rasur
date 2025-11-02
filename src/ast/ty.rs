@@ -5,20 +5,21 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
-    Never,
-    Inferred,
-    DynTrait(Vec<Bound<'src>>),
-    FnPtr(Box<FnPtrTy<'src>>),
-    ImplTrait(Vec<Bound<'src>>),
-    Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
-    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
-    Ptr(Mutability, Box<Ty<'src>>),
     Array(Box<Ty<'src>>, Expr<'src>),
+    CVariadics,
+    DynTrait(Vec<Bound<'src>>),
+    Error,
+    FnPtr(Box<FnPtrTy<'src>>),
+    Grouped(Box<Ty<'src>>),
+    ImplTrait(Vec<Bound<'src>>),
+    Inferred,
+    MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
+    Never,
+    Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
+    Ptr(Mutability, Box<Ty<'src>>),
+    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
-    Grouped(Box<Ty<'src>>),
-    MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
-    Error,
 }
 
 #[derive(Debug)]

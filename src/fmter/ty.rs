@@ -4,6 +4,7 @@ use crate::ast;
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
+            Self::CVariadics => fmt!(cx, "..."),
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
             Self::FnPtr(ty) => ty.fmt(cx),
