@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Ty<'_> {
@@ -6,21 +6,7 @@ impl Fmt for ast::Ty<'_> {
         match self {
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
-            Self::FnPtr(bound_vars, params, ret_ty) => {
-                if !bound_vars.is_empty() {
-                    fmt!(cx, "for");
-                    bound_vars.fmt(cx);
-                    fmt!(cx, " ");
-                }
-
-                fmt!(cx, "fn(");
-                Punctuated::new(params, ", ").fmt(cx);
-                fmt!(cx, ")");
-                if let Some(ret_ty) = ret_ty {
-                    fmt!(cx, " -> ");
-                    ret_ty.fmt(cx);
-                }
-            }
+            Self::FnPtr(ty) => ty.fmt(cx),
             Self::Ref(lt, mut_, ty) => {
                 fmt!(cx, "&");
                 if let Some(lt) = lt {
@@ -74,6 +60,37 @@ impl Fmt for ast::Ty<'_> {
             Self::MacroCall(ty) => ty.fmt(cx),
             Self::Error => fmt!(cx, "/*error*/"),
         }
+    }
+}
+
+impl Fmt for ast::FnPtrTy<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { bound_vars, modifiers, inputs, output } = self;
+
+        if !bound_vars.is_empty() {
+            fmt!(cx, "for");
+            bound_vars.fmt(cx);
+            fmt!(cx, " ");
+        }
+
+        modifiers.trailing_space().fmt(cx);
+
+        fmt!(cx, "fn(");
+        Punctuated::new(inputs, ", ").fmt(cx);
+        fmt!(cx, ")");
+        if let Some(output) = output {
+            fmt!(cx, " -> ");
+            output.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::FnPtrTyModifiers<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::FnPtrTyModifiers { safety, externness }) = self;
+
+        safety.trailing_space().fmt(cx);
+        externness.trailing_space().fmt(cx);
     }
 }
 

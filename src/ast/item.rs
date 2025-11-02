@@ -1,6 +1,6 @@
 use super::{
-    Attr, BlockExpr, Bound, Expr, Generics, Ident, MacroCall, Mutability, NoGenericArgs, Pat, Path,
-    PathTree, Span, TokenStream, Ty, UnambiguousGenericArgs,
+    Attr, BlockExpr, Bound, Expr, Externness, Generics, Ident, MacroCall, Mutability,
+    NoGenericArgs, Pat, Path, PathTree, Safety, Span, TokenStream, Ty, UnambiguousGenericArgs,
 };
 
 // FIXME: Maybe represent as Item<Free>?
@@ -109,7 +109,7 @@ pub(crate) enum ExternItemKind<'src> {
 
 #[derive(Debug)]
 pub(crate) struct FnItem<'src> {
-    pub(crate) modifiers: FnModifiers<'src>,
+    pub(crate) modifiers: FnItemModifiers<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<FnParam<'src>>,
@@ -118,7 +118,7 @@ pub(crate) struct FnItem<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FnModifiers<'src> {
+pub(crate) struct FnItemModifiers<'src> {
     pub(crate) constness: Constness,
     pub(crate) asyncness: Asyncness,
     pub(crate) genness: Genness,
@@ -142,19 +142,6 @@ pub(crate) enum Asyncness {
 #[derive(Debug)]
 pub(crate) enum Genness {
     Gen,
-    Not,
-}
-
-#[derive(Debug)]
-pub(crate) enum Safety {
-    Inherited,
-    Safe,
-    Unsafe,
-}
-
-#[derive(Debug)]
-pub(crate) enum Externness<'src> {
-    Extern(Option<&'src str>),
     Not,
 }
 
@@ -206,13 +193,18 @@ pub(crate) struct StructItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TraitItem<'src> {
-    pub(crate) constness: Constness,
-    pub(crate) safety: Safety,
-    pub(crate) autoness: Autoness,
+    pub(crate) modifiers: TraitItemModifiers,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
     pub(crate) body: Vec<AssocItem<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct TraitItemModifiers {
+    pub(crate) constness: Constness,
+    pub(crate) safety: Safety,
+    pub(crate) autoness: Autoness,
 }
 
 #[derive(Debug)]

@@ -269,9 +269,10 @@ impl Fmt for ast::FnItem<'_> {
     }
 }
 
-impl Fmt for TrailingSpace<ast::FnModifiers<'_>> {
+impl Fmt for TrailingSpace<ast::FnItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::FnModifiers { constness, asyncness, genness, safety, externness }) = self;
+        let Self(ast::FnItemModifiers { constness, asyncness, genness, safety, externness }) = self;
+
         constness.trailing_space().fmt(cx);
         asyncness.trailing_space().fmt(cx);
         genness.trailing_space().fmt(cx);
@@ -377,12 +378,9 @@ impl Fmt for ast::StructItem<'_> {
 
 impl Fmt for ast::TraitItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, safety, autoness, binder, generics, bounds, body } = self;
+        let Self { modifiers, binder, generics, bounds, body } = self;
 
-        constness.trailing_space().fmt(cx);
-        safety.trailing_space().fmt(cx);
-        autoness.trailing_space().fmt(cx);
-
+        modifiers.trailing_space().fmt(cx);
         fmt!(cx, "trait {binder}");
         generics.params.fmt(cx);
         if !bounds.is_empty() {
@@ -391,6 +389,16 @@ impl Fmt for ast::TraitItem<'_> {
         }
         generics.preds.fmt(cx);
         body.fmt(cx);
+    }
+}
+
+impl Fmt for TrailingSpace<ast::TraitItemModifiers> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::TraitItemModifiers { constness, safety, autoness }) = self;
+
+        constness.trailing_space().fmt(cx);
+        safety.trailing_space().fmt(cx);
+        autoness.trailing_space().fmt(cx);
     }
 }
 

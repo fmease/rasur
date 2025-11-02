@@ -3,6 +3,7 @@ use super::{
     error::ParseError,
     ident::{AUTO, MACRO_RULES, SAFE, UNION},
     pat::OrPolicy,
+    qualifier::Qualifier,
 };
 use crate::{ast, span::Span};
 
@@ -86,56 +87,35 @@ impl<'src> Parser<'_, 'src> {
     fn parse_item_kind(&mut self) -> Result<ast::ItemKind<'src>> {
         let start = self.token.span;
 
-        fn parse_const<'a, 'b>(
-            modifiers: &'a [ItemKeyword<'b>],
-        ) -> (ast::Constness, &'a [ItemKeyword<'b>]) {
-            match modifiers {
-                [ItemKeyword::Const, modifiers @ ..] => (ast::Constness::Const, modifiers),
-                _ => (ast::Constness::Not, modifiers),
-            }
-        }
-        fn parse_unsafe<'a, 'b>(
-            modifiers: &'a [ItemKeyword<'b>],
-        ) -> (ast::Safety, &'a [ItemKeyword<'b>]) {
-            match modifiers {
-                [ItemKeyword::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
-                _ => (ast::Safety::Inherited, modifiers),
-            }
-        }
-
         // FIXME: Better span for InvalidItemPrefix
-        match &*self.parse_item_keywords() {
+        match self.parse_qualifiers()?.as_slice() {
             [] => {}
-            [ItemKeyword::Const] => return self.fin_parse_const_item(),
-            [ItemKeyword::Extern(None), ItemKeyword::Crate] => {
+            [Qualifier::Const] => return self.fin_parse_const_item(),
+            // `crate` can't be a qualifier itself because it may also begin paths.
+            [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
             }
-            [modifiers @ .., ItemKeyword::Fn] => {
-                let (constness, modifiers) = parse_const(modifiers);
+            [modifiers @ .., Qualifier::Fn] => {
+                let (constness, modifiers) = Qualifier::strip_const(modifiers);
                 let (asyncness, modifiers) = match modifiers {
-                    [ItemKeyword::Async, modifiers @ ..] => (ast::Asyncness::Async, modifiers),
+                    [Qualifier::Async, modifiers @ ..] => (ast::Asyncness::Async, modifiers),
                     _ => (ast::Asyncness::Not, modifiers),
                 };
                 let (genness, modifiers) = match modifiers {
-                    [ItemKeyword::Gen, modifiers @ ..] => (ast::Genness::Gen, modifiers),
+                    [Qualifier::Gen, modifiers @ ..] => (ast::Genness::Gen, modifiers),
                     _ => (ast::Genness::Not, modifiers),
                 };
                 let (safety, modifiers) = match modifiers {
-                    [ItemKeyword::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
-                    [ItemKeyword::Safe, modifiers @ ..] => (ast::Safety::Safe, modifiers),
+                    [Qualifier::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
+                    [Qualifier::Safe, modifiers @ ..] => (ast::Safety::Safe, modifiers),
                     _ => (ast::Safety::Inherited, modifiers),
                 };
-                let (externness, modifiers) = match modifiers {
-                    [ItemKeyword::Extern(abi), modifiers @ ..] => {
-                        (ast::Externness::Extern(*abi), modifiers)
-                    }
-                    _ => (ast::Externness::Not, modifiers),
-                };
+                let (externness, modifiers) = Qualifier::strip_extern(modifiers);
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_fn_item(ast::FnModifiers {
+                return self.fin_parse_fn_item(ast::FnItemModifiers {
                     constness,
                     asyncness,
                     genness,
@@ -143,45 +123,49 @@ impl<'src> Parser<'_, 'src> {
                     externness,
                 });
             }
-            [modifiers @ .., ItemKeyword::Trait] => {
-                let (constness, modifiers) = parse_const(modifiers);
-                let (safety, modifiers) = parse_unsafe(modifiers);
+            [modifiers @ .., Qualifier::Trait] => {
+                let (constness, modifiers) = Qualifier::strip_const(modifiers);
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
                 let (autoness, modifiers) = match modifiers {
-                    [ItemKeyword::Auto, modifiers @ ..] => (ast::Autoness::Auto, modifiers),
+                    [Qualifier::Auto, modifiers @ ..] => (ast::Autoness::Auto, modifiers),
                     _ => (ast::Autoness::Not, modifiers),
                 };
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_trait_item(constness, safety, autoness);
+                return self.fin_parse_trait_item(ast::TraitItemModifiers {
+                    constness,
+                    safety,
+                    autoness,
+                });
             }
-            [modifiers @ .., ItemKeyword::Impl] => {
-                let (safety, modifiers) = parse_unsafe(modifiers);
+            [modifiers @ .., Qualifier::Impl] => {
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(safety, ast::Constness::Not);
             }
-            [modifiers @ .., ItemKeyword::Impl, ItemKeyword::Const] => {
-                let (safety, modifiers) = parse_unsafe(modifiers);
+            [modifiers @ .., Qualifier::Impl, Qualifier::Const] => {
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(safety, ast::Constness::Const);
             }
-            [modifiers @ .., ItemKeyword::Extern(abi)] => {
-                let (safety, modifiers) = parse_unsafe(modifiers);
+            [modifiers @ .., Qualifier::Extern(abi)] => {
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi);
             }
-            [modifiers @ .., ItemKeyword::Mod] => {
-                let (safety, modifiers) = parse_unsafe(modifiers);
+            [modifiers @ .., Qualifier::Mod] => {
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
                 if !modifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
@@ -236,54 +220,6 @@ impl<'src> Parser<'_, 'src> {
         }
 
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
-    }
-
-    fn parse_item_keywords(&mut self) -> Vec<ItemKeyword<'src>> {
-        std::iter::from_fn(|| self.parse_item_keyword()).collect()
-    }
-
-    fn parse_item_keyword(&mut self) -> Option<ItemKeyword<'src>> {
-        let keyword = match self.token.kind {
-            TokenKind::Async
-                if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
-                    // HACK: for `async gen {`
-                    && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket) =>
-            {
-                ItemKeyword::Async
-            }
-            TokenKind::Const if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                ItemKeyword::Const
-            }
-            TokenKind::Crate => ItemKeyword::Crate,
-            TokenKind::Extern => {
-                self.advance();
-                let token = self.token;
-                let abi = self.consume(TokenKind::StrLit).then(|| self.source(token.span));
-                return Some(ItemKeyword::Extern(abi));
-            }
-            TokenKind::Fn => ItemKeyword::Fn,
-            TokenKind::Gen if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                ItemKeyword::Gen
-            }
-            TokenKind::Ident => match self.source(self.token.span) {
-                AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => ItemKeyword::Auto,
-                SAFE if self
-                    .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
-                {
-                    ItemKeyword::Safe
-                }
-                _ => return None,
-            },
-            TokenKind::Impl => ItemKeyword::Impl,
-            TokenKind::Mod => ItemKeyword::Mod,
-            TokenKind::Trait => ItemKeyword::Trait,
-            TokenKind::Unsafe if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                ItemKeyword::Unsafe
-            }
-            _ => return None,
-        };
-        self.advance();
-        Some(keyword)
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -451,7 +387,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_fn_item(
         &mut self,
-        modifiers: ast::FnModifiers<'src>,
+        modifiers: ast::FnItemModifiers<'src>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
         let gen_params = self.parse_generic_params()?;
@@ -670,9 +606,7 @@ impl<'src> Parser<'_, 'src> {
     // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
     fn fin_parse_trait_item(
         &mut self,
-        constness: ast::Constness,
-        safety: ast::Safety,
-        autoness: ast::Autoness,
+        modifiers: ast::TraitItemModifiers,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
         let params = self.parse_generic_params()?;
@@ -687,9 +621,7 @@ impl<'src> Parser<'_, 'src> {
         let items = self.parse_delimited_assoc_items()?;
 
         Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
-            constness,
-            safety,
-            autoness,
+            modifiers,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
@@ -871,19 +803,4 @@ impl<'src> Parser<'_, 'src> {
 
         self.token.kind == TokenKind::Pub
     }
-}
-
-enum ItemKeyword<'src> {
-    Async,
-    Auto,
-    Const,
-    Crate,
-    Extern(Option<&'src str>),
-    Fn,
-    Gen,
-    Impl,
-    Mod,
-    Safe,
-    Trait,
-    Unsafe,
 }

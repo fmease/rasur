@@ -1,29 +1,86 @@
 use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, error::ParseError,
-    ident::DYN, one_of,
+    ident::DYN, one_of, qualifier::Qualifier,
 };
 use crate::{ast, edition::Edition, span::Span, token::Token};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a type.
     ///
-    /// <!-- FIXME: Add EBNF section back in -->
+    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
+        let start = self.token.span;
+
+        match self.parse_qualifiers()?.as_mut_slice() {
+            [] => {}
+            [Qualifier::Impl] => {
+                return Ok(ast::Ty::ImplTrait(self.parse_bounds()?));
+            }
+            [modifiers @ .., Qualifier::Fn] => {
+                let (bound_vars, modifiers) = match modifiers {
+                    [Qualifier::HigherRankedBinder(bound_vars), modifiers @ ..] => {
+                        (std::mem::take(bound_vars), modifiers)
+                    }
+                    _ => (Vec::new(), modifiers),
+                };
+                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
+                let (externness, modifiers) = Qualifier::strip_extern(modifiers);
+                if !modifiers.is_empty() {
+                    return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span)));
+                }
+                return self
+                    .fin_parse_fn_ptr_ty(bound_vars, ast::FnPtrTyModifiers { safety, externness });
+            }
+            _ => return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span))),
+        }
+
         match self.token.kind {
-            TokenKind::SingleBang => {
+            TokenKind::DoubleAmpersand => {
                 self.advance();
-                return Ok(ast::Ty::Never);
+                let inner_ty = self.fin_parse_ref_ty()?;
+                return Ok(ast::Ty::Ref(None, ast::Mutability::Not, Box::new(inner_ty)));
+            }
+            TokenKind::Dyn => {
+                self.advance();
+                return self.fin_parse_dyn_trait_object_ty();
+            }
+            TokenKind::Ident
+                if let DYN = self.source(self.token.span)
+                    && self.edition == Edition::Rust2015
+                    && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
+            {
+                self.advance();
+                return self.fin_parse_dyn_trait_object_ty();
+            }
+            TokenKind::OpenRoundBracket => {
+                self.advance();
+
+                return self.fin_parse_grouped_or_tuple(
+                    Self::parse_ty,
+                    ast::Ty::Grouped,
+                    ast::Ty::Tuple,
+                );
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                let ty = self.parse_ty()?;
+                let len =
+                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
+                self.parse(TokenKind::CloseSquareBracket)?;
+                return Ok(match len {
+                    Some(len) => ast::Ty::Array(Box::new(ty), len),
+                    None => ast::Ty::Slice(Box::new(ty)),
+                });
             }
             TokenKind::SingleAmpersand => {
                 self.advance();
                 return self.fin_parse_ref_ty();
             }
-            TokenKind::DoubleAmpersand => {
+            TokenKind::SingleBang => {
                 self.advance();
-                let inner_ty = self.fin_parse_ref_ty()?;
-                return Ok(ast::Ty::Ref(None, ast::Mutability::Not, Box::new(inner_ty)));
+                return Ok(ast::Ty::Never);
             }
             TokenKind::SingleAsterisk => {
                 self.advance();
@@ -45,59 +102,6 @@ impl<'src> Parser<'_, 'src> {
                 };
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::Ptr(mut_, Box::new(ty)));
-            }
-            TokenKind::OpenSquareBracket => {
-                self.advance();
-                let ty = self.parse_ty()?;
-                let len =
-                    self.consume(TokenKind::Semicolon).then(|| self.parse_expr()).transpose()?;
-                self.parse(TokenKind::CloseSquareBracket)?;
-                return Ok(match len {
-                    Some(len) => ast::Ty::Array(Box::new(ty), len),
-                    None => ast::Ty::Slice(Box::new(ty)),
-                });
-            }
-            TokenKind::OpenRoundBracket => {
-                self.advance();
-
-                return self.fin_parse_grouped_or_tuple(
-                    Self::parse_ty,
-                    ast::Ty::Grouped,
-                    ast::Ty::Tuple,
-                );
-            }
-            _ => {}
-        }
-
-        match self.token.kind {
-            TokenKind::Dyn => {
-                self.advance();
-                return self.fin_parse_dyn_trait_object_ty();
-            }
-            TokenKind::Fn => {
-                self.advance();
-                return self.fin_parse_fn_ptr_ty(Vec::new());
-            }
-            TokenKind::For => {
-                self.advance();
-                let bound_vars = self.parse_generic_params()?;
-
-                // FIXME: Expect bare trait object types, too.
-                self.parse(TokenKind::Fn)?;
-                return self.fin_parse_fn_ptr_ty(bound_vars);
-            }
-            TokenKind::Ident
-                if let DYN = self.source(self.token.span)
-                    && self.edition == Edition::Rust2015
-                    && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
-            {
-                self.advance();
-                return self.fin_parse_dyn_trait_object_ty();
-            }
-            TokenKind::Impl => {
-                self.advance();
-                let bounds = self.parse_bounds()?;
-                return Ok(ast::Ty::ImplTrait(bounds));
             }
             TokenKind::Underscore => {
                 self.advance();
@@ -131,6 +135,7 @@ impl<'src> Parser<'_, 'src> {
         match self.token.kind {
             | TokenKind::DoubleAmpersand
             | TokenKind::Dyn
+            | TokenKind::Extern
             | TokenKind::Fn
             | TokenKind::For
             | TokenKind::Impl
@@ -139,7 +144,8 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::SingleAmpersand
             | TokenKind::SingleAsterisk
             | TokenKind::SingleBang
-            | TokenKind::Underscore => return true,
+            | TokenKind::Underscore
+            | TokenKind::Unsafe => return true,
             _ => {}
         }
 
@@ -168,20 +174,24 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_fn_ptr_ty(
         &mut self,
         bound_vars: Vec<ast::GenericParam<'src>>,
+        modifiers: ast::FnPtrTyModifiers<'src>,
     ) -> Result<ast::Ty<'src>> {
         self.parse(TokenKind::OpenRoundBracket)?;
         // FIXME: Actually parse the parameters using `Self::parse_fn_params`
         //        to capture the full grammar (for that, the functions needs to
         //        be able to parse optional parameter *patterns* (!)).
-        let params =
+        let inputs =
             self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
                 this.parse_ty()
             })?;
-        let ret_ty = self
-            .consume(TokenKind::ThinArrow)
-            .then(|| self.parse_ty().map(Box::new))
-            .transpose()?;
-        return Ok(ast::Ty::FnPtr(bound_vars, params, ret_ty));
+        let output = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
+
+        return Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy {
+            bound_vars,
+            modifiers,
+            inputs,
+            output,
+        })));
     }
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {

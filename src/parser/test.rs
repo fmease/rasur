@@ -389,7 +389,7 @@ fn stmts_const_item_const_block() {
                             attrs: deref!([]),
                             vis: ast::Visibility::Inherited,
                             kind: ast::ItemKind::Fn(ast::FnItem {
-                                modifiers: ast::FnModifiers {
+                                modifiers: ast::FnItemModifiers {
                                     constness: ast::Constness::Const,
                                     ..
                                 },

@@ -1,11 +1,13 @@
-use super::{Expr, ExtPath, Ident, MacroCall, Mutability, Path, UnambiguousGenericArgs};
+use super::{
+    Expr, ExtPath, Externness, Ident, MacroCall, Mutability, Path, Safety, UnambiguousGenericArgs,
+};
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
     Never,
     Inferred,
     DynTrait(Vec<Bound<'src>>),
-    FnPtr(Vec<GenericParam<'src>>, Vec<Ty<'src>>, Option<Box<Ty<'src>>>),
+    FnPtr(Box<FnPtrTy<'src>>),
     ImplTrait(Vec<Bound<'src>>),
     Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
     Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
@@ -16,6 +18,20 @@ pub(crate) enum Ty<'src> {
     Grouped(Box<Ty<'src>>),
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Error,
+}
+
+#[derive(Debug)]
+pub(crate) struct FnPtrTy<'src> {
+    pub(crate) bound_vars: Vec<GenericParam<'src>>,
+    pub(crate) modifiers: FnPtrTyModifiers<'src>,
+    pub(crate) inputs: Vec<Ty<'src>>,
+    pub(crate) output: Option<Ty<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FnPtrTyModifiers<'src> {
+    pub(crate) safety: Safety,
+    pub(crate) externness: Externness<'src>,
 }
 
 #[derive(Debug)]

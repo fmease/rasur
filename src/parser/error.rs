@@ -23,6 +23,7 @@ pub(crate) enum ParseError {
     HigherRankedBinderOnUseBound(Span),
     // FIXME: Temporary (replace with InvalidModifiersForItem)
     InvalidItemPrefix(Span),
+    InvalidFnPtrTyPrefix(Span),
 }
 
 impl ParseError {
@@ -69,6 +70,9 @@ impl ParseError {
             }
             Self::InvalidItemPrefix(span) => {
                 Diag::new(format!("invalid item modifiers")).unlabeled_highlight(span)
+            }
+            Self::InvalidFnPtrTyPrefix(span) => {
+                Diag::new(format!("invalid fn ptr ty modifiers")).unlabeled_highlight(span)
             }
         };
         eprintln!("{}", diag.render(source, path));

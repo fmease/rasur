@@ -45,12 +45,6 @@ pub(crate) enum Orientation {
     Close,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Mutability {
-    Mut,
-    Not,
-}
-
 #[derive(Debug)]
 pub(crate) enum Lit<'src> {
     Bool(bool),
@@ -58,4 +52,23 @@ pub(crate) enum Lit<'src> {
     Char(&'src str),
     Num(&'src str),
     Str(&'src str),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Mutability {
+    Mut,
+    Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum Safety {
+    Inherited,
+    Safe,
+    Unsafe,
+}
+
+#[derive(Debug)]
+pub(crate) enum Externness<'src> {
+    Extern(Option<&'src str>),
+    Not,
 }

@@ -13,6 +13,7 @@ mod expr;
 mod item;
 mod pat;
 mod path;
+mod qualifier;
 mod stmt;
 #[cfg(test)]
 mod test;
