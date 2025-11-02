@@ -8,22 +8,20 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// # Grammar
     ///
-    /// ```grammar
-    /// Stmt ::=
-    ///     | Item\Macro_Call
-    ///     | Let_Stmt
-    ///     | Expr ";" // FIXME: Not entirely factual
-    ///     | ";"
-    /// Let_Stmt ::= "let" Pat (":" Ty) ("=" Expr) ";"
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
     //       macro expansion.
     // FIXME: Try to get rid of param `delimiter`.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
-        // FIXME: Outer attrs on let stmt
+        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+
         if self.begins_item(MacroCallPolicy::Forbidden) {
-            return Ok(ast::Stmt::Item(self.parse_item()?));
+            let mut item = self.parse_item()?;
+            debug_assert!(item.attrs.is_empty());
+            item.attrs = attrs;
+
+            return Ok(ast::Stmt::Item(item));
         }
 
         if self.consume(TokenKind::Let) {
@@ -31,26 +29,29 @@ impl<'src> Parser<'_, 'src> {
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             // FIXME: Proper diagnostic for the !else_may_follow case.
             let body = if self.consume(TokenKind::SingleEquals) {
-                let body = self.parse_expr()?;
+                let consequent = self.parse_expr()?;
                 let alternate = if let TokenKind::Else = self.token.kind
-                    && else_may_follow(&body.kind)
+                    && else_may_follow(&consequent.kind)
                 {
                     self.advance();
                     Some(self.parse_block_expr()?)
                 } else {
                     None
                 };
-                Some((body, alternate))
+                Some(ast::LetStmtBody { consequent, alternate })
             } else {
                 None
             };
             // FIXME: Should mention `else`, too, where applicable.
             self.parse(TokenKind::Semicolon)?;
-            return Ok(ast::Stmt::Let(ast::LetStmt { pat, ty, body }));
+            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt { attrs, pat, ty, body })));
         }
 
         if self.begins_expr() {
-            let expr = self.parse_expr()?;
+            let mut expr = self.parse_expr()?;
+            debug_assert!(expr.attrs.is_empty());
+            expr.attrs = attrs;
+
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
             let semi = if self.token.kind == delimiter || !expr.kind.needs_semicolon_as_stmt() {
                 match self.consume(TokenKind::Semicolon) {

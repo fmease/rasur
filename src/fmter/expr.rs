@@ -5,10 +5,13 @@ impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, kind } = self;
 
+        // FIXME: Scan for & respect skip attr.
+
         for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
+
         kind.fmt(cx);
     }
 }

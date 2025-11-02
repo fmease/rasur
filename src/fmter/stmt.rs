@@ -21,7 +21,14 @@ impl Fmt for ast::Stmt<'_> {
 
 impl Fmt for ast::LetStmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, ty, body } = self;
+        let Self { attrs, pat, ty, body } = self;
+
+        // FIXME: Scan for & respect skip attr.
+
+        for attr in attrs {
+            attr.fmt(cx);
+            cx.line_break();
+        }
 
         fmt!(cx, "let ");
         pat.fmt(cx);
@@ -29,14 +36,22 @@ impl Fmt for ast::LetStmt<'_> {
             fmt!(cx, ": ");
             ty.fmt(cx);
         }
-        if let Some((body, alternate)) = body {
+        if let Some(body) = body {
             fmt!(cx, " = ");
             body.fmt(cx);
-            if let Some(alternate) = alternate {
-                fmt!(cx, " else ");
-                alternate.fmt(cx);
-            }
         }
         fmt!(cx, ";");
+    }
+}
+
+impl Fmt for ast::LetStmtBody<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { consequent, alternate } = self;
+
+        consequent.fmt(cx);
+        if let Some(alternate) = alternate {
+            fmt!(cx, " else ");
+            alternate.fmt(cx);
+        }
     }
 }
