@@ -505,6 +505,8 @@ impl<'src> Parser<'_, 'src> {
                     let pat = self.parse_pat(OrPolicy::Allowed)?;
                     self.parse(TokenKind::WideArrow)?;
 
+                    // FIXME: Certain restrictions need to apply / parse_expr needs to care about "completeness"!
+                    // Rn, we interpret `match () { () => {} -1 => {} }` as containing a binop where there shouldn't be one.
                     let body = self.parse_expr()?;
 
                     if self.token.kind == DELIMITER || !body.kind.needs_comma_as_match_arm_body() {

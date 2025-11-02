@@ -464,11 +464,12 @@ macro one_of($( $frag:expr ),+ $(,)?) {
 #[cfg_attr(test, derive(Debug))]
 pub(crate) enum ExpectedFragment {
     Bound,
-    Ident,
     Expr,
     GenericArg,
     GenericParam,
+    Ident,
     Item,
+    Literal,
     OneOf(Box<[Self]>),
     Pat,
     PathSegIdent,
@@ -489,11 +490,12 @@ impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Bound => "bound",
-            Self::Ident => "identifier",
             Self::Expr => "expression",
             Self::GenericArg => "generic argument",
             Self::GenericParam => "generic parameter",
+            Self::Ident => "identifier",
             Self::Item => "item",
+            Self::Literal => "literal",
             Self::OneOf(frags) => {
                 let frags = frags
                     .iter()

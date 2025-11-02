@@ -19,6 +19,7 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: We intentionally skip SinglePipe because leading pipes are only permitted
         //       at the top-level.
         match self.token.kind {
+            | TokenKind::CharLit
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
             | TokenKind::DoubleDotEquals
@@ -29,6 +30,7 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::OpenSquareBracket
             | TokenKind::Ref
             | TokenKind::SingleAmpersand
+            | TokenKind::SingleHyphen
             | TokenKind::StrLit
             | TokenKind::True
             | TokenKind::Underscore => return true,
@@ -169,11 +171,47 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
-        match self.token.kind {
+        let sign = match self.consume(TokenKind::SingleHyphen) {
+            true => ast::Sign::Neg,
+            false => ast::Sign::None,
+        };
+
+        let lit = match self.token.kind {
+            TokenKind::CharLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Char(lit))
+            }
             TokenKind::False => {
                 self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Bool(false)));
+                Some(ast::Lit::Bool(false))
             }
+            TokenKind::NumLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Num(lit))
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Str(lit))
+            }
+            TokenKind::True => {
+                self.advance();
+                Some(ast::Lit::Bool(true))
+            }
+            _ => None,
+        };
+
+        if let Some(lit) = lit {
+            return Ok(ast::Pat::Lit(sign, lit));
+        }
+
+        if let ast::Sign::Neg = sign {
+            return Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Literal));
+        }
+
+        match self.token.kind {
             TokenKind::Mut => {
                 self.advance();
                 return match self.token.kind {
@@ -196,11 +234,6 @@ impl<'src> Parser<'_, 'src> {
                     )),
                 };
             }
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Num(lit)));
-            }
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
@@ -221,15 +254,6 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Ref => {
                 self.advance();
                 return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Str(lit)));
-            }
-            TokenKind::True => {
-                self.advance();
-                return Ok(ast::Pat::Lit(ast::Lit::Bool(true)));
             }
             TokenKind::Underscore => {
                 self.advance();

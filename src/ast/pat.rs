@@ -5,7 +5,7 @@ pub(crate) enum Pat<'src> {
     Borrow(Mutability, Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
     Ident(IdentPat<'src>),
-    Lit(Lit<'src>),
+    Lit(Sign, Lit<'src>),
     MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
@@ -15,6 +15,12 @@ pub(crate) enum Pat<'src> {
     Tuple(Vec<Pat<'src>>),
     TupleStruct(Box<TupleStructPat<'src>>),
     Wildcard(WildcardKind),
+}
+
+#[derive(Debug)]
+pub(crate) enum Sign {
+    None,
+    Neg,
 }
 
 #[derive(Debug)]

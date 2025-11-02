@@ -216,7 +216,7 @@ fn pat_angle_gen_args() {
                     }])
                 }
             },
-            fields: deref!([ast::Pat::Lit(ast::Lit::Num("0"))])
+            fields: deref!([ast::Pat::Lit(ast::Sign::None, ast::Lit::Num("0"))])
         }))),
     );
 }
