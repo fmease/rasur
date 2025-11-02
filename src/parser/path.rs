@@ -15,10 +15,30 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn parse_path<M: GenericArgsMode>(&mut self) -> Result<ast::Path<'src, M>> {
         // NOTE: To be kept in sync with `Self::begins_path`.
 
+        self.parse_path_where::<M>(PathMode::Normal)
+    }
+
+    pub(super) fn begins_path(&self, token: Token) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_path`.
+
+        matches!(token.kind, TokenKind::DoubleColon | PathSegIdent!())
+    }
+
+    fn parse_path_where<M: GenericArgsMode>(
+        &mut self,
+        mode: PathMode,
+    ) -> Result<ast::Path<'src, M>> {
+        // NOTE: To be kept in sync with `Self::begins_path`.
+
         let mut path = ast::Path { segs: Vec::new() };
 
-        if self.consume(TokenKind::DoubleColon) {
-            path.segs.push(ast::PathSeg::ident(""));
+        match mode {
+            PathMode::Normal => {
+                if self.consume(TokenKind::DoubleColon) {
+                    path.segs.push(ast::PathSeg::ident(""))
+                }
+            }
+            PathMode::Suffix => self.parse(TokenKind::DoubleColon)?,
         }
 
         path.segs.push(self.parse_path_seg::<M>()?);
@@ -30,40 +50,28 @@ impl<'src> Parser<'_, 'src> {
         Ok(path)
     }
 
-    pub(super) fn begins_path(&self, token: Token) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_path`.
-
-        matches!(token.kind, TokenKind::DoubleColon | PathSegIdent!())
-    }
-
     /// Parse an extended path.
     pub(super) fn parse_ext_path<S: GenericArgsStyle>(&mut self) -> Result<ast::ExtPath<'src, S>> {
         // NOTE: To be kept in sync with `Self::begins_ext_path`.
 
-        let mut path = ast::Path { segs: Vec::new() };
-
         // FIXME: Add `<` to list of expected tokens
-        let self_ty = if self.consume(TokenPrefix::LessThan) {
-            let ty = self.parse_ty()?;
+        let (ext, mode) = if self.consume(TokenPrefix::LessThan) {
+            let self_ty = self.parse_ty()?;
             // We're in a "type context" now and can parse generic args unambiguously.
             let trait_ref = self
                 .consume(TokenKind::As)
                 .then(|| self.parse_path::<ast::UnambiguousGenericArgs>())
                 .transpose()?;
             self.parse(TokenKind::SingleGreaterThan)?; // no need to account for DoubleGreaterThan
-            self.parse(TokenKind::DoubleColon)?;
-            Some(ast::PathExt { self_ty: ty, trait_ref })
+
+            (Some(ast::PathExt { self_ty, trait_ref }), PathMode::Suffix)
         } else {
-            None
+            (None, PathMode::Normal)
         };
 
-        path.segs.push(self.parse_path_seg::<S>()?);
+        let path = self.parse_path_where(mode)?;
 
-        while self.consume(TokenKind::DoubleColon) {
-            path.segs.push(self.parse_path_seg::<S>()?);
-        }
-
-        Ok(ast::ExtPath { ext: self_ty, path })
+        Ok(ast::ExtPath { ext, path })
     }
 
     pub(super) fn begins_ext_path(&self) -> bool {
@@ -320,6 +328,11 @@ impl<'src> Parser<'_, 'src> {
             }
         })
     }
+}
+
+enum PathMode {
+    Normal,
+    Suffix,
 }
 
 pub(super) trait GenericArgsMode: ast::GenericArgsMode {
