@@ -104,7 +104,7 @@ fn else_may_follow(expr: &ast::ExprKind<'_>) -> bool {
             ast::Bracket::Curly => false,
         },
         | ast::ExprKind::BinOp(.., expr)
-        | ast::ExprKind::Borrow(_, expr)
+        | ast::ExprKind::Borrow(.., expr)
         | ast::ExprKind::UnOp(_, expr) => else_may_follow(&expr.kind),
         | ast::ExprKind::Closure(expr) => else_may_follow(&expr.body.kind),
         | ast::ExprKind::Let(expr) => else_may_follow(&expr.body.kind),

@@ -290,7 +290,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         parse(&mut this).inspect(|_| *self = this)
     }
 
-    // FIXME: Temporary API
+    // FIXME: Temporary API, replace with parse(Or(Ident, WeakKeyword::Xyz))
     fn parse_ident_or(&mut self, exception: TokenKind) -> Result<ast::Ident<'src>> {
         if self.token.kind != TokenKind::Ident && self.token.kind != exception {
             return Err(error::ParseError::UnexpectedToken(
@@ -303,18 +303,23 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(ident)
     }
 
-    // FIXME: Temporary API
+    // FIXME: Temporary API, replace with parse(Ident)
     fn parse_ident(&mut self) -> Result<ast::Ident<'src>> {
         self.consume_ident()
             .ok_or_else(|| error::ParseError::UnexpectedToken(self.token, ExpectedFragment::Ident))
     }
 
-    // FIXME: Temporary API
+    // FIXME: Temporary API, replace with consume(Ident)
     fn consume_ident(&mut self) -> Option<ast::Ident<'src>> {
         let TokenKind::Ident = self.token.kind else { return None };
         let ident = self.source(self.token.span);
         self.advance();
         Some(ident)
+    }
+
+    // FIXME: Temporary API, replace with is(WeakKeyword::Xyz)
+    fn is_ident(&self, source: &str) -> bool {
+        matches!(self.token.kind, TokenKind::Ident if self.source(self.token.span) == source)
     }
 }
 
@@ -445,6 +450,7 @@ mod ident {
     pub(super) const AUTO: &str = "auto";
     pub(super) const DYN: &str = "dyn"; // in Rust 2015
     pub(super) const MACRO_RULES: &str = "macro_rules";
+    pub(super) const RAW: &str = "raw";
     pub(super) const SAFE: &str = "safe";
     pub(super) const UNION: &str = "union";
 }

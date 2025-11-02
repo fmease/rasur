@@ -1,6 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
-    path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, ident::RAW, one_of,
+    pat::OrPolicy, path::GenericArgsMode,
 };
 use crate::ast;
 use std::cmp::Ordering;
@@ -167,7 +167,12 @@ impl<'src> Parser<'_, 'src> {
             }
             Op::DoubleBorrow => {
                 let borrow = self.fin_parse_borrow_expr(right_level, structs)?;
-                return Ok(ast::ExprKind::Borrow(ast::Mutability::Not, Box::new(borrow)).into());
+                return Ok(ast::ExprKind::Borrow(
+                    ast::BorrowKind::Ref,
+                    ast::Mutability::Not,
+                    Box::new(borrow),
+                )
+                .into());
             }
             Op::RangeInclusive => {
                 return self.fin_parse_range_inclusive_expr(None, right_level, structs);
@@ -308,9 +313,22 @@ impl<'src> Parser<'_, 'src> {
         right_level: Level,
         structs: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let mut_ = self.parse_mutability();
+        let (kind, mut_) = if self.token.kind == TokenKind::Ident
+            && self.is_ident(RAW)
+            && let Some(mut_) = self.look_ahead(1, |t| match t.kind {
+                TokenKind::Mut => Some(ast::Mutability::Mut),
+                TokenKind::Const => Some(ast::Mutability::Not),
+                _ => None,
+            }) {
+            self.advance();
+            self.advance();
+            (ast::BorrowKind::Raw, mut_)
+        } else {
+            (ast::BorrowKind::Ref, self.parse_mutability())
+        };
+
         let expr = self.parse_expr_at_level(right_level, structs, LetPolicy::Forbidden)?;
-        Ok(ast::ExprKind::Borrow(mut_, Box::new(expr)).into())
+        Ok(ast::ExprKind::Borrow(kind, mut_, Box::new(expr)).into())
     }
 
     fn fin_parse_range_exclusive_expr(

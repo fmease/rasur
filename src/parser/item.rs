@@ -731,7 +731,7 @@ impl<'src> Parser<'_, 'src> {
         match policy {
             MacroCallPolicy::Allowed => self.begins_path(self.token),
             MacroCallPolicy::Forbidden => {
-                matches!(self.token.kind, TokenKind::Ident if self.source(self.token.span) == MACRO_RULES)
+                self.is_ident(MACRO_RULES)
                     && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
                     && self.look_ahead(2, |t| t.kind == TokenKind::Ident)
             }

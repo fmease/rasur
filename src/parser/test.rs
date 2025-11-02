@@ -62,9 +62,14 @@ fn expr_double_borrow_and_double_borrow() {
                 ast::BinOp::And,
                 deref!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
+                        ast::BorrowKind::Ref,
                         ast::Mutability::Not,
                         deref!(ast::Expr {
-                            kind: ast::ExprKind::Borrow(ast::Mutability::Not, _),
+                            kind: ast::ExprKind::Borrow(
+                                ast::BorrowKind::Ref,
+                                ast::Mutability::Not,
+                                _
+                            ),
                             ..
                         })
                     ),
@@ -72,9 +77,14 @@ fn expr_double_borrow_and_double_borrow() {
                 }),
                 deref!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
+                        ast::BorrowKind::Ref,
                         ast::Mutability::Not,
                         deref!(ast::Expr {
-                            kind: ast::ExprKind::Borrow(ast::Mutability::Not, _),
+                            kind: ast::ExprKind::Borrow(
+                                ast::BorrowKind::Ref,
+                                ast::Mutability::Not,
+                                _
+                            ),
                             ..
                         }),
                     ),

@@ -20,7 +20,7 @@ pub(crate) enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(BlockKind, Box<BlockExpr<'src>>),
-    Borrow(Mutability, Box<Expr<'src>>),
+    Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
     Break(Option<&'src str>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
@@ -94,6 +94,12 @@ impl ExprKind<'_> {
             | Self::Wildcard => true,
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum BorrowKind {
+    Ref,
+    Raw,
 }
 
 #[derive(Debug, Clone, Copy)]

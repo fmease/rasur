@@ -84,8 +84,12 @@ impl Fmt for ast::ExprKind<'_> {
             Self::While(expr) => expr.fmt(cx),
             Self::Let(expr) => expr.fmt(cx),
             Self::Lit(lit) => lit.fmt(cx),
-            Self::Borrow(mut_, expr) => {
+            Self::Borrow(kind, mut_, expr) => {
                 fmt!(cx, "&");
+                match kind {
+                    ast::BorrowKind::Ref => {}
+                    ast::BorrowKind::Raw => fmt!(cx, "raw "),
+                }
                 mut_.trailing_space().fmt(cx);
                 // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
