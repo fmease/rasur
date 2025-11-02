@@ -1,10 +1,91 @@
 use super::{
     Parser, Result, TokenKind,
+    error::ParseError,
     ident::{AUTO, SAFE},
+    pat::OrPolicy,
 };
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {
+    /// Parse function parameters.
+    ///
+    /// <!-- FIXME: Add an EBNF section back in -->
+    pub(crate) fn parse_fn_params(&mut self, mode: FnParamMode) -> Result<Vec<ast::FnParam<'src>>> {
+        self.parse(TokenKind::OpenRoundBracket)?;
+
+        let mut first = true;
+        self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
+            let first = std::mem::take(&mut first);
+
+            // FIXME: Attrs.
+
+            if let Some(param) = this.parse_self_param()? {
+                if !first {
+                    return Err(ParseError::MisplacedReceiver);
+                }
+                return Ok(param);
+            }
+
+            let should_parse_pat =
+                matches!(mode, FnParamMode::Required) || this.is_restricted_param_pat();
+
+            // FIXME: Variadics
+
+            let (pat, ty) = if should_parse_pat {
+                (this.parse_pat(OrPolicy::Forbidden)?, this.parse_ty_annotation()?)
+            } else {
+                (ast::Pat::Wildcard(ast::WildcardKind::Empty), this.parse_ty()?)
+            };
+
+            Ok(ast::FnParam { pat, ty })
+        })
+    }
+
+    fn parse_self_param(&mut self) -> Result<Option<ast::FnParam<'src>>> {
+        if let Some((ref_, mut_)) = self.probe(|this| {
+            let ref_ = this.consume(TokenKind::SingleAmpersand).then(|| this.parse_lifetime());
+            let mut_ = this.parse_mutability();
+            this.parse(TokenKind::SelfLower).ok()?;
+            Some((ref_, mut_))
+        }) {
+            let pat = ast::Pat::Ident(ast::IdentPat {
+                mut_: match ref_ {
+                    Some(_) => ast::Mutability::Not,
+                    None => mut_,
+                },
+                by_ref: ast::ByRef::No,
+                ident: "self",
+            });
+
+            let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
+
+            let ty = match ref_ {
+                Some(lt) => ast::Ty::Ref(lt?, mut_, Box::new(self_ty())),
+                None => match self.consume(TokenKind::SingleColon) {
+                    true => self.parse_ty()?,
+                    false => self_ty(),
+                },
+            };
+
+            return Ok(Some(ast::FnParam { pat, ty }));
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn is_restricted_param_pat(&self) -> bool {
+        let offset = match self.token.kind {
+            TokenKind::Mut | TokenKind::SingleAmpersand | TokenKind::DoubleAmpersand => 1,
+            _ => 0,
+        };
+        self.look_ahead(offset, |t| {
+            matches!(
+                t.kind,
+                TokenKind::False | TokenKind::Ident | TokenKind::True | TokenKind::Underscore
+            )
+        }) && self.look_ahead(offset + 1, |t| t.kind == TokenKind::SingleColon)
+    }
+
     pub(crate) fn parse_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
         std::iter::from_fn(|| self.parse_qualifier()).collect()
     }
@@ -55,6 +136,11 @@ impl<'src> Parser<'_, 'src> {
         self.advance();
         Some(Ok(qualifier))
     }
+}
+
+pub(crate) enum FnParamMode {
+    Required,
+    Optional,
 }
 
 pub(crate) enum Qualifier<'src> {

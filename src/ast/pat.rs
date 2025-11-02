@@ -14,7 +14,13 @@ pub(crate) enum Pat<'src> {
     Struct(Box<StructPat<'src>>),
     Tuple(Vec<Pat<'src>>),
     TupleStruct(Box<TupleStructPat<'src>>),
-    Wildcard,
+    Wildcard(WildcardKind),
+}
+
+#[derive(Debug)]
+pub(crate) enum WildcardKind {
+    Normal,
+    Empty,
 }
 
 // FIXME: I hate this name

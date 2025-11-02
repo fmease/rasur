@@ -60,15 +60,17 @@ pub(crate) enum Mutability {
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Safety {
+    #[default]
     Inherited,
     Safe,
     Unsafe,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Externness<'src> {
     Extern(Option<&'src str>),
+    #[default]
     Not,
 }

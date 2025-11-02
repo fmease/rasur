@@ -26,7 +26,7 @@ fn parse_via<'src, T>(
 }
 
 fn parse_item(source: &str, edition: Edition) -> super::Result<ast::Item<'_>> {
-    parse_via(source, edition, |this| this.parse_item())
+    parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
 }
 
 fn parse_ty(source: &str, edition: Edition) -> super::Result<ast::Ty<'_>> {

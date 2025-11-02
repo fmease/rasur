@@ -208,6 +208,7 @@ pub(crate) struct WhileExpr<'src> {
 pub(crate) enum BlockKind {
     Async,
     AsyncGen,
+    // FIXME: Rename to Normal?
     Bare,
     Const,
     Gen,

@@ -285,8 +285,14 @@ impl Fmt for ast::FnParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { pat, ty } = self;
 
-        pat.fmt(cx);
-        fmt!(cx, ": ");
+        match pat {
+            ast::Pat::Wildcard(ast::WildcardKind::Empty) => {}
+            _ => {
+                pat.fmt(cx);
+                fmt!(cx, ": ");
+            }
+        }
+
         ty.fmt(cx);
     }
 }

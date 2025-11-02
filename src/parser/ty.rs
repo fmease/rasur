@@ -1,6 +1,9 @@
 use super::{
-    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, error::ParseError,
-    ident::DYN, one_of, qualifier::Qualifier,
+    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix,
+    common::{FnParamMode, Qualifier},
+    error::ParseError,
+    ident::DYN,
+    one_of,
 };
 use crate::{ast, edition::Edition, span::Span, token::Token};
 
@@ -18,20 +21,21 @@ impl<'src> Parser<'_, 'src> {
             [Qualifier::Impl] => {
                 return Ok(ast::Ty::ImplTrait(self.parse_bounds()?));
             }
-            [modifiers @ .., Qualifier::Fn] => {
-                let (bound_vars, modifiers) = match modifiers {
-                    [Qualifier::HigherRankedBinder(bound_vars), modifiers @ ..] => {
-                        (std::mem::take(bound_vars), modifiers)
+            [qualifiers @ .., Qualifier::Fn] => {
+                let mut modifiers = ast::FnPtrTyModifiers::default();
+
+                let (bound_vars, mut qualifiers) = match qualifiers {
+                    [Qualifier::HigherRankedBinder(bound_vars), qualifiers @ ..] => {
+                        (std::mem::take(bound_vars), &*qualifiers)
                     }
-                    _ => (Vec::new(), modifiers),
+                    _ => (Vec::new(), &*qualifiers),
                 };
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                let (externness, modifiers) = Qualifier::strip_extern(modifiers);
-                if !modifiers.is_empty() {
+                (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span)));
                 }
-                return self
-                    .fin_parse_fn_ptr_ty(bound_vars, ast::FnPtrTyModifiers { safety, externness });
+                return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
             _ => return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span))),
         }
@@ -176,14 +180,7 @@ impl<'src> Parser<'_, 'src> {
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::FnPtrTyModifiers<'src>,
     ) -> Result<ast::Ty<'src>> {
-        self.parse(TokenKind::OpenRoundBracket)?;
-        // FIXME: Actually parse the parameters using `Self::parse_fn_params`
-        //        to capture the full grammar (for that, the functions needs to
-        //        be able to parse optional parameter *patterns* (!)).
-        let inputs =
-            self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
-                this.parse_ty()
-            })?;
+        let inputs = self.parse_fn_params(FnParamMode::Optional)?;
         let output = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         return Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy {

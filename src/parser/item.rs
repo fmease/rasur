@@ -1,11 +1,10 @@
 use super::{
     ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
+    common::{FnParamMode, Qualifier},
     error::ParseError,
     ident::{AUTO, MACRO_RULES, SAFE, UNION},
-    pat::OrPolicy,
-    qualifier::Qualifier,
 };
-use crate::{ast, span::Span};
+use crate::{ast, edition::Edition, span::Span};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a sequence of items.
@@ -15,12 +14,16 @@ impl<'src> Parser<'_, 'src> {
     /// ```grammar
     /// Items⟨terminator⟩ ::= Item* ⟨terminator⟩
     /// ```
-    pub(super) fn parse_items(&mut self, delim: TokenKind) -> Result<Vec<ast::Item<'src>>> {
+    pub(super) fn parse_items(
+        &mut self,
+        cx: ItemCx,
+        delim: TokenKind,
+    ) -> Result<Vec<ast::Item<'src>>> {
         let mut items = Vec::new();
 
         // We look for a delimiter instead of checking `begins_item` for better diagnostics.
         while !self.consume(delim) {
-            items.push(self.parse_item()?);
+            items.push(self.parse_item(cx)?);
         }
 
         Ok(items)
@@ -31,7 +34,7 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// <!-- FIXME: Add EBNF section back in -->
-    pub(super) fn parse_item(&mut self) -> Result<ast::Item<'src>> {
+    pub(super) fn parse_item(&mut self, cx: ItemCx) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_item`.
 
         let start = self.token.span;
@@ -39,7 +42,7 @@ impl<'src> Parser<'_, 'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
         let vis = self.parse_visibility()?;
-        let kind = self.parse_item_kind()?;
+        let kind = self.parse_item_kind(cx)?;
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
@@ -84,7 +87,7 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    fn parse_item_kind(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn parse_item_kind(&mut self, cx: ItemCx) -> Result<ast::ItemKind<'src>> {
         let start = self.token.span;
 
         // FIXME: Better span for InvalidItemPrefix
@@ -95,78 +98,72 @@ impl<'src> Parser<'_, 'src> {
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
             }
-            [modifiers @ .., Qualifier::Fn] => {
-                let (constness, modifiers) = Qualifier::strip_const(modifiers);
-                let (asyncness, modifiers) = match modifiers {
-                    [Qualifier::Async, modifiers @ ..] => (ast::Asyncness::Async, modifiers),
-                    _ => (ast::Asyncness::Not, modifiers),
+            &[mut ref qualifiers @ .., Qualifier::Fn] => {
+                let mut modifiers = ast::FnItemModifiers::default();
+
+                (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
+                (modifiers.asyncness, qualifiers) = match qualifiers {
+                    [Qualifier::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
+                    _ => (ast::Asyncness::Not, qualifiers),
                 };
-                let (genness, modifiers) = match modifiers {
-                    [Qualifier::Gen, modifiers @ ..] => (ast::Genness::Gen, modifiers),
-                    _ => (ast::Genness::Not, modifiers),
+                (modifiers.genness, qualifiers) = match qualifiers {
+                    [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
+                    _ => (ast::Genness::Not, qualifiers),
                 };
-                let (safety, modifiers) = match modifiers {
-                    [Qualifier::Unsafe, modifiers @ ..] => (ast::Safety::Unsafe, modifiers),
-                    [Qualifier::Safe, modifiers @ ..] => (ast::Safety::Safe, modifiers),
-                    _ => (ast::Safety::Inherited, modifiers),
+                (modifiers.safety, qualifiers) = match qualifiers {
+                    [Qualifier::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+                    [Qualifier::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
+                    _ => (ast::Safety::Inherited, qualifiers),
                 };
-                let (externness, modifiers) = Qualifier::strip_extern(modifiers);
-                if !modifiers.is_empty() {
+                (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_fn_item(ast::FnItemModifiers {
-                    constness,
-                    asyncness,
-                    genness,
-                    safety,
-                    externness,
-                });
+                return self.fin_parse_fn_item(modifiers, cx);
             }
-            [modifiers @ .., Qualifier::Trait] => {
-                let (constness, modifiers) = Qualifier::strip_const(modifiers);
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                let (autoness, modifiers) = match modifiers {
-                    [Qualifier::Auto, modifiers @ ..] => (ast::Autoness::Auto, modifiers),
-                    _ => (ast::Autoness::Not, modifiers),
+            &[mut ref qualifiers @ .., Qualifier::Trait] => {
+                let mut modifiers = ast::TraitItemModifiers::default();
+
+                (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
+                (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                (modifiers.autoness, qualifiers) = match qualifiers {
+                    [Qualifier::Auto, qualifiers @ ..] => (ast::Autoness::Auto, qualifiers),
+                    _ => (ast::Autoness::Not, qualifiers),
                 };
-                if !modifiers.is_empty() {
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_trait_item(ast::TraitItemModifiers {
-                    constness,
-                    safety,
-                    autoness,
-                });
+                return self.fin_parse_trait_item(modifiers);
             }
-            [modifiers @ .., Qualifier::Impl] => {
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                if !modifiers.is_empty() {
+            [qualifiers @ .., Qualifier::Impl] => {
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(safety, ast::Constness::Not);
             }
-            [modifiers @ .., Qualifier::Impl, Qualifier::Const] => {
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                if !modifiers.is_empty() {
+            [qualifiers @ .., Qualifier::Impl, Qualifier::Const] => {
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(safety, ast::Constness::Const);
             }
-            [modifiers @ .., Qualifier::Extern(abi)] => {
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                if !modifiers.is_empty() {
+            [qualifiers @ .., Qualifier::Extern(abi)] => {
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi);
             }
-            [modifiers @ .., Qualifier::Mod] => {
-                let (safety, modifiers) = Qualifier::strip_unsafe(modifiers);
-                if !modifiers.is_empty() {
+            [qualifiers @ .., Qualifier::Mod] => {
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
@@ -334,7 +331,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::ItemKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         let items = self
-            .parse_items(TokenKind::CloseCurlyBracket)?
+            .parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?
             .into_iter()
             .map(|item| {
                 Ok(ast::ExternItem {
@@ -388,10 +385,14 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_fn_item(
         &mut self,
         modifiers: ast::FnItemModifiers<'src>,
+        cx: ItemCx,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
         let gen_params = self.parse_generic_params()?;
-        let params = self.parse_fn_params()?;
+        let params = self.parse_fn_params(match (cx, self.edition) {
+            (ItemCx::Trait, Edition::Rust2015) => FnParamMode::Optional,
+            _ => FnParamMode::Required,
+        })?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
         let preds = self.parse_where_clause()?;
 
@@ -410,55 +411,6 @@ impl<'src> Parser<'_, 'src> {
             ret_ty,
             body,
         })))
-    }
-
-    /// Parse function parameters.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
-    fn parse_fn_params(&mut self) -> Result<Vec<ast::FnParam<'src>>> {
-        self.parse(TokenKind::OpenRoundBracket)?;
-
-        let mut first = true;
-        self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
-            let first = std::mem::take(&mut first);
-
-            if let Some((ref_, mut_)) = this.probe(|this| {
-                let ref_ = this.consume(TokenKind::SingleAmpersand).then(|| this.parse_lifetime());
-                let mut_ = this.parse_mutability();
-                this.parse(TokenKind::SelfLower).ok()?;
-                Some((ref_, mut_))
-            }) {
-                if !first {
-                    return Err(ParseError::MisplacedReceiver);
-                }
-
-                let pat = ast::Pat::Ident(ast::IdentPat {
-                    mut_: match ref_ {
-                        Some(_) => ast::Mutability::Not,
-                        None => mut_,
-                    },
-                    by_ref: ast::ByRef::No,
-                    ident: "self",
-                });
-
-                let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
-
-                let ty = match ref_ {
-                    Some(lt) => ast::Ty::Ref(lt?, mut_, Box::new(self_ty())),
-                    None => match this.consume(TokenKind::SingleColon) {
-                        true => this.parse_ty()?,
-                        false => self_ty(),
-                    },
-                };
-
-                return Ok(ast::FnParam { pat, ty });
-            };
-
-            let pat = this.parse_pat(OrPolicy::Allowed)?;
-            let ty = this.parse_ty_annotation()?;
-
-            Ok(ast::FnParam { pat, ty })
-        })
     }
 
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
@@ -496,7 +448,7 @@ impl<'src> Parser<'_, 'src> {
 
         let preds = self.parse_where_clause()?;
 
-        let items = self.parse_delimited_assoc_items()?;
+        let items = self.parse_delimited_assoc_items(ItemCx::Boring)?;
 
         Ok(ast::ItemKind::Impl(Box::new(ast::ImplItem {
             safety,
@@ -546,7 +498,7 @@ impl<'src> Parser<'_, 'src> {
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
             // FIXME: Smh. merge with outer attrs?
             let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
-            Some(self.parse_items(TokenKind::CloseCurlyBracket)?)
+            Some(self.parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?)
         } else {
             // FIXME: Should this really be inside parse_fn or rather inside parse_item?
             self.parse(TokenKind::Semicolon)?;
@@ -618,7 +570,7 @@ impl<'src> Parser<'_, 'src> {
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
         let preds = self.parse_where_clause()?;
 
-        let items = self.parse_delimited_assoc_items()?;
+        let items = self.parse_delimited_assoc_items(ItemCx::Trait)?;
 
         Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
             modifiers,
@@ -738,11 +690,11 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    fn parse_delimited_assoc_items(&mut self) -> Result<Vec<ast::AssocItem<'src>>> {
+    fn parse_delimited_assoc_items(&mut self, cx: ItemCx) -> Result<Vec<ast::AssocItem<'src>>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         // FIXME: Smh. merge with outer attrs?
         let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
-        self.parse_items(TokenKind::CloseCurlyBracket)?
+        self.parse_items(cx, TokenKind::CloseCurlyBracket)?
             .into_iter()
             .map(|item| {
                 Ok(ast::AssocItem {
@@ -803,4 +755,10 @@ impl<'src> Parser<'_, 'src> {
 
         self.token.kind == TokenKind::Pub
     }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ItemCx {
+    Boring,
+    Trait,
 }

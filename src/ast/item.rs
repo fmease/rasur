@@ -117,7 +117,7 @@ pub(crate) struct FnItem<'src> {
     pub(crate) body: Option<BlockExpr<'src>>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) struct FnItemModifiers<'src> {
     pub(crate) constness: Constness,
     pub(crate) asyncness: Asyncness,
@@ -126,22 +126,25 @@ pub(crate) struct FnItemModifiers<'src> {
     pub(crate) externness: Externness<'src>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Constness {
     Const,
+    #[default]
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Asyncness {
     Async,
+    #[default]
     Not,
 }
 
 // FIXME: Awful name, rethink whole naming scheme here
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Genness {
     Gen,
+    #[default]
     Not,
 }
 
@@ -200,16 +203,17 @@ pub(crate) struct TraitItem<'src> {
     pub(crate) body: Vec<AssocItem<'src>>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) struct TraitItemModifiers {
     pub(crate) constness: Constness,
     pub(crate) safety: Safety,
     pub(crate) autoness: Autoness,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) enum Autoness {
     Auto,
+    #[default]
     Not,
 }
 

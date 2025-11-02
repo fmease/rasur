@@ -5,7 +5,8 @@ impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Ident(ident) => ident.fmt(cx),
-            Self::Wildcard => fmt!(cx, "_"),
+            // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.
+            Self::Wildcard(_) => fmt!(cx, "_"),
             Self::Lit(lit) => lit.fmt(cx),
             Self::Borrow(mut_, pat) => {
                 fmt!(cx, "&");

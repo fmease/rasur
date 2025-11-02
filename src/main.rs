@@ -5,6 +5,7 @@
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
+#![feature(mut_ref)]
 #![feature(negative_impls)]
 #![feature(super_let)]
 // Lints

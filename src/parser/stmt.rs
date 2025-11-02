@@ -1,5 +1,6 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy,
+    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, item::ItemCx,
+    pat::OrPolicy,
 };
 use crate::ast;
 
@@ -17,7 +18,7 @@ impl<'src> Parser<'_, 'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         if self.begins_item(MacroCallPolicy::Forbidden) {
-            let mut item = self.parse_item()?;
+            let mut item = self.parse_item(ItemCx::Boring)?;
             debug_assert!(item.attrs.is_empty());
             item.attrs = attrs;
 

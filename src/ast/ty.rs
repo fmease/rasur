@@ -1,5 +1,6 @@
 use super::{
-    Expr, ExtPath, Externness, Ident, MacroCall, Mutability, Path, Safety, UnambiguousGenericArgs,
+    Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path, Safety,
+    UnambiguousGenericArgs,
 };
 
 #[derive(Debug)]
@@ -24,11 +25,11 @@ pub(crate) enum Ty<'src> {
 pub(crate) struct FnPtrTy<'src> {
     pub(crate) bound_vars: Vec<GenericParam<'src>>,
     pub(crate) modifiers: FnPtrTyModifiers<'src>,
-    pub(crate) inputs: Vec<Ty<'src>>,
+    pub(crate) inputs: Vec<FnParam<'src>>,
     pub(crate) output: Option<Ty<'src>>,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub(crate) struct FnPtrTyModifiers<'src> {
     pub(crate) safety: Safety,
     pub(crate) externness: Externness<'src>,

@@ -8,12 +8,12 @@ use crate::{
 use std::{borrow::Cow, fmt};
 
 mod attr;
+mod common;
 mod error;
 mod expr;
 mod item;
 mod pat;
 mod path;
-mod qualifier;
 mod stmt;
 #[cfg(test)]
 mod test;
@@ -37,6 +37,8 @@ struct Parser<'a, 'src> {
     edition: Edition,
 }
 
+// FIXME: Move some parsing methods into mod common.
+
 impl<'a, 'src> Parser<'a, 'src> {
     fn new(tokens: &'a [Token], source: &'src str, edition: Edition) -> Self {
         let index = 0;
@@ -55,7 +57,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
-        let items = self.parse_items(TokenKind::EndOfInput)?;
+        let items = self.parse_items(item::ItemCx::Boring, TokenKind::EndOfInput)?;
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
