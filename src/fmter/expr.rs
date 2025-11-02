@@ -211,13 +211,17 @@ impl Fmt for ast::MatchExpr<'_> {
 
 impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, pat, body } = self;
+        let Self { attrs, pat, guard, body } = self;
 
         for attr in attrs {
             attr.fmt(cx);
             cx.line_break();
         }
         pat.fmt(cx);
+        if let Some(guard) = guard {
+            fmt!(cx, " if ");
+            guard.fmt(cx);
+        }
         fmt!(cx, " => ");
         body.fmt(cx);
     }

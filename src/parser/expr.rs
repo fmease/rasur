@@ -503,6 +503,10 @@ impl<'src> Parser<'_, 'src> {
                 while !self.consume(DELIMITER) {
                     let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
                     let pat = self.parse_pat(OrPolicy::Allowed)?;
+                    let guard = self
+                        .consume(TokenKind::If)
+                        .then(|| self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Allowed))
+                        .transpose()?;
                     self.parse(TokenKind::WideArrow)?;
 
                     // FIXME: Certain restrictions need to apply / parse_expr needs to care about "completeness"!
@@ -515,7 +519,7 @@ impl<'src> Parser<'_, 'src> {
                         self.parse(TokenKind::Comma)?;
                     }
 
-                    arms.push(ast::MatchArm { attrs, pat, body });
+                    arms.push(ast::MatchArm { attrs, pat, guard, body });
                 }
 
                 return Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
