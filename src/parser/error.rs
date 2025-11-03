@@ -21,9 +21,9 @@ pub(crate) enum ParseError {
     UnexpectedToken(Token, ExpectedFragment),
     HigherRankedBinderOnOutlivesBound(Span),
     HigherRankedBinderOnUseBound(Span),
-    // FIXME: Temporary (replace with InvalidModifiersForItem)
     InvalidItemPrefix(Span),
     InvalidFnPtrTyPrefix(Span),
+    InvalidExprPrefix(Span),
 }
 
 impl ParseError {
@@ -72,7 +72,11 @@ impl ParseError {
                 Diag::new(format!("invalid item modifiers")).unlabeled_highlight(span)
             }
             Self::InvalidFnPtrTyPrefix(span) => {
-                Diag::new(format!("invalid fn ptr ty modifiers")).unlabeled_highlight(span)
+                Diag::new(format!("invalid function pointer type modifiers"))
+                    .unlabeled_highlight(span)
+            }
+            Self::InvalidExprPrefix(span) => {
+                Diag::new(format!("invalid expression modifiers")).unlabeled_highlight(span)
             }
         };
         eprintln!("{}", diag.render(source, path));

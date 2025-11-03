@@ -100,7 +100,10 @@ impl Fmt for ast::StructPat<'_> {
         let non_empty = !fields.is_empty();
 
         path.fmt(cx);
-        fmt!(cx, " {{ ");
+        fmt!(cx, " {{");
+        if non_empty {
+            fmt!(cx, " ");
+        }
         Punctuated::new(fields, ", ").fmt(cx);
         if rest {
             if non_empty {
@@ -108,7 +111,10 @@ impl Fmt for ast::StructPat<'_> {
             }
             fmt!(cx, "..");
         }
-        fmt!(cx, " }}");
+        if non_empty {
+            fmt!(cx, " ");
+        }
+        fmt!(cx, "}}");
     }
 }
 

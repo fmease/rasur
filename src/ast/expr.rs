@@ -1,6 +1,6 @@
 use super::{
-    Attr, Bracket, ExtPath, Ident, Lit, MacroCall, Mutability,
-    ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
+    Asyncness, Attr, Bracket, Constness, ExtPath, GenericParam, Genness, Ident, Lit, MacroCall,
+    Mutability, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
 
 #[derive(Debug)]
@@ -242,17 +242,30 @@ pub(crate) struct MethodCallExpr<'src> {
     pub(crate) args: Vec<Expr<'src>>,
 }
 
+// FIXME: "staticness"/movability for `#[coroutine]`s.
+// FIXME: "useness"/CaptureMode::Use for feat `ergonomic_clones`.
 #[derive(Debug)]
 pub(crate) struct ClosureExpr<'src> {
-    pub(crate) kind: ClosureKind,
+    pub(crate) bound_vars: Vec<GenericParam<'src>>,
+    pub(crate) modifiers: ClosureExprModifiers,
     pub(crate) params: Vec<ClosureParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
     pub(crate) body: Expr<'src>,
 }
 
-#[derive(Debug)]
-pub(crate) enum ClosureKind {
-    Normal,
+#[derive(Default, Debug)]
+pub(crate) struct ClosureExprModifiers {
+    pub(crate) constness: Constness,
+    pub(crate) asyncness: Asyncness,
+    // FIXME: Horrible naming!
+    pub(crate) genness: Genness,
+    pub(crate) mode: CaptureMode,
+}
+
+#[derive(Default, Debug)]
+pub(crate) enum CaptureMode {
+    #[default]
+    Ref,
     Move,
 }
 

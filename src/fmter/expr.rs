@@ -278,12 +278,15 @@ impl Fmt for ast::MethodCallExpr<'_> {
 
 impl Fmt for ast::ClosureExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { kind, params, ret_ty, body } = self;
+        let Self { bound_vars, modifiers, params, ret_ty, body } = self;
 
-        match kind {
-            ast::ClosureKind::Normal => {}
-            ast::ClosureKind::Move => fmt!(cx, "move "),
+        if !bound_vars.is_empty() {
+            fmt!(cx, "for");
+            bound_vars.fmt(cx);
+            fmt!(cx, " ");
         }
+
+        modifiers.trailing_space().fmt(cx);
 
         fmt!(cx, "|");
         Punctuated::new(params, ", ").fmt(cx);
@@ -297,6 +300,20 @@ impl Fmt for ast::ClosureExpr<'_> {
         fmt!(cx, " ");
 
         body.fmt(cx);
+    }
+}
+
+impl Fmt for TrailingSpace<ast::ClosureExprModifiers> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::ClosureExprModifiers { constness, asyncness, genness, mode }) = self;
+
+        constness.trailing_space().fmt(cx);
+        asyncness.trailing_space().fmt(cx);
+        genness.trailing_space().fmt(cx);
+        match mode {
+            ast::CaptureMode::Ref => {}
+            ast::CaptureMode::Move => fmt!(cx, "move "),
+        }
     }
 }
 

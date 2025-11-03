@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
-    common::{FnParamMode, Qualifier},
+    common::FnParamMode,
     error::ParseError,
     ident::{AUTO, MACRO_RULES, SAFE, UNION},
 };
@@ -49,23 +49,13 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::Item { attrs, vis, kind, span })
     }
 
+    // FIXME: Experiment with doing the stmt(item<->expr) disambiguation in begins_expr instead.
+    // FIXME: Experiment with replacing this with an parse_item_prefix that rets Option<ItemPrefix>
+    //        to be then used for fin_parse_item(prefix)
     pub(super) fn begins_item(&self, policy: MacroCallPolicy) -> bool {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
-        if self.begins_outer_attr() || self.begins_visibility() || self.begins_macro_item(policy) {
-            return true;
-        }
-
         match self.token.kind {
-            TokenKind::Async => {
-                self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
-                    // FIXME: HACK: for `async gen {`
-                    && self.look_ahead(2, |t| t.kind != TokenKind::OpenCurlyBracket)
-            }
-            TokenKind::Const | TokenKind::Unsafe => {
-                self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
-            }
-            TokenKind::Gen => self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket),
             | TokenKind::Enum
             | TokenKind::Extern
             | TokenKind::Fn
@@ -76,22 +66,38 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Struct
             | TokenKind::Trait
             | TokenKind::Type
-            | TokenKind::Use => true,
+            | TokenKind::Use => return true,
+            TokenKind::Unsafe => {
+                return self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket);
+            }
             TokenKind::Ident => match self.source(self.token.span) {
-                AUTO => self.look_ahead(1, |t| t.kind == TokenKind::Trait),
-                SAFE => self.look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)),
-                UNION => self.look_ahead(1, |t| t.kind == TokenKind::Ident),
-                _ => false,
+                AUTO => return self.look_ahead(1, |t| t.kind == TokenKind::Trait),
+                SAFE => {
+                    return self
+                        .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern));
+                }
+                UNION => return self.look_ahead(1, |t| t.kind == TokenKind::Ident),
+                _ => {}
             },
-            _ => false,
+            _ => {}
         }
+
+        if self.begins_outer_attr() || self.begins_visibility() || self.begins_macro_item(policy) {
+            return true;
+        }
+
+        if !self.clone().parse_item_qualifiers().unwrap_or_else(|_| unreachable!()).is_empty() {
+            return true;
+        }
+
+        false
     }
 
     fn parse_item_kind(&mut self, cx: ItemCx) -> Result<ast::ItemKind<'src>> {
         let start = self.token.span;
 
-        // FIXME: Better span for InvalidItemPrefix
-        match self.parse_qualifiers()?.as_slice() {
+        // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
+        match self.parse_item_qualifiers()?.as_slice() {
             [] => {}
             [Qualifier::Const] => return self.fin_parse_const_item(),
             // `crate` can't be a qualifier itself because it may also begin paths.
@@ -219,6 +225,61 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
     }
 
+    fn parse_item_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
+        let mut qualifiers: Vec<_> =
+            std::iter::from_fn(|| self.parse_item_qualifier()).collect::<Result<_>>()?;
+
+        // Retroactively disqualify these qualifiers if they may begin a (block or closure) expression.
+        // FIXME: Should we also accept+split `|=` and `||=` for diagnostic purposes?
+        if let TokenKind::OpenCurlyBracket
+        | TokenKind::SinglePipe
+        | TokenKind::DoublePipe
+        | TokenKind::Move = self.token.kind
+        {
+            while qualifiers
+                .pop_if(|qualifier| {
+                    matches!(qualifier, Qualifier::Async | Qualifier::Const | Qualifier::Gen)
+                })
+                .is_some()
+            {}
+        }
+
+        Ok(qualifiers)
+    }
+
+    fn parse_item_qualifier(&mut self) -> Option<Result<Qualifier<'src>>> {
+        let qualifier = match self.token.kind {
+            TokenKind::Async => Qualifier::Async,
+            TokenKind::Const => Qualifier::Const,
+            TokenKind::Extern => {
+                self.advance();
+                let span = self.token.span;
+                let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
+                return Some(Ok(Qualifier::Extern(abi)));
+            }
+            TokenKind::Fn => Qualifier::Fn,
+            TokenKind::Gen => Qualifier::Gen,
+            TokenKind::Ident => match self.source(self.token.span) {
+                AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
+                SAFE if self
+                    .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
+                {
+                    Qualifier::Safe
+                }
+                _ => return None,
+            },
+            TokenKind::Impl => Qualifier::Impl,
+            TokenKind::Mod => Qualifier::Mod,
+            TokenKind::Trait => Qualifier::Trait,
+            TokenKind::Unsafe if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
+                Qualifier::Unsafe
+            }
+            _ => return None,
+        };
+        self.advance();
+        Some(Ok(qualifier))
+    }
+
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
     ///
     /// # Grammar
@@ -234,7 +295,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident_or(TokenKind::Underscore)?;
-        let params = self.parse_generic_params()?;
+        let params = self.parse_generic_param_list()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         let preds = self.parse_where_clause()?;
@@ -388,8 +449,8 @@ impl<'src> Parser<'_, 'src> {
         cx: ItemCx,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
-        let gen_params = self.parse_generic_params()?;
-        let params = self.parse_fn_params(match (cx, self.edition) {
+        let gen_params = self.parse_generic_param_list()?;
+        let params = self.parse_fn_param_list(match (cx, self.edition) {
             (ItemCx::Trait, Edition::Rust2015) => FnParamMode::Optional,
             _ => FnParamMode::Required,
         })?;
@@ -422,8 +483,11 @@ impl<'src> Parser<'_, 'src> {
         safety: ast::Safety,
         constness: ast::Constness,
     ) -> Result<ast::ItemKind<'src>> {
-        // FIXME: Handle "impl<T> ::Path {}" vs. "impl <T>::Path {}"
-        let params = self.parse_generic_params()?;
+        let params = if self.pick_generic_param_list_over_ext_path(0) {
+            self.parse_generic_param_list()?
+        } else {
+            Vec::new()
+        };
 
         let polarity = match self.consume(TokenKind::SingleBang) {
             true => ast::ImplPolarity::Negative,
@@ -561,7 +625,7 @@ impl<'src> Parser<'_, 'src> {
         modifiers: ast::TraitItemModifiers,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
-        let params = self.parse_generic_params()?;
+        let params = self.parse_generic_param_list()?;
 
         // FIXME: Or if `=` parse a trait alias but make sure to reject unsafe trait aliases,
         //        bounds and leading where-clauses on them.
@@ -595,7 +659,7 @@ impl<'src> Parser<'_, 'src> {
     ///     ";"
     fn fin_parse_ty_alias_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
-        let params = self.parse_generic_params()?;
+        let params = self.parse_generic_param_list()?;
         let bounds =
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
         let mut preds = self.parse_where_clause()?;
@@ -761,4 +825,43 @@ impl<'src> Parser<'_, 'src> {
 pub(super) enum ItemCx {
     Boring,
     Trait,
+}
+
+enum Qualifier<'src> {
+    Async,
+    Auto,
+    Const,
+    Extern(Option<&'src str>),
+    Fn,
+    Gen,
+    Impl,
+    Mod,
+    Safe,
+    Trait,
+    Unsafe,
+}
+
+impl<'src> Qualifier<'src> {
+    fn strip_const(qualifiers: &[Self]) -> (ast::Constness, &[Self]) {
+        match qualifiers {
+            [Self::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
+            _ => (ast::Constness::Not, qualifiers),
+        }
+    }
+
+    fn strip_unsafe(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+        match qualifiers {
+            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            _ => (ast::Safety::Inherited, qualifiers),
+        }
+    }
+
+    fn strip_extern(qualifiers: &[Self]) -> (ast::Externness<'src>, &[Self]) {
+        match qualifiers {
+            [Qualifier::Extern(abi), qualifiers @ ..] => {
+                (ast::Externness::Extern(*abi), qualifiers)
+            }
+            _ => (ast::Externness::Not, qualifiers),
+        }
+    }
 }

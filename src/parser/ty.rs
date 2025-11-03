@@ -1,11 +1,9 @@
 use super::{
-    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix,
-    common::{FnParamMode, Qualifier},
-    error::ParseError,
-    ident::DYN,
-    one_of,
+    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
+    error::ParseError, ident::DYN, one_of,
 };
 use crate::{ast, edition::Edition, span::Span, token::Token};
+use std::mem;
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a type.
@@ -16,17 +14,15 @@ impl<'src> Parser<'_, 'src> {
 
         let start = self.token.span;
 
-        match self.parse_qualifiers()?.as_mut_slice() {
+        // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
+        match self.parse_ty_qualifiers()?.as_mut_slice() {
             [] => {}
-            [Qualifier::Impl] => {
-                return Ok(ast::Ty::ImplTrait(self.parse_bounds()?));
-            }
             [qualifiers @ .., Qualifier::Fn] => {
                 let mut modifiers = ast::FnPtrTyModifiers::default();
 
                 let (bound_vars, mut qualifiers) = match qualifiers {
-                    [Qualifier::HigherRankedBinder(bound_vars), qualifiers @ ..] => {
-                        (std::mem::take(bound_vars), &*qualifiers)
+                    [Qualifier::For(bound_vars), qualifiers @ ..] => {
+                        (mem::take(bound_vars), &*qualifiers)
                     }
                     _ => (Vec::new(), &*qualifiers),
                 };
@@ -57,6 +53,10 @@ impl<'src> Parser<'_, 'src> {
             {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
+            }
+            TokenKind::Impl => {
+                self.advance();
+                return Ok(ast::Ty::ImplTrait(self.parse_bounds()?));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -160,6 +160,30 @@ impl<'src> Parser<'_, 'src> {
         false
     }
 
+    fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
+        std::iter::from_fn(|| self.parse_ty_qualifier()).collect()
+    }
+
+    fn parse_ty_qualifier(&mut self) -> Option<Result<Qualifier<'src>>> {
+        let qualifier = match self.token.kind {
+            TokenKind::Extern => {
+                self.advance();
+                let span = self.token.span;
+                let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
+                return Some(Ok(Qualifier::Extern(abi)));
+            }
+            TokenKind::Fn => Qualifier::Fn,
+            TokenKind::For => {
+                self.advance();
+                return Some(self.parse_generic_param_list().map(Qualifier::For));
+            }
+            TokenKind::Unsafe => Qualifier::Unsafe,
+            _ => return None,
+        };
+        self.advance();
+        Some(Ok(qualifier))
+    }
+
     fn begins_2015_dyn_bound(&self, token: Token) -> bool {
         matches!(
             token.kind,
@@ -180,7 +204,7 @@ impl<'src> Parser<'_, 'src> {
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::FnPtrTyModifiers<'src>,
     ) -> Result<ast::Ty<'src>> {
-        let inputs = self.parse_fn_params(FnParamMode::Optional)?;
+        let inputs = self.parse_fn_param_list(FnParamMode::Optional)?;
         let output = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         return Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy {
@@ -208,10 +232,10 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Generics ::= Generic_Params Where_Clause?
+    /// Generics ::= Generic_Param_List Where_Clause?
     /// ```
     pub(super) fn parse_generics(&mut self) -> Result<ast::Generics<'src>> {
-        let params = self.parse_generic_params()?;
+        let params = self.parse_generic_param_list()?;
         let preds = self.parse_where_clause()?;
         Ok(ast::Generics { params, preds })
     }
@@ -221,13 +245,13 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Generic_Params ::= "<" (Generic_Param ("," | >">"))* ">"
-    /// Generic_Param ::=
+    /// Generic_Param_List ::= "<" (Generic_Param ("," | >">"))* ">"
+    /// Generic_Param_List ::=
     ///     | Lifetime
     ///     | "const" Common_Ident ":" Type ("=" Const_Arg)?
     ///     | Common_Ident (":" Bounds)? ("=" Ty)?
     /// ```
-    pub(super) fn parse_generic_params(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
+    pub(super) fn parse_generic_param_list(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
         if !self.consume(TokenPrefix::LessThan) {
             return Ok(Vec::new());
         }
@@ -508,9 +532,34 @@ impl<'src> Parser<'_, 'src> {
             return Ok(None);
         }
 
-        let bound_vars = self.parse_generic_params()?;
+        let bound_vars = self.parse_generic_param_list()?;
 
         // FIXME: Better span
         Ok(Some((bound_vars, start.until(self.token.span))))
+    }
+}
+
+enum Qualifier<'src> {
+    Extern(Option<&'src str>),
+    Fn,
+    For(Vec<ast::GenericParam<'src>>),
+    Unsafe,
+}
+
+impl<'src> Qualifier<'src> {
+    fn strip_unsafe(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+        match qualifiers {
+            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            _ => (ast::Safety::Inherited, qualifiers),
+        }
+    }
+
+    fn strip_extern(qualifiers: &[Self]) -> (ast::Externness<'src>, &[Self]) {
+        match qualifiers {
+            [Qualifier::Extern(abi), qualifiers @ ..] => {
+                (ast::Externness::Extern(*abi), qualifiers)
+            }
+            _ => (ast::Externness::Not, qualifiers),
+        }
     }
 }

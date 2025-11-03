@@ -3,7 +3,7 @@ use super::{
     pat::OrPolicy, path::GenericArgsMode,
 };
 use crate::ast;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, mem};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse an expression.
@@ -376,19 +376,59 @@ impl<'src> Parser<'_, 'src> {
         structs: StructPolicy,
         lets: LetPolicy,
     ) -> Result<ast::ExprKind<'src>> {
-        match self.token.kind {
-            // FIXME: Also support async move? closures.
-            TokenKind::Async => {
-                self.advance();
-                let gen_ = self.consume(TokenKind::Gen);
-                return Ok(ast::ExprKind::Block(
-                    match gen_ {
-                        true => ast::BlockKind::AsyncGen,
-                        false => ast::BlockKind::Async,
-                    },
-                    Box::new(self.parse_block_expr()?),
-                ));
+        let start = self.token.span;
+
+        // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
+        match self.parse_expr_qualifiers()?.as_mut_slice() {
+            [] => {}
+            [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
+                let kind = match qualifiers {
+                    [] => ast::BlockKind::Bare,
+                    [Qualifier::Async] => ast::BlockKind::Async,
+                    [Qualifier::Const] => ast::BlockKind::Const,
+                    [Qualifier::Gen] => ast::BlockKind::Gen,
+                    [Qualifier::Try] => ast::BlockKind::Try,
+                    [Qualifier::Unsafe] => ast::BlockKind::Unsafe,
+                    [Qualifier::Async, Qualifier::Gen] => ast::BlockKind::AsyncGen,
+                    _ => return Err(ParseError::InvalidExprPrefix(start.until(self.token.span))),
+                };
+                return Ok(ast::ExprKind::Block(kind, Box::new(self.fin_parse_block_expr()?)));
             }
+            [qualifiers @ .., Qualifier::Pipe] => {
+                let mut modifiers = ast::ClosureExprModifiers::default();
+
+                let (bound_vars, mut qualifiers) = match qualifiers {
+                    [Qualifier::For(bound_vars), qualifiers @ ..] => {
+                        (mem::take(bound_vars), &*qualifiers)
+                    }
+                    _ => (Vec::new(), &*qualifiers),
+                };
+                (modifiers.constness, qualifiers) = match qualifiers {
+                    [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
+                    _ => (ast::Constness::Not, qualifiers),
+                };
+                (modifiers.asyncness, qualifiers) = match qualifiers {
+                    [Qualifier::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
+                    _ => (ast::Asyncness::Not, qualifiers),
+                };
+                (modifiers.genness, qualifiers) = match qualifiers {
+                    [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
+                    _ => (ast::Genness::Not, qualifiers),
+                };
+                (modifiers.mode, qualifiers) = match qualifiers {
+                    [Qualifier::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
+                    _ => (ast::CaptureMode::Ref, qualifiers),
+                };
+                if !qualifiers.is_empty() {
+                    return Err(ParseError::InvalidExprPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_closure_expr(bound_vars, modifiers);
+            }
+            _ => return Err(ParseError::InvalidExprPrefix(start.until(self.token.span))),
+        }
+
+        match self.token.kind {
             TokenKind::Break => {
                 self.advance();
                 let label = self.parse_lifetime()?.map(|ast::Lifetime(label)| label);
@@ -411,34 +451,15 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Validate that the char lit only contains one scalar.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
-            TokenKind::Const => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Const,
-                    Box::new(self.parse_block_expr()?),
-                ));
-            }
             TokenKind::Continue => {
                 self.advance();
                 // FIXME: Parse optional label.
                 return Ok(ast::ExprKind::Continue);
             }
-            TokenKind::DoublePipe => {
-                self.modify_in_place(TokenKind::SinglePipe);
-                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
-            }
             TokenKind::False => {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)));
             }
-            TokenKind::Gen => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Gen,
-                    Box::new(self.parse_block_expr()?),
-                ));
-            }
-            // FIXME: Also support closure expr with binder.
             TokenKind::For => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
@@ -524,27 +545,10 @@ impl<'src> Parser<'_, 'src> {
 
                 return Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
             }
-            TokenKind::Move => {
-                self.advance();
-                // FIXME: Hack. Create+use `parse(TokenPrefix::Pipe)`
-                if self.token.kind == TokenKind::DoublePipe {
-                    self.modify_in_place(TokenKind::SinglePipe);
-                } else {
-                    self.parse(TokenKind::SinglePipe)?;
-                }
-                return self.fin_parse_closure_expr(ast::ClosureKind::Move);
-            }
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)));
-            }
-            TokenKind::OpenCurlyBracket => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Bare,
-                    Box::new(self.fin_parse_block_expr()?),
-                ));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -585,10 +589,6 @@ impl<'src> Parser<'_, 'src> {
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Return(expr));
             }
-            TokenKind::SinglePipe => {
-                self.advance();
-                return self.fin_parse_closure_expr(ast::ClosureKind::Normal);
-            }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
@@ -598,23 +598,9 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)));
             }
-            TokenKind::Try => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Try,
-                    Box::new(self.parse_block_expr()?),
-                ));
-            }
             TokenKind::Underscore => {
                 self.advance();
                 return Ok(ast::ExprKind::Wildcard);
-            }
-            TokenKind::Unsafe => {
-                self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Unsafe,
-                    Box::new(self.parse_block_expr()?),
-                ));
             }
             TokenKind::While => {
                 self.advance();
@@ -673,6 +659,48 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Expr))
     }
 
+    fn parse_expr_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
+        // FIXME: Should we also accept+split `|=` and `||=` for diagnostic purposes?
+
+        let mut qualifiers = Vec::new();
+
+        loop {
+            let qualifier = match self.token.kind {
+                TokenKind::Async => Qualifier::Async,
+                TokenKind::Const => Qualifier::Const,
+                TokenKind::DoublePipe => {
+                    self.modify_in_place(TokenKind::SinglePipe);
+                    qualifiers.push(Qualifier::Pipe);
+                    break;
+                }
+                TokenKind::For if self.pick_generic_param_list_over_ext_path(1) => {
+                    self.advance();
+                    qualifiers.push(Qualifier::For(self.parse_generic_param_list()?));
+                    continue;
+                }
+                TokenKind::Gen => Qualifier::Gen,
+                TokenKind::Move => Qualifier::Move,
+                TokenKind::OpenCurlyBracket => {
+                    self.advance();
+                    qualifiers.push(Qualifier::OpenCurlyBracket);
+                    break;
+                }
+                TokenKind::SinglePipe => {
+                    self.advance();
+                    qualifiers.push(Qualifier::Pipe);
+                    break;
+                }
+                TokenKind::Try => Qualifier::Try,
+                TokenKind::Unsafe => Qualifier::Unsafe,
+                _ => break,
+            };
+            self.advance();
+            qualifiers.push(qualifier);
+        }
+
+        Ok(qualifiers)
+    }
+
     pub(super) fn parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.fin_parse_block_expr()
@@ -697,8 +725,12 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::BlockExpr { attrs, stmts })
     }
 
-    fn fin_parse_closure_expr(&mut self, kind: ast::ClosureKind) -> Result<ast::ExprKind<'src>> {
-        // FIXME: Maybe reuse parse_fn_params smh?
+    fn fin_parse_closure_expr(
+        &mut self,
+        bound_vars: Vec<ast::GenericParam<'src>>,
+        modifiers: ast::ClosureExprModifiers,
+    ) -> Result<ast::ExprKind<'src>> {
+        // FIXME: Maybe reuse parse_fn_param_list smh?
         let params = self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
             let pat = this.parse_pat(OrPolicy::Forbidden)?;
             let ty = this.consume(TokenKind::SingleColon).then(|| this.parse_ty()).transpose()?;
@@ -707,15 +739,19 @@ impl<'src> Parser<'_, 'src> {
         })?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
-        let body = match ret_ty {
-            Some(_) => {
-                ast::ExprKind::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?))
-                    .into()
-            }
-            None => self.parse_expr()?,
+        let body = if ret_ty.is_some() {
+            ast::ExprKind::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?)).into()
+        } else {
+            self.parse_expr()?
         };
 
-        Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr { kind, params, ret_ty, body })))
+        Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr {
+            bound_vars,
+            modifiers,
+            params,
+            ret_ty,
+            body,
+        })))
     }
 }
 
@@ -869,4 +905,16 @@ enum Level {
     Try,
     Call,
     Project,
+}
+
+enum Qualifier<'src> {
+    Async,
+    Const,
+    For(Vec<ast::GenericParam<'src>>),
+    Gen,
+    Move,
+    OpenCurlyBracket,
+    Pipe,
+    Try,
+    Unsafe,
 }

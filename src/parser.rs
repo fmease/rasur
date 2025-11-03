@@ -29,6 +29,7 @@ pub(crate) fn parse<'src>(
     Parser::new(tokens, source, edition).parse_file()
 }
 
+#[derive(Clone)]
 struct Parser<'a, 'src> {
     tokens: &'a [Token],
     token: Token,
@@ -70,6 +71,8 @@ impl<'a, 'src> Parser<'a, 'src> {
         let span = self.token.span;
         self.advance();
         let lifetime = self.source(span);
+        // For better diagnostics, we lex here in the parser instead of in the lexer.
+        // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
         match lex_ident_or_keyword(&lifetime[1..], self.edition) {
             TokenKind::Ident | TokenKind::Underscore | TokenKind::Static => {
                 Ok(Some(ast::Lifetime(lifetime)))
@@ -288,7 +291,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn probe<T>(&mut self, parse: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
-        let mut this = Self { ..*self };
+        let mut this = self.clone();
         parse(&mut this).inspect(|_| *self = this)
     }
 
@@ -325,7 +328,6 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 }
 
-impl !Clone for Parser<'_, '_> {}
 impl !Copy for Parser<'_, '_> {}
 
 #[derive(Clone, Copy)]

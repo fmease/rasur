@@ -106,7 +106,8 @@ fn expr_or_nullary_closure() {
                 deref!(ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }),
                 deref!(ast::Expr {
                     kind: ast::ExprKind::Closure(deref!(ast::ClosureExpr {
-                        kind: ast::ClosureKind::Normal,
+                        bound_vars: deref!([]),
+                        modifiers: _,
                         params: deref!([]),
                         ret_ty: None,
                         body: ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }
@@ -493,6 +494,7 @@ fn expr_control_flow_ops_block() {
 // FIXME: Also add test for `for<()>::AssocTy in () {}`.
 // FIXME: However, `for <Ty>::AssocTy in () {}` should actually get rejected b/c
 //        it doesn't parse as a closure with binder.
+// FIXME: Also add `impl <$ty>::$segs {}`
 #[test]
 fn expr_qualified_struct_pat_in_for_loop() {
     assert_matches!(
@@ -563,6 +565,10 @@ fn main() {
 
 #[test]
 fn item_modifiers() {
+    // NOTE: Test cases marked `[***]` actually get rejected by rustc
+    //       but they should compile in my opinion.
+    //       See also <https://github.com/rust-lang/rust/issues/146122>.
+
     assert_matches!(
         parse_file(
             r#"
@@ -585,24 +591,24 @@ const async safe fn f() {}
 const async unsafe extern fn f() {}
 const async unsafe fn f() {}
 const auto trait Trait {}
-const auto: () = (); // !
+const auto: () = (); // [!]
 const extern "C" fn f() {}
 const extern fn f() {}
 const gen fn f() {}
-const safe extern fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
-const safe fn f() {} // rustc rejects things (wrongly imo, rust-lang/rust#146122)
-const safe: () = ();
+const safe extern fn f() {} // [***]
+const safe fn f() {} // [***]
+const safe: () = (); // [!]
 const trait Trait {}
-const unsafe auto trait Trait {} // rustc rejects things (wrongly, rust-lang/rust#146122
+const unsafe auto trait Trait {} // [***]
 const unsafe extern "C" fn f() {}
-const unsafe trait Trait {} // rustc rejects things (wrongly, rust-lang/rust#146122)
+const unsafe trait Trait {} // [***]
 extern "C" fn f() {}
 extern "C" {}
 extern crate krate;
 extern fn f() {}
 extern {}
 fn f() {}
-fn wrap() { safe fn f() {} } // rustc rejects things (wrongly imo, rust-lang/rust#146122)
+fn wrap() { safe fn f() {} } // [***]
 gen fn f() {}
 gen extern fn f() {}
 gen unsafe fn f() {}
@@ -630,6 +636,103 @@ unsafe trait Trait {}
 "#,
             Rust2024 // for `async` and `gen`
         ),
-        Ok(_)
+        Ok(_) // just a smoke test
+    );
+}
+
+#[test]
+fn ty_modifiers() {
+    assert_matches!(
+        parse_ty(
+            r##"(
+fn(),
+for<> fn(),
+unsafe fn(),
+unsafe extern fn(),
+unsafe extern r#"raw"# fn(),
+for<'a> unsafe fn(),
+for<T> unsafe extern fn(),
+)"##,
+            Rust2015
+        ),
+        Ok(_) // just a smoke test
+    );
+}
+
+// FIXME: Add `static` once we support that.
+#[test]
+fn expr_modifiers() {
+    // NOTE: Test cases marked `[***]` actually get rejected by rustc
+    //       but they should compile in my opinion.
+    //       See also <https://github.com/rust-lang/rust/issues/146122>.
+
+    assert_matches!(
+        parse_expr(
+            r#"{
+|| {};
+|_| {};
+| | {};
+move || {};
+move |_| {};
+gen || {}; // [***]
+gen |_| {}; // [***]
+gen move || {}; // [***]
+gen move |_| {}; // [***]
+for<> || {};
+for<> |_| {};
+for<> move || {};
+for<> move |_| {};
+for<> gen || {};
+for<> gen |_| {};
+for<> gen move || {};
+for<> gen move |_| {};
+for<> const || {};
+for<> const |_| {};
+for<> const move || {};
+for<> const move |_| {};
+for<> const gen || {}; // [***]
+for<> const gen |_| {}; // [***]
+for<> const gen move || {}; // [***]
+for<> const gen move |_| {}; // [***]
+for<> const async || {}; // [***]
+for<> const async |_| {}; // [***]
+for<> const async gen || {}; // [***]
+for<> const async gen |_| {}; // [***]
+for<> const async gen move || {}; // [***]
+for<> const async gen move |_| {}; // [***]
+for<> async || {};
+for<> async |_| {};
+for<> async move || {};
+for<> async move |_| {};
+for<> async gen || {};
+for<> async gen |_| {};
+for<> async gen move || {};
+for<> async gen move |_| {};
+const || {};
+const |_| {};
+const move || {};
+const move |_| {};
+const gen || {}; // [***]
+const gen |_| {}; // [***]
+const gen move || {}; // [***]
+const gen move |_| {}; // [***]
+const async || {}; // [***]
+const async |_| {}; // [***]
+const async gen || {}; // [***]
+const async gen |_| {}; // [***]
+const async gen move || {}; // [***]
+const async gen move |_| {}; // [***]
+async || {};
+async |_| {};
+async move || {};
+async move |_| {};
+async gen || {}; // [***]
+async gen |_| {}; // [***]
+async gen move || {}; // [***]
+async gen move |_| {}; // [***]
+}"#,
+            Rust2024 // for `async` and `gen`
+        ),
+        Ok(_) // just a smoke test
     );
 }
