@@ -14,6 +14,7 @@ impl<'src> Parser<'_, 'src> {
         self.parse_pat_at_level(Level::Initial, o_policy)
     }
 
+    // FIXME: We must also ensure that the LHS of a range is a RangePatBound, not a general Pat!
     fn parse_pat_at_level(&mut self, level: Level, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         // Negation (of literals) is handled in `Self::parse_lower_pat` instead!
         let op = match self.token.kind {
@@ -35,7 +36,6 @@ impl<'src> Parser<'_, 'src> {
 
         loop {
             let op = match self.token.kind {
-                // FIXME: Do we need to care about DoublePipe in some way?
                 TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
                 TokenKind::DoubleDot => Op::RangeExclusive,
                 TokenKind::DoubleDotEquals => {
@@ -158,32 +158,24 @@ impl<'src> Parser<'_, 'src> {
             return Ok(lit);
         }
 
+        let mut_ = self.parse_mutability();
+        let by_ref = if self.consume(TokenKind::Ref) {
+            ast::ByRef::Yes(self.parse_mutability())
+        } else {
+            ast::ByRef::No
+        };
+        match (mut_, by_ref) {
+            (ast::Mutability::Not, ast::ByRef::No) => {}
+            _ => {
+                let binder = self.parse_common_ident()?;
+                return self.fin_parse_binding_pat(mut_, by_ref, binder);
+            }
+        }
+
         match self.token.kind {
             TokenKind::Box => {
                 self.advance();
                 return Ok(ast::Pat::Box(Box::new(self.parse_pat(OrPolicy::Forbidden)?)));
-            }
-            TokenKind::Mut => {
-                self.advance();
-                return match self.token.kind {
-                    TokenKind::Ref => {
-                        self.advance();
-                        self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
-                    }
-                    TokenKind::CommonIdent => {
-                        let ident = self.source(self.token.span);
-                        self.advance();
-                        Ok(ast::Pat::Binding(ast::BindingPat {
-                            mut_: ast::Mutability::Mut,
-                            by_ref: ast::ByRef::No,
-                            ident,
-                        }))
-                    }
-                    _ => Err(ParseError::UnexpectedToken(
-                        self.token,
-                        one_of![TokenKind::Ref, ExpectedFragment::CommonIdent],
-                    )),
-                };
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -201,10 +193,6 @@ impl<'src> Parser<'_, 'src> {
                     |this| this.parse_pat(OrPolicy::Allowed),
                 )?;
                 return Ok(ast::Pat::Slice(elems));
-            }
-            TokenKind::Ref => {
-                self.advance();
-                return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
             }
             TokenKind::SingleBang => {
                 self.advance();
@@ -229,7 +217,11 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 
-                    return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
+                    return Ok(ast::Pat::MacroCall(Box::new(ast::MacroCall {
+                        path,
+                        bracket,
+                        stream,
+                    })));
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
@@ -292,17 +284,13 @@ impl<'src> Parser<'_, 'src> {
                 _ => {}
             }
 
-            return Ok(match path {
+            return match path {
                 ast::ExtPath {
                     ext: None,
                     path: ast::Path { segs: deref!([ast::PathSeg { ident, args: None }]) },
-                } => ast::Pat::Binding(ast::BindingPat {
-                    mut_: ast::Mutability::Not,
-                    by_ref: ast::ByRef::No,
-                    ident,
-                }),
-                _ => ast::Pat::Path(Box::new(path)),
-            });
+                } => self.fin_parse_binding_pat(ast::Mutability::Not, ast::ByRef::No, ident),
+                _ => Ok(ast::Pat::Path(Box::new(path))),
+            };
         }
 
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Pat))
@@ -349,10 +337,17 @@ impl<'src> Parser<'_, 'src> {
         Ok(None)
     }
 
-    fn fin_parse_by_ref_ident_pat(&mut self, mut_: ast::Mutability) -> Result<ast::Pat<'src>> {
-        let ref_mut = self.parse_mutability();
-        let ident = self.parse_common_ident()?;
-        Ok(ast::Pat::Binding(ast::BindingPat { by_ref: ast::ByRef::Yes(ref_mut), mut_, ident }))
+    fn fin_parse_binding_pat(
+        &mut self,
+        mut_: ast::Mutability,
+        by_ref: ast::ByRef,
+        binder: ast::Ident<'src>,
+    ) -> Result<ast::Pat<'src>> {
+        let pat = self
+            .consume(TokenKind::At)
+            .then(|| self.parse_pat(OrPolicy::Forbidden).map(Box::new))
+            .transpose()?;
+        return Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })));
     }
 }
 

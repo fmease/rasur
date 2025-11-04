@@ -72,11 +72,16 @@ impl Fmt for ast::Pat<'_> {
 
 impl Fmt for ast::BindingPat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { mut_, by_ref, ident } = self;
+        let Self { mut_, by_ref, binder, pat } = self;
 
         mut_.trailing_space().fmt(cx);
         by_ref.trailing_space().fmt(cx);
-        fmt!(cx, "{ident}");
+        fmt!(cx, "{binder}");
+
+        if let Some(pat) = pat {
+            fmt!(cx, " @ ");
+            pat.fmt(cx);
+        }
     }
 }
 

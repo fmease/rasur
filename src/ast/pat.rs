@@ -4,12 +4,12 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
-    Binding(BindingPat<'src>),
+    Binding(Box<BindingPat<'src>>),
     Borrow(Mutability, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
     Lit(Sign, Lit<'src>),
-    MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
+    MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
@@ -37,10 +37,11 @@ pub(crate) enum WildcardKind {
 pub(crate) struct BindingPat<'src> {
     pub(crate) mut_: Mutability,
     pub(crate) by_ref: ByRef,
-    pub(crate) ident: Ident<'src>,
+    pub(crate) binder: Ident<'src>,
+    pub(crate) pat: Option<Box<Pat<'src>>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum ByRef {
     Yes(Mutability),
     No,

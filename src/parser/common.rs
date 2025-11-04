@@ -57,14 +57,15 @@ impl<'src> Parser<'_, 'src> {
             this.parse(TokenKind::SelfLower).ok()?;
             Some((ref_, mut_))
         }) {
-            let pat = ast::Pat::Binding(ast::BindingPat {
+            let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
                 mut_: match ref_ {
                     Some(_) => ast::Mutability::Not,
                     None => mut_,
                 },
                 by_ref: ast::ByRef::No,
-                ident: "self",
-            });
+                binder: "self",
+                pat: None,
+            }));
 
             let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
 

@@ -128,7 +128,8 @@ fn pat_mut_ref_mut() {
         Ok(ast::Pat::Binding(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::Mutability::Mut),
-            ident: "x"
+            binder: "x",
+            pat: None,
         }))
     );
 }
