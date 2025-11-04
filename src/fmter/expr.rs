@@ -193,7 +193,8 @@ impl Fmt for ast::MatchExpr<'_> {
             cx.line_break();
             let mut arms = arms.into_iter().peekable();
             while let Some(arm) = arms.next() {
-                let needs_comma = arm.body.kind.needs_comma_as_match_arm_body();
+                let needs_comma =
+                    !arm.body.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::No);
                 arm.fmt(cx);
                 if needs_comma {
                     fmt!(cx, ",");

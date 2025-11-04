@@ -50,23 +50,18 @@ pub(crate) enum ExprKind<'src> {
 }
 
 impl ExprKind<'_> {
-    pub(crate) fn needs_semicolon_as_stmt(&self) -> bool {
-        self.needs_delimiter(false)
-    }
-
-    pub(crate) fn needs_comma_as_match_arm_body(&self) -> bool {
-        self.needs_delimiter(true)
-    }
-
-    fn needs_delimiter(&self, curly_macro_call_counts: bool) -> bool {
+    pub(crate) fn is_boundary(&self, extra: CurlyBracketedMacroCallIsBoundary) -> bool {
         match self {
             | Self::Block(BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe, _)
             | Self::If(_)
             | Self::Loop(_)
             | Self::Match(_)
             | Self::While(_)
-            | Self::ForLoop(_) => false,
-            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => curly_macro_call_counts,
+            | Self::ForLoop(_) => true,
+            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
+                CurlyBracketedMacroCallIsBoundary::Yes => true,
+                CurlyBracketedMacroCallIsBoundary::No => false,
+            },
             | Self::Array(_)
             | Self::Block(BlockKind::Async | BlockKind::AsyncGen | BlockKind::Gen, _) // indeed
             | Self::BinOp(..)
@@ -91,9 +86,15 @@ impl ExprKind<'_> {
             | Self::Try(_)
             | Self::Tuple(_)
             | Self::UnOp(..)
-            | Self::Wildcard => true,
+            | Self::Wildcard => false,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum CurlyBracketedMacroCallIsBoundary {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]

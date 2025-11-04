@@ -5,11 +5,11 @@ use std::cmp::Ordering;
 impl<'src> Parser<'_, 'src> {
     /// Parse a pattern.
     ///
-    /// <!-- FIXME: Add EBNF section back in -->
-    pub(super) fn parse_pat(&mut self, ors: OrPolicy) -> Result<ast::Pat<'src>> {
+    /// <!-- FIXME: Add an EBNF section back in -->
+    pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         // NOTE: To be kept in sync with `Self::begins_pat`.
 
-        self.parse_pat_at_level(Level::Initial, ors)
+        self.parse_pat_at_level(Level::Initial, o_policy)
     }
 
     // FIXME: Unused policy.
@@ -48,7 +48,7 @@ impl<'src> Parser<'_, 'src> {
     //        OrPolicy might not cut it, it's definitely not a prefix op.
     //        Tho not sure. Think about cases like `..|0` and `..0|0`. How
     //        should they be parsed?
-    fn parse_pat_at_level(&mut self, level: Level, ors: OrPolicy) -> Result<ast::Pat<'src>> {
+    fn parse_pat_at_level(&mut self, level: Level, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         let op = match self.token.kind {
             // FIXME: SingleHyphen
             TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
@@ -62,7 +62,7 @@ impl<'src> Parser<'_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            self.fin_parse_prefix_op_pat(op, ors)
+            self.fin_parse_prefix_op_pat(op, o_policy)
         } else {
             self.parse_lower_pat()
         }?;
@@ -70,7 +70,7 @@ impl<'src> Parser<'_, 'src> {
         loop {
             let op = match self.token.kind {
                 // FIXME: Do we need to care about DoublePipe in some way?
-                TokenKind::SinglePipe if let OrPolicy::Allowed = ors => Op::Or,
+                TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
                 TokenKind::DoubleDot => Op::RangeExclusive,
                 TokenKind::DoubleDotEquals => {
                     Op::RangeInclusive(ast::RangeInclusivePatKind::Normal)
@@ -88,25 +88,25 @@ impl<'src> Parser<'_, 'src> {
             }
             self.advance();
 
-            left = self.fin_parse_op_pat(op, left, ors)?;
+            left = self.fin_parse_op_pat(op, left, o_policy)?;
         }
 
         Ok(left)
     }
 
-    fn fin_parse_prefix_op_pat(&mut self, op: Op, ors: OrPolicy) -> Result<ast::Pat<'src>> {
+    fn fin_parse_prefix_op_pat(&mut self, op: Op, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         let right_level = op.right_level().unwrap();
 
         match op {
-            Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, ors),
+            Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy),
             Op::DoubleBorrow => {
-                let borrow = self.fin_parse_borrow_pat(right_level, ors)?;
+                let borrow = self.fin_parse_borrow_pat(right_level, o_policy)?;
                 Ok(ast::Pat::Borrow(ast::Mutability::Not, Box::new(borrow)))
             }
             Op::RangeInclusive(kind) => {
-                self.fin_parse_range_inclusive_pat(kind, None, right_level, ors)
+                self.fin_parse_range_inclusive_pat(kind, None, right_level, o_policy)
             }
-            Op::RangeExclusive => self.fin_parse_range_exclusive_pat(None, right_level, ors),
+            Op::RangeExclusive => self.fin_parse_range_exclusive_pat(None, right_level, o_policy),
             _ => unreachable!(),
         }
     }
@@ -115,23 +115,23 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         op: Op,
         left: ast::Pat<'src>,
-        ors: OrPolicy,
+        o_policy: OrPolicy,
     ) -> Result<ast::Pat<'src>> {
         match op {
             Op::Or => {
-                let right = self.parse_pat_at_level(op.right_level().unwrap(), ors)?;
+                let right = self.parse_pat_at_level(op.right_level().unwrap(), o_policy)?;
                 Ok(ast::Pat::Or(Box::new(left), Box::new(right)))
             }
             Op::RangeExclusive => self.fin_parse_range_exclusive_pat(
                 Some(Box::new(left)),
                 op.right_level().unwrap(),
-                ors,
+                o_policy,
             ),
             Op::RangeInclusive(kind) => self.fin_parse_range_inclusive_pat(
                 kind,
                 Some(Box::new(left)),
                 op.right_level().unwrap(),
-                ors,
+                o_policy,
             ),
             _ => unreachable!(),
         }
@@ -140,10 +140,10 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_borrow_pat(
         &mut self,
         right_level: Level,
-        ors: OrPolicy,
+        o_policy: OrPolicy,
     ) -> Result<ast::Pat<'src>> {
         let mut_ = self.parse_mutability();
-        let pat = self.parse_pat_at_level(right_level, ors)?;
+        let pat = self.parse_pat_at_level(right_level, o_policy)?;
         Ok(ast::Pat::Borrow(mut_, Box::new(pat)))
     }
 
@@ -151,11 +151,13 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         left: Option<Box<ast::Pat<'src>>>,
         right_level: Level,
-        ors: OrPolicy,
+        o_policy: OrPolicy,
     ) -> Result<ast::Pat<'src>> {
         // FIXME: "begins_pat_at(right_level)"?
-        let right =
-            self.begins_pat(ors).then(|| self.parse_pat_at_level(right_level, ors)).transpose()?;
+        let right = self
+            .begins_pat(o_policy)
+            .then(|| self.parse_pat_at_level(right_level, o_policy))
+            .transpose()?;
         Ok(ast::Pat::Range(left, right.map(Box::new), ast::RangePatKind::Exclusive))
     }
 
@@ -164,9 +166,9 @@ impl<'src> Parser<'_, 'src> {
         kind: ast::RangeInclusivePatKind,
         left: Option<Box<ast::Pat<'src>>>,
         right_level: Level,
-        ors: OrPolicy,
+        o_policy: OrPolicy,
     ) -> Result<ast::Pat<'src>> {
-        let right = self.parse_pat_at_level(right_level, ors)?;
+        let right = self.parse_pat_at_level(right_level, o_policy)?;
         Ok(ast::Pat::Range(left, Some(Box::new(right)), ast::RangePatKind::Inclusive(kind)))
     }
 
@@ -261,6 +263,7 @@ impl<'src> Parser<'_, 'src> {
             }
             _ => {}
         }
+
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
@@ -269,11 +272,15 @@ impl<'src> Parser<'_, 'src> {
                     let ast::ExtPath { ext: None, path } = path else {
                         return Err(ParseError::TyRelMacroCall);
                     };
+
+                    self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
+
                     return Ok(ast::Pat::MacroCall(ast::MacroCall { path, bracket, stream }));
                 }
                 TokenKind::OpenRoundBracket => {
                     self.advance();
+
                     let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
@@ -286,6 +293,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
+
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     const SEPARATOR: TokenKind = TokenKind::Comma;
                     let mut fields = Vec::new();

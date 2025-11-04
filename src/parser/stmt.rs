@@ -1,5 +1,8 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind, error::ParseError, item::ItemCx,
+    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
+    error::ParseError,
+    expr::{LetPolicy, OpPolicy, StructPolicy},
+    item::ItemCx,
     pat::OrPolicy,
 };
 use crate::ast;
@@ -13,7 +16,6 @@ impl<'src> Parser<'_, 'src> {
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
     //       macro expansion.
-    // FIXME: Try to get rid of param `delimiter`.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
@@ -32,7 +34,7 @@ impl<'src> Parser<'_, 'src> {
             let body = if self.consume(TokenKind::SingleEquals) {
                 let consequent = self.parse_expr()?;
                 let alternate = if let TokenKind::Else = self.token.kind
-                    && else_may_follow(&consequent.kind)
+                    && consequent.kind.else_may_follow()
                 {
                     self.advance();
                     Some(self.parse_block_expr()?)
@@ -49,12 +51,18 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.begins_expr() {
-            let mut expr = self.parse_expr()?;
+            let rule = ast::CurlyBracketedMacroCallIsBoundary::Yes;
+
+            let mut expr = self.parse_expr_where(
+                StructPolicy::Allowed,
+                LetPolicy::Forbidden,
+                OpPolicy::Restricted(rule),
+            )?;
             debug_assert!(expr.attrs.is_empty());
             expr.attrs = attrs;
 
             // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
-            let semi = if self.token.kind == delimiter || !expr.kind.needs_semicolon_as_stmt() {
+            let semi = if self.token.kind == delimiter || expr.kind.is_boundary(rule) {
                 match self.consume(TokenKind::Semicolon) {
                     true => ast::Semicolon::Yes,
                     false => ast::Semicolon::No,
@@ -66,53 +74,54 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Stmt::Expr(expr, semi));
         }
 
-        match self.token.kind {
-            TokenKind::Semicolon => {
-                self.advance();
-                Ok(ast::Stmt::Empty)
-            }
-            _ => Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Stmt)),
+        if let TokenKind::Semicolon = self.token.kind
+            && attrs.is_empty()
+        {
+            self.advance();
+            Ok(ast::Stmt::Empty)
+        } else {
+            Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Stmt))
         }
     }
 }
 
-fn else_may_follow(expr: &ast::ExprKind<'_>) -> bool {
-    match expr {
-        | ast::ExprKind::Array(_)
-        | ast::ExprKind::Call(..)
-        | ast::ExprKind::Cast(..)
-        | ast::ExprKind::Continue
-        | ast::ExprKind::Field(..)
-        | ast::ExprKind::Grouped(_)
-        | ast::ExprKind::Index(..)
-        | ast::ExprKind::Lit(_)
-        | ast::ExprKind::MethodCall(_)
-        | ast::ExprKind::Path(_)
-        | ast::ExprKind::Repeat(..)
-        | ast::ExprKind::Try(_)
-        | ast::ExprKind::Tuple(_)
-        | ast::ExprKind::Wildcard => true,
-        | ast::ExprKind::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
-        | ast::ExprKind::Block(..)
-        | ast::ExprKind::ForLoop(_)
-        | ast::ExprKind::If(_)
-        | ast::ExprKind::Loop(_)
-        | ast::ExprKind::Match(_)
-        | ast::ExprKind::Struct(_)
-        | ast::ExprKind::While(_) => false,
-        | ast::ExprKind::MacroCall(call) => match call.bracket {
-            ast::Bracket::Round | ast::Bracket::Square => true,
-            ast::Bracket::Curly => false,
-        },
-        | ast::ExprKind::BinOp(.., expr)
-        | ast::ExprKind::Borrow(.., expr)
-        | ast::ExprKind::UnOp(_, expr) => else_may_follow(&expr.kind),
-        | ast::ExprKind::Closure(expr) => else_may_follow(&expr.body.kind),
-        | ast::ExprKind::Let(expr) => else_may_follow(&expr.body.kind),
-        | ast::ExprKind::Break(_, expr)
-        | ast::ExprKind::Range(_, expr, _)
-        | ast::ExprKind::Return(expr) => {
-            expr.as_ref().is_none_or(|expr| else_may_follow(&expr.kind))
+impl ast::ExprKind<'_> {
+    fn else_may_follow(&self) -> bool {
+        match self {
+            | Self::Array(_)
+            | Self::Call(..)
+            | Self::Cast(..)
+            | Self::Continue
+            | Self::Field(..)
+            | Self::Grouped(_)
+            | Self::Index(..)
+            | Self::Lit(_)
+            | Self::MethodCall(_)
+            | Self::Path(_)
+            | Self::Repeat(..)
+            | Self::Try(_)
+            | Self::Tuple(_)
+            | Self::Wildcard => true,
+            | Self::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
+            | Self::Block(..)
+            | Self::ForLoop(_)
+            | Self::If(_)
+            | Self::Loop(_)
+            | Self::Match(_)
+            | Self::Struct(_)
+            | Self::While(_) => false,
+            | Self::MacroCall(call) => match call.bracket {
+                ast::Bracket::Round | ast::Bracket::Square => true,
+                ast::Bracket::Curly => false,
+            },
+            | Self::BinOp(.., expr) | Self::Borrow(.., expr) | Self::UnOp(_, expr) => {
+                expr.kind.else_may_follow()
+            }
+            | Self::Closure(expr) => expr.body.kind.else_may_follow(),
+            | Self::Let(expr) => expr.body.kind.else_may_follow(),
+            | Self::Break(_, expr) | Self::Range(_, expr, _) | Self::Return(expr) => {
+                expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow())
+            }
         }
     }
 }

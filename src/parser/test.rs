@@ -534,6 +534,8 @@ fn expr_qualified_struct_pat_in_for_loop() {
 // FIXME: almost-assoc-item-constraint due to (  )
 // FIXME: ranges!! exprs, pats
 // FIXME: A bunch of negative behavior tests!
+// FIXME: Add stmt `{ 0 } + 0` error, stmt `&{ 0 } + 0` ok but stmt `..{ 0 } + 0` err! etc.
+//        More: `0 + { 0 } + 0` OK. stmt `{ 0 } || 0` err.
 
 #[test]
 fn binding_modes() {
