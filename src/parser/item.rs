@@ -145,11 +145,12 @@ impl<'src> Parser<'_, 'src> {
             }
             [qualifiers @ .., Qualifier::Impl] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(safety, ast::Constness::Not);
+                return self.fin_parse_impl_item(safety, constness);
             }
             [qualifiers @ .., Qualifier::Impl, Qualifier::Const] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -489,9 +490,13 @@ impl<'src> Parser<'_, 'src> {
             Vec::new()
         };
 
-        let polarity = match self.consume(TokenKind::SingleBang) {
-            true => ast::ImplPolarity::Negative,
-            false => ast::ImplPolarity::Positive,
+        let polarity = if self.token.kind == TokenKind::SingleBang
+            && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
+        {
+            self.advance();
+            ast::ImplPolarity::Negative
+        } else {
+            ast::ImplPolarity::Positive
         };
 
         let ty = self.parse_ty()?;
@@ -509,6 +514,23 @@ impl<'src> Parser<'_, 'src> {
         } else {
             (None, ty)
         };
+
+        if trait_ref.is_none() {
+            match polarity {
+                ast::ImplPolarity::Positive => {}
+                ast::ImplPolarity::Negative => {
+                    return Err(ParseError::TraitImplModifierInInherentImpl("!"));
+                }
+            }
+
+            match safety {
+                ast::Safety::Inherited => {}
+                ast::Safety::Safe => unreachable!(),
+                ast::Safety::Unsafe => {
+                    return Err(ParseError::TraitImplModifierInInherentImpl("unsafe"));
+                }
+            }
+        }
 
         let preds = self.parse_where_clause()?;
 

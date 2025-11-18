@@ -24,6 +24,7 @@ pub(crate) enum ParseError {
     InvalidItemPrefix(Span),
     InvalidFnPtrTyPrefix(Span),
     InvalidExprPrefix(Span),
+    TraitImplModifierInInherentImpl(&'static str),
 }
 
 impl ParseError {
@@ -77,6 +78,9 @@ impl ParseError {
             }
             Self::InvalidExprPrefix(span) => {
                 Diag::new(format!("invalid expression modifiers")).unlabeled_highlight(span)
+            }
+            Self::TraitImplModifierInInherentImpl(modifier) => {
+                Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
             }
         };
         eprintln!("{}", diag.render(source, path));
