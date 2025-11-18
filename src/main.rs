@@ -66,7 +66,6 @@ fn try_main() -> Result<(), ()> {
                     });
                 }
                 b"fmt" => opts.fmt = true,
-                // FIXME: reject unless --fmt set anytime
                 b"skip-marker" => {
                     let skip_marker = args.next().ok_or_else(|| {
                         eprintln!("error: missing argument to `--skip-marker`");
@@ -86,17 +85,47 @@ fn try_main() -> Result<(), ()> {
                         }
                     });
                 }
+                b"source" => {
+                    let source = args.next().ok_or_else(|| {
+                        eprintln!("error: missing argument to `--skip-marker`");
+                    })?;
+                    match opts.source {
+                        Some(Source::String(_)) => {
+                            eprintln!("error: `--source` can't be passed multiple times");
+                            return Err(());
+                        }
+                        Some(Source::Path(_)) => {
+                            eprintln!(
+                                "error: argument `--source SOURCE` is incompatible with argument `PATH`"
+                            );
+                        }
+                        None => {
+                            opts.source =
+                                Some(Source::String(source.into_string().map_err(|_| {
+                                    eprintln!("error: argument `SOURCE` isn't valid UTF-8")
+                                })?))
+                        }
+                    }
+                }
                 _ => {
                     eprintln!("error: unknown flag `{}`", arg.display());
                     return Err(());
                 }
             }
         } else {
-            if opts.path.is_some() {
-                eprintln!("error: unexpected argument `{}`", arg.display());
-                return Err(());
+            match opts.source {
+                Some(Source::Path(_)) => {
+                    eprintln!("error: unexpected argument `{}`", arg.display());
+                    return Err(());
+                }
+                Some(Source::String(_)) => {
+                    eprintln!(
+                        "error: argument `--source SOURCE` is incompatible with argument `PATH`"
+                    );
+                    return Err(());
+                }
+                None => opts.source = Some(Source::Path(PathBuf::from(arg))),
             }
-            opts.path = Some(PathBuf::from(arg));
         }
     }
 
@@ -105,9 +134,20 @@ fn try_main() -> Result<(), ()> {
         return Err(());
     }
 
-    let path = opts.path.ok_or_else(|| eprintln!("error: missing required path argument"))?;
-    let source = std::fs::read_to_string(&path)
-        .map_err(|error| eprintln!("error: failed to read `{}`: {error}", path.display()))?;
+    let source = opts
+        .source
+        .ok_or_else(|| eprintln!("error: missing required argument `PATH` or `--source SOURCE`"))?;
+
+    let (source, path) = match source {
+        Source::Path(path) => {
+            let source = std::fs::read_to_string(&path).map_err(|error| {
+                eprintln!("error: failed to read `{}`: {error}", path.display())
+            })?;
+            (source, path)
+        }
+        // FIXME: Use structured paths, `SourcePath::Anon`
+        Source::String(string) => (string, "<anon>".into()),
+    };
 
     let edition = opts.edition.unwrap_or_default();
 
@@ -147,11 +187,16 @@ fn try_main() -> Result<(), ()> {
 
 #[derive(Default)]
 struct Opts {
-    path: Option<PathBuf>,
+    source: Option<Source>,
     edition: Option<Edition>,
     emit_tokens: bool,
     emit_ast: bool,
     lex_only: bool,
     fmt: bool,
     skip_marker: Option<fmter::SkipMarker>,
+}
+
+enum Source {
+    String(String),
+    Path(PathBuf),
 }
