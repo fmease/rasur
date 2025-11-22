@@ -107,6 +107,7 @@ fn try_main() -> Result<(), ()> {
                         }
                     }
                 }
+                b"short" => opts.short = true,
                 _ => {
                     eprintln!("error: unknown flag `{}`", arg.display());
                     return Err(());
@@ -166,8 +167,8 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file =
-        parser::parse(&tokens, &source, edition).map_err(|error| error.print(&source, &path))?;
+    let cx = parser::RenderCx { source: &source, path: &path, short: opts.short };
+    let file = parser::parse(&tokens, &source, edition).map_err(|error| error.print(cx))?;
 
     if opts.emit_ast {
         eprintln!("{file:#?}");
@@ -194,6 +195,7 @@ struct Opts {
     lex_only: bool,
     fmt: bool,
     skip_marker: Option<fmter::SkipMarker>,
+    short: bool,
 }
 
 enum Source {

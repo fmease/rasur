@@ -28,11 +28,11 @@ pub(crate) enum ParseError {
 }
 
 impl ParseError {
-    pub(crate) fn print(self, source: &str, path: &Path) {
+    pub(crate) fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
             Self::UnexpectedToken(actual, expected) => {
                 let span = actual.span;
-                let actual = actual.to_diag_str(Some(source));
+                let actual = actual.to_diag_str(Some(cx.source));
                 Diag::new(format!("found {actual} but expected {expected}"))
                     .highlight(span, "unexpected token")
             }
@@ -44,7 +44,7 @@ impl ParseError {
             }
             Self::UnexpectedClosingDelimiter(actual) => {
                 let span = actual.span;
-                let actual = actual.to_diag_str(Some(source));
+                let actual = actual.to_diag_str(Some(cx.source));
                 Diag::new(format!("found unexpected closing delimiter {actual}"))
                     .highlight(span, "unexpected delimiter")
             }
@@ -83,7 +83,7 @@ impl ParseError {
                 Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
             }
         };
-        eprintln!("{}", diag.render(source, path));
+        eprintln!("{}", diag.render(cx));
     }
 }
 
@@ -107,21 +107,27 @@ impl Diag {
         self
     }
 
-    fn render(self, source: &str, path: &Path) -> String {
+    fn render(self, cx: RenderCx<'_>) -> String {
         let group = ann::Group::with_title(ann::Level::ERROR.title(self.title));
         let group = match self.highlight {
             Some((span, label)) => {
                 // FIXME: Being forced to use to_string_lossy is sad :(
-                super let path = path.to_string_lossy();
+                super let path = cx.path.to_string_lossy();
                 let annotation = ann::AnnotationKind::Primary.span(span.range());
                 let annotation = match label {
                     Some(label) => annotation.label(label),
                     None => annotation,
                 };
-                group.element(ann::Snippet::source(source).path(&path).annotation(annotation))
+                group.element(ann::Snippet::source(cx.source).path(&path).annotation(annotation))
             }
             None => group,
         };
-        ann::Renderer::styled().render(&[group])
+        ann::Renderer::styled().short_message(cx.short).render(&[group])
     }
+}
+
+pub(crate) struct RenderCx<'a> {
+    pub(crate) source: &'a str,
+    pub(crate) path: &'a Path,
+    pub(crate) short: bool,
 }

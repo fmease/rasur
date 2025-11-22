@@ -5,6 +5,7 @@ use crate::{
     span::Span,
     token::{Token, TokenKind},
 };
+pub(crate) use error::{ParseError, RenderCx};
 use std::{borrow::Cow, fmt};
 
 mod attr;
@@ -19,7 +20,7 @@ mod stmt;
 mod test;
 mod ty;
 
-pub(crate) type Result<T, E = error::ParseError> = std::result::Result<T, E>;
+pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
 
 pub(crate) fn parse<'src>(
     tokens: &[Token],
@@ -77,7 +78,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             TokenKind::Ident | TokenKind::Underscore | TokenKind::Static => {
                 Ok(Some(ast::Lifetime(lifetime)))
             }
-            _ => Err(error::ParseError::ReservedLifetime(span)),
+            _ => Err(ParseError::ReservedLifetime(span)),
         }
     }
 
@@ -166,7 +167,7 @@ impl<'a, 'src> Parser<'a, 'src> {
                 self.advance();
                 self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
             }
-            _ => Err(error::ParseError::UnexpectedToken(
+            _ => Err(ParseError::UnexpectedToken(
                 self.token,
                 one_of![
                     TokenKind::OpenRoundBracket,
@@ -223,7 +224,7 @@ impl<'a, 'src> Parser<'a, 'src> {
                     Open => stack.push(act_delim),
                     Close => match stack.pop() {
                         Some(open_delim) if act_delim == open_delim => {}
-                        _ => return Err(error::ParseError::UnexpectedClosingDelimiter(self.token)),
+                        _ => return Err(ParseError::UnexpectedClosingDelimiter(self.token)),
                     },
                 }
             }
@@ -235,7 +236,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         if is_delimited && stack.is_empty() {
             Ok(tokens)
         } else {
-            Err(error::ParseError::MissingClosingDelimiters(self.token.span))
+            Err(ParseError::MissingClosingDelimiters(self.token.span))
         }
     }
 
@@ -255,7 +256,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             return Ok(());
         }
 
-        Err(error::ParseError::UnexpectedToken(self.token, category.fragment()))
+        Err(ParseError::UnexpectedToken(self.token, category.fragment()))
     }
 
     // FIXME: likely no longer correct due to modify_in_place
@@ -298,7 +299,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     // FIXME: Temporary API, replace with parse(Or(Ident, WeakKeyword::Xyz))
     fn parse_ident_or(&mut self, exception: TokenKind) -> Result<ast::Ident<'src>> {
         if self.token.kind != TokenKind::Ident && self.token.kind != exception {
-            return Err(error::ParseError::UnexpectedToken(
+            return Err(ParseError::UnexpectedToken(
                 self.token,
                 one_of![ExpectedFragment::Ident, exception],
             ));
@@ -311,7 +312,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     // FIXME: Temporary API, replace with parse(Ident)
     fn parse_ident(&mut self) -> Result<ast::Ident<'src>> {
         self.consume_ident()
-            .ok_or_else(|| error::ParseError::UnexpectedToken(self.token, ExpectedFragment::Ident))
+            .ok_or_else(|| ParseError::UnexpectedToken(self.token, ExpectedFragment::Ident))
     }
 
     // FIXME: Temporary API, replace with consume(Ident)
