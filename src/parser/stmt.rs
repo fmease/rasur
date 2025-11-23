@@ -61,17 +61,15 @@ impl<'src> Parser<'_, 'src> {
             debug_assert!(expr.attrs.is_empty());
             expr.attrs = attrs;
 
-            // FIXME: Should we replace the delimiter check with some sort of `begins_stmt` check?
-            let semi = if self.token.kind == delimiter || expr.kind.is_boundary(rule) {
-                match self.consume(TokenKind::Semicolon) {
-                    true => ast::Semicolon::Yes,
-                    false => ast::Semicolon::No,
-                }
-            } else {
-                self.parse(TokenKind::Semicolon)?;
-                ast::Semicolon::Yes
-            };
-            return Ok(ast::Stmt::Expr(expr, semi));
+            let semi = self.consume_or_parse(
+                TokenKind::Semicolon,
+                self.token.kind == delimiter || expr.kind.is_boundary(rule),
+            )?;
+
+            return Ok(ast::Stmt::Expr(
+                expr,
+                if semi { ast::Semicolon::Yes } else { ast::Semicolon::No },
+            ));
         }
 
         if let TokenKind::Semicolon = self.token.kind

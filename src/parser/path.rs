@@ -309,10 +309,12 @@ impl<'src> Parser<'_, 'src> {
             PathSegIdent!() => {
                 path.segs.push(ast::PathSeg::ident(self.source(self.token.span)));
                 self.advance();
-                let binder = self
-                    .consume(TokenKind::As)
-                    .then(|| self.parse_ident_or(TokenKind::Underscore))
-                    .transpose()?;
+                let binder = if self.consume(TokenKind::As) {
+                    let (binder, _) = self.parse_ident_or(TokenKind::Underscore)?;
+                    Some(binder)
+                } else {
+                    None
+                };
                 ast::PathTreeKind::Stump(binder)
             }
             _ => {

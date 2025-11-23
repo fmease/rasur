@@ -284,40 +284,28 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         left: ast::Expr<'src>,
     ) -> Result<ast::Expr<'src>> {
-        match self.token.kind {
-            TokenKind::NumLit => {
-                let ident = self.source(self.token.span);
-                self.advance();
-                Ok(ast::ExprKind::Field(Box::new(left), ident).into())
-            }
-            TokenKind::Ident => {
-                let ident = self.source(self.token.span);
-                self.advance();
-                let gen_args_start = self.token.span;
-                let gen_args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
-                Ok(if self.consume(TokenKind::OpenRoundBracket) {
-                    let args = self.fin_parse_fn_args()?;
-                    ast::ExprKind::MethodCall(Box::new(ast::MethodCallExpr {
-                        receiver: left,
-                        seg: ast::PathSeg { ident, args: gen_args },
-                        args,
-                    }))
-                } else if gen_args.is_some() {
-                    return Err(ParseError::GenericArgsOnFieldExpr(
-                        gen_args_start.until(self.token.span),
-                    ));
-                } else {
-                    ast::ExprKind::Field(Box::new(left), ident)
-                }
-                .into())
-            }
-            _ => {
-                return Err(ParseError::UnexpectedToken(
-                    self.token,
-                    one_of![ExpectedFragment::Ident, TokenKind::NumLit],
+        let (ident, numeric) = self.parse_ident_or(TokenKind::NumLit)?;
+
+        if !numeric {
+            let gen_args_start = self.token.span;
+            let gen_args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
+
+            if self.consume(TokenKind::OpenRoundBracket) {
+                let args = self.fin_parse_fn_args()?;
+                return Ok(ast::ExprKind::MethodCall(Box::new(ast::MethodCallExpr {
+                    receiver: left,
+                    seg: ast::PathSeg { ident, args: gen_args },
+                    args,
+                }))
+                .into());
+            } else if gen_args.is_some() {
+                return Err(ParseError::GenericArgsOnFieldExpr(
+                    gen_args_start.until(self.token.span),
                 ));
             }
         }
+
+        Ok(ast::ExprKind::Field(Box::new(left), ident).into())
     }
 
     fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
@@ -427,6 +415,7 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
+        // FIXME: There are also `async move {}`, `async gen move {}`, etc. blocks.
         match self.parse_expr_qualifiers()?.as_mut_slice() {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
@@ -676,22 +665,41 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::OpenCurlyBracket if let StructPolicy::Allowed = s_policy => {
                     self.advance();
 
-                    let fields = self.fin_parse_delim_seq(
-                        TokenKind::CloseCurlyBracket,
-                        TokenKind::Comma,
-                        |this| {
-                            // FIXME: NumLit fields
-                            let binder = this.parse_ident()?;
-                            let body = this
-                                .consume(TokenKind::SingleColon)
-                                .then(|| this.parse_expr())
-                                .transpose()?;
-                            // FIXME: rest / base
-                            Ok(ast::StructExprField { binder, body })
-                        },
-                    )?;
+                    const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+                    const SEPARATOR: TokenKind = TokenKind::Comma;
+                    let mut fields = Vec::new();
+                    let mut base = None;
 
-                    return Ok(ast::ExprKind::Struct(Box::new(ast::StructExpr { path, fields })));
+                    while !self.consume(DELIMITER) {
+                        if self.consume(TokenKind::DoubleDot) {
+                            base = Some(if self.token.kind != DELIMITER {
+                                Some(self.parse_expr()?)
+                            } else {
+                                None
+                            });
+                            self.parse(DELIMITER)?;
+                            break;
+                        }
+
+                        let (binder, numeric) = self.parse_ident_or(TokenKind::NumLit)?;
+                        let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
+                            Some(self.parse_expr()?)
+                        } else {
+                            None
+                        };
+
+                        fields.push(ast::StructExprField { binder, body });
+
+                        if self.token.kind != DELIMITER {
+                            self.parse(SEPARATOR)?;
+                        }
+                    }
+
+                    return Ok(ast::ExprKind::Struct(Box::new(ast::StructExpr {
+                        path,
+                        fields,
+                        base,
+                    })));
                 }
                 _ => {}
             }

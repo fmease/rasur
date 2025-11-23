@@ -306,10 +306,11 @@ impl<'src> Parser<'_, 'src> {
                             break;
                         }
 
-                        // FIXME: NumLit fields
-                        // FIXME:
                         // FIXME: Parse mut? ref? mut? (a following `":" Pat` is not permitted)
-                        let binder = self.parse_ident()?;
+
+                        let (binder, _) = self.parse_ident_or(TokenKind::NumLit)?;
+                        // NOTE: Indeed, contrary to struct exprs, shorthand numeric fields are
+                        //       syntactically permitted in struct pats.
                         let body = self
                             .consume(TokenKind::SingleColon)
                             .then(|| self.parse_pat(OrPolicy::Allowed))

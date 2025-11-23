@@ -228,6 +228,7 @@ pub(crate) struct BlockExpr<'src> {
 pub(crate) struct StructExpr<'src> {
     pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
     pub(crate) fields: Vec<StructExprField<'src>>,
+    pub(crate) base: Option<Option<Expr<'src>>>,
 }
 
 #[derive(Debug)]

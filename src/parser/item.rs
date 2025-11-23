@@ -295,7 +295,7 @@ impl<'src> Parser<'_, 'src> {
     ///     ";"
     /// ```
     fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident_or(TokenKind::Underscore)?;
+        let (binder, _) = self.parse_ident_or(TokenKind::Underscore)?;
         let params = self.parse_generic_param_list()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
@@ -422,7 +422,7 @@ impl<'src> Parser<'_, 'src> {
     /// Extern_Crate_Item ::= "extern" "crate" (Common_Ident | "self") ("as" Common_Ident) ";"
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let target = self.parse_ident_or(TokenKind::SelfLower)?;
+        let (target, _) = self.parse_ident_or(TokenKind::SelfLower)?;
         let binder = self.consume(TokenKind::As).then(|| self.parse_ident()).transpose()?;
 
         self.parse(TokenKind::Semicolon)?;

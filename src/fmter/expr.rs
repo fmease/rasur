@@ -241,11 +241,19 @@ impl Fmt for ast::WhileExpr<'_> {
 
 impl Fmt for ast::StructExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { path, fields } = self;
+        let Self { path, fields, base } = self;
+        let non_empty = !fields.is_empty();
 
         path.fmt(cx);
         fmt!(cx, " {{ ");
         Punctuated::new(fields, ", ").fmt(cx);
+        if let Some(base) = base {
+            if non_empty {
+                fmt!(cx, ", ");
+            }
+            fmt!(cx, "..");
+            base.fmt(cx);
+        }
         fmt!(cx, " }}");
     }
 }
@@ -266,7 +274,7 @@ impl Fmt for ast::MethodCallExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { receiver, seg, args } = self;
 
-        // FIXME: Less parens
+        // FIXME: Fewer parens
         fmt!(cx, "(");
         receiver.fmt(cx);
         fmt!(cx, ").");

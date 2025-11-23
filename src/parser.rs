@@ -259,6 +259,14 @@ impl<'a, 'src> Parser<'a, 'src> {
         Err(ParseError::UnexpectedToken(self.token, category.fragment()))
     }
 
+    // FIXME: better name
+    fn consume_or_parse(&mut self, kind: TokenKind, condition: bool) -> Result<bool> {
+        match condition {
+            true => Ok(self.consume(kind)),
+            false => self.parse(kind).map(|_| true),
+        }
+    }
+
     // FIXME: likely no longer correct due to modify_in_place
     fn prev_token(&self) -> Option<Token> {
         Some(self.tokens[self.index.checked_sub(1)?])
@@ -296,17 +304,22 @@ impl<'a, 'src> Parser<'a, 'src> {
         parse(&mut this).inspect(|_| *self = this)
     }
 
-    // FIXME: Temporary API, replace with parse(Or(Ident, WeakKeyword::Xyz))
-    fn parse_ident_or(&mut self, exception: TokenKind) -> Result<ast::Ident<'src>> {
-        if self.token.kind != TokenKind::Ident && self.token.kind != exception {
+    // FIXME: Temporary API
+    fn parse_ident_or(&mut self, exception: TokenKind) -> Result<(ast::Ident<'src>, bool)> {
+        let exception = if self.token.kind == TokenKind::Ident {
+            false
+        } else if self.token.kind == exception {
+            true
+        } else {
             return Err(ParseError::UnexpectedToken(
                 self.token,
                 one_of![ExpectedFragment::Ident, exception],
             ));
-        }
+        };
+
         let ident = self.source(self.token.span);
         self.advance();
-        Ok(ident)
+        Ok((ident, exception))
     }
 
     // FIXME: Temporary API, replace with parse(Ident)
