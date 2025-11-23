@@ -616,14 +616,14 @@ impl<'src> Parser<'_, 'src> {
     /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_ident()?;
-        // FIXME: For tuple structs the where clause is trailing, not leading!
-        let generics = self.parse_generics()?;
+        let mut generics = self.parse_generics()?;
         let kind = self.parse_variant_kind()?;
-        match kind {
-            ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => {
-                self.parse(TokenKind::Semicolon)?;
-            }
-            ast::VariantKind::Struct(_) => {}
+        if let ast::VariantKind::Tuple(_) = kind {
+            debug_assert!(generics.preds.is_empty());
+            generics.preds = self.parse_where_clause()?;
+        }
+        if kind.needs_semicolon() {
+            self.parse(TokenKind::Semicolon)?;
         }
         Ok(ast::ItemKind::Struct(Box::new(ast::StructItem { binder, generics, kind })))
     }

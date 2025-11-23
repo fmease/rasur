@@ -396,19 +396,14 @@ impl<'src> Parser<'_, 'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        // We parse these for all bound kinds to reject them afterwards with a better diagnostic.
+        // We parse the trait bound "frontmatter" for all bound kinds to
+        // reject them afterwards with a better diagnostic.
+        let grouped = self.consume(TokenKind::OpenRoundBracket);
         let bound_vars = self.parse_higher_ranked_binder()?;
         let modifiers = self.parse_trait_bound_modifiers()?;
 
         if let Some(lt) = self.parse_lifetime()? {
-            if let Some((_, span)) = bound_vars {
-                return Err(ParseError::HigherRankedBinderOnOutlivesBound(span));
-            }
-            if modifiers != ast::TraitBoundModifiers::NONE {
-                // FIXME: Span
-                return Err(ParseError::ModifiersOnOutlivesBound);
-            }
-
+            self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
             return Ok(ast::Bound::Outlives(lt));
         }
 
@@ -428,20 +423,18 @@ impl<'src> Parser<'_, 'src> {
                     }
                 })?;
 
-            if let Some((_, span)) = bound_vars {
-                return Err(ParseError::HigherRankedBinderOnUseBound(span));
-            }
-            if modifiers != ast::TraitBoundModifiers::NONE {
-                // FIXME: Span
-                return Err(ParseError::ModifiersOnUseBound);
-            }
+            self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
 
             return Ok(ast::Bound::Use(captures));
         }
 
-        // FIXME: Also support parentheses around trait bounds
         if self.begins_path(self.token) {
             let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>()?;
+
+            if grouped {
+                self.parse(TokenKind::CloseRoundBracket)?;
+            }
+
             return Ok(ast::Bound::Trait {
                 bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
                 modifiers,
@@ -452,13 +445,41 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Bound))
     }
 
+    fn reject_trait_bound_frontmatter(
+        &mut self,
+        grouped: bool,
+        bound_vars: Option<(Vec<ast::GenericParam<'src>>, Span)>,
+        modifiers: ast::TraitBoundModifiers,
+    ) -> Result<()> {
+        if grouped {
+            self.parse(TokenKind::CloseRoundBracket)?;
+            // FIXME: Span
+            return Err(ParseError::InvalidParenthesizedBound);
+        }
+
+        if let Some((_, span)) = bound_vars {
+            return Err(ParseError::HigherRankedBinderOnInvalidBound(span));
+        }
+
+        if modifiers != ast::TraitBoundModifiers::NONE {
+            // FIXME: Span
+            return Err(ParseError::ModifiersOnInvalidBound);
+        }
+
+        Ok(())
+    }
+
     fn begins_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        // FIXME: Consider abstracting this a bit (begins_X_bound)
-        matches!(self.token.kind, TokenKind::Lifetime | TokenKind::For | TokenKind::Use)
-            || self.begins_trait_bound_modifiers()
-            || self.begins_path(self.token)
+        match self.token.kind {
+            TokenKind::Lifetime | TokenKind::For | TokenKind::Use | TokenKind::OpenRoundBracket => {
+                return true;
+            }
+            _ => {}
+        }
+
+        self.begins_trait_bound_modifiers() || self.begins_path(self.token)
     }
 
     fn parse_trait_bound_modifiers(&mut self) -> Result<ast::TraitBoundModifiers> {

@@ -1,5 +1,6 @@
 use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, fmt};
 use crate::ast;
+use std::mem;
 
 impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -367,16 +368,21 @@ impl Fmt for ast::StaticItem<'_> {
 
 impl Fmt for ast::StructItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, kind } = self;
+        let Self { binder, mut generics, kind } = self;
+
+        let where_clause_is_trailing = matches!(kind, ast::VariantKind::Tuple(_));
+        let needs_semicolon = kind.needs_semicolon();
 
         fmt!(cx, "struct {binder}");
-        generics.fmt(cx);
-        let needs_semi = match kind {
-            ast::VariantKind::Unit | ast::VariantKind::Tuple(_) => true,
-            ast::VariantKind::Struct(_) => false,
-        };
+        generics.params.fmt(cx);
+        if !where_clause_is_trailing {
+            mem::take(&mut generics.preds).fmt(cx);
+        }
         kind.fmt(cx);
-        if needs_semi {
+        if where_clause_is_trailing {
+            generics.preds.fmt(cx);
+        }
+        if needs_semicolon {
             fmt!(cx, ";");
         }
     }

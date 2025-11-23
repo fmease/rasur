@@ -7,24 +7,22 @@ use std::{borrow::Cow, path::Path};
 pub(crate) enum ParseError {
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
+    HigherRankedBinderOnInvalidBound(Span),
     InvalidAssocItemKind(Span),
-    UnexpectedClosingDelimiter(Token),
-    MissingClosingDelimiters(Span),
+    InvalidExprPrefix(Span),
     InvalidExternItemKind(Span),
+    InvalidFnPtrTyPrefix(Span),
+    InvalidItemPrefix(Span),
+    InvalidParenthesizedBound,
     MisplacedReceiver,
-    ModifiersOnOutlivesBound,
-    ModifiersOnUseBound,
-    // FIXME: &'static str over String
+    MissingClosingDelimiters(Span),
+    ModifiersOnInvalidBound,
     OpCannotBeChained(String),
     ReservedLifetime(Span),
-    TyRelMacroCall,
-    UnexpectedToken(Token, ExpectedFragment),
-    HigherRankedBinderOnOutlivesBound(Span),
-    HigherRankedBinderOnUseBound(Span),
-    InvalidItemPrefix(Span),
-    InvalidFnPtrTyPrefix(Span),
-    InvalidExprPrefix(Span),
     TraitImplModifierInInherentImpl(&'static str),
+    TyRelMacroCall,
+    UnexpectedClosingDelimiter(Token),
+    UnexpectedToken(Token, ExpectedFragment),
 }
 
 impl ParseError {
@@ -52,13 +50,9 @@ impl ParseError {
                 Diag::new("invalid extern item kind").unlabeled_highlight(span)
             }
             Self::ExpectedTraitFoundTy => Diag::new("found type expected trait"),
-            Self::ModifiersOnOutlivesBound => Diag::new("outlives-bounds may not have modifiers"),
-            Self::HigherRankedBinderOnOutlivesBound(span) => {
-                Diag::new("outlives-bounds may not have a binder").unlabeled_highlight(span)
-            }
-            Self::ModifiersOnUseBound => Diag::new("use-bounds may not have modifiers"),
-            Self::HigherRankedBinderOnUseBound(span) => {
-                Diag::new("use-bounds may not have a binder").unlabeled_highlight(span)
+            Self::ModifiersOnInvalidBound => Diag::new("this bound kind may not have modifiers"),
+            Self::HigherRankedBinderOnInvalidBound(span) => {
+                Diag::new("this bound kind may not have a binder").unlabeled_highlight(span)
             }
             Self::MisplacedReceiver => Diag::new("misplaced receiver"),
             Self::OpCannotBeChained(op) => Diag::new(format!("operator `{op}` cannot be chained")),
@@ -81,6 +75,9 @@ impl ParseError {
             }
             Self::TraitImplModifierInInherentImpl(modifier) => {
                 Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
+            }
+            Self::InvalidParenthesizedBound => {
+                Diag::new("this bound kind may not be parenthesized")
             }
         };
         eprintln!("{}", diag.render(cx));

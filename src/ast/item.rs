@@ -61,6 +61,15 @@ pub(crate) enum VariantKind<'src> {
     Struct(Vec<StructFieldDef<'src>>),
 }
 
+impl VariantKind<'_> {
+    pub(crate) fn needs_semicolon(&self) -> bool {
+        match self {
+            Self::Unit | Self::Tuple(_) => true,
+            Self::Struct(_) => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct TupleFieldDef<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
