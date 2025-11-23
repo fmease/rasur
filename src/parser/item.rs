@@ -40,9 +40,19 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        // FIXME: Not all item-likes support `pub` (think about mac calls, impls?, mac defs?, …).
+        // FIXME: Parse defaultness (specialization).
         let vis = self.parse_visibility()?;
         let kind = self.parse_item_kind(cx)?;
+
+        if !matches!(vis, ast::Visibility::Inherited)
+            && match &kind {
+                ast::ItemKind::MacroCall(_) => true,
+                ast::ItemKind::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::Old),
+                _ => false,
+            }
+        {
+            return Err(ParseError::VisibilityOnInvalidItem);
+        }
 
         let span = start.to(self.prev_token().map(|token| token.span));
 

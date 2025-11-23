@@ -23,6 +23,7 @@ pub(crate) enum ParseError {
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
+    VisibilityOnInvalidItem,
 }
 
 impl ParseError {
@@ -78,6 +79,9 @@ impl ParseError {
             }
             Self::InvalidParenthesizedBound => {
                 Diag::new("this bound kind may not be parenthesized")
+            }
+            Self::VisibilityOnInvalidItem => {
+                Diag::new("this item kind may not be marked with visibility")
             }
         };
         eprintln!("{}", diag.render(cx));
