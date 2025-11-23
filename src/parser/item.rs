@@ -152,14 +152,6 @@ impl<'src> Parser<'_, 'src> {
 
                 return self.fin_parse_impl_item(safety, constness);
             }
-            [qualifiers @ .., Qualifier::Impl, Qualifier::Const] => {
-                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
-                if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
-                }
-
-                return self.fin_parse_impl_item(safety, ast::Constness::Const);
-            }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
@@ -227,8 +219,64 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn parse_item_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
-        let mut qualifiers: Vec<_> =
-            std::iter::from_fn(|| self.parse_item_qualifier()).collect::<Result<_>>()?;
+        let mut qualifiers = Vec::new();
+
+        loop {
+            let qualifier = match self.token.kind {
+                TokenKind::Async => Qualifier::Async,
+                TokenKind::Const => Qualifier::Const,
+                TokenKind::Extern => {
+                    self.advance();
+                    let span = self.token.span;
+                    let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
+                    qualifiers.push(Qualifier::Extern(abi));
+                    break;
+                }
+                TokenKind::Fn => Qualifier::Fn,
+                TokenKind::Gen => Qualifier::Gen,
+                TokenKind::Ident => match self.source(self.token.span) {
+                    AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
+                    SAFE if self
+                        .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
+                    {
+                        Qualifier::Safe
+                    }
+                    _ => break,
+                },
+                TokenKind::Impl => Qualifier::Impl,
+                TokenKind::Mod => Qualifier::Mod,
+                TokenKind::Trait => Qualifier::Trait,
+                TokenKind::Unsafe
+                    if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
+                {
+                    Qualifier::Unsafe
+                }
+                _ => break,
+            };
+            self.advance();
+            qualifiers.push(qualifier);
+
+            // We disqualify `const` after `impl`, so it's easier for us to correctly parse
+            // conditionally-const impl blocks. We want to accept `impl const Ty {}`, reject
+            // `impl const <T> Ty {}` (should be `impl<T> const Ty {}`) and accept
+            // `impl const <() as Trait>::Ty {}`.
+            // We could utilize `pick_generic_param_list_over_ext_path` (pGplOXp) here but it's not
+            // worth the complexity.
+            // Alternatively, we could disqualify [.., Impl, Const] in `parse_item` using pGplOXp
+            // but that feels gnarly, esp. since qualifiers are meant to be "unambiguous" / on a
+            // different level of abstraction.
+            // Another attempt at a solution could be to intro a generic param list qualifier
+            // similar to `expr::Qualifier::For`. That isn't really nice to work with though
+            // because we can't nicely match on "suffix" qualifiers as the premise of qualifier
+            // matching is avoiding combinatorial explosions of subparsers by fixing the "herald"
+            // (here: `impl`) in the final position and collecting all modifiers linearly.
+            // You can't do (that with) [.., Impl, ..].
+            if let Qualifier::Impl = qualifier
+                && let TokenKind::Const = self.token.kind
+            {
+                break;
+            }
+        }
 
         // Retroactively disqualify these qualifiers if they may begin a (block or closure) expression.
         // FIXME: Should we also accept+split `|=` and `||=` for diagnostic purposes?
@@ -246,39 +294,6 @@ impl<'src> Parser<'_, 'src> {
         }
 
         Ok(qualifiers)
-    }
-
-    fn parse_item_qualifier(&mut self) -> Option<Result<Qualifier<'src>>> {
-        let qualifier = match self.token.kind {
-            TokenKind::Async => Qualifier::Async,
-            TokenKind::Const => Qualifier::Const,
-            TokenKind::Extern => {
-                self.advance();
-                let span = self.token.span;
-                let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
-                return Some(Ok(Qualifier::Extern(abi)));
-            }
-            TokenKind::Fn => Qualifier::Fn,
-            TokenKind::Gen => Qualifier::Gen,
-            TokenKind::Ident => match self.source(self.token.span) {
-                AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
-                SAFE if self
-                    .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
-                {
-                    Qualifier::Safe
-                }
-                _ => return None,
-            },
-            TokenKind::Impl => Qualifier::Impl,
-            TokenKind::Mod => Qualifier::Mod,
-            TokenKind::Trait => Qualifier::Trait,
-            TokenKind::Unsafe if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) => {
-                Qualifier::Unsafe
-            }
-            _ => return None,
-        };
-        self.advance();
-        Some(Ok(qualifier))
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -488,6 +503,14 @@ impl<'src> Parser<'_, 'src> {
             self.parse_generic_param_list()?
         } else {
             Vec::new()
+        };
+
+        let constness = if let ast::Constness::Not = constness
+            && self.consume(TokenKind::Const)
+        {
+            ast::Constness::Const
+        } else {
+            constness
         };
 
         let polarity = if self.token.kind == TokenKind::SingleBang
@@ -849,6 +872,7 @@ pub(super) enum ItemCx {
     Trait,
 }
 
+#[derive(Clone, Copy)]
 enum Qualifier<'src> {
     Async,
     Auto,
