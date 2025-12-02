@@ -7,12 +7,17 @@ die() {
 
 while [[ "$#" > 0 ]]
 do case "$1" in
+  -e | --edition)
+  EDITION="$2"
+  [[ -z $EDITION ]] && die 'missing argument `EDITION` for option `--edition`'
+  shift
+  ;;
   -v | --verbose) VERBOSE=1
   ;;
   -F | --format) FORMAT=1
   ;;
   *) if [[ -n $SOURCE ]]; then
-    die "unexpected extra argument '$1'"
+    die "unexpected extra argument \`$1\`"
   else
     SOURCE="$1"
   fi
@@ -21,17 +26,19 @@ shift
 done
 
 if [[ -z $SOURCE ]]; then
-  die 'missing required argument <SOURCE>'
+  die 'missing argument `SOURCE`'
 fi
 
 print -P "%S-- RUSTC --------------------------------%s"
 printf -- "$SOURCE" | rustc +nightly - -Zparse-crate-root-only \
+  $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -z $VERBOSE ]] && echo --error-format=short) \
   $([[ -n $FORMAT ]] && echo -Zunpretty=normal)
 RUSTC_RESULT="$?"
 
 print -P "%S-- RASUR --------------------------------%s"
 ./rasur --source "$SOURCE" \
+  $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -z $VERBOSE ]] && echo --short) \
   $([[ -n $FORMAT ]] && echo --fmt)
 RASUR_RESULT="$?"
