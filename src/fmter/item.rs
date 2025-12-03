@@ -352,8 +352,9 @@ impl Fmt for ast::ModItem<'_> {
 
 impl Fmt for ast::StaticItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { mut_, binder, ty, body } = self;
+        let Self { safety, mut_, binder, ty, body } = self;
 
+        safety.trailing_space().fmt(cx);
         fmt!(cx, "static ");
         mut_.trailing_space().fmt(cx);
         fmt!(cx, "{binder}: ");

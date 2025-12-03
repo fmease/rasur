@@ -67,28 +67,11 @@ impl<'src> Parser<'_, 'src> {
 
         match self.token.kind {
             | TokenKind::Enum
-            | TokenKind::Extern
-            | TokenKind::Fn
-            | TokenKind::Impl
             | TokenKind::Macro
-            | TokenKind::Mod
-            | TokenKind::Static
             | TokenKind::Struct
             | TokenKind::Trait
             | TokenKind::Type
             | TokenKind::Use => return true,
-            TokenKind::Unsafe => {
-                return self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket);
-            }
-            TokenKind::Ident => match self.source(self.token.span) {
-                AUTO => return self.look_ahead(1, |t| t.kind == TokenKind::Trait),
-                SAFE => {
-                    return self
-                        .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern));
-                }
-                UNION => return self.look_ahead(1, |t| t.kind == TokenKind::Ident),
-                _ => {}
-            },
             _ => {}
         }
 
@@ -96,7 +79,7 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        if !self.clone().parse_item_qualifiers().unwrap_or_else(|_| unreachable!()).is_empty() {
+        if !self.clone().parse_item_qualifiers().is_empty() {
             return true;
         }
 
@@ -107,12 +90,28 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
-        match self.parse_item_qualifiers()?.as_slice() {
+        match self.parse_item_qualifiers().as_slice() {
             [] => {}
             [Qualifier::Const] => return self.fin_parse_const_item(),
             // `crate` can't be a qualifier itself because it may also begin paths.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
+            }
+            [qualifiers @ .., Qualifier::Mod] => {
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                if !qualifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_mod_item(safety);
+            }
+            [qualifiers @ .., Qualifier::Static] => {
+                let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
+                if !qualifiers.is_empty() {
+                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_static_item(safety);
             }
             &[mut ref qualifiers @ .., Qualifier::Fn] => {
                 let mut modifiers = ast::FnItemModifiers::default();
@@ -126,11 +125,7 @@ impl<'src> Parser<'_, 'src> {
                     [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
                     _ => (ast::Genness::Not, qualifiers),
                 };
-                (modifiers.safety, qualifiers) = match qualifiers {
-                    [Qualifier::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
-                    [Qualifier::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
-                    _ => (ast::Safety::Inherited, qualifiers),
-                };
+                (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
@@ -170,14 +165,6 @@ impl<'src> Parser<'_, 'src> {
 
                 return self.fin_parse_extern_block_item(safety, *abi);
             }
-            [qualifiers @ .., Qualifier::Mod] => {
-                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
-                if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
-                }
-
-                return self.fin_parse_mod_item(safety);
-            }
             _ => {
                 return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
             }
@@ -202,10 +189,6 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_macro_def();
             }
-            TokenKind::Static => {
-                self.advance();
-                return self.fin_parse_static_item();
-            }
             TokenKind::Struct => {
                 self.advance();
                 return self.fin_parse_struct_item();
@@ -228,7 +211,7 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
     }
 
-    fn parse_item_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
+    fn parse_item_qualifiers(&mut self) -> Vec<Qualifier<'src>> {
         let mut qualifiers = Vec::new();
 
         loop {
@@ -246,8 +229,9 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::Ident => match self.source(self.token.span) {
                     AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
-                    SAFE if self
-                        .look_ahead(1, |t| matches!(t.kind, TokenKind::Fn | TokenKind::Extern)) =>
+                    SAFE if self.look_ahead(1, |t| {
+                        matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)
+                    }) =>
                     {
                         Qualifier::Safe
                     }
@@ -255,6 +239,7 @@ impl<'src> Parser<'_, 'src> {
                 },
                 TokenKind::Impl => Qualifier::Impl,
                 TokenKind::Mod => Qualifier::Mod,
+                TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
                 TokenKind::Unsafe
                     if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
@@ -303,7 +288,7 @@ impl<'src> Parser<'_, 'src> {
             {}
         }
 
-        Ok(qualifiers)
+        qualifiers
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
@@ -634,14 +619,14 @@ impl<'src> Parser<'_, 'src> {
     /// ```grammar
     /// Static_Item ::= "static" "mut"? Common_Ident ":" Ty ("=" Expr)? ";"
     /// ```
-    fn fin_parse_static_item(&mut self) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_static_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         let mut_ = self.parse_mutability();
         let binder = self.parse_ident()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Static(Box::new(ast::StaticItem { mut_, binder, ty, body })))
+        Ok(ast::ItemKind::Static(Box::new(ast::StaticItem { safety, mut_, binder, ty, body })))
     }
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
@@ -893,6 +878,7 @@ enum Qualifier<'src> {
     Impl,
     Mod,
     Safe,
+    Static,
     Trait,
     Unsafe,
 }
@@ -908,6 +894,14 @@ impl<'src> Qualifier<'src> {
     fn strip_unsafe(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
         match qualifiers {
             [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            _ => (ast::Safety::Inherited, qualifiers),
+        }
+    }
+
+    fn strip_safety(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+        match qualifiers {
+            [Qualifier::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Qualifier::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }

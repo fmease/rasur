@@ -182,7 +182,7 @@ pub(crate) enum ImplPolarity {
 
 #[derive(Debug)]
 pub(crate) struct ModItem<'src> {
-    // FIXME: Add r-l/r PR for why this is a thing.
+    // <https://github.com/rust-lang/rust/pull/75857>
     pub(crate) safety: Safety,
     pub(crate) binder: Ident<'src>,
     pub(crate) body: Option<Vec<Item<'src>>>,
@@ -190,6 +190,7 @@ pub(crate) struct ModItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
+    pub(crate) safety: Safety,
     pub(crate) mut_: Mutability,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
