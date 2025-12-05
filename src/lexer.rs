@@ -1,10 +1,10 @@
 use crate::{
-    edition::Edition,
+    Edition,
     span::{ByteIndex, Span},
     token::{Token, TokenKind},
 };
 
-pub(crate) fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
+pub fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
     let offset = strip_shebang.apply(source, edition);
     let mut chars = Lexer::new(source, offset, edition);
     let mut tokens = Vec::new();
@@ -28,9 +28,8 @@ pub(crate) fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum StripShebang {
+pub enum StripShebang {
     Yes,
-    #[allow(dead_code)] // used in tests
     No,
 }
 

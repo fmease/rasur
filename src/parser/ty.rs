@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
     error::ParseError, ident::DYN, one_of,
 };
-use crate::{ast, edition::Edition, span::Span, token::Token};
+use crate::{Edition, ast, span::Span, token::Token};
 use std::mem;
 
 impl<'src> Parser<'_, 'src> {

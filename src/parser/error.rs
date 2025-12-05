@@ -4,7 +4,7 @@ use annotate_snippets as ann;
 use std::{borrow::Cow, path::Path};
 
 #[cfg_attr(test, derive(Debug))]
-pub(crate) enum ParseError {
+pub enum ParseError {
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
@@ -27,7 +27,7 @@ pub(crate) enum ParseError {
 }
 
 impl ParseError {
-    pub(crate) fn print(self, cx: RenderCx<'_>) {
+    pub fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
             Self::UnexpectedToken(actual, expected) => {
                 let span = actual.span;
@@ -127,8 +127,8 @@ impl Diag {
     }
 }
 
-pub(crate) struct RenderCx<'a> {
-    pub(crate) source: &'a str,
-    pub(crate) path: &'a Path,
-    pub(crate) short: bool,
+pub struct RenderCx<'a> {
+    pub source: &'a str,
+    pub path: &'a Path,
+    pub short: bool,
 }

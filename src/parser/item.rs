@@ -4,7 +4,7 @@ use super::{
     error::ParseError,
     ident::{AUTO, MACRO_RULES, SAFE, UNION},
 };
-use crate::{ast, edition::Edition, span::Span};
+use crate::{Edition, ast, span::Span};
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a sequence of items.

@@ -1,7 +1,7 @@
 use super::error::ParseError;
 use crate::{
+    Edition::{self, *},
     ast,
-    edition::Edition::{self, *},
     lexer::{StripShebang, lex},
     token::{Token, TokenKind},
 };

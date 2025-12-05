@@ -12,9 +12,9 @@ mod ty;
 // FIXME: Reproduce comments.
 // FIXME: The indentation setup is busted.
 
-pub(crate) struct Cfg {
-    pub(crate) indent: usize,
-    pub(crate) skip_marker: SkipMarker,
+pub struct Cfg {
+    pub indent: usize,
+    pub skip_marker: SkipMarker,
 }
 
 impl Default for Cfg {
@@ -24,7 +24,7 @@ impl Default for Cfg {
 }
 
 #[derive(Default)]
-pub(crate) enum SkipMarker {
+pub enum SkipMarker {
     None,
     All,
     Rustfmt,
@@ -36,7 +36,7 @@ macro fmt($cx:ident, $($arg:tt)*) {
     _ = $cx.output.write_fmt(format_args!($($arg)*))
 }
 
-pub(crate) fn fmt(file: ast::File<'_>, source: &str, cfg: Cfg) -> String {
+pub fn fmt(file: ast::File<'_>, source: &str, cfg: Cfg) -> String {
     let mut cx = Cx { cfg, source, indent: 0, output: String::with_capacity(source.len()) };
     file.fmt(&mut cx);
     cx.output

@@ -17,7 +17,7 @@ mod stmt;
 mod ty;
 
 #[derive(Debug)]
-pub(crate) struct File<'src> {
+pub struct File<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) items: Vec<Item<'src>>,
     pub(crate) span: Span,

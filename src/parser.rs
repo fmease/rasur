@@ -1,11 +1,10 @@
 use crate::{
-    ast,
-    edition::Edition,
+    Edition, ast,
     lexer::lex_ident_or_keyword,
     span::Span,
     token::{Token, TokenKind},
 };
-pub(crate) use error::{ParseError, RenderCx};
+pub use error::{ParseError, RenderCx};
 use std::{borrow::Cow, fmt};
 
 mod attr;
@@ -22,7 +21,7 @@ mod ty;
 
 pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
 
-pub(crate) fn parse<'src>(
+pub fn parse<'src>(
     tokens: &[Token],
     source: &'src str,
     edition: Edition,
@@ -478,7 +477,7 @@ macro one_of($( $frag:expr ),+ $(,)?) {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub(crate) enum ExpectedFragment {
+pub enum ExpectedFragment {
     Bound,
     Expr,
     GenericArg,

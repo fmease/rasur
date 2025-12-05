@@ -2,9 +2,9 @@ use crate::span::Span;
 use std::fmt;
 
 #[derive(Clone, Copy)]
-pub(crate) struct Token {
-    pub(crate) kind: TokenKind,
-    pub(crate) span: Span,
+pub struct Token {
+    pub kind: TokenKind,
+    pub span: Span,
 }
 
 impl Token {
@@ -20,7 +20,7 @@ impl fmt::Debug for Token {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum TokenKind {
+pub enum TokenKind {
     Abstract,
     AmpersandEquals,
     As,

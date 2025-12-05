@@ -16,7 +16,7 @@ impl std::ops::AddAssign<u32> for ByteIndex {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Span {
+pub struct Span {
     pub(crate) start: ByteIndex,
     pub(crate) end: ByteIndex,
 }
@@ -36,7 +36,7 @@ impl Span {
         Self { end: other.start, ..self }
     }
 
-    pub(crate) fn range(self) -> Range<usize> {
+    pub fn range(self) -> Range<usize> {
         self.start.0 as usize..self.end.0 as usize
     }
 }
