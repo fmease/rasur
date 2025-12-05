@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
-pub(crate) fn opts() -> Result<Opts, ()> {
+pub(crate) fn opts() -> Result<Opts, Error> {
     let mut source = None;
     let mut edition = None;
     let mut emit_tokens = false;
@@ -11,90 +11,69 @@ pub(crate) fn opts() -> Result<Opts, ()> {
     let mut short = false;
 
     let mut args = std::env::args_os().skip(1);
+
     while let Some(arg) = args.next() {
-        if let Some(opt) = arg.as_encoded_bytes().strip_prefix(b"--") {
+        if let Some(opt) = arg.as_encoded_bytes().strip_prefix(b"-") {
             match opt {
-                b"tok" => emit_tokens = true,
-                b"ast" => emit_ast = true,
-                b"lex-only" => lex_only = true,
-                b"edition" => {
+                b"-tok" => emit_tokens = true,
+                b"-ast" => emit_ast = true,
+                b"-lex-only" => lex_only = true,
+                b"e" | b"-edition" => {
                     if edition.is_some() {
-                        eprintln!("error: `--edition` can't be passed multiple times");
-                        return Err(());
+                        return Err(Error::DuplicateOpt("--edition"));
                     }
-                    let edition_ = args.next().ok_or_else(|| {
-                        eprintln!("error: missing argument to `--edition`");
-                    })?;
-                    edition = Some(parse_edition(edition_.as_encoded_bytes()).map_err(|()| {
-                        eprintln!("error: invalid edition `{}`", edition_.display());
-                    })?);
+                    let edition_ = args.next().ok_or(Error::MissingArgToOpt("--edition"))?;
+                    edition = Some(
+                        parse_edition(edition_.as_encoded_bytes())
+                            .map_err(|()| Error::InvalidArg("EDITION"))?,
+                    );
                 }
-                b"fmt" => fmt = true,
-                b"skip-marker" => {
+                b"-fmt" => fmt = true,
+                b"-skip-marker" => {
                     if skip_marker.is_some() {
-                        eprintln!("error: `--skip-marker` can't be passed multiple times");
-                        return Err(());
+                        return Err(Error::DuplicateOpt("--skip-marker"));
                     }
-                    let skip_marker_ = args.next().ok_or_else(|| {
-                        eprintln!("error: missing argument to `--skip-marker`");
-                    })?;
-                    skip_marker =
-                        Some(parse_skip_marker(skip_marker_.as_encoded_bytes()).map_err(|()| {
-                            eprintln!("error: invalid skip marker `{}`", skip_marker_.display());
-                        })?);
+                    let skip_marker_ =
+                        args.next().ok_or(Error::MissingArgToOpt("--skip-marker"))?;
+                    skip_marker = Some(
+                        parse_skip_marker(skip_marker_.as_encoded_bytes())
+                            .map_err(|()| Error::InvalidArg("MARKER"))?,
+                    );
                 }
-                b"source" => {
+                b":" | b"-source" => {
                     match source {
                         Some(Source::String(_)) => {
-                            eprintln!("error: `--source` can't be passed multiple times");
-                            return Err(());
+                            return Err(Error::DuplicateOpt("--source"));
                         }
                         Some(Source::Path(_)) => {
-                            eprintln!(
-                                "error: argument `--source SOURCE` is incompatible with argument `PATH`"
-                            );
-                            return Err(());
+                            return Err(Error::IncompatibleArgs("--source", "PATH"));
                         }
                         None => {}
                     }
-                    let source_ = args.next().ok_or_else(|| {
-                        eprintln!("error: missing argument to `--skip-marker`");
-                    })?;
-                    source =
-                        Some(Source::String(source_.into_string().map_err(|_| {
-                            eprintln!("error: argument `SOURCE` isn't valid UTF-8")
-                        })?))
+                    let source_ = args.next().ok_or(Error::MissingArgToOpt("--source"))?;
+                    source = Some(Source::String(
+                        source_.into_string().map_err(|_| Error::InvalidArg("SOURCE"))?,
+                    ))
                 }
-                b"short" => short = true,
-                _ => {
-                    eprintln!("error: unknown flag `{}`", arg.display());
-                    return Err(());
-                }
+                b"-short" => short = true,
+                _ => return Err(Error::UnknownOpt(arg.to_owned())),
             }
         } else {
             match source {
-                Some(Source::Path(_)) => {
-                    eprintln!("error: unexpected argument `{}`", arg.display());
-                    return Err(());
-                }
-                Some(Source::String(_)) => {
-                    eprintln!(
-                        "error: argument `--source SOURCE` is incompatible with argument `PATH`"
-                    );
-                    return Err(());
-                }
+                Some(Source::Path(_)) => return Err(Error::UnknownArg(arg.to_owned())),
+                // FIXME: Incompatible(Opt("--source"), Arg("PATH"))
+                Some(Source::String(_)) => return Err(Error::IncompatibleArgs("SOURCE", "PATH")),
                 None => source = Some(Source::Path(PathBuf::from(arg))),
             }
         }
     }
 
     if !fmt && skip_marker.is_some() {
-        eprintln!("`--skip-marker` requires `--fmt` to be set");
-        return Err(());
+        return Err(Error::MissingOpt { opt: "--fmt", due_to: "--skip-marker" });
     }
 
-    let source = source
-        .ok_or_else(|| eprintln!("error: missing required argument `PATH` or `--source SOURCE`"))?;
+    // FIXME: Missing(Arg("PATH"), Opt("--source"))
+    let source = source.ok_or(Error::MissingArgs { any: &["PATH", "SOURCE"] })?;
 
     let skip_marker = skip_marker.unwrap_or_default();
 
@@ -115,6 +94,50 @@ pub(crate) struct Opts {
 pub(crate) enum Source {
     String(String),
     Path(PathBuf),
+}
+
+pub(crate) enum Error {
+    DuplicateOpt(&'static str),
+    // FIXME: Refine it to Incompatible(Opt(…), Arg(…))
+    IncompatibleArgs(&'static str, &'static str),
+    InvalidArg(&'static str),
+    // FIXME: Refine it to Missing([Opt(…), Arg(…), …]),
+    MissingArgs { any: &'static [&'static str] }, // invariant: non-empty
+    MissingArgToOpt(&'static str),
+    MissingOpt { opt: &'static str, due_to: &'static str },
+    UnknownArg(OsString),
+    UnknownOpt(OsString),
+}
+
+// FIXME: These diagnostics could be heavily improved, they're just stand-ins.
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateOpt(opt) => write!(f, "option `{opt}` can't be passed multiple times"),
+            Self::IncompatibleArgs(fst, snd) => {
+                write!(f, "arguments `{fst}` and `{snd}` are incompatible")
+            }
+            Self::InvalidArg(arg) => write!(f, "argument `{arg}` is invalid"),
+            Self::MissingArgs { any: args } => {
+                write!(f, "missing required arguments: ")?;
+                let mut args = args.iter().peekable();
+                if let Some(arg) = args.next() {
+                    write!(f, "`{arg}`")?;
+                }
+                while let Some(arg) = args.next() {
+                    let prefix = if args.peek().is_some() { ", " } else { " or " };
+                    write!(f, "{prefix}`{arg}`")?;
+                }
+                Ok(())
+            }
+            Self::MissingArgToOpt(opt) => write!(f, "missing argument to option `{opt}`"),
+            Self::MissingOpt { opt, due_to } => {
+                write!(f, "option `{due_to}` requires option `{opt}` to be set")
+            }
+            Self::UnknownArg(arg) => write!(f, "unexpected argument `{}`", arg.display()),
+            Self::UnknownOpt(opt) => write!(f, "unknown option `{}`", opt.display()),
+        }
+    }
 }
 
 fn parse_edition(source: &[u8]) -> Result<rasur::Edition, ()> {

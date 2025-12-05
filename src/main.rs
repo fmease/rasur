@@ -14,7 +14,7 @@ fn main() -> ExitCode {
 }
 
 fn try_main() -> Result<(), ()> {
-    let opts = interface::opts()?;
+    let opts = interface::opts().map_err(|error| eprintln!("error: {error}"))?;
 
     let (source, path) = match opts.source {
         interface::Source::Path(path) => {
