@@ -51,6 +51,7 @@ pub(crate) struct EnumItem<'src> {
 #[derive(Debug)]
 pub(crate) struct Variant<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) vis: Visibility<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) kind: VariantKind<'src>,
     pub(crate) discr: Option<Expr<'src>>,

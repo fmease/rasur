@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
+    ExpectedFragment, Parser, Result, TokenKind,
     error::ParseError,
     expr::{LetPolicy, OpPolicy, StructPolicy},
     item::ItemCx,
@@ -19,7 +19,15 @@ impl<'src> Parser<'_, 'src> {
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-        if self.begins_item(MacroCallPolicy::Forbidden) {
+        // We only want to consider "final" items (i.e., ones w/o `default`) to mimic rustc which
+        // doesn't accept `fn f() { default fn f() {} }`. Consequently, this precludes us from
+        // rejecting `default as $ty` here which is good.
+        //
+        // We exclude macro call items because macro call exprs should take precedence. The latter
+        // permit generic args in their path. We check for items before exprs since it's easier to
+        // detect expr prefixes when checking item prefixes than the other way around (in cases
+        // where they share a prefix).
+        if self.begins_final_non_macro_call_item() {
             let mut item = self.parse_item(ItemCx::Boring)?;
             debug_assert!(item.attrs.is_empty());
             item.attrs = attrs;

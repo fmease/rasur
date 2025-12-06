@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
+    ExpectedFragment, Parser, Result, TokenKind,
     common::FnParamMode,
     error::ParseError,
     ident::{AUTO, DEFAULT, MACRO_RULES, SAFE, UNION},
@@ -21,7 +21,7 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<Vec<ast::Item<'src>>> {
         let mut items = Vec::new();
 
-        // We look for a delimiter instead of checking `begins_item` for better diagnostics.
+        // We look for a delimiter instead of checking "`begins_item`" for better diagnostics.
         while !self.consume(delim) {
             items.push(self.parse_item(cx)?);
         }
@@ -35,7 +35,7 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// <!-- FIXME: Add EBNF section back in -->
     pub(super) fn parse_item(&mut self, cx: ItemCx) -> Result<ast::Item<'src>> {
-        // NOTE: To be kept in sync with `Self::begins_item`.
+        // NOTE: To be kept in sync with `Self::begins_final_non_macro_call_item`.
 
         let start = self.token.span;
 
@@ -70,7 +70,7 @@ impl<'src> Parser<'_, 'src> {
     // FIXME: Experiment with doing the stmt(item<->expr) disambiguation in begins_expr instead.
     // FIXME: Experiment with replacing this with an parse_item_prefix that rets Option<ItemPrefix>
     //        to be then used for fin_parse_item(prefix)
-    pub(super) fn begins_item(&self, policy: MacroCallPolicy) -> bool {
+    pub(super) fn begins_final_non_macro_call_item(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
         match self.token.kind {
@@ -83,12 +83,18 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        if self.begins_outer_attr() || self.begins_visibility() || self.begins_macro_item(policy) {
+        if self.begins_outer_attr() || self.begins_visibility() {
+            return true;
+        }
+
+        if self.is_common_ident(MACRO_RULES)
+            && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
+            && self.look_ahead(2, |t| t.kind == TokenKind::CommonIdent)
+        {
             return true;
         }
 
         let mut qualified = false;
-
         for (qualifier, token) in self.clone().parse_item_qualifiers() {
             match qualifier {
                 Qualifier::Async | Qualifier::Const | Qualifier::Gen => {}
@@ -108,11 +114,7 @@ impl<'src> Parser<'_, 'src> {
             qualified = true;
         }
 
-        if qualified {
-            return true;
-        }
-
-        false
+        qualified
     }
 
     fn parse_item_kind(
@@ -120,6 +122,8 @@ impl<'src> Parser<'_, 'src> {
         defaultness: ast::Defaultness,
         cx: ItemCx,
     ) -> Result<ast::ItemKind<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_final_non_macro_call_item`.
+
         let start = self.token.span;
 
         let qualifiers: Vec<_> =
@@ -369,11 +373,11 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_variant(&mut self) -> Result<ast::Variant<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        // FIXME: Parse visibility
+        let vis = self.parse_visibility()?;
         let binder = self.parse_common_ident()?;
         let kind = self.parse_variant_kind()?;
         let discr = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
-        Ok(ast::Variant { attrs, binder, kind, discr })
+        Ok(ast::Variant { attrs, vis, binder, kind, discr })
     }
 
     fn parse_variant_kind(&mut self) -> Result<ast::VariantKind<'src>> {
@@ -809,19 +813,6 @@ impl<'src> Parser<'_, 'src> {
         } else {
             ast::ItemKind::MacroCall(Box::new(ast::MacroCall { path, bracket, stream: body }))
         })
-    }
-
-    fn begins_macro_item(&self, policy: MacroCallPolicy) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_macro_item`.
-
-        match policy {
-            MacroCallPolicy::Allowed => self.begins_path(self.token),
-            MacroCallPolicy::Forbidden => {
-                self.is_common_ident(MACRO_RULES)
-                    && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
-                    && self.look_ahead(2, |t| t.kind == TokenKind::CommonIdent)
-            }
-        }
     }
 
     fn parse_delimited_assoc_items(&mut self, cx: ItemCx) -> Result<Vec<ast::AssocItem<'src>>> {

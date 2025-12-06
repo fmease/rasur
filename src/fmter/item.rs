@@ -15,8 +15,7 @@ impl Fmt for ast::Item<'_> {
             cx.line_break();
         }
 
-        // FIXME: Not all items support visibility.
-        vis.fmt(cx);
+        vis.trailing_space().fmt(cx);
 
         match kind {
             ast::ItemKind::Const(item) => item.fmt(cx),
@@ -90,7 +89,7 @@ impl Fmt for ast::EnumItem<'_> {
 
 impl Fmt for ast::Variant<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, binder, kind, discr } = self;
+        let Self { attrs, vis, binder, kind, discr } = self;
 
         // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
         for attr in attrs {
@@ -98,6 +97,7 @@ impl Fmt for ast::Variant<'_> {
             cx.line_break();
         }
 
+        vis.trailing_space().fmt(cx);
         fmt!(cx, "{binder}");
 
         kind.fmt(cx);
@@ -152,7 +152,7 @@ impl Fmt for ast::TupleFieldDef<'_> {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
-        vis.fmt(cx);
+        vis.trailing_space().fmt(cx);
         ty.fmt(cx);
     }
 }
@@ -165,7 +165,7 @@ impl Fmt for ast::StructFieldDef<'_> {
             attr.fmt(cx);
             cx.line_break();
         }
-        vis.fmt(cx);
+        vis.trailing_space().fmt(cx);
         fmt!(cx, "{binder}: ");
         ty.fmt(cx);
     }
@@ -229,8 +229,7 @@ impl Fmt for ast::ExternItem<'_> {
             cx.line_break();
         }
 
-        // FIXME: Not all assoc items support visibility.
-        vis.fmt(cx);
+        vis.trailing_space().fmt(cx);
 
         match kind {
             ast::ExternItemKind::Fn(item) => item.fmt(cx),
@@ -546,8 +545,7 @@ impl Fmt for ast::AssocItem<'_> {
             cx.line_break();
         }
 
-        // FIXME: Not all assoc items support visibility.
-        vis.fmt(cx);
+        vis.trailing_space().fmt(cx);
 
         match kind {
             ast::AssocItemKind::Const(item) => item.fmt(cx),
@@ -564,9 +562,11 @@ impl Fmt for ast::AssocItem<'_> {
     }
 }
 
-impl Fmt for ast::Visibility<'_> {
+impl Fmt for TrailingSpace<ast::Visibility<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self {
+        let Self(vis) = self;
+
+        match vis {
             ast::Visibility::Inherited => {}
             ast::Visibility::Restricted(path) => {
                 fmt!(cx, "pub(");

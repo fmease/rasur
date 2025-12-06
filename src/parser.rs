@@ -343,13 +343,6 @@ impl<'a, 'src> Parser<'a, 'src> {
 
 impl !Copy for Parser<'_, '_> {}
 
-#[derive(Clone, Copy)]
-enum MacroCallPolicy {
-    #[expect(dead_code)] // FIXME
-    Allowed,
-    Forbidden,
-}
-
 impl Token {
     fn to_diag_str(self, source: Option<&str>) -> Cow<'static, str> {
         // FIXME: Say "`{source}` (U+NNNN)" on TokenKind::Error | invalid tokens.
