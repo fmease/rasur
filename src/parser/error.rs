@@ -27,6 +27,7 @@ pub enum ParseError {
 }
 
 impl ParseError {
+    // FIXME: Move into binary crate?
     pub fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
             Self::UnexpectedToken(actual, expected) => {

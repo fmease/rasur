@@ -19,6 +19,10 @@ impl fmt::Debug for Token {
     }
 }
 
+// FIXME: Group keywords so we can feature a `is_ident` that uses `<=` to determine set membership.
+//        `is_ident` might be useful or even necessary for full parity with rustc's parser
+//        and nice to detect is a soft keyword is "active" if we simplify the heuristic to be
+//        "$soft:ident $following:ident" => IsSoft($soft) (not just for `union` but also for `safe` etc.)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TokenKind {
     Abstract,
@@ -66,6 +70,7 @@ pub enum TokenKind {
     GreaterThanEquals,
     Hash,
     HypenEquals,
+    // FIXME: Rename to CommonIdent
     Ident,
     If,
     Impl,

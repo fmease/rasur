@@ -2,6 +2,7 @@
 #![feature(assert_matches)]
 #![feature(decl_macro)]
 #![feature(deref_patterns)]
+#![feature(gen_blocks)]
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]

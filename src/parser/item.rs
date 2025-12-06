@@ -79,7 +79,28 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        if !self.clone().parse_item_qualifiers().is_empty() {
+        let mut qualified = false;
+
+        for (qualifier, token) in self.clone().parse_item_qualifiers() {
+            match qualifier {
+                Qualifier::Async | Qualifier::Const | Qualifier::Gen => {}
+                _ => return true,
+            }
+
+            // The token sequence actually begins a block or closure expression, not an item; bail out.
+            // FIXME: Also check for `|=` and `||=` for diagnostic purposes.
+            if let TokenKind::OpenCurlyBracket
+            | TokenKind::SinglePipe
+            | TokenKind::DoublePipe
+            | TokenKind::Move = token
+            {
+                return false;
+            }
+
+            qualified = true;
+        }
+
+        if qualified {
             return true;
         }
 
@@ -89,8 +110,11 @@ impl<'src> Parser<'_, 'src> {
     fn parse_item_kind(&mut self, cx: ItemCx) -> Result<ast::ItemKind<'src>> {
         let start = self.token.span;
 
+        let qualifiers: Vec<_> =
+            self.parse_item_qualifiers().map(|(qualifier, _)| qualifier).collect();
+
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
-        match self.parse_item_qualifiers().as_slice() {
+        match qualifiers.as_slice() {
             [] => {}
             [Qualifier::Const] => return self.fin_parse_const_item(),
             // `crate` can't be a qualifier itself because it may also begin paths.
@@ -211,9 +235,7 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
     }
 
-    fn parse_item_qualifiers(&mut self) -> Vec<Qualifier<'src>> {
-        let mut qualifiers = Vec::new();
-
+    gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
         loop {
             let qualifier = match self.token.kind {
                 TokenKind::Async => Qualifier::Async,
@@ -222,8 +244,8 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     let span = self.token.span;
                     let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
-                    qualifiers.push(Qualifier::Extern(abi));
-                    break;
+                    yield (Qualifier::Extern(abi), self.token.kind);
+                    continue;
                 }
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen,
@@ -235,7 +257,7 @@ impl<'src> Parser<'_, 'src> {
                     {
                         Qualifier::Safe
                     }
-                    _ => break,
+                    _ => return,
                 },
                 TokenKind::Impl => Qualifier::Impl,
                 TokenKind::Mod => Qualifier::Mod,
@@ -246,10 +268,10 @@ impl<'src> Parser<'_, 'src> {
                 {
                     Qualifier::Unsafe
                 }
-                _ => break,
+                _ => return,
             };
             self.advance();
-            qualifiers.push(qualifier);
+            yield (qualifier, self.token.kind);
 
             // We disqualify `const` after `impl`, so it's easier for us to correctly parse
             // conditionally-const impl blocks. We want to accept `impl const Ty {}`, reject
@@ -269,26 +291,9 @@ impl<'src> Parser<'_, 'src> {
             if let Qualifier::Impl = qualifier
                 && let TokenKind::Const = self.token.kind
             {
-                break;
+                return;
             }
         }
-
-        // Retroactively disqualify these qualifiers if they may begin a (block or closure) expression.
-        // FIXME: Should we also accept+split `|=` and `||=` for diagnostic purposes?
-        if let TokenKind::OpenCurlyBracket
-        | TokenKind::SinglePipe
-        | TokenKind::DoublePipe
-        | TokenKind::Move = self.token.kind
-        {
-            while qualifiers
-                .pop_if(|qualifier| {
-                    matches!(qualifier, Qualifier::Async | Qualifier::Const | Qualifier::Gen)
-                })
-                .is_some()
-            {}
-        }
-
-        qualifiers
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
