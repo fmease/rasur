@@ -221,7 +221,7 @@ impl<'src> Parser<'_, 'src> {
                         self.advance();
                         self.fin_parse_by_ref_ident_pat(ast::Mutability::Mut)
                     }
-                    TokenKind::Ident => {
+                    TokenKind::CommonIdent => {
                         let ident = self.source(self.token.span);
                         self.advance();
                         Ok(ast::Pat::Ident(ast::IdentPat {
@@ -232,7 +232,7 @@ impl<'src> Parser<'_, 'src> {
                     }
                     _ => Err(ParseError::UnexpectedToken(
                         self.token,
-                        one_of![TokenKind::Ref, ExpectedFragment::Ident],
+                        one_of![TokenKind::Ref, ExpectedFragment::CommonIdent],
                     )),
                 };
             }
@@ -308,7 +308,7 @@ impl<'src> Parser<'_, 'src> {
 
                         // FIXME: Parse mut? ref? mut? (a following `":" Pat` is not permitted)
 
-                        let (binder, _) = self.parse_ident_or(TokenKind::NumLit)?;
+                        let (binder, _) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         // NOTE: Indeed, contrary to struct exprs, shorthand numeric fields are
                         //       syntactically permitted in struct pats.
                         let body = self
@@ -345,7 +345,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_by_ref_ident_pat(&mut self, mut_: ast::Mutability) -> Result<ast::Pat<'src>> {
         let ref_mut = self.parse_mutability();
-        let ident = self.parse_ident()?;
+        let ident = self.parse_common_ident()?;
         Ok(ast::Pat::Ident(ast::IdentPat { by_ref: ast::ByRef::Yes(ref_mut), mut_, ident }))
     }
 }

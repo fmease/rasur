@@ -512,7 +512,7 @@ pub(crate) fn lex_ident_or_keyword(source: &str, edition: Edition) -> TokenKind 
         "where" => TokenKind::Where,
         "while" => TokenKind::While,
         "yield" => TokenKind::Yield,
-        _ => TokenKind::Ident,
+        _ => TokenKind::CommonIdent,
     }
 }
 

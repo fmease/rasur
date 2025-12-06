@@ -46,7 +46,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
-            TokenKind::Ident
+            TokenKind::CommonIdent
                 if let DYN = self.source(self.token.span)
                     && self.edition == Edition::Rust2015
                     && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
@@ -273,7 +273,7 @@ impl<'src> Parser<'_, 'src> {
                     match this.token.kind {
                         TokenKind::Const => {
                             this.advance();
-                            let binder = this.parse_ident()?;
+                            let binder = this.parse_common_ident()?;
                             let ty = this.parse_ty_annotation()?;
                             let default = this
                                 .consume(TokenKind::SingleEquals)
@@ -281,7 +281,7 @@ impl<'src> Parser<'_, 'src> {
                                 .transpose()?;
                             (binder, ast::GenericParamKind::Const { ty, default })
                         }
-                        TokenKind::Ident => {
+                        TokenKind::CommonIdent => {
                             let ident = this.source(this.token.span);
                             this.advance();
                             let bounds = if this.consume(TokenKind::SingleColon) {
@@ -415,7 +415,9 @@ impl<'src> Parser<'_, 'src> {
                         return Ok(lifetime);
                     }
                     match this.token.kind {
-                        TokenKind::Ident | TokenKind::SelfUpper => Ok(this.source(this.token.span)),
+                        TokenKind::CommonIdent | TokenKind::SelfUpper => {
+                            Ok(this.source(this.token.span))
+                        }
                         _ => Err(ParseError::UnexpectedToken(
                             this.token,
                             ExpectedFragment::GenericParam,

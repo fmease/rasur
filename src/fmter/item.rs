@@ -46,8 +46,9 @@ impl Fmt for ast::Item<'_> {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, ty, body } = self;
+        let Self { defaultness, binder, generics, ty, body } = self;
 
+        defaultness.trailing_space().fmt(cx);
         fmt!(cx, "const {binder}");
         generics.params.fmt(cx);
         fmt!(cx, ": ");
@@ -272,8 +273,12 @@ impl Fmt for ast::FnItem<'_> {
 
 impl Fmt for TrailingSpace<ast::FnItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::FnItemModifiers { constness, asyncness, genness, safety, externness }) = self;
+        let Self(modifiers) = self;
 
+        let ast::FnItemModifiers { defaultness, constness, asyncness, genness, safety, externness } =
+            modifiers;
+
+        defaultness.trailing_space().fmt(cx);
         constness.trailing_space().fmt(cx);
         asyncness.trailing_space().fmt(cx);
         genness.trailing_space().fmt(cx);
@@ -300,19 +305,25 @@ impl Fmt for ast::FnParam<'_> {
 
 impl Fmt for ast::ImplItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { safety, generics, constness, polarity, trait_ref, self_ty, body } = self;
+        let Self { generics, constness, trait_ref, self_ty, body } = self;
 
-        safety.trailing_space().fmt(cx);
+        if let Some(trait_ref) = &trait_ref {
+            trait_ref.defaultness.trailing_space().fmt(cx);
+            trait_ref.safety.trailing_space().fmt(cx);
+        }
 
         fmt!(cx, "impl");
         generics.params.fmt(cx);
         fmt!(cx, " ");
         constness.trailing_space().fmt(cx);
-        if let ast::ImplPolarity::Negative = polarity {
-            fmt!(cx, "!");
+        if let Some(trait_ref) = &trait_ref {
+            match trait_ref.polarity {
+                ast::ImplPolarity::Positive => {}
+                ast::ImplPolarity::Negative => fmt!(cx, "!"),
+            }
         }
         if let Some(trait_ref) = trait_ref {
-            trait_ref.fmt(cx);
+            trait_ref.path.fmt(cx);
             fmt!(cx, " for ");
         }
         self_ty.fmt(cx);
@@ -417,8 +428,9 @@ impl Fmt for TrailingSpace<ast::TraitItemModifiers> {
 
 impl Fmt for ast::TyAliasItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, generics, bounds, body } = self;
+        let Self { defaultness, binder, generics, bounds, body } = self;
 
+        defaultness.trailing_space().fmt(cx);
         fmt!(cx, "type {binder}");
         generics.params.fmt(cx);
         if !bounds.is_empty() {
@@ -632,6 +644,16 @@ impl Fmt for TrailingSpace<ast::Autoness> {
         match autoness {
             ast::Autoness::Auto => fmt!(cx, "auto "),
             ast::Autoness::Not => {}
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Defaultness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(defaultness) = self;
+        match defaultness {
+            ast::Defaultness::Default => fmt!(cx, "default "),
+            ast::Defaultness::Final => {}
         }
     }
 }

@@ -74,7 +74,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         // For better diagnostics, we lex here in the parser instead of in the lexer.
         // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
         match lex_ident_or_keyword(&lifetime[1..], self.edition) {
-            TokenKind::Ident | TokenKind::Underscore | TokenKind::Static => {
+            TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static => {
                 Ok(Some(ast::Lifetime(lifetime)))
             }
             _ => Err(ParseError::ReservedLifetime(span)),
@@ -304,15 +304,15 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     // FIXME: Temporary API
-    fn parse_ident_or(&mut self, exception: TokenKind) -> Result<(ast::Ident<'src>, bool)> {
-        let exception = if self.token.kind == TokenKind::Ident {
+    fn parse_common_ident_or(&mut self, exception: TokenKind) -> Result<(ast::Ident<'src>, bool)> {
+        let exception = if self.token.kind == TokenKind::CommonIdent {
             false
         } else if self.token.kind == exception {
             true
         } else {
             return Err(ParseError::UnexpectedToken(
                 self.token,
-                one_of![ExpectedFragment::Ident, exception],
+                one_of![ExpectedFragment::CommonIdent, exception],
             ));
         };
 
@@ -321,23 +321,23 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok((ident, exception))
     }
 
-    // FIXME: Temporary API, replace with parse(Ident)
-    fn parse_ident(&mut self) -> Result<ast::Ident<'src>> {
-        self.consume_ident()
-            .ok_or_else(|| ParseError::UnexpectedToken(self.token, ExpectedFragment::Ident))
+    // FIXME: Temporary API, replace with parse(CommonIdent)
+    fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
+        self.consume_common_ident()
+            .ok_or_else(|| ParseError::UnexpectedToken(self.token, ExpectedFragment::CommonIdent))
     }
 
-    // FIXME: Temporary API, replace with consume(Ident)
-    fn consume_ident(&mut self) -> Option<ast::Ident<'src>> {
-        let TokenKind::Ident = self.token.kind else { return None };
+    // FIXME: Temporary API, replace with consume(CommonIdent)
+    fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
+        let TokenKind::CommonIdent = self.token.kind else { return None };
         let ident = self.source(self.token.span);
         self.advance();
         Some(ident)
     }
 
     // FIXME: Temporary API, replace with is(WeakKeyword::Xyz)
-    fn is_ident(&self, source: &str) -> bool {
-        matches!(self.token.kind, TokenKind::Ident if self.source(self.token.span) == source)
+    fn is_common_ident(&self, source: &str) -> bool {
+        matches!(self.token.kind, TokenKind::CommonIdent if self.source(self.token.span) == source)
     }
 }
 
@@ -354,7 +354,7 @@ impl Token {
     fn to_diag_str(self, source: Option<&str>) -> Cow<'static, str> {
         // FIXME: Say "`{source}` (U+NNNN)" on TokenKind::Error | invalid tokens.
         match (self.kind, source) {
-            (TokenKind::Ident, Some(source)) => {
+            (TokenKind::CommonIdent, Some(source)) => {
                 let ident = &source[self.span.range()];
                 format!("identifier `{ident}`").into()
             }
@@ -459,12 +459,13 @@ macro PathSegIdent() {
         | TokenKind::Super
         | TokenKind::Crate
         | TokenKind::SelfUpper
-        | TokenKind::Ident
+        | TokenKind::CommonIdent
 }
 
 // Weak keywords.
 mod ident {
     pub(super) const AUTO: &str = "auto";
+    pub(super) const DEFAULT: &str = "default";
     pub(super) const DYN: &str = "dyn"; // in Rust 2015
     pub(super) const MACRO_RULES: &str = "macro_rules";
     pub(super) const RAW: &str = "raw";
@@ -479,10 +480,10 @@ macro one_of($( $frag:expr ),+ $(,)?) {
 #[cfg_attr(test, derive(Debug))]
 pub enum ExpectedFragment {
     Bound,
+    CommonIdent,
     Expr,
     GenericArg,
     GenericParam,
-    Ident,
     Item,
     Literal,
     OneOf(Box<[Self]>),
@@ -505,10 +506,10 @@ impl fmt::Display for ExpectedFragment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Bound => "bound",
+            Self::CommonIdent => "common identifier",
             Self::Expr => "expression",
             Self::GenericArg => "generic argument",
             Self::GenericParam => "generic parameter",
-            Self::Ident => "identifier",
             Self::Item => "item",
             Self::Literal => "literal",
             Self::OneOf(frags) => {

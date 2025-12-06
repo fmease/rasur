@@ -310,7 +310,7 @@ impl<'src> Parser<'_, 'src> {
                 path.segs.push(ast::PathSeg::ident(self.source(self.token.span)));
                 self.advance();
                 let binder = if self.consume(TokenKind::As) {
-                    let (binder, _) = self.parse_ident_or(TokenKind::Underscore)?;
+                    let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
                     Some(binder)
                 } else {
                     None

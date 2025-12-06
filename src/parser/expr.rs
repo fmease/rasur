@@ -284,7 +284,7 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         left: ast::Expr<'src>,
     ) -> Result<ast::Expr<'src>> {
-        let (ident, numeric) = self.parse_ident_or(TokenKind::NumLit)?;
+        let (ident, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
 
         if !numeric {
             let gen_args_start = self.token.span;
@@ -319,8 +319,8 @@ impl<'src> Parser<'_, 'src> {
         right_level: Level,
         s_policy: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let (kind, mut_) = if self.token.kind == TokenKind::Ident
-            && self.is_ident(RAW)
+        let (kind, mut_) = if self.token.kind == TokenKind::CommonIdent
+            && self.is_common_ident(RAW)
             && let Some(mut_) = self.look_ahead(1, |t| match t.kind {
                 TokenKind::Mut => Some(ast::Mutability::Mut),
                 TokenKind::Const => Some(ast::Mutability::Not),
@@ -681,7 +681,7 @@ impl<'src> Parser<'_, 'src> {
                             break;
                         }
 
-                        let (binder, numeric) = self.parse_ident_or(TokenKind::NumLit)?;
+                        let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
                         } else {

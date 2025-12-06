@@ -1,7 +1,11 @@
 // Features
 #![feature(assert_matches)]
+#![feature(const_default)]
+#![feature(const_trait_impl)]
 #![feature(decl_macro)]
+#![feature(default_field_values)]
 #![feature(deref_patterns)]
+#![feature(derive_const)]
 #![feature(gen_blocks)]
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]

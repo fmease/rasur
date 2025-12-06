@@ -88,7 +88,7 @@ impl<'src> Parser<'_, 'src> {
         self.look_ahead(offset, |t| {
             matches!(
                 t.kind,
-                TokenKind::False | TokenKind::Ident | TokenKind::True | TokenKind::Underscore
+                TokenKind::False | TokenKind::CommonIdent | TokenKind::True | TokenKind::Underscore
             )
         }) && self.look_ahead(offset + 1, |t| t.kind == TokenKind::SingleColon)
     }
@@ -100,7 +100,7 @@ impl<'src> Parser<'_, 'src> {
                 matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Const | TokenKind::Hash)
                     // FIXME: In rustc, it's general idents, not just common idents.
                     //        Investigate if/where it truly matters.
-                    || matches!(t.kind, TokenKind::Lifetime | TokenKind::Ident)
+                    || matches!(t.kind, TokenKind::Lifetime | TokenKind::CommonIdent)
                 && self.look_ahead(offset + 2, |t| matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Comma| TokenKind::SingleColon | TokenKind::SingleEquals))
             })
     }

@@ -5,6 +5,7 @@ use std::{borrow::Cow, path::Path};
 
 #[cfg_attr(test, derive(Debug))]
 pub enum ParseError {
+    DefaultnessOnInvalidItem,
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
@@ -30,6 +31,9 @@ impl ParseError {
     // FIXME: Move into binary crate?
     pub fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
+            Self::DefaultnessOnInvalidItem => {
+                Diag::new("this item kind may not be marked with `default`")
+            }
             Self::UnexpectedToken(actual, expected) => {
                 let span = actual.span;
                 let actual = actual.to_diag_str(Some(cx.source));

@@ -2,6 +2,7 @@ use super::{
     Attr, BlockExpr, Bound, Expr, Externness, Generics, Ident, MacroCall, Mutability,
     NoGenericArgs, Pat, Path, PathTree, Safety, Span, TokenStream, Ty, UnambiguousGenericArgs,
 };
+use Default::default;
 
 // FIXME: Maybe represent as Item<Free>?
 #[derive(Debug)]
@@ -33,6 +34,7 @@ pub(crate) enum ItemKind<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ConstItem<'src> {
+    pub(crate) defaultness: Defaultness,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
@@ -126,23 +128,26 @@ pub(crate) struct FnItem<'src> {
     pub(crate) body: Option<BlockExpr<'src>>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct FnItemModifiers<'src> {
-    pub(crate) constness: Constness,
-    pub(crate) asyncness: Asyncness,
-    pub(crate) genness: Genness,
-    pub(crate) safety: Safety,
-    pub(crate) externness: Externness<'src>,
+    pub(crate) defaultness: Defaultness,
+    pub(crate) constness: Constness = default(),
+    pub(crate) asyncness: Asyncness = default(),
+    pub(crate) genness: Genness = default(),
+    pub(crate) safety: Safety = default(),
+    pub(crate) externness: Externness<'src> = default(),
 }
 
-#[derive(Default, Debug)]
+#[derive_const(Default)]
+#[derive(Debug)]
 pub(crate) enum Constness {
     Const,
     #[default]
     Not,
 }
 
-#[derive(Default, Debug)]
+#[derive_const(Default)]
+#[derive(Debug)]
 pub(crate) enum Asyncness {
     Async,
     #[default]
@@ -150,7 +155,8 @@ pub(crate) enum Asyncness {
 }
 
 // FIXME: Awful name, rethink whole naming scheme here
-#[derive(Default, Debug)]
+#[derive_const(Default)]
+#[derive(Debug)]
 pub(crate) enum Genness {
     Gen,
     #[default]
@@ -165,16 +171,22 @@ pub(crate) struct FnParam<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ImplItem<'src> {
-    pub(crate) safety: Safety,
     pub(crate) generics: Generics<'src>,
     pub(crate) constness: Constness,
-    pub(crate) polarity: ImplPolarity,
-    pub(crate) trait_ref: Option<Path<'src, UnambiguousGenericArgs>>,
+    pub(crate) trait_ref: Option<ImplTraitRef<'src>>,
     pub(crate) self_ty: Ty<'src>,
     pub(crate) body: Vec<AssocItem<'src>>,
 }
 
 #[derive(Debug)]
+pub(crate) struct ImplTraitRef<'src> {
+    pub(crate) defaultness: Defaultness,
+    pub(crate) safety: Safety,
+    pub(crate) polarity: ImplPolarity,
+    pub(crate) path: Path<'src, UnambiguousGenericArgs>,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum ImplPolarity {
     Positive,
     Negative,
@@ -246,6 +258,7 @@ pub(crate) enum AssocItemKind<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TyAliasItem<'src> {
+    pub(crate) defaultness: Defaultness,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
@@ -285,4 +298,10 @@ pub(crate) enum Visibility<'src> {
     Inherited,
     Restricted(Path<'src, NoGenericArgs>),
     Public,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Defaultness {
+    Default,
+    Final,
 }

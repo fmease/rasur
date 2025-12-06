@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, MacroCallPolicy, Parser, Result, TokenKind,
     common::FnParamMode,
     error::ParseError,
-    ident::{AUTO, MACRO_RULES, SAFE, UNION},
+    ident::{AUTO, DEFAULT, MACRO_RULES, SAFE, UNION},
 };
 use crate::{Edition, ast, span::Span};
 
@@ -40,18 +40,26 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        // FIXME: Parse defaultness (specialization).
         let vis = self.parse_visibility()?;
-        let kind = self.parse_item_kind(cx)?;
 
-        if !matches!(vis, ast::Visibility::Inherited)
-            && match &kind {
-                ast::ItemKind::MacroCall(_) => true,
-                ast::ItemKind::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::Old),
-                _ => false,
-            }
-        {
+        let defaultness =
+            if self.is_common_ident(DEFAULT) && self.look_ahead(1, |t| t.kind.is_ident()) {
+                self.advance();
+                ast::Defaultness::Default
+            } else {
+                ast::Defaultness::Final
+            };
+
+        let kind = self.parse_item_kind(defaultness, cx)?;
+
+        if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
             return Err(ParseError::VisibilityOnInvalidItem);
+        }
+
+        if let ast::Defaultness::Default = defaultness
+            && !kind.supports_defaultness()
+        {
+            return Err(ParseError::DefaultnessOnInvalidItem);
         }
 
         let span = start.to(self.prev_token().map(|token| token.span));
@@ -107,7 +115,11 @@ impl<'src> Parser<'_, 'src> {
         false
     }
 
-    fn parse_item_kind(&mut self, cx: ItemCx) -> Result<ast::ItemKind<'src>> {
+    fn parse_item_kind(
+        &mut self,
+        defaultness: ast::Defaultness,
+        cx: ItemCx,
+    ) -> Result<ast::ItemKind<'src>> {
         let start = self.token.span;
 
         let qualifiers: Vec<_> =
@@ -116,7 +128,7 @@ impl<'src> Parser<'_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_slice() {
             [] => {}
-            [Qualifier::Const] => return self.fin_parse_const_item(),
+            [Qualifier::Const] => return self.fin_parse_const_item(defaultness),
             // `crate` can't be a qualifier itself because it may also begin paths.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
@@ -138,7 +150,7 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_static_item(safety);
             }
             &[mut ref qualifiers @ .., Qualifier::Fn] => {
-                let mut modifiers = ast::FnItemModifiers::default();
+                let mut modifiers = ast::FnItemModifiers { defaultness, .. };
 
                 (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 (modifiers.asyncness, qualifiers) = match qualifiers {
@@ -179,7 +191,7 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(safety, constness);
+                return self.fin_parse_impl_item(defaultness, safety, constness);
             }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -199,9 +211,9 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_enum_item();
             }
-            TokenKind::Ident => {
+            TokenKind::CommonIdent => {
                 if let UNION = self.source(self.token.span)
-                    && self.look_ahead(1, |t| t.kind == TokenKind::Ident)
+                    && self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
                 {
                     self.advance();
                     let binder = self.source(self.token.span);
@@ -219,7 +231,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::Type => {
                 self.advance();
-                return self.fin_parse_ty_alias_item();
+                return self.fin_parse_ty_alias_item(defaultness);
             }
             TokenKind::Use => {
                 self.advance();
@@ -249,7 +261,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen,
-                TokenKind::Ident => match self.source(self.token.span) {
+                TokenKind::CommonIdent => match self.source(self.token.span) {
                     AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
                     SAFE if self.look_ahead(1, |t| {
                         matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)
@@ -288,6 +300,7 @@ impl<'src> Parser<'_, 'src> {
             // matching is avoiding combinatorial explosions of subparsers by fixing the "herald"
             // (here: `impl`) in the final position and collecting all modifiers linearly.
             // You can't do (that with) [.., Impl, ..].
+            // FIXME: This doesn't account for `const unsafe impl … {}` which we thusly fail to parse.
             if let Qualifier::Impl = qualifier
                 && let TokenKind::Const = self.token.kind
             {
@@ -309,8 +322,11 @@ impl<'src> Parser<'_, 'src> {
     ///     Where_Clause?
     ///     ";"
     /// ```
-    fn fin_parse_const_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let (binder, _) = self.parse_ident_or(TokenKind::Underscore)?;
+    fn fin_parse_const_item(
+        &mut self,
+        defaultness: ast::Defaultness,
+    ) -> Result<ast::ItemKind<'src>> {
+        let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
         let params = self.parse_generic_param_list()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
@@ -318,6 +334,7 @@ impl<'src> Parser<'_, 'src> {
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
+            defaultness,
             binder,
             generics: ast::Generics { params, preds },
             ty,
@@ -337,7 +354,7 @@ impl<'src> Parser<'_, 'src> {
     /// Enum_Variant ::= Common_Ident
     /// ```
     fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
@@ -353,7 +370,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_variant(&mut self) -> Result<ast::Variant<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         // FIXME: Parse visibility
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let kind = self.parse_variant_kind()?;
         let discr = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         Ok(ast::Variant { attrs, binder, kind, discr })
@@ -388,7 +405,7 @@ impl<'src> Parser<'_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
-            let binder = this.parse_ident()?;
+            let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
             Ok(ast::StructFieldDef { attrs, vis, binder, ty })
         })
@@ -437,8 +454,8 @@ impl<'src> Parser<'_, 'src> {
     /// Extern_Crate_Item ::= "extern" "crate" (Common_Ident | "self") ("as" Common_Ident) ";"
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let (target, _) = self.parse_ident_or(TokenKind::SelfLower)?;
-        let binder = self.consume(TokenKind::As).then(|| self.parse_ident()).transpose()?;
+        let (target, _) = self.parse_common_ident_or(TokenKind::SelfLower)?;
+        let binder = self.consume(TokenKind::As).then(|| self.parse_common_ident()).transpose()?;
 
         self.parse(TokenKind::Semicolon)?;
 
@@ -464,7 +481,7 @@ impl<'src> Parser<'_, 'src> {
         modifiers: ast::FnItemModifiers<'src>,
         cx: ItemCx,
     ) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_param_list()?;
         let params = self.parse_fn_param_list(match (cx, self.edition) {
             (ItemCx::Trait, Edition::Rust2015) => FnParamMode::Optional,
@@ -496,6 +513,7 @@ impl<'src> Parser<'_, 'src> {
     // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
     fn fin_parse_impl_item(
         &mut self,
+        defaultness: ast::Defaultness,
         safety: ast::Safety,
         constness: ast::Constness,
     ) -> Result<ast::ItemKind<'src>> {
@@ -527,6 +545,7 @@ impl<'src> Parser<'_, 'src> {
         let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
             let self_ty = match self.consume(TokenKind::DoubleDot) {
                 // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
+                // FIXME: Introduce custom type, so we can pretty-print it faithfully
                 true => ast::Ty::Error,
                 false => self.parse_ty()?,
             };
@@ -538,32 +557,34 @@ impl<'src> Parser<'_, 'src> {
             (None, ty)
         };
 
-        if trait_ref.is_none() {
-            match polarity {
-                ast::ImplPolarity::Positive => {}
-                ast::ImplPolarity::Negative => {
-                    return Err(ParseError::TraitImplModifierInInherentImpl("!"));
-                }
-            }
-
-            match safety {
-                ast::Safety::Inherited => {}
-                ast::Safety::Safe => unreachable!(),
-                ast::Safety::Unsafe => {
-                    return Err(ParseError::TraitImplModifierInInherentImpl("unsafe"));
-                }
-            }
-        }
-
         let preds = self.parse_where_clause()?;
-
         let items = self.parse_delimited_assoc_items(ItemCx::Boring)?;
 
+        let trait_ref = match trait_ref {
+            Some(path) => Some(ast::ImplTraitRef { defaultness, safety, polarity, path }),
+            None => {
+                match polarity {
+                    ast::ImplPolarity::Positive => {}
+                    ast::ImplPolarity::Negative => {
+                        return Err(ParseError::TraitImplModifierInInherentImpl("!"));
+                    }
+                }
+
+                match safety {
+                    ast::Safety::Inherited => {}
+                    ast::Safety::Safe => unreachable!(),
+                    ast::Safety::Unsafe => {
+                        return Err(ParseError::TraitImplModifierInInherentImpl("unsafe"));
+                    }
+                }
+
+                None
+            }
+        };
+
         Ok(ast::ItemKind::Impl(Box::new(ast::ImplItem {
-            safety,
             generics: ast::Generics { params, preds },
             constness,
-            polarity,
             trait_ref,
             self_ty,
             body: items,
@@ -578,7 +599,7 @@ impl<'src> Parser<'_, 'src> {
     /// Macro_Def ::= "macro" Common_Ident ("(" Token_Stream ")")? "{" Token_Stream "}"
     /// ```
     fn fin_parse_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let params = if self.consume(TokenKind::OpenRoundBracket) {
             let (_, params) = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
             Some(params)
@@ -603,7 +624,7 @@ impl<'src> Parser<'_, 'src> {
     /// Mod_Item ::= "unsafe"? "mod" Common_Ident ("{" … "}" | ";")
     /// ```
     fn fin_parse_mod_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
             // FIXME: Smh. merge with outer attrs?
             let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
@@ -626,7 +647,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_static_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         let mut_ = self.parse_mutability();
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         self.parse(TokenKind::Semicolon)?;
@@ -638,7 +659,7 @@ impl<'src> Parser<'_, 'src> {
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let mut generics = self.parse_generics()?;
         let kind = self.parse_variant_kind()?;
         if let ast::VariantKind::Tuple(_) = kind {
@@ -669,7 +690,7 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         modifiers: ast::TraitItemModifiers,
     ) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+        let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?;
 
         // FIXME: Or if `=` parse a trait alias but make sure to reject unsafe trait aliases,
@@ -702,8 +723,11 @@ impl<'src> Parser<'_, 'src> {
     ///     Where_Clause?
     ///     ("=" Ty Where_Clause?)?
     ///     ";"
-    fn fin_parse_ty_alias_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let binder = self.parse_ident()?;
+    fn fin_parse_ty_alias_item(
+        &mut self,
+        defaultness: ast::Defaultness,
+    ) -> Result<ast::ItemKind<'src>> {
+        let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?;
         let bounds =
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
@@ -715,6 +739,7 @@ impl<'src> Parser<'_, 'src> {
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Ty(Box::new(ast::TyAliasItem {
+            defaultness,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
@@ -763,7 +788,7 @@ impl<'src> Parser<'_, 'src> {
         self.parse(TokenKind::SingleBang)?;
 
         let binder = if let [ast::PathSeg { ident: MACRO_RULES, args: () }] = *path.segs {
-            self.consume_ident()
+            self.consume_common_ident()
         } else {
             None
         };
@@ -792,9 +817,9 @@ impl<'src> Parser<'_, 'src> {
         match policy {
             MacroCallPolicy::Allowed => self.begins_path(self.token),
             MacroCallPolicy::Forbidden => {
-                self.is_ident(MACRO_RULES)
+                self.is_common_ident(MACRO_RULES)
                     && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
-                    && self.look_ahead(2, |t| t.kind == TokenKind::Ident)
+                    && self.look_ahead(2, |t| t.kind == TokenKind::CommonIdent)
             }
         }
     }
@@ -863,6 +888,46 @@ impl<'src> Parser<'_, 'src> {
         // To kept in sync with `Self::parse_visibility`.
 
         self.token.kind == TokenKind::Pub
+    }
+}
+
+impl ast::ItemKind<'_> {
+    fn supports_visibility(&self) -> bool {
+        match self {
+            | Self::Const(_)
+            | Self::Enum(_)
+            | Self::ExternBlock(_)
+            | Self::ExternCrate(_)
+            | Self::Fn(_)
+            | Self::Impl(_)
+            | Self::Mod(_)
+            | Self::Static(_)
+            | Self::Struct(_)
+            | Self::Trait(_)
+            | Self::Ty(_)
+            | Self::Union(_)
+            | Self::Use(_) => true,
+            Self::MacroCall(_) => false,
+            Self::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::New),
+        }
+    }
+
+    fn supports_defaultness(&self) -> bool {
+        match self {
+            Self::Const(_) | Self::Fn(_) | Self::Ty(_) => true,
+            Self::Impl(item) => item.trait_ref.is_some(),
+            | Self::Enum(_)
+            | Self::ExternBlock(_)
+            | Self::ExternCrate(_)
+            | Self::MacroCall(_)
+            | Self::MacroDef(_)
+            | Self::Mod(_)
+            | Self::Static(_)
+            | Self::Struct(_)
+            | Self::Trait(_)
+            | Self::Union(_)
+            | Self::Use(_) => false,
+        }
     }
 }
 
