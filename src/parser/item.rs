@@ -80,6 +80,9 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Trait
             | TokenKind::Type
             | TokenKind::Use => return true,
+            TokenKind::CommonIdent if let UNION = self.source(self.token.span) => {
+                return self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent);
+            }
             _ => {}
         }
 
