@@ -19,6 +19,7 @@ impl<'src> From<ExprKind<'src>> for Expr<'src> {
 pub(crate) enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
     Await(Box<Expr<'src>>),
+    Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(BlockKind, Box<BlockExpr<'src>>),
     Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
@@ -49,6 +50,8 @@ pub(crate) enum ExprKind<'src> {
     UnOp(UnOp, Box<Expr<'src>>),
     While(Box<WhileExpr<'src>>),
     Wildcard,
+    Yeet(Option<Box<Expr<'src>>>),
+    Yield(Option<Box<Expr<'src>>>),
 }
 
 impl ExprKind<'_> {
@@ -69,6 +72,7 @@ impl ExprKind<'_> {
             },
             | Self::Array(_)
             | Self::Await(_)
+            | Self::Become(_)
             | Self::BinOp(..)
             | Self::Borrow(..)
             | Self::Break(..)
@@ -92,7 +96,9 @@ impl ExprKind<'_> {
             | Self::Try(_)
             | Self::Tuple(_)
             | Self::UnOp(..)
-            | Self::Wildcard => false,
+            | Self::Wildcard
+            | Self::Yeet(_)
+            | Self::Yield(_) => false,
         }
     }
 }

@@ -464,6 +464,7 @@ mod ident {
     pub(super) const RAW: &str = "raw";
     pub(super) const SAFE: &str = "safe";
     pub(super) const UNION: &str = "union";
+    pub(super) const YEET: &str = "yeet";
 }
 
 macro one_of($( $frag:expr ),+ $(,)?) {

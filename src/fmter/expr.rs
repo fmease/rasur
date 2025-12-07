@@ -25,6 +25,10 @@ impl Fmt for ast::ExprKind<'_> {
                 expr.fmt(cx);
                 fmt!(cx, ").await");
             }
+            Self::Become(expr) => {
+                fmt!(cx, "become ");
+                expr.fmt(cx);
+            }
             Self::UnOp(op, expr) => {
                 fmt!(cx, "{}(", op.symbol());
                 expr.fmt(cx);
@@ -155,6 +159,20 @@ impl Fmt for ast::ExprKind<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
             Self::Struct(expr) => expr.fmt(cx),
+            Self::Yeet(expr) => {
+                fmt!(cx, "do yeet");
+                if let Some(expr) = expr {
+                    fmt!(cx, " ");
+                    expr.fmt(cx);
+                }
+            }
+            Self::Yield(expr) => {
+                fmt!(cx, "yield");
+                if let Some(expr) = expr {
+                    fmt!(cx, " ");
+                    expr.fmt(cx);
+                }
+            }
         }
     }
 }

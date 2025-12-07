@@ -122,14 +122,17 @@ impl ast::ExprKind<'_> {
                 ast::Bracket::Round | ast::Bracket::Square => true,
                 ast::Bracket::Curly => false,
             },
-            | Self::BinOp(.., expr) | Self::Borrow(.., expr) | Self::UnOp(_, expr) => {
-                expr.kind.else_may_follow()
-            }
+            | Self::Become(expr)
+            | Self::BinOp(.., expr)
+            | Self::Borrow(.., expr)
+            | Self::UnOp(_, expr) => expr.kind.else_may_follow(),
             | Self::Closure(expr) => expr.body.kind.else_may_follow(),
             | Self::Let(expr) => expr.body.kind.else_may_follow(),
-            | Self::Break(_, expr) | Self::Range(_, expr, _) | Self::Return(expr) => {
-                expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow())
-            }
+            | Self::Break(_, expr)
+            | Self::Range(_, expr, _)
+            | Self::Return(expr)
+            | Self::Yeet(expr)
+            | Self::Yield(expr) => expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow()),
         }
     }
 }

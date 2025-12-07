@@ -1,6 +1,10 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, ident::RAW, one_of,
-    pat::OrPolicy, path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind,
+    error::ParseError,
+    ident::{RAW, YEET},
+    one_of,
+    pat::OrPolicy,
+    path::GenericArgsMode,
 };
 use crate::ast;
 use std::{cmp::Ordering, mem};
@@ -32,10 +36,12 @@ impl<'src> Parser<'_, 'src> {
         // `TokenKind::Let` isn't included here because let-exprs are but an impl detail.
         match self.token.kind {
             | TokenKind::Async
+            | TokenKind::Become
             | TokenKind::Break
             | TokenKind::CharLit
             | TokenKind::Const
             | TokenKind::Continue
+            | TokenKind::Do
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
             | TokenKind::DoubleDotEquals
@@ -62,7 +68,8 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Try
             | TokenKind::Underscore
             | TokenKind::Unsafe
-            | TokenKind::While => return true,
+            | TokenKind::While
+            | TokenKind::Yield => return true,
             _ => {}
         }
 
@@ -486,6 +493,10 @@ impl<'src> Parser<'_, 'src> {
         }
 
         match self.token.kind {
+            TokenKind::Become => {
+                self.advance();
+                return Ok(ast::ExprKind::Become(Box::new(self.parse_expr()?)));
+            }
             TokenKind::Break => {
                 self.advance();
                 let label = self.parse_lifetime()?.map(|ast::Lifetime(label)| label);
@@ -512,6 +523,17 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 // FIXME: Parse optional label.
                 return Ok(ast::ExprKind::Continue);
+            }
+            TokenKind::Do
+                if self.look_ahead(1, |t| {
+                    t.kind == TokenKind::CommonIdent && self.source(t.span) == YEET
+                }) =>
+            {
+                self.advance();
+                self.advance();
+                let expr =
+                    self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                return Ok(ast::ExprKind::Yeet(expr));
             }
             TokenKind::False => {
                 self.advance();
@@ -633,7 +655,7 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Return => {
                 self.advance();
                 // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
-                //       Add test where the break is inside an if!
+                // FIXME: Add test where the break is inside an if!
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Return(expr));
@@ -660,6 +682,12 @@ impl<'src> Parser<'_, 'src> {
                 )?;
                 let body = self.parse_block_expr()?;
                 return Ok(ast::ExprKind::While(Box::new(ast::WhileExpr { condition, body })));
+            }
+            TokenKind::Yield => {
+                self.advance();
+                let expr =
+                    self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
+                return Ok(ast::ExprKind::Yield(expr));
             }
             _ => {}
         }
