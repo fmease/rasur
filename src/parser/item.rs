@@ -189,13 +189,13 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_trait_item(modifiers);
             }
             [qualifiers @ .., Qualifier::Impl] => {
-                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
+                let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(defaultness, safety, constness);
+                return self.fin_parse_impl_item(defaultness, constness, safety);
             }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -275,7 +275,32 @@ impl<'src> Parser<'_, 'src> {
                     }
                     _ => return,
                 },
-                TokenKind::Impl => Qualifier::Impl,
+                TokenKind::Impl => {
+                    self.advance();
+                    yield (Qualifier::Impl, self.token.kind);
+                    // Once we encounter `impl`, don't attempt to look for more item qualifiers.
+                    // That's because the grammar following an impl item's `impl` is very complex &
+                    // partially clashes with item qualifiers.
+                    //
+                    // We need to be wary of cases like `impl impl Trait {}` (accept),
+                    // `impl const Ty {}` (accept) `impl const <T> Ty {}` (reject),
+                    // `impl const <() as Trait>::Ty {}` (accept).
+                    //
+                    // For the `const` case, we *could* utilize `pick_generic_param_list_over_ext_path`
+                    // but it's not worth the complexity. Alternatively, we could disqualify
+                    // [.., Impl, Const] in `parse_item_kind` using that very same "pick" method but
+                    // that feels gnarly, esp. since qualifiers are meant to be "unambiguous" for
+                    // downstream users but
+                    // that feels gnarly, esp. since qualifiers are meant to be "unambiguous" for
+                    // downstream users
+                    // Another attempt at a solution could be to intro a generic param list qualifier
+                    // similar to `expr::Qualifier::For`. That isn't really nice to work with though
+                    // because we can't nicely match on "suffix" qualifiers as the premise of qualifier
+                    // matching is avoiding combinatorial explosions of subparsers by fixing the "herald"
+                    // (here: `impl`) in the final position and collecting all modifiers linearly.
+                    // You can't do (that with) [.., Impl, ..].
+                    return;
+                }
                 TokenKind::Mod => Qualifier::Mod,
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
@@ -288,28 +313,6 @@ impl<'src> Parser<'_, 'src> {
             };
             self.advance();
             yield (qualifier, self.token.kind);
-
-            // We disqualify `const` after `impl`, so it's easier for us to correctly parse
-            // conditionally-const impl blocks. We want to accept `impl const Ty {}`, reject
-            // `impl const <T> Ty {}` (should be `impl<T> const Ty {}`) and accept
-            // `impl const <() as Trait>::Ty {}`.
-            // We could utilize `pick_generic_param_list_over_ext_path` (pGplOXp) here but it's not
-            // worth the complexity.
-            // Alternatively, we could disqualify [.., Impl, Const] in `parse_item` using pGplOXp
-            // but that feels gnarly, esp. since qualifiers are meant to be "unambiguous" / on a
-            // different level of abstraction.
-            // Another attempt at a solution could be to intro a generic param list qualifier
-            // similar to `expr::Qualifier::For`. That isn't really nice to work with though
-            // because we can't nicely match on "suffix" qualifiers as the premise of qualifier
-            // matching is avoiding combinatorial explosions of subparsers by fixing the "herald"
-            // (here: `impl`) in the final position and collecting all modifiers linearly.
-            // You can't do (that with) [.., Impl, ..].
-            // FIXME: This doesn't account for `const unsafe impl … {}` which we thusly fail to parse.
-            if let Qualifier::Impl = qualifier
-                && let TokenKind::Const = self.token.kind
-            {
-                return;
-            }
         }
     }
 
@@ -518,8 +521,8 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_impl_item(
         &mut self,
         defaultness: ast::Defaultness,
-        safety: ast::Safety,
         constness: ast::Constness,
+        safety: ast::Safety,
     ) -> Result<ast::ItemKind<'src>> {
         let params = if self.pick_generic_param_list_over_ext_path(0) {
             self.parse_generic_param_list()?

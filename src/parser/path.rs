@@ -219,6 +219,11 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Validate the char lit.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)).into());
             }
+            TokenKind::CommonIdent => {
+                let ident = self.source(self.token.span);
+                self.advance();
+                return Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into());
+            }
             TokenKind::False => {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)).into());

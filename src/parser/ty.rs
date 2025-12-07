@@ -409,21 +409,27 @@ impl<'src> Parser<'_, 'src> {
 
         if self.consume(TokenKind::Use) {
             self.parse(TokenKind::SingleLessThan)?;
-            let captures =
-                self.fin_parse_delim_seq(TokenKind::SingleGreaterThan, TokenKind::Comma, |this| {
+            let captures = self.fin_parse_delim_seq_with(
+                |this| this.consume(TokenPrefix::GreaterThan),
+                |this| TokenPrefix::GreaterThan.matches(this.token.kind),
+                TokenKind::Comma,
+                |this| {
                     if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
                         return Ok(lifetime);
                     }
                     match this.token.kind {
                         TokenKind::CommonIdent | TokenKind::SelfUpper => {
-                            Ok(this.source(this.token.span))
+                            let ident = this.source(this.token.span);
+                            this.advance();
+                            Ok(ident)
                         }
                         _ => Err(ParseError::UnexpectedToken(
                             this.token,
                             ExpectedFragment::GenericParam,
                         )),
                     }
-                })?;
+                },
+            )?;
 
             self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
 
