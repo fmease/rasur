@@ -13,7 +13,7 @@ pub enum ParseError {
     InvalidAssocItemKind(Span),
     InvalidExprPrefix(Span),
     InvalidExternItemKind(Span),
-    InvalidFnPtrTyPrefix(Span),
+    InvalidTyPrefix(Span),
     InvalidItemPrefix(Span),
     InvalidParenthesizedBound,
     MisplacedReceiver,
@@ -77,9 +77,8 @@ impl ParseError {
             Self::InvalidItemPrefix(span) => {
                 Diag::new(format!("invalid item modifiers")).unlabeled_highlight(span)
             }
-            Self::InvalidFnPtrTyPrefix(span) => {
-                Diag::new(format!("invalid function pointer type modifiers"))
-                    .unlabeled_highlight(span)
+            Self::InvalidTyPrefix(span) => {
+                Diag::new(format!("invalid type modifiers")).unlabeled_highlight(span)
             }
             Self::InvalidExprPrefix(span) => {
                 Diag::new(format!("invalid expression modifiers")).unlabeled_highlight(span)

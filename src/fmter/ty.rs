@@ -60,6 +60,12 @@ impl Fmt for ast::Ty<'_> {
             }
             Self::MacroCall(ty) => ty.fmt(cx),
             Self::Error => fmt!(cx, "/*error*/"),
+            Self::UnsafeBinder(bound_vars, ty) => {
+                fmt!(cx, "unsafe");
+                bound_vars.fmt(cx);
+                fmt!(cx, " ");
+                ty.fmt(cx);
+            }
         }
     }
 }
@@ -106,18 +112,18 @@ impl Fmt for ast::Generics<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { params, preds } = self;
 
-        params.fmt(cx);
+        if !params.is_empty() {
+            params.fmt(cx);
+        }
         preds.fmt(cx);
     }
 }
 
 impl Fmt for Vec<ast::GenericParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        if !self.is_empty() {
-            fmt!(cx, "<");
-            Punctuated::new(self, ", ").fmt(cx);
-            fmt!(cx, ">");
-        }
+        fmt!(cx, "<");
+        Punctuated::new(self, ", ").fmt(cx);
+        fmt!(cx, ">");
     }
 }
 

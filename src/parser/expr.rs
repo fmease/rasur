@@ -510,7 +510,7 @@ impl<'src> Parser<'_, 'src> {
                 let mut modifiers = ast::ClosureExprModifiers::default();
 
                 let (bound_vars, mut qualifiers) = match qualifiers {
-                    [Qualifier::For(bound_vars), qualifiers @ ..] => {
+                    [Qualifier::ForBinder(bound_vars), qualifiers @ ..] => {
                         (mem::take(bound_vars), &*qualifiers)
                     }
                     _ => (Vec::new(), &*qualifiers),
@@ -761,7 +761,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::For if self.pick_generic_param_list_over_ext_path(1) => {
                     self.advance();
-                    qualifiers.push(Qualifier::For(self.parse_generic_param_list()?));
+                    qualifiers.push(Qualifier::ForBinder(self.parse_generic_param_list()?));
                     continue;
                 }
                 TokenKind::Gen => Qualifier::Gen,
@@ -1114,7 +1114,7 @@ enum Level {
 enum Qualifier<'src> {
     Async,
     Const,
-    For(Vec<ast::GenericParam<'src>>),
+    ForBinder(Vec<ast::GenericParam<'src>>),
     Gen,
     Move,
     OpenCurlyBracket,

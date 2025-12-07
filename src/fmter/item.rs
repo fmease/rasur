@@ -50,7 +50,9 @@ impl Fmt for ast::ConstItem<'_> {
 
         defaultness.trailing_space().fmt(cx);
         fmt!(cx, "const {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         fmt!(cx, ": ");
         ty.fmt(cx);
         if let Some(body) = body {
@@ -261,7 +263,9 @@ impl Fmt for ast::FnItem<'_> {
 
         modifiers.trailing_space().fmt(cx);
         fmt!(cx, "fn {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         fmt!(cx, "(");
         Punctuated::new(params, ", ").fmt(cx);
         fmt!(cx, ")");
@@ -321,7 +325,9 @@ impl Fmt for ast::ImplItem<'_> {
         }
 
         fmt!(cx, "impl");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         fmt!(cx, " ");
         constness.trailing_space().fmt(cx);
         if let Some(trait_ref) = &trait_ref {
@@ -394,7 +400,9 @@ impl Fmt for ast::StructItem<'_> {
         let needs_semicolon = kind.needs_semicolon();
 
         fmt!(cx, "struct {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         if !where_clause_is_trailing {
             mem::take(&mut generics.preds).fmt(cx);
         }
@@ -414,7 +422,9 @@ impl Fmt for ast::TraitItem<'_> {
 
         modifiers.trailing_space().fmt(cx);
         fmt!(cx, "trait {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         if !bounds.is_empty() {
             fmt!(cx, ": ");
             bounds.fmt(cx);
@@ -440,7 +450,9 @@ impl Fmt for ast::TraitAliasItem<'_> {
 
         constness.trailing_space().fmt(cx);
         fmt!(cx, "trait {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         fmt!(cx, " =");
         if !bounds.is_empty() {
             fmt!(cx, " ");
@@ -457,7 +469,9 @@ impl Fmt for ast::TyAliasItem<'_> {
 
         defaultness.trailing_space().fmt(cx);
         fmt!(cx, "type {binder}");
-        generics.params.fmt(cx);
+        if !generics.params.is_empty() {
+            generics.params.fmt(cx);
+        }
         if !bounds.is_empty() {
             fmt!(cx, ": ");
             bounds.fmt(cx);

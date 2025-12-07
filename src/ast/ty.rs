@@ -20,6 +20,7 @@ pub(crate) enum Ty<'src> {
     Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
+    UnsafeBinder(Vec<GenericParam<'src>>, Box<Ty<'src>>),
 }
 
 #[derive(Debug)]

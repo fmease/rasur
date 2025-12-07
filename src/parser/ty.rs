@@ -21,7 +21,7 @@ impl<'src> Parser<'_, 'src> {
                 let mut modifiers = ast::FnPtrTyModifiers::default();
 
                 let (bound_vars, mut qualifiers) = match qualifiers {
-                    [Qualifier::For(bound_vars), qualifiers @ ..] => {
+                    [Qualifier::ForBinder(bound_vars), qualifiers @ ..] => {
                         (mem::take(bound_vars), &*qualifiers)
                     }
                     _ => (Vec::new(), &*qualifiers),
@@ -29,11 +29,11 @@ impl<'src> Parser<'_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span)));
+                    return Err(ParseError::InvalidTyPrefix(start.until(self.token.span)));
                 }
                 return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
-            _ => return Err(ParseError::InvalidFnPtrTyPrefix(start.until(self.token.span))),
+            _ => return Err(ParseError::InvalidTyPrefix(start.until(self.token.span))),
         }
 
         match self.token.kind {
@@ -111,6 +111,12 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return Ok(ast::Ty::Inferred);
             }
+            TokenKind::Unsafe => {
+                self.advance();
+                let bound_vars = self.parse_generic_param_list()?;
+                let ty = self.parse_ty()?;
+                return Ok(ast::Ty::UnsafeBinder(bound_vars, Box::new(ty)));
+            }
             _ => {}
         }
 
@@ -175,9 +181,11 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Fn => Qualifier::Fn,
             TokenKind::For => {
                 self.advance();
-                return Some(self.parse_generic_param_list().map(Qualifier::For));
+                return Some(self.parse_generic_param_list().map(Qualifier::ForBinder));
             }
-            TokenKind::Unsafe => Qualifier::Unsafe,
+            TokenKind::Unsafe if self.look_ahead(1, |t| t.kind != TokenKind::SingleLessThan) => {
+                Qualifier::Unsafe
+            }
             _ => return None,
         };
         self.advance();
@@ -345,7 +353,7 @@ impl<'src> Parser<'_, 'src> {
     fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
-        let bound_vars = self.parse_higher_ranked_binder()?;
+        let bound_vars = self.parse_for_binder()?;
 
         if bound_vars.is_some() || self.begins_ty() {
             let ty = self.parse_ty()?;
@@ -399,7 +407,7 @@ impl<'src> Parser<'_, 'src> {
         // We parse the trait bound "frontmatter" for all bound kinds to
         // reject them afterwards with a better diagnostic.
         let grouped = self.consume(TokenKind::OpenRoundBracket);
-        let bound_vars = self.parse_higher_ranked_binder()?;
+        let bound_vars = self.parse_for_binder()?;
         let modifiers = self.parse_trait_bound_modifiers()?;
 
         if let Some(lt) = self.parse_lifetime()? {
@@ -555,9 +563,7 @@ impl<'src> Parser<'_, 'src> {
         Ok(bounds)
     }
 
-    fn parse_higher_ranked_binder(
-        &mut self,
-    ) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
+    fn parse_for_binder(&mut self) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
         let start = self.token.span;
 
         if !self.consume(TokenKind::For) {
@@ -574,7 +580,7 @@ impl<'src> Parser<'_, 'src> {
 enum Qualifier<'src> {
     Extern(Option<&'src str>),
     Fn,
-    For(Vec<ast::GenericParam<'src>>),
+    ForBinder(Vec<ast::GenericParam<'src>>),
     Unsafe,
 }
 
