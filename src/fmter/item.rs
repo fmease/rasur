@@ -301,7 +301,12 @@ impl Fmt for TrailingSpace<ast::FnItemModifiers<'_>> {
 
 impl Fmt for ast::FnParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, ty } = self;
+        let Self { attrs, pat, ty } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
 
         match pat {
             ast::Pat::Wildcard(ast::WildcardKind::Empty) => {}

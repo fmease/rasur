@@ -168,6 +168,7 @@ pub(crate) enum Genness {
 
 #[derive(Debug)]
 pub(crate) struct FnParam<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Ty<'src>,
 }

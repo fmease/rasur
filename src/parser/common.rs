@@ -1,5 +1,6 @@
 use super::{Parser, Result, TokenKind, error::ParseError, pat::OrPolicy};
 use crate::ast;
+use std::mem;
 
 impl<'src> Parser<'_, 'src> {
     /// Parse a list of function parameters.
@@ -13,11 +14,11 @@ impl<'src> Parser<'_, 'src> {
 
         let mut first = true;
         self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
-            let first = std::mem::take(&mut first);
+            let first = mem::take(&mut first);
 
-            // FIXME: Attrs.
+            let mut attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-            if let Some(param) = this.parse_self_param()? {
+            if let Some(param) = this.parse_self_param(&mut attrs)? {
                 if !first {
                     return Err(ParseError::MisplacedReceiver);
                 }
@@ -42,11 +43,14 @@ impl<'src> Parser<'_, 'src> {
                 this.parse_ty()?
             };
 
-            Ok(ast::FnParam { pat, ty })
+            Ok(ast::FnParam { attrs, pat, ty })
         })
     }
 
-    fn parse_self_param(&mut self) -> Result<Option<ast::FnParam<'src>>> {
+    fn parse_self_param(
+        &mut self,
+        attrs: &mut Vec<ast::Attr<'src>>,
+    ) -> Result<Option<ast::FnParam<'src>>> {
         if let Some((ref_, mut_)) = self.probe(|this| {
             let ref_ = this.consume(TokenKind::SingleAmpersand).then(|| this.parse_lifetime());
             let mut_ = this.parse_mutability();
@@ -73,7 +77,7 @@ impl<'src> Parser<'_, 'src> {
                 },
             };
 
-            return Ok(Some(ast::FnParam { pat, ty }));
+            return Ok(Some(ast::FnParam { attrs: mem::take(attrs), pat, ty }));
         } else {
             Ok(None)
         }
