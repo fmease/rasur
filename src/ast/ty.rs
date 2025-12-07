@@ -61,7 +61,13 @@ pub(crate) enum GenericParamKind<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) enum Predicate<'src> {
+pub(crate) struct Predicate<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) kind: PredicateKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PredicateKind<'src> {
     Trait(TraitPredicate<'src>),
     Outlives(OutlivesPredicate<'src>),
 }

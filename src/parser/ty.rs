@@ -355,31 +355,35 @@ impl<'src> Parser<'_, 'src> {
     fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
+        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let bound_vars = self.parse_for_binder()?;
 
-        if bound_vars.is_some() || self.begins_ty() {
+        let kind = if bound_vars.is_some() || self.begins_ty() {
             let ty = self.parse_ty()?;
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_bounds()?;
-            return Ok(ast::Predicate::Trait(ast::TraitPredicate {
+            ast::PredicateKind::Trait(ast::TraitPredicate {
                 bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
                 ty,
                 bounds,
-            }));
-        }
-        if let Some(lt) = self.parse_lifetime()? {
+            })
+        } else if let Some(lt) = self.parse_lifetime()? {
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_outlives_bounds()?;
-            return Ok(ast::Predicate::Outlives(ast::OutlivesPredicate { lt, bounds }));
-        }
+            ast::PredicateKind::Outlives(ast::OutlivesPredicate { lt, bounds })
+        } else {
+            return Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Predicate));
+        };
 
-        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Predicate))
+        Ok(ast::Predicate { attrs, kind })
     }
 
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For) || self.begins_ty()
+        matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For)
+            || self.begins_ty()
+            || self.begins_outer_attr()
     }
 
     /// Parse a bounds annotation if available.

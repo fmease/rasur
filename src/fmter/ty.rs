@@ -179,6 +179,19 @@ impl Fmt for Vec<ast::Predicate<'_>> {
 
 impl Fmt for ast::Predicate<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, kind } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+
+        kind.fmt(cx);
+    }
+}
+
+impl Fmt for ast::PredicateKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Trait(ast::TraitPredicate { bound_vars, ty, bounds }) => {
                 if !bound_vars.is_empty() {
