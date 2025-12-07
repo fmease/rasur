@@ -189,7 +189,7 @@ impl<'src> Parser<'_, 'src> {
             token.kind,
             PathSegIdent!()
                 | TokenKind::For
-                | TokenKind::Lifetime
+                | TokenKind::TickedIdent
                 | TokenKind::OpenRoundBracket
                 | TokenKind::QuestionMark
         )
@@ -369,7 +369,7 @@ impl<'src> Parser<'_, 'src> {
     fn begins_predicate(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
-        matches!(self.token.kind, TokenKind::Lifetime | TokenKind::For) || self.begins_ty()
+        matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For) || self.begins_ty()
     }
 
     /// Parse a bounds annotation if available.
@@ -475,7 +475,10 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
         match self.token.kind {
-            TokenKind::Lifetime | TokenKind::For | TokenKind::Use | TokenKind::OpenRoundBracket => {
+            TokenKind::TickedIdent
+            | TokenKind::For
+            | TokenKind::Use
+            | TokenKind::OpenRoundBracket => {
                 return true;
             }
             _ => {}

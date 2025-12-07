@@ -100,7 +100,7 @@ impl<'src> Parser<'_, 'src> {
                 matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Const | TokenKind::Hash)
                     // FIXME: In rustc, it's general idents, not just common idents.
                     //        Investigate if/where it truly matters.
-                    || matches!(t.kind, TokenKind::Lifetime | TokenKind::CommonIdent)
+                    || matches!(t.kind, TokenKind::TickedIdent | TokenKind::CommonIdent)
                 && self.look_ahead(offset + 2, |t| matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Comma| TokenKind::SingleColon | TokenKind::SingleEquals))
             })
     }

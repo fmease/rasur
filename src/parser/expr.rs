@@ -502,7 +502,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::Break => {
                 self.advance();
-                let label = self.parse_lifetime()?.map(|ast::Lifetime(label)| label);
+                let label = self.parse_label()?;
                 let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
                     || s_policy == StructPolicy::Allowed)
                     && self.begins_expr()
@@ -887,11 +887,10 @@ impl<'src> Parser<'_, 'src> {
                 OpPolicy::Restricted(rule),
             )?;
 
-            if self.token.kind == DELIMITER || body.kind.is_boundary(rule) {
-                self.consume(SEPARATOR);
-            } else {
-                self.parse(SEPARATOR)?;
-            }
+            self.consume_or_parse(
+                SEPARATOR,
+                self.token.kind == DELIMITER || body.kind.is_boundary(rule),
+            )?;
 
             arms.push(ast::MatchArm { attrs, pat, guard, body });
         }

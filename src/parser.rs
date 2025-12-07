@@ -65,20 +65,35 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    /// Optionally parse a common lifetime.
+    /// Optionally parse a lifetime.
     fn parse_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
-        let TokenKind::Lifetime = self.token.kind else { return Ok(None) };
-        let span = self.token.span;
-        self.advance();
-        let lifetime = self.source(span);
-        // For better diagnostics, we lex here in the parser instead of in the lexer.
-        // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
-        match lex_ident_or_keyword(&lifetime[1..], self.edition) {
+        self.parse_ticked_ident(|kind, lifetime, span| match kind {
             TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static => {
-                Ok(Some(ast::Lifetime(lifetime)))
+                Ok(ast::Lifetime(lifetime))
             }
             _ => Err(ParseError::ReservedLifetime(span)),
-        }
+        })
+    }
+
+    /// Optionally parse a label.
+    fn parse_label(&mut self) -> Result<Option<ast::Ident<'src>>> {
+        self.parse_ticked_ident(|kind, label, span| match kind {
+            TokenKind::CommonIdent => Ok(label),
+            _ => Err(ParseError::ReservedLabel(span)),
+        })
+    }
+
+    fn parse_ticked_ident<T>(
+        &mut self,
+        parse: impl FnOnce(TokenKind, &'src str, Span) -> Result<T>,
+    ) -> Result<Option<T>> {
+        let TokenKind::TickedIdent = self.token.kind else { return Ok(None) };
+        let span = self.token.span;
+        let source = self.source(span);
+        self.advance();
+        // For better diagnostics, we lex here in the parser instead of in the lexer.
+        // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
+        parse(lex_ident_or_keyword(&source[1..], self.edition), source, span).map(Some)
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(

@@ -20,6 +20,7 @@ pub enum ParseError {
     MissingClosingDelimiters(Span),
     ModifiersOnInvalidBound,
     OpCannotBeChained(String),
+    ReservedLabel(Span),
     ReservedLifetime(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall,
@@ -66,6 +67,7 @@ impl ParseError {
             Self::MisplacedReceiver => Diag::new("misplaced receiver"),
             Self::OpCannotBeChained(op) => Diag::new(format!("operator `{op}` cannot be chained")),
             Self::TyRelMacroCall => Diag::new("type-relative macro call"),
+            Self::ReservedLabel(span) => Diag::new("reserved label").unlabeled_highlight(span),
             Self::ReservedLifetime(span) => {
                 Diag::new("reserved lifetime").unlabeled_highlight(span)
             }

@@ -23,7 +23,7 @@ pub(crate) enum ExprKind<'src> {
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(BlockKind, Box<BlockExpr<'src>>),
     Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
-    Break(Option<&'src str>, Option<Box<Expr<'src>>>),
+    Break(Option<Ident<'src>>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Closure(Box<ClosureExpr<'src>>),

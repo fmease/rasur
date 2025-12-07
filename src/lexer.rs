@@ -314,14 +314,14 @@ impl<'src> Lexer<'src> {
                 }
                 _ => TokenKind::SingleGreaterThan,
             },
-            '\'' => self.fin_lex_char_lit_or_lifetime(),
+            '\'' => self.fin_lex_char_lit_or_ticked_ident(),
             _ => TokenKind::Invalid,
         };
 
         Token::new(kind, Span::new(start, self.index()))
     }
 
-    fn fin_lex_char_lit_or_lifetime(&mut self) -> TokenKind {
+    fn fin_lex_char_lit_or_ticked_ident(&mut self) -> TokenKind {
         let Some(IdentMiddle![]) = self.peek() else { return self.fin_lex_char_lit() };
         self.advance();
 
@@ -333,7 +333,7 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     break TokenKind::CharLit;
                 }
-                _ => break TokenKind::Lifetime,
+                _ => break TokenKind::TickedIdent,
             }
         }
     }
