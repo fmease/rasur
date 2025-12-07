@@ -137,7 +137,7 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.fin_lex_raw_str_lit_or_ident(RawStrKind::Byte, start)
                 }
-                _ => self.fin_lex_ident_or_keyword(start),
+                _ => self.fin_lex_ident(start),
             },
             'c' if self.edition >= Edition::Rust2021 => match self.peek() {
                 Some('"') => {
@@ -148,10 +148,10 @@ impl<'src> Lexer<'src> {
                     self.advance();
                     self.fin_lex_raw_str_lit_or_ident(RawStrKind::Cee, start)
                 }
-                _ => self.fin_lex_ident_or_keyword(start),
+                _ => self.fin_lex_ident(start),
             },
             'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal, start),
-            IdentStart!() => self.fin_lex_ident_or_keyword(start),
+            IdentStart!() => self.fin_lex_ident(start),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -339,8 +339,13 @@ impl<'src> Lexer<'src> {
     }
 
     fn fin_lex_char_lit(&mut self) -> TokenKind {
-        // FIXME: Escape sequences, most importantly escaped apostrophe.
-        while self.next().is_some_and(|(_, char)| char != '\'') {}
+        while let Some((_, char)) = self.next() {
+            match char {
+                '\\' => self.advance(),
+                '\'' => break,
+                _ => {}
+            }
+        }
 
         // FIXME: We currently don't mark unterminated str lits
         //        and the parser doesn't report them.
@@ -361,7 +366,7 @@ impl<'src> Lexer<'src> {
                     && let Some(IdentStart!()) = self.peek()
                 {
                     self.advance();
-                    return self.fin_lex_ident_or_keyword(start);
+                    return self.fin_lex_ident(start);
                 }
 
                 let mut open = 1usize;
@@ -392,7 +397,7 @@ impl<'src> Lexer<'src> {
 
                 TokenKind::StrLit
             }
-            _ => self.fin_lex_ident_or_keyword(start),
+            _ => self.fin_lex_ident(start),
         }
     }
 
@@ -412,7 +417,7 @@ impl<'src> Lexer<'src> {
         TokenKind::StrLit
     }
 
-    fn fin_lex_ident_or_keyword(&mut self, start: ByteIndex) -> TokenKind {
+    fn fin_lex_ident(&mut self, start: ByteIndex) -> TokenKind {
         while let Some(IdentMiddle![]) = self.peek() {
             self.advance();
         }
