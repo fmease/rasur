@@ -394,7 +394,11 @@ impl<'src> Parser<'_, 'src> {
                         let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
                         let vis = this.parse_visibility()?;
                         let ty = this.parse_ty()?;
-                        Ok(ast::TupleFieldDef { attrs, vis, ty })
+                        let default = this
+                            .consume(TokenKind::SingleEquals)
+                            .then(|| this.parse_expr())
+                            .transpose()?;
+                        Ok(ast::TupleFieldDef { attrs, vis, ty, default })
                     },
                 )?;
                 ast::VariantKind::Tuple(fields)
@@ -414,7 +418,9 @@ impl<'src> Parser<'_, 'src> {
             let vis = this.parse_visibility()?;
             let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
-            Ok(ast::StructFieldDef { attrs, vis, binder, ty })
+            let default =
+                this.consume(TokenKind::SingleEquals).then(|| this.parse_expr()).transpose()?;
+            Ok(ast::StructFieldDef { attrs, vis, binder, ty, default })
         })
     }
 

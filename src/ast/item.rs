@@ -79,6 +79,7 @@ pub(crate) struct TupleFieldDef<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) vis: Visibility<'src>,
     pub(crate) ty: Ty<'src>,
+    pub(crate) default: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
@@ -87,6 +88,7 @@ pub(crate) struct StructFieldDef<'src> {
     pub(crate) vis: Visibility<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
+    pub(crate) default: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]

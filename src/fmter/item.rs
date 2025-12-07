@@ -147,7 +147,7 @@ impl Fmt for Vec<ast::StructFieldDef<'_>> {
 
 impl Fmt for ast::TupleFieldDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, vis, ty } = self;
+        let Self { attrs, vis, ty, default } = self;
         // FIXME: Inspect attrs to look for fmt skips.
         for attr in attrs {
             attr.fmt(cx);
@@ -155,12 +155,16 @@ impl Fmt for ast::TupleFieldDef<'_> {
         }
         vis.trailing_space().fmt(cx);
         ty.fmt(cx);
+        if let Some(default) = default {
+            fmt!(cx, " = ");
+            default.fmt(cx);
+        }
     }
 }
 
 impl Fmt for ast::StructFieldDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, vis, binder, ty } = self;
+        let Self { attrs, vis, binder, ty, default } = self;
         // FIXME: Inspect attrs to look for fmt skips.
         for attr in attrs {
             attr.fmt(cx);
@@ -169,6 +173,10 @@ impl Fmt for ast::StructFieldDef<'_> {
         vis.trailing_space().fmt(cx);
         fmt!(cx, "{binder}: ");
         ty.fmt(cx);
+        if let Some(default) = default {
+            fmt!(cx, " = ");
+            default.fmt(cx);
+        }
     }
 }
 
