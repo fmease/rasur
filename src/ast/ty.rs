@@ -83,32 +83,45 @@ pub(crate) enum Bound<'src> {
     Outlives(Lifetime<'src>),
     Use(Vec<&'src str>),
     Trait {
+        // FIXME: Make this more type-safe: binders are
+        //        incompatible with non-normal polarity
         bound_vars: Vec<GenericParam<'src>>,
         modifiers: TraitBoundModifiers,
         trait_ref: Path<'src, UnambiguousGenericArgs>,
     },
 }
 
+// FIXME: Make this more type-safe: non-normal polarity is
+//        incompatible with constness & asyncness
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TraitBoundModifiers {
     pub(crate) constness: BoundConstness,
-    // FIXME: pub(crate) asyncness: BoundAsyncness,
+    pub(crate) asyncness: BoundAsyncness,
     pub(crate) polarity: BoundPolarity,
 }
 
 impl TraitBoundModifiers {
-    pub(crate) const NONE: Self =
-        Self { constness: BoundConstness::Never, polarity: BoundPolarity::Positive };
+    pub(crate) const NONE: Self = Self {
+        constness: BoundConstness::Never,
+        asyncness: BoundAsyncness::Never,
+        polarity: BoundPolarity::Positive,
+    };
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(crate) enum BoundConstness {
     Never,
     Maybe,
     Always,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
+pub(crate) enum BoundAsyncness {
+    Never,
+    Always,
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub(crate) enum BoundPolarity {
     Positive,
     Negative,

@@ -235,12 +235,17 @@ impl Fmt for ast::Bound<'_> {
 
 impl Fmt for ast::TraitBoundModifiers {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, polarity } = self;
+        let Self { constness, asyncness, polarity } = self;
 
         match constness {
             ast::BoundConstness::Never => {}
             ast::BoundConstness::Maybe => fmt!(cx, "[const] "),
             ast::BoundConstness::Always => fmt!(cx, "const "),
+        }
+
+        match asyncness {
+            ast::BoundAsyncness::Never => {}
+            ast::BoundAsyncness::Always => fmt!(cx, "async "),
         }
 
         match polarity {

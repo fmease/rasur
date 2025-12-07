@@ -408,7 +408,7 @@ impl<'src> Parser<'_, 'src> {
         // reject them afterwards with a better diagnostic.
         let grouped = self.consume(TokenKind::OpenRoundBracket);
         let bound_vars = self.parse_for_binder()?;
-        let modifiers = self.parse_trait_bound_modifiers()?;
+        let modifiers = self.parse_trait_bound_modifiers(bound_vars.as_ref())?;
 
         if let Some(lt) = self.parse_lifetime()? {
             self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
@@ -501,7 +501,10 @@ impl<'src> Parser<'_, 'src> {
         self.begins_trait_bound_modifiers() || self.begins_path(self.token)
     }
 
-    fn parse_trait_bound_modifiers(&mut self) -> Result<ast::TraitBoundModifiers> {
+    fn parse_trait_bound_modifiers(
+        &mut self,
+        bound_vars: Option<&(Vec<ast::GenericParam<'src>>, Span)>,
+    ) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
         let constness = match self.token.kind {
@@ -518,29 +521,43 @@ impl<'src> Parser<'_, 'src> {
             _ => ast::BoundConstness::Never,
         };
 
-        // FIXME: asyncness
-
-        // FIMXE: Make polarity incompatible with higher-ranked binders, constness & asyncness
-        let polarity = match self.token.kind {
-            TokenKind::SingleBang => {
-                self.advance();
-                ast::BoundPolarity::Negative
-            }
-            TokenKind::QuestionMark => {
-                self.advance();
-                ast::BoundPolarity::Maybe
-            }
-            _ => ast::BoundPolarity::Positive,
+        let asyncness = if self.consume(TokenKind::Async) {
+            ast::BoundAsyncness::Always
+        } else {
+            ast::BoundAsyncness::Never
         };
 
-        Ok(ast::TraitBoundModifiers { constness, polarity })
+        // FIXME: Find a nicer way to impl / expr this
+        let polarity = if bound_vars.is_none()
+            && constness == ast::BoundConstness::Never
+            && asyncness == ast::BoundAsyncness::Never
+        {
+            match self.token.kind {
+                TokenKind::SingleBang => {
+                    self.advance();
+                    ast::BoundPolarity::Negative
+                }
+                TokenKind::QuestionMark => {
+                    self.advance();
+                    ast::BoundPolarity::Maybe
+                }
+                _ => ast::BoundPolarity::Positive,
+            }
+        } else {
+            ast::BoundPolarity::Positive
+        };
+
+        Ok(ast::TraitBoundModifiers { constness, asyncness, polarity })
     }
 
     fn begins_trait_bound_modifiers(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.token.kind {
-            TokenKind::Const | TokenKind::QuestionMark | TokenKind::SingleBang => true,
+            | TokenKind::Async
+            | TokenKind::Const
+            | TokenKind::QuestionMark
+            | TokenKind::SingleBang => true,
             TokenKind::OpenSquareBracket => {
                 self.look_ahead(1, |t| t.kind == TokenKind::Const)
                     && self.look_ahead(2, |t| t.kind == TokenKind::CloseSquareBracket)
