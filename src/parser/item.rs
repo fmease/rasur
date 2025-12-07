@@ -419,11 +419,16 @@ impl<'src> Parser<'_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
+            let safety = if this.consume(TokenKind::Unsafe) {
+                ast::Safety::Unsafe
+            } else {
+                ast::Safety::Inherited
+            };
             let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
             let default =
                 this.consume(TokenKind::SingleEquals).then(|| this.parse_expr()).transpose()?;
-            Ok(ast::StructFieldDef { attrs, vis, binder, ty, default })
+            Ok(ast::StructFieldDef { attrs, vis, safety, binder, ty, default })
         })
     }
 

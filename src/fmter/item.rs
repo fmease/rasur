@@ -101,6 +101,7 @@ impl Fmt for ast::Variant<'_> {
         }
 
         vis.trailing_space().fmt(cx);
+
         fmt!(cx, "{binder}");
 
         kind.fmt(cx);
@@ -166,13 +167,16 @@ impl Fmt for ast::TupleFieldDef<'_> {
 
 impl Fmt for ast::StructFieldDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, vis, binder, ty, default } = self;
+        let Self { attrs, vis, safety, binder, ty, default } = self;
         // FIXME: Inspect attrs to look for fmt skips.
         for attr in attrs {
             attr.fmt(cx);
             cx.line_break();
         }
+
         vis.trailing_space().fmt(cx);
+        safety.trailing_space().fmt(cx);
+
         fmt!(cx, "{binder}: ");
         ty.fmt(cx);
         if let Some(default) = default {
