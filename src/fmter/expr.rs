@@ -204,10 +204,18 @@ impl Fmt for ast::IfExpr<'_> {
 
 impl Fmt for ast::MatchExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { scrutinee, arms } = self;
+        let Self { kind, scrutinee, arms } = self;
 
-        fmt!(cx, "match ");
+        match kind {
+            ast::MatchKind::Prefix => fmt!(cx, "match "),
+            ast::MatchKind::Postfix => {}
+        }
         scrutinee.fmt(cx);
+        match kind {
+            ast::MatchKind::Prefix => {}
+            ast::MatchKind::Postfix => fmt!(cx, ".match"),
+        }
+
         fmt!(cx, " {{");
         if !arms.is_empty() {
             cx.indent();

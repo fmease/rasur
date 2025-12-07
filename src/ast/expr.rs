@@ -200,8 +200,15 @@ pub(crate) struct IfExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct MatchExpr<'src> {
+    pub(crate) kind: MatchKind,
     pub(crate) scrutinee: Expr<'src>,
     pub(crate) arms: Vec<MatchArm<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum MatchKind {
+    Prefix,
+    Postfix,
 }
 
 #[derive(Debug)]

@@ -294,7 +294,10 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(ast::ExprKind::Await(Box::new(left)).into());
             }
             TokenKind::CommonIdent => false,
-            // FIXME: TokenKind::Match // postfix match
+            TokenKind::Match => {
+                self.advance();
+                return self.fin_parse_match_expr(left, ast::MatchKind::Postfix).map(Into::into);
+            }
             TokenKind::NumLit => true,
             _ => {
                 return Err(ParseError::UnexpectedToken(
@@ -576,45 +579,8 @@ impl<'src> Parser<'_, 'src> {
                     LetPolicy::Forbidden,
                     OpPolicy::Allowed,
                 )?;
-                let mut arms = Vec::new();
 
-                self.parse(TokenKind::OpenCurlyBracket)?;
-
-                const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
-                const SEPARATOR: TokenKind = TokenKind::Comma;
-                while !self.consume(DELIMITER) {
-                    let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-                    let pat = self.parse_pat(OrPolicy::Allowed)?;
-                    let guard = self
-                        .consume(TokenKind::If)
-                        .then(|| {
-                            self.parse_expr_where(
-                                StructPolicy::Allowed,
-                                LetPolicy::Allowed,
-                                OpPolicy::Allowed,
-                            )
-                        })
-                        .transpose()?;
-                    self.parse(TokenKind::WideArrow)?;
-
-                    let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
-
-                    let body = self.parse_expr_where(
-                        StructPolicy::Allowed,
-                        LetPolicy::Forbidden,
-                        OpPolicy::Restricted(rule),
-                    )?;
-
-                    if self.token.kind == DELIMITER || body.kind.is_boundary(rule) {
-                        self.consume(SEPARATOR);
-                    } else {
-                        self.parse(SEPARATOR)?;
-                    }
-
-                    arms.push(ast::MatchArm { attrs, pat, guard, body });
-                }
-
-                return Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { scrutinee, arms })));
+                return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix);
             }
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
@@ -886,6 +852,51 @@ impl<'src> Parser<'_, 'src> {
         };
 
         Ok(ast::ExprKind::If(Box::new(ast::IfExpr { condition, consequent, alternate })))
+    }
+
+    fn fin_parse_match_expr(
+        &mut self,
+        scrutinee: ast::Expr<'src>,
+        kind: ast::MatchKind,
+    ) -> Result<ast::ExprKind<'src>> {
+        self.parse(TokenKind::OpenCurlyBracket)?;
+
+        let mut arms = Vec::new();
+        const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        while !self.consume(DELIMITER) {
+            let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+            let pat = self.parse_pat(OrPolicy::Allowed)?;
+            let guard = self
+                .consume(TokenKind::If)
+                .then(|| {
+                    self.parse_expr_where(
+                        StructPolicy::Allowed,
+                        LetPolicy::Allowed,
+                        OpPolicy::Allowed,
+                    )
+                })
+                .transpose()?;
+            self.parse(TokenKind::WideArrow)?;
+
+            let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
+
+            let body = self.parse_expr_where(
+                StructPolicy::Allowed,
+                LetPolicy::Forbidden,
+                OpPolicy::Restricted(rule),
+            )?;
+
+            if self.token.kind == DELIMITER || body.kind.is_boundary(rule) {
+                self.consume(SEPARATOR);
+            } else {
+                self.parse(SEPARATOR)?;
+            }
+
+            arms.push(ast::MatchArm { attrs, pat, guard, body });
+        }
+
+        Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { kind, scrutinee, arms })))
     }
 }
 
