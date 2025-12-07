@@ -382,14 +382,14 @@ fn stmts_const_item_const_block() {
         ),
         Ok(ast::Expr {
             kind: ast::ExprKind::Block(
-                ast::BlockKind::Bare,
+                None,
                 deref!(ast::BlockExpr {
                     attrs: deref!([]),
                     stmts: deref!([
                         ast::Stmt::Expr(
                             ast::Expr {
-                                kind: ast::ExprKind::Block(
-                                    ast::BlockKind::Const,
+                                kind: ast::ExprKind::SpecialBlock(
+                                    ast::SpecialBlockKind::Const,
                                     deref!(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) })
                                 ),
                                 ..
@@ -433,7 +433,7 @@ fn expr_control_flow_ops_block() {
                 condition: ast::Expr {
                     kind: ast::ExprKind::Return(Some(deref!(ast::Expr {
                         kind: ast::ExprKind::Block(
-                            ast::BlockKind::Bare,
+                            None,
                             ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
                         ),
                         ..
@@ -467,7 +467,7 @@ fn expr_control_flow_ops_block() {
                 None,
                 Some(ast::Expr {
                     kind: ast::ExprKind::Block(
-                        ast::BlockKind::Bare,
+                        None,
                         ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
                     ),
                     ..
@@ -481,7 +481,7 @@ fn expr_control_flow_ops_block() {
         parse_expr("if continue {}", Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::If(deref!(ast::IfExpr {
-                condition: ast::Expr { kind: ast::ExprKind::Continue, .. },
+                condition: ast::Expr { kind: ast::ExprKind::Continue(None), .. },
                 consequent: ast::BlockExpr { stmts: deref!([]), .. },
                 alternate: None
             })),
@@ -494,6 +494,8 @@ fn expr_control_flow_ops_block() {
 // FIXME: Also add test for `for<()>::AssocTy in () {}`.
 // FIXME: However, `for <Ty>::AssocTy in () {}` should actually get rejected b/c
 //        it doesn't parse as a closure with binder.
+// FIXME: Also add a labeled for where we don't need disambig
+//        (`'a: for <Ty>::AssocTy {} in () {}` is valid)
 // FIXME: Also add `impl <$ty>::$segs {}`
 #[test]
 fn expr_qualified_struct_pat_in_for_loop() {

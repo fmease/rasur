@@ -230,11 +230,9 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return Ok(ast::ExprKind::Block(
-                    ast::BlockKind::Bare,
-                    Box::new(self.fin_parse_block_expr()?),
-                )
-                .into());
+                return Ok(
+                    ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into()
+                );
             }
             TokenKind::StrLit => {
                 let lit = self.source(self.token.span);

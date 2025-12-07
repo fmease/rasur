@@ -21,13 +21,13 @@ pub(crate) enum ExprKind<'src> {
     Await(Box<Expr<'src>>),
     Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
-    Block(BlockKind, Box<BlockExpr<'src>>),
+    Block(Option<Ident<'src>>, Box<BlockExpr<'src>>),
     Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
     Break(Option<Ident<'src>>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Closure(Box<ClosureExpr<'src>>),
-    Continue,
+    Continue(Option<Ident<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     ForLoop(Box<ForLoopExpr<'src>>),
     GenBlock(GenBlockKind, CaptureMode, Box<BlockExpr<'src>>),
@@ -36,7 +36,7 @@ pub(crate) enum ExprKind<'src> {
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Let(Box<LetExpr<'src>>),
     Lit(Lit<'src>),
-    Loop(Box<BlockExpr<'src>>),
+    Loop(Option<Ident<'src>>, Box<BlockExpr<'src>>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Match(Box<MatchExpr<'src>>),
     MethodCall(Box<MethodCallExpr<'src>>),
@@ -44,11 +44,12 @@ pub(crate) enum ExprKind<'src> {
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
     Repeat(Box<Expr<'src>>, Box<Expr<'src>>),
     Return(Option<Box<Expr<'src>>>),
+    SpecialBlock(SpecialBlockKind, Box<BlockExpr<'src>>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
     Tuple(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
-    While(Box<WhileExpr<'src>>),
+    WhileLoop(Box<WhileLoopExpr<'src>>),
     Wildcard,
     Yeet(Option<Box<Expr<'src>>>),
     Yield(Option<Box<Expr<'src>>>),
@@ -57,14 +58,12 @@ pub(crate) enum ExprKind<'src> {
 impl ExprKind<'_> {
     pub(crate) fn is_boundary(&self, extra: CurlyBracketedMacroCallIsBoundary) -> bool {
         match self {
-            | Self::Block(
-                BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe,
-                _,
-            )
+            | Self::Block(..)
+            | Self::SpecialBlock(SpecialBlockKind::Const | SpecialBlockKind::Try | SpecialBlockKind::Unsafe, _)
             | Self::If(_)
-            | Self::Loop(_)
+            | Self::Loop(..)
             | Self::Match(_)
-            | Self::While(_)
+            | Self::WhileLoop(_)
             | Self::ForLoop(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
                 CurlyBracketedMacroCallIsBoundary::Yes => true,
@@ -79,7 +78,7 @@ impl ExprKind<'_> {
             | Self::Call(..)
             | Self::Cast(..)
             | Self::Closure(_)
-            | Self::Continue
+            | Self::Continue(_)
             | Self::Field(..)
             | Self::GenBlock(..) // indeed
             | Self::Grouped(_)
@@ -220,16 +219,15 @@ pub(crate) struct MatchArm<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct WhileExpr<'src> {
+pub(crate) struct WhileLoopExpr<'src> {
+    pub(crate) label: Option<Ident<'src>>,
     pub(crate) condition: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
 }
 
-// FIXME: Temporary representation (doesn't scale to labeled blocks)
+// FIXME: Bad name
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum BlockKind {
-    // FIXME: Rename to Normal?
-    Bare,
+pub(crate) enum SpecialBlockKind {
     Const,
     Try,
     Unsafe,
@@ -309,6 +307,7 @@ pub(crate) struct LetExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ForLoopExpr<'src> {
+    pub(crate) label: Option<Ident<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) head: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,

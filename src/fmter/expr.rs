@@ -64,7 +64,12 @@ impl Fmt for ast::ExprKind<'_> {
                 }
             }
             Self::Wildcard => fmt!(cx, "_"),
-            Self::Continue => fmt!(cx, "continue"),
+            Self::Continue(label) => {
+                fmt!(cx, "continue");
+                if let Some(label) = label {
+                    fmt!(cx, " {label}");
+                }
+            }
             Self::Break(label, expr) => {
                 fmt!(cx, "break");
                 if let Some(label) = label {
@@ -83,12 +88,15 @@ impl Fmt for ast::ExprKind<'_> {
                 }
             }
             Self::If(expr) => expr.fmt(cx),
-            Self::Loop(body) => {
+            Self::Loop(label, body) => {
+                if let Some(label) = label {
+                    fmt!(cx, "{label}: ");
+                }
                 fmt!(cx, "loop ");
                 body.fmt(cx);
             }
             Self::Match(expr) => expr.fmt(cx),
-            Self::While(expr) => expr.fmt(cx),
+            Self::WhileLoop(expr) => expr.fmt(cx),
             Self::Let(expr) => expr.fmt(cx),
             Self::Lit(lit) => lit.fmt(cx),
             Self::Borrow(kind, mut_, expr) => {
@@ -127,13 +135,19 @@ impl Fmt for ast::ExprKind<'_> {
                 index.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Block(kind, block) => {
-                kind.trailing_space().fmt(cx);
+            Self::Block(label, block) => {
+                if let Some(label) = label {
+                    fmt!(cx, "{label}: ");
+                }
                 block.fmt(cx);
             }
             Self::GenBlock(kind, mode, block) => {
                 kind.trailing_space().fmt(cx);
                 mode.trailing_space().fmt(cx);
+                block.fmt(cx);
+            }
+            Self::SpecialBlock(kind, block) => {
+                kind.trailing_space().fmt(cx);
                 block.fmt(cx);
             }
             Self::Closure(expr) => expr.fmt(cx),
@@ -257,9 +271,13 @@ impl Fmt for ast::MatchArm<'_> {
     }
 }
 
-impl Fmt for ast::WhileExpr<'_> {
+impl Fmt for ast::WhileLoopExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { condition, body } = self;
+        let Self { label, condition, body } = self;
+
+        if let Some(label) = label {
+            fmt!(cx, "{label}: ");
+        }
 
         fmt!(cx, "while ");
         condition.fmt(cx);
@@ -375,28 +393,30 @@ impl Fmt for ast::ClosureParam<'_> {
 
 impl Fmt for ast::ForLoopExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, head: expr, body } = self;
+        let Self { label, pat, head, body } = self;
+
+        if let Some(label) = label {
+            fmt!(cx, "{label}: ");
+        }
 
         fmt!(cx, "for ");
         pat.fmt(cx);
         fmt!(cx, " in ");
-        expr.fmt(cx);
+        head.fmt(cx);
         fmt!(cx, " ");
         body.fmt(cx);
     }
 }
 
-impl Fmt for TrailingSpace<ast::BlockKind> {
+impl Fmt for TrailingSpace<ast::SpecialBlockKind> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(kind) = self;
         let kind = match kind {
-            ast::BlockKind::Bare => return,
-            ast::BlockKind::Const => "const ",
-            ast::BlockKind::Try => "try ",
-            ast::BlockKind::Unsafe => "unsafe ",
+            ast::SpecialBlockKind::Const => "const",
+            ast::SpecialBlockKind::Try => "try",
+            ast::SpecialBlockKind::Unsafe => "unsafe",
         };
-
-        fmt!(cx, "{kind}");
+        fmt!(cx, "{kind} ");
     }
 }
 
@@ -404,11 +424,11 @@ impl Fmt for TrailingSpace<ast::GenBlockKind> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(mode) = self;
         let mode = match mode {
-            ast::GenBlockKind::Async => "async ",
-            ast::GenBlockKind::AsyncGen => "async gen ",
-            ast::GenBlockKind::Gen => "gen ",
+            ast::GenBlockKind::Async => "async",
+            ast::GenBlockKind::AsyncGen => "async gen",
+            ast::GenBlockKind::Gen => "gen",
         };
-        fmt!(cx, "{mode}");
+        fmt!(cx, "{mode} ");
     }
 }
 

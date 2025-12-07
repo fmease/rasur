@@ -98,7 +98,7 @@ impl ast::ExprKind<'_> {
             | Self::Await(_)
             | Self::Call(..)
             | Self::Cast(..)
-            | Self::Continue
+            | Self::Continue(_)
             | Self::Field(..)
             | Self::GenBlock(..)
             | Self::Grouped(_)
@@ -114,10 +114,11 @@ impl ast::ExprKind<'_> {
             | Self::Block(..)
             | Self::ForLoop(_)
             | Self::If(_)
-            | Self::Loop(_)
+            | Self::Loop(..)
             | Self::Match(_)
+            | Self::SpecialBlock(..)
             | Self::Struct(_)
-            | Self::While(_) => false,
+            | Self::WhileLoop(_) => false,
             | Self::MacroCall(call) => match call.bracket {
                 ast::Bracket::Round | ast::Bracket::Square => true,
                 ast::Bracket::Curly => false,

@@ -64,6 +64,7 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::SingleHyphen
             | TokenKind::SinglePipe
             | TokenKind::StrLit
+            | TokenKind::TickedIdent
             | TokenKind::True
             | TokenKind::Try
             | TokenKind::Underscore
@@ -436,6 +437,39 @@ impl<'src> Parser<'_, 'src> {
         s_policy: StructPolicy,
         l_policy: LetPolicy,
     ) -> Result<ast::ExprKind<'src>> {
+        if let label @ Some(_) = self.parse_label()? {
+            self.parse(TokenKind::SingleColon)?;
+
+            return match self.token.kind {
+                TokenKind::For => {
+                    self.advance();
+                    self.fin_parse_for_loop_expr(label)
+                }
+                TokenKind::Loop => {
+                    self.advance();
+                    self.fin_parse_loop_expr(label)
+                }
+                TokenKind::OpenCurlyBracket => {
+                    self.advance();
+                    let block = self.fin_parse_block_expr()?;
+                    return Ok(ast::ExprKind::Block(label, Box::new(block)));
+                }
+                TokenKind::While => {
+                    self.advance();
+                    self.fin_parse_while_loop_expr(label)
+                }
+                _ => Err(ParseError::UnexpectedToken(
+                    self.token,
+                    one_of![
+                        TokenKind::For,
+                        TokenKind::Loop,
+                        TokenKind::OpenCurlyBracket,
+                        TokenKind::While
+                    ],
+                )),
+            };
+        }
+
         let start = self.token.span;
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
@@ -459,16 +493,18 @@ impl<'src> Parser<'_, 'src> {
                     return Ok(ast::ExprKind::GenBlock(kind, mode, Box::new(block)));
                 }
 
-                // FIXME: This won't cut it once we support labeled blocks since
-                //        only bare blocks can be labeled.
                 let kind = match qualifiers {
-                    [] => ast::BlockKind::Bare,
-                    [Qualifier::Const] => ast::BlockKind::Const,
-                    [Qualifier::Try] => ast::BlockKind::Try,
-                    [Qualifier::Unsafe] => ast::BlockKind::Unsafe,
+                    [] => None,
+                    [Qualifier::Const] => Some(ast::SpecialBlockKind::Const),
+                    [Qualifier::Try] => Some(ast::SpecialBlockKind::Try),
+                    [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
                     _ => return Err(ParseError::InvalidExprPrefix(start.until(self.token.span))),
                 };
-                return Ok(ast::ExprKind::Block(kind, Box::new(self.fin_parse_block_expr()?)));
+                let block = self.fin_parse_block_expr()?;
+                return Ok(match kind {
+                    None => ast::ExprKind::Block(None, Box::new(block)),
+                    Some(kind) => ast::ExprKind::SpecialBlock(kind, Box::new(block)),
+                });
             }
             [qualifiers @ .., Qualifier::Pipe] => {
                 let mut modifiers = ast::ClosureExprModifiers::default();
@@ -524,8 +560,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::Continue => {
                 self.advance();
-                // FIXME: Parse optional label.
-                return Ok(ast::ExprKind::Continue);
+                return Ok(ast::ExprKind::Continue(self.parse_label()?));
             }
             TokenKind::Do
                 if self.look_ahead(1, |t| {
@@ -544,15 +579,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::For => {
                 self.advance();
-                let pat = self.parse_pat(OrPolicy::Allowed)?;
-                self.parse(TokenKind::In)?;
-                let head = self.parse_expr_where(
-                    StructPolicy::Forbidden,
-                    LetPolicy::Forbidden,
-                    OpPolicy::Allowed,
-                )?;
-                let body = self.parse_block_expr()?;
-                return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { pat, head, body })));
+                return self.fin_parse_for_loop_expr(None);
             }
             TokenKind::If => {
                 self.advance();
@@ -569,7 +596,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::Loop => {
                 self.advance();
-                return Ok(ast::ExprKind::Loop(Box::new(self.parse_block_expr()?)));
+                return self.fin_parse_loop_expr(None);
             }
             TokenKind::Match => {
                 self.advance();
@@ -641,13 +668,7 @@ impl<'src> Parser<'_, 'src> {
             }
             TokenKind::While => {
                 self.advance();
-                let condition = self.parse_expr_where(
-                    StructPolicy::Forbidden,
-                    LetPolicy::Allowed,
-                    OpPolicy::Allowed,
-                )?;
-                let body = self.parse_block_expr()?;
-                return Ok(ast::ExprKind::While(Box::new(ast::WhileExpr { condition, body })));
+                return self.fin_parse_while_loop_expr(None);
             }
             TokenKind::Yield => {
                 self.advance();
@@ -795,7 +816,6 @@ impl<'src> Parser<'_, 'src> {
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::ClosureExprModifiers,
     ) -> Result<ast::ExprKind<'src>> {
-        // FIXME: Maybe reuse parse_fn_param_list smh?
         let params = self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
             let pat = this.parse_pat(OrPolicy::Forbidden)?;
             let ty = this.consume(TokenKind::SingleColon).then(|| this.parse_ty()).transpose()?;
@@ -805,7 +825,7 @@ impl<'src> Parser<'_, 'src> {
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         let body = if ret_ty.is_some() {
-            ast::ExprKind::Block(ast::BlockKind::Bare, Box::new(self.parse_block_expr()?)).into()
+            ast::ExprKind::Block(None, Box::new(self.parse_block_expr()?)).into()
         } else {
             self.parse_expr()?
         };
@@ -819,6 +839,21 @@ impl<'src> Parser<'_, 'src> {
         })))
     }
 
+    fn fin_parse_for_loop_expr(
+        &mut self,
+        label: Option<ast::Ident<'src>>,
+    ) -> Result<ast::ExprKind<'src>> {
+        let pat = self.parse_pat(OrPolicy::Allowed)?;
+        self.parse(TokenKind::In)?;
+        let head = self.parse_expr_where(
+            StructPolicy::Forbidden,
+            LetPolicy::Forbidden,
+            OpPolicy::Allowed,
+        )?;
+        let body = self.parse_block_expr()?;
+        return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, pat, head, body })));
+    }
+
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
         let condition =
             self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed, OpPolicy::Allowed)?;
@@ -830,10 +865,7 @@ impl<'src> Parser<'_, 'src> {
                 kind: match self.token.kind {
                     TokenKind::OpenCurlyBracket => {
                         self.advance();
-                        ast::ExprKind::Block(
-                            ast::BlockKind::Bare,
-                            Box::new(self.fin_parse_block_expr()?),
-                        )
+                        ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?))
                     }
                     TokenKind::If => {
                         self.advance();
@@ -852,6 +884,13 @@ impl<'src> Parser<'_, 'src> {
         };
 
         Ok(ast::ExprKind::If(Box::new(ast::IfExpr { condition, consequent, alternate })))
+    }
+
+    fn fin_parse_loop_expr(
+        &mut self,
+        label: Option<ast::Ident<'src>>,
+    ) -> Result<ast::ExprKind<'src>> {
+        Ok(ast::ExprKind::Loop(label, Box::new(self.parse_block_expr()?)))
     }
 
     fn fin_parse_match_expr(
@@ -896,6 +935,17 @@ impl<'src> Parser<'_, 'src> {
         }
 
         Ok(ast::ExprKind::Match(Box::new(ast::MatchExpr { kind, scrutinee, arms })))
+    }
+
+    fn fin_parse_while_loop_expr(
+        &mut self,
+        label: Option<ast::Ident<'src>>,
+    ) -> Result<ast::ExprKind<'src>> {
+        let condition =
+            self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed, OpPolicy::Allowed)?;
+        let body = self.parse_block_expr()?;
+
+        Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
     }
 }
 
