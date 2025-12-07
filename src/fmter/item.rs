@@ -28,7 +28,8 @@ impl Fmt for ast::Item<'_> {
             ast::ItemKind::Static(item) => item.fmt(cx),
             ast::ItemKind::Struct(item) => item.fmt(cx),
             ast::ItemKind::Trait(item) => item.fmt(cx),
-            ast::ItemKind::Ty(item) => item.fmt(cx),
+            ast::ItemKind::TraitAlias(item) => item.fmt(cx),
+            ast::ItemKind::TyAlias(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
             ast::ItemKind::Use(item) => item.fmt(cx),
             ast::ItemKind::MacroDef(item) => item.fmt(cx),
@@ -422,6 +423,23 @@ impl Fmt for TrailingSpace<ast::TraitItemModifiers> {
         constness.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
         autoness.trailing_space().fmt(cx);
+    }
+}
+
+impl Fmt for ast::TraitAliasItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { constness, binder, generics, bounds } = self;
+
+        constness.trailing_space().fmt(cx);
+        fmt!(cx, "trait {binder}");
+        generics.params.fmt(cx);
+        fmt!(cx, " =");
+        if !bounds.is_empty() {
+            fmt!(cx, " ");
+            bounds.fmt(cx);
+        }
+        generics.preds.fmt(cx);
+        fmt!(cx, ";");
     }
 }
 

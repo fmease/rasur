@@ -27,7 +27,8 @@ pub(crate) enum ItemKind<'src> {
     Static(Box<StaticItem<'src>>),
     Struct(Box<StructItem<'src>>),
     Trait(Box<TraitItem<'src>>),
-    Ty(Box<TyAliasItem<'src>>),
+    TraitAlias(Box<TraitAliasItem<'src>>),
+    TyAlias(Box<TyAliasItem<'src>>),
     Union(Box<UnionItem<'src>>),
     Use(Box<UseItem<'src>>),
 }
@@ -224,6 +225,14 @@ pub(crate) struct TraitItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
     pub(crate) body: Vec<AssocItem<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct TraitAliasItem<'src> {
+    pub(crate) constness: Constness,
+    pub(crate) binder: Ident<'src>,
+    pub(crate) generics: Generics<'src>,
+    pub(crate) bounds: Vec<Bound<'src>>,
 }
 
 #[derive(Default, Debug)]

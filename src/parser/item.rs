@@ -439,7 +439,7 @@ impl<'src> Parser<'_, 'src> {
                         ast::ItemKind::Static(item) => ast::ExternItemKind::Static(item),
                         ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
-                        ast::ItemKind::Ty(item) => ast::ExternItemKind::Ty(item),
+                        ast::ItemKind::TyAlias(item) => ast::ExternItemKind::Ty(item),
                         _ => return Err(ParseError::InvalidExternItemKind(item.span)),
                     },
                     span: item.span,
@@ -697,8 +697,9 @@ impl<'src> Parser<'_, 'src> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?;
 
-        // FIXME: Or if `=` parse a trait alias but make sure to reject unsafe trait aliases,
-        //        bounds and leading where-clauses on them.
+        if self.consume(TokenKind::SingleEquals) {
+            return self.fin_parse_trait_alias_item(modifiers, binder, params);
+        }
 
         let bounds =
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
@@ -712,6 +713,39 @@ impl<'src> Parser<'_, 'src> {
             generics: ast::Generics { params, preds },
             bounds,
             body: items,
+        })))
+    }
+
+    /// Finish parsing a trait alias item.
+    fn fin_parse_trait_alias_item(
+        &mut self,
+        modifiers: ast::TraitItemModifiers,
+        binder: ast::Ident<'src>,
+        params: Vec<ast::GenericParam<'src>>,
+    ) -> Result<ast::ItemKind<'src>> {
+        let bounds = self.parse_bounds()?;
+        let preds = self.parse_where_clause()?;
+
+        self.parse(TokenKind::Semicolon)?;
+
+        let ast::TraitItemModifiers { constness, safety, autoness } = modifiers;
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Safe => unreachable!(),
+            ast::Safety::Unsafe => return Err(ParseError::UnsafeTraitAlias),
+        }
+
+        match autoness {
+            ast::Autoness::Auto => return Err(ParseError::AutoTraitAlias),
+            ast::Autoness::Not => {}
+        }
+
+        Ok(ast::ItemKind::TraitAlias(Box::new(ast::TraitAliasItem {
+            constness,
+            binder,
+            generics: ast::Generics { params, preds },
+            bounds,
         })))
     }
 
@@ -742,7 +776,7 @@ impl<'src> Parser<'_, 'src> {
         }
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Ty(Box::new(ast::TyAliasItem {
+        Ok(ast::ItemKind::TyAlias(Box::new(ast::TyAliasItem {
             defaultness,
             binder,
             generics: ast::Generics { params, preds },
@@ -829,7 +863,7 @@ impl<'src> Parser<'_, 'src> {
                         ast::ItemKind::Const(item) => ast::AssocItemKind::Const(item),
                         ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
-                        ast::ItemKind::Ty(item) => ast::AssocItemKind::Ty(item),
+                        ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
                         _ => return Err(ParseError::InvalidAssocItemKind(item.span)),
                     },
                     span: item.span,
@@ -895,7 +929,8 @@ impl ast::ItemKind<'_> {
             | Self::Static(_)
             | Self::Struct(_)
             | Self::Trait(_)
-            | Self::Ty(_)
+            | Self::TraitAlias(_)
+            | Self::TyAlias(_)
             | Self::Union(_)
             | Self::Use(_) => true,
             Self::MacroCall(_) => false,
@@ -905,7 +940,7 @@ impl ast::ItemKind<'_> {
 
     fn supports_defaultness(&self) -> bool {
         match self {
-            Self::Const(_) | Self::Fn(_) | Self::Ty(_) => true,
+            Self::Const(_) | Self::Fn(_) | Self::TyAlias(_) => true,
             Self::Impl(item) => item.trait_ref.is_some(),
             | Self::Enum(_)
             | Self::ExternBlock(_)
@@ -916,6 +951,7 @@ impl ast::ItemKind<'_> {
             | Self::Static(_)
             | Self::Struct(_)
             | Self::Trait(_)
+            | Self::TraitAlias(_)
             | Self::Union(_)
             | Self::Use(_) => false,
         }

@@ -5,6 +5,7 @@ use std::{borrow::Cow, path::Path};
 
 #[cfg_attr(test, derive(Debug))]
 pub enum ParseError {
+    AutoTraitAlias,
     DefaultnessOnInvalidItem,
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
@@ -24,6 +25,7 @@ pub enum ParseError {
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
+    UnsafeTraitAlias,
     VisibilityOnInvalidItem,
 }
 
@@ -31,6 +33,7 @@ impl ParseError {
     // FIXME: Move into binary crate?
     pub fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
+            Self::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
             Self::DefaultnessOnInvalidItem => {
                 Diag::new("this item kind may not be marked with `default`")
             }
@@ -82,6 +85,7 @@ impl ParseError {
             Self::TraitImplModifierInInherentImpl(modifier) => {
                 Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
             }
+            Self::UnsafeTraitAlias => Diag::new("trait aliases cannot be marked `unsafe`"),
             Self::InvalidParenthesizedBound => {
                 Diag::new("this bound kind may not be parenthesized")
             }
