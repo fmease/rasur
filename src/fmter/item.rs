@@ -652,12 +652,12 @@ impl Fmt for TrailingSpace<ast::Genness> {
     }
 }
 
-impl Fmt for TrailingSpace<ast::Safety> {
+impl<X> Fmt for TrailingSpace<ast::Safety<X>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(safety) = self;
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Safe => fmt!(cx, "safe "),
+            ast::Safety::Safe(_) => fmt!(cx, "safe "),
             ast::Safety::Unsafe => fmt!(cx, "unsafe "),
         }
     }

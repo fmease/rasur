@@ -62,10 +62,10 @@ pub(crate) enum Mutability {
 
 #[derive_const(Default)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Safety {
+pub(crate) enum Safety<X = !> {
     #[default]
     Inherited,
-    Safe,
+    Safe(X),
     Unsafe,
 }
 

@@ -12,6 +12,7 @@
 #![feature(iter_intersperse)]
 #![feature(mut_ref)]
 #![feature(negative_impls)]
+#![feature(never_type)]
 #![feature(super_let)]
 // Lints
 #![expect(incomplete_features, reason = "deref_patterns")]

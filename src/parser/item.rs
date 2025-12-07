@@ -523,7 +523,6 @@ impl<'src> Parser<'_, 'src> {
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
-    // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
     fn fin_parse_impl_item(
         &mut self,
         defaultness: ast::Defaultness,
@@ -585,7 +584,6 @@ impl<'src> Parser<'_, 'src> {
 
                 match safety {
                     ast::Safety::Inherited => {}
-                    ast::Safety::Safe => unreachable!(),
                     ast::Safety::Unsafe => {
                         return Err(ParseError::TraitImplModifierInInherentImpl("unsafe"));
                     }
@@ -658,7 +656,7 @@ impl<'src> Parser<'_, 'src> {
     /// ```grammar
     /// Static_Item ::= "static" "mut"? Common_Ident ":" Ty ("=" Expr)? ";"
     /// ```
-    fn fin_parse_static_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_static_item(&mut self, safety: ast::Safety<()>) -> Result<ast::ItemKind<'src>> {
         let mut_ = self.parse_mutability();
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
@@ -741,7 +739,6 @@ impl<'src> Parser<'_, 'src> {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Safe => unreachable!(),
             ast::Safety::Unsafe => return Err(ParseError::UnsafeTraitAlias),
         }
 
@@ -1004,10 +1001,10 @@ impl<'src> Qualifier<'src> {
         }
     }
 
-    fn strip_safety(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+    fn strip_safety(qualifiers: &[Self]) -> (ast::Safety<()>, &[Self]) {
         match qualifiers {
             [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
-            [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
+            [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe(()), qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }

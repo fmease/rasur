@@ -93,7 +93,6 @@ pub(crate) struct StructFieldDef<'src> {
 
 #[derive(Debug)]
 pub(crate) struct ExternBlockItem<'src> {
-    // FIXME: This can never be Safety::Safe, so maybe split Safety type?
     pub(crate) safety: Safety,
     pub(crate) abi: Option<&'src str>,
     pub(crate) body: Vec<ExternItem<'src>>,
@@ -138,7 +137,7 @@ pub(crate) struct FnItemModifiers<'src> {
     pub(crate) constness: Constness = default(),
     pub(crate) asyncness: Asyncness = default(),
     pub(crate) genness: Genness = default(),
-    pub(crate) safety: Safety = default(),
+    pub(crate) safety: Safety<()> = default(),
     pub(crate) externness: Externness<'src> = default(),
 }
 
@@ -206,7 +205,7 @@ pub(crate) struct ModItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StaticItem<'src> {
-    pub(crate) safety: Safety,
+    pub(crate) safety: Safety<()>,
     pub(crate) mut_: Mutability,
     pub(crate) binder: Ident<'src>,
     pub(crate) ty: Ty<'src>,
