@@ -129,9 +129,16 @@ impl Fmt for Vec<ast::GenericParam<'_>> {
 
 impl Fmt for ast::GenericParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self.kind {
+        let Self { attrs, binder, kind } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+
+        match kind {
             ast::GenericParamKind::Ty { bounds, default } => {
-                fmt!(cx, "{}", self.binder);
+                fmt!(cx, "{binder}");
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.fmt(cx);
@@ -142,7 +149,7 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Const { ty, default } => {
-                fmt!(cx, "const {}: ", self.binder);
+                fmt!(cx, "const {binder}: ");
                 ty.fmt(cx);
                 if let Some(expr) = default {
                     fmt!(cx, " = ");
@@ -150,7 +157,7 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Lifetime(bounds) => {
-                ast::Lifetime(self.binder).fmt(cx);
+                ast::Lifetime(binder).fmt(cx);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     Punctuated::new(bounds, " + ").fmt(cx);

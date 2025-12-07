@@ -1,5 +1,5 @@
 use super::{
-    Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path, Safety,
+    Attr, Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path, Safety,
     UnambiguousGenericArgs,
 };
 
@@ -48,6 +48,7 @@ pub(crate) struct Generics<'src> {
 
 #[derive(Debug)]
 pub(crate) struct GenericParam<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) binder: Ident<'src>,
     pub(crate) kind: GenericParamKind<'src>,
 }

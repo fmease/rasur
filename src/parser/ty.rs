@@ -270,6 +270,8 @@ impl<'src> Parser<'_, 'src> {
             |this| TokenPrefix::GreaterThan.matches(this.token.kind),
             SEPARATOR,
             |this| {
+                let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+
                 let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
                     let bounds = if this.consume(TokenKind::SingleColon) {
                         this.parse_outlives_bounds()?
@@ -316,7 +318,7 @@ impl<'src> Parser<'_, 'src> {
                     }
                 };
 
-                Ok(ast::GenericParam { binder, kind })
+                Ok(ast::GenericParam { attrs, binder, kind })
             },
         )
     }
