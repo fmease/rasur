@@ -119,14 +119,22 @@ impl Fmt for ast::File<'_> {
 
 impl Fmt for ast::Attr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { style, path, kind } = self;
+        let Self { style, safety, path, kind } = self;
 
         fmt!(cx, "#");
-        if let ast::AttrStyle::Inner = style {
-            fmt!(cx, "!");
+        match style {
+            ast::AttrStyle::Inner => fmt!(cx, "!"),
+            ast::AttrStyle::Outer => {}
         }
         fmt!(cx, "[");
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Unsafe => fmt!(cx, "unsafe("),
+        }
+
         path.fmt(cx);
+
         match kind {
             ast::AttrKind::Unit => {}
             ast::AttrKind::Call(bracket, stream) => {
@@ -139,6 +147,12 @@ impl Fmt for ast::Attr<'_> {
                 expr.fmt(cx);
             }
         }
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Unsafe => fmt!(cx, ")"),
+        }
+
         fmt!(cx, "]");
     }
 }

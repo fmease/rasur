@@ -1,4 +1,4 @@
-use super::{Parser, Result, TokenKind, error::ParseError, one_of};
+use super::{Parser, Result, TokenKind};
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {
@@ -45,10 +45,17 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
+
+        let safety = if self.consume(TokenKind::Unsafe) {
+            self.parse(TokenKind::OpenRoundBracket)?;
+            ast::Safety::Unsafe
+        } else {
+            ast::Safety::Inherited
+        };
+
         let path = self.parse_path::<ast::NoGenericArgs>()?;
+
         let kind = match self.token.kind {
-            TokenKind::CloseSquareBracket => ast::AttrKind::Unit,
-            // FIXME: Admits `==`.
             TokenKind::SingleEquals => {
                 self.advance();
                 let expr = self.parse_expr()?;
@@ -72,22 +79,17 @@ impl<'src> Parser<'_, 'src> {
                     self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
                 ast::AttrKind::Call(bracket, stream)
             }
-            _ => {
-                return Err(ParseError::UnexpectedToken(
-                    self.token,
-                    one_of![
-                        TokenKind::CloseSquareBracket,
-                        TokenKind::SingleEquals,
-                        TokenKind::OpenRoundBracket,
-                        TokenKind::OpenSquareBracket,
-                        TokenKind::OpenCurlyBracket,
-                    ],
-                ));
-            }
+            // FIXME: Better expectation for `#[x@]` where `@` is a bad token.
+            _ => ast::AttrKind::Unit,
         };
+
+        match safety {
+            ast::Safety::Inherited => {}
+            ast::Safety::Unsafe => self.parse(TokenKind::CloseRoundBracket)?,
+        }
 
         self.parse(TokenKind::CloseSquareBracket)?;
 
-        Ok(ast::Attr { style, path, kind })
+        Ok(ast::Attr { style, safety, path, kind })
     }
 }
