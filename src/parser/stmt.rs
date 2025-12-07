@@ -95,10 +95,12 @@ impl ast::ExprKind<'_> {
     fn else_may_follow(&self) -> bool {
         match self {
             | Self::Array(_)
+            | Self::Await(_)
             | Self::Call(..)
             | Self::Cast(..)
             | Self::Continue
             | Self::Field(..)
+            | Self::GenBlock(..)
             | Self::Grouped(_)
             | Self::Index(..)
             | Self::Lit(_)

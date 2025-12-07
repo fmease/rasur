@@ -16,11 +16,16 @@ impl Fmt for ast::Expr<'_> {
     }
 }
 
+// FIXME: Don't render unnecessary parentheses!
 impl Fmt for ast::ExprKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
+            Self::Await(expr) => {
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ").await");
+            }
             Self::UnOp(op, expr) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "{}(", op.symbol());
                 expr.fmt(cx);
                 fmt!(cx, ")");
@@ -31,7 +36,6 @@ impl Fmt for ast::ExprKind<'_> {
                 ty.fmt(cx);
             }
             Self::BinOp(op, left, right) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 left.fmt(cx);
                 fmt!(cx, ") {} (", op.symbol());
@@ -39,7 +43,6 @@ impl Fmt for ast::ExprKind<'_> {
                 fmt!(cx, ")");
             }
             Self::Range(left, right, kind) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 if let Some(left) = left {
                     fmt!(cx, "(");
                     left.fmt(cx);
@@ -91,25 +94,21 @@ impl Fmt for ast::ExprKind<'_> {
                     ast::BorrowKind::Raw => fmt!(cx, "raw "),
                 }
                 mut_.trailing_space().fmt(cx);
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
             Self::Try(expr) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")?");
             }
             Self::Field(expr, field) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ").{field}");
             }
             Self::Call(expr, args) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")(");
@@ -118,7 +117,6 @@ impl Fmt for ast::ExprKind<'_> {
             }
             Self::MethodCall(call) => call.fmt(cx),
             Self::Index(expr, index) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")[");
@@ -127,6 +125,11 @@ impl Fmt for ast::ExprKind<'_> {
             }
             Self::Block(kind, block) => {
                 kind.trailing_space().fmt(cx);
+                block.fmt(cx);
+            }
+            Self::GenBlock(kind, mode, block) => {
+                kind.trailing_space().fmt(cx);
+                mode.trailing_space().fmt(cx);
                 block.fmt(cx);
             }
             Self::Closure(expr) => expr.fmt(cx),
@@ -319,6 +322,13 @@ impl Fmt for TrailingSpace<ast::ClosureExprModifiers> {
         constness.trailing_space().fmt(cx);
         asyncness.trailing_space().fmt(cx);
         genness.trailing_space().fmt(cx);
+        mode.trailing_space().fmt(cx);
+    }
+}
+
+impl Fmt for TrailingSpace<ast::CaptureMode> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(mode) = self;
         match mode {
             ast::CaptureMode::Ref => {}
             ast::CaptureMode::Move => fmt!(cx, "move "),
@@ -354,16 +364,25 @@ impl Fmt for TrailingSpace<ast::BlockKind> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(kind) = self;
         let kind = match kind {
-            ast::BlockKind::Async => "async ",
-            ast::BlockKind::AsyncGen => "async gen ",
             ast::BlockKind::Bare => return,
             ast::BlockKind::Const => "const ",
-            ast::BlockKind::Gen => "gen ",
             ast::BlockKind::Try => "try ",
             ast::BlockKind::Unsafe => "unsafe ",
         };
 
         fmt!(cx, "{kind}");
+    }
+}
+
+impl Fmt for TrailingSpace<ast::GenBlockKind> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(mode) = self;
+        let mode = match mode {
+            ast::GenBlockKind::Async => "async ",
+            ast::GenBlockKind::AsyncGen => "async gen ",
+            ast::GenBlockKind::Gen => "gen ",
+        };
+        fmt!(cx, "{mode}");
     }
 }
 

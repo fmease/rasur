@@ -997,17 +997,15 @@ impl<'src> Qualifier<'src> {
 
     fn strip_safety(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
         match qualifiers {
-            [Qualifier::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
-            [Qualifier::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
+            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe, qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }
 
     fn strip_extern(qualifiers: &[Self]) -> (ast::Externness<'src>, &[Self]) {
         match qualifiers {
-            [Qualifier::Extern(abi), qualifiers @ ..] => {
-                (ast::Externness::Extern(*abi), qualifiers)
-            }
+            [Self::Extern(abi), qualifiers @ ..] => (ast::Externness::Extern(*abi), qualifiers),
             _ => (ast::Externness::Not, qualifiers),
         }
     }

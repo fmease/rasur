@@ -18,6 +18,7 @@ impl<'src> From<ExprKind<'src>> for Expr<'src> {
 #[derive(Debug)]
 pub(crate) enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
+    Await(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(BlockKind, Box<BlockExpr<'src>>),
     Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
@@ -28,6 +29,7 @@ pub(crate) enum ExprKind<'src> {
     Continue,
     Field(Box<Expr<'src>>, Ident<'src>),
     ForLoop(Box<ForLoopExpr<'src>>),
+    GenBlock(GenBlockKind, CaptureMode, Box<BlockExpr<'src>>),
     Grouped(Box<Expr<'src>>),
     If(Box<IfExpr<'src>>),
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
@@ -52,7 +54,10 @@ pub(crate) enum ExprKind<'src> {
 impl ExprKind<'_> {
     pub(crate) fn is_boundary(&self, extra: CurlyBracketedMacroCallIsBoundary) -> bool {
         match self {
-            | Self::Block(BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe, _)
+            | Self::Block(
+                BlockKind::Bare | BlockKind::Const | BlockKind::Try | BlockKind::Unsafe,
+                _,
+            )
             | Self::If(_)
             | Self::Loop(_)
             | Self::Match(_)
@@ -63,7 +68,7 @@ impl ExprKind<'_> {
                 CurlyBracketedMacroCallIsBoundary::No => false,
             },
             | Self::Array(_)
-            | Self::Block(BlockKind::Async | BlockKind::AsyncGen | BlockKind::Gen, _) // indeed
+            | Self::Await(_)
             | Self::BinOp(..)
             | Self::Borrow(..)
             | Self::Break(..)
@@ -72,6 +77,7 @@ impl ExprKind<'_> {
             | Self::Closure(_)
             | Self::Continue
             | Self::Field(..)
+            | Self::GenBlock(..) // indeed
             | Self::Grouped(_)
             | Self::Index(..)
             | Self::Let(_)
@@ -206,16 +212,21 @@ pub(crate) struct WhileExpr<'src> {
     pub(crate) body: BlockExpr<'src>,
 }
 
-#[derive(Debug)]
+// FIXME: Temporary representation (doesn't scale to labeled blocks)
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum BlockKind {
-    Async,
-    AsyncGen,
     // FIXME: Rename to Normal?
     Bare,
     Const,
-    Gen,
     Try,
     Unsafe,
+}
+
+#[derive(Debug)]
+pub(crate) enum GenBlockKind {
+    Async,
+    AsyncGen,
+    Gen,
 }
 
 #[derive(Debug)]

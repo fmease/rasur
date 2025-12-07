@@ -234,7 +234,7 @@ impl<'src> Parser<'_, 'src> {
             Op::DivAssign => ast::BinOp::DivAssign,
             Op::Eq => ast::BinOp::Eq,
             Op::Project => {
-                return self.fin_parse_field_or_method_call_expr(left);
+                return self.fin_parse_projection_expr(left);
             }
             Op::Ge => ast::BinOp::Ge,
             Op::Gt => ast::BinOp::Gt,
@@ -280,11 +280,25 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::ExprKind::BinOp(ast_op, Box::new(left), Box::new(right)).into())
     }
 
-    fn fin_parse_field_or_method_call_expr(
-        &mut self,
-        left: ast::Expr<'src>,
-    ) -> Result<ast::Expr<'src>> {
-        let (ident, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+    fn fin_parse_projection_expr(&mut self, left: ast::Expr<'src>) -> Result<ast::Expr<'src>> {
+        let numeric = match self.token.kind {
+            TokenKind::Await => {
+                self.advance();
+                return Ok(ast::ExprKind::Await(Box::new(left)).into());
+            }
+            TokenKind::CommonIdent => false,
+            // FIXME: TokenKind::Match // postfix match
+            TokenKind::NumLit => true,
+            _ => {
+                return Err(ParseError::UnexpectedToken(
+                    self.token,
+                    one_of![TokenKind::Await, TokenKind::CommonIdent, TokenKind::NumLit],
+                ));
+            }
+        };
+
+        let ident = self.source(self.token.span);
+        self.advance();
 
         if !numeric {
             let gen_args_start = self.token.span;
@@ -415,18 +429,33 @@ impl<'src> Parser<'_, 'src> {
         let start = self.token.span;
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
-        // FIXME: There are also `async move {}`, `async gen move {}`, etc. blocks.
         match self.parse_expr_qualifiers()?.as_mut_slice() {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
+                if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
+                    let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
+                    let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                    let (mode, qualifiers) = Qualifier::strip_move(qualifiers);
+                    if !qualifiers.is_empty() {
+                        return Err(ParseError::InvalidExprPrefix(start.until(self.token.span)));
+                    }
+                    let block = self.fin_parse_block_expr()?;
+                    let kind = match (asyncness, genness) {
+                        (ast::Asyncness::Async, ast::Genness::Gen) => ast::GenBlockKind::AsyncGen,
+                        (ast::Asyncness::Async, ast::Genness::Not) => ast::GenBlockKind::Async,
+                        (ast::Asyncness::Not, ast::Genness::Gen) => ast::GenBlockKind::Gen,
+                        (ast::Asyncness::Not, ast::Genness::Not) => unreachable!(),
+                    };
+                    return Ok(ast::ExprKind::GenBlock(kind, mode, Box::new(block)));
+                }
+
+                // FIXME: This won't cut it once we support labeled blocks since
+                //        only bare blocks can be labeled.
                 let kind = match qualifiers {
                     [] => ast::BlockKind::Bare,
-                    [Qualifier::Async] => ast::BlockKind::Async,
                     [Qualifier::Const] => ast::BlockKind::Const,
-                    [Qualifier::Gen] => ast::BlockKind::Gen,
                     [Qualifier::Try] => ast::BlockKind::Try,
                     [Qualifier::Unsafe] => ast::BlockKind::Unsafe,
-                    [Qualifier::Async, Qualifier::Gen] => ast::BlockKind::AsyncGen,
                     _ => return Err(ParseError::InvalidExprPrefix(start.until(self.token.span))),
                 };
                 return Ok(ast::ExprKind::Block(kind, Box::new(self.fin_parse_block_expr()?)));
@@ -444,18 +473,9 @@ impl<'src> Parser<'_, 'src> {
                     [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
                     _ => (ast::Constness::Not, qualifiers),
                 };
-                (modifiers.asyncness, qualifiers) = match qualifiers {
-                    [Qualifier::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
-                    _ => (ast::Asyncness::Not, qualifiers),
-                };
-                (modifiers.genness, qualifiers) = match qualifiers {
-                    [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
-                    _ => (ast::Genness::Not, qualifiers),
-                };
-                (modifiers.mode, qualifiers) = match qualifiers {
-                    [Qualifier::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
-                    _ => (ast::CaptureMode::Ref, qualifiers),
-                };
+                (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
+                (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                (modifiers.mode, qualifiers) = Qualifier::strip_move(qualifiers);
                 if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidExprPrefix(start.until(self.token.span)));
                 }
@@ -1013,4 +1033,27 @@ enum Qualifier<'src> {
     Pipe,
     Try,
     Unsafe,
+}
+
+impl Qualifier<'_> {
+    fn strip_async(qualifiers: &[Self]) -> (ast::Asyncness, &[Self]) {
+        match qualifiers {
+            [Self::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
+            _ => (ast::Asyncness::Not, qualifiers),
+        }
+    }
+
+    fn strip_gen(qualifiers: &[Self]) -> (ast::Genness, &[Self]) {
+        match qualifiers {
+            [Self::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
+            _ => (ast::Genness::Not, qualifiers),
+        }
+    }
+
+    fn strip_move(qualifiers: &[Self]) -> (ast::CaptureMode, &[Self]) {
+        match qualifiers {
+            [Self::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
+            _ => (ast::CaptureMode::Ref, qualifiers),
+        }
+    }
 }
