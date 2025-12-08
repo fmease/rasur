@@ -61,6 +61,7 @@ impl Fmt for ast::Pat<'_> {
                 Punctuated::new(elems, ", ").fmt(cx);
                 fmt!(cx, "]");
             }
+            Self::Never => fmt!(cx, "!"),
         }
     }
 }

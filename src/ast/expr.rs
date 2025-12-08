@@ -215,7 +215,7 @@ pub(crate) struct MatchArm<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) guard: Option<Expr<'src>>,
-    pub(crate) body: Expr<'src>,
+    pub(crate) body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]

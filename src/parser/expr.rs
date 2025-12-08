@@ -916,19 +916,24 @@ impl<'src> Parser<'_, 'src> {
                     )
                 })
                 .transpose()?;
-            self.parse(TokenKind::WideArrow)?;
 
             let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
 
-            let body = self.parse_expr_where(
-                StructPolicy::Allowed,
-                LetPolicy::Forbidden,
-                OpPolicy::Restricted(rule),
-            )?;
+            let body = self
+                .consume(TokenKind::WideArrow)
+                .then(|| {
+                    self.parse_expr_where(
+                        StructPolicy::Allowed,
+                        LetPolicy::Forbidden,
+                        OpPolicy::Restricted(rule),
+                    )
+                })
+                .transpose()?;
 
             self.consume_or_parse(
                 SEPARATOR,
-                self.token.kind == DELIMITER || body.kind.is_boundary(rule),
+                self.token.kind == DELIMITER
+                    || body.as_ref().is_some_and(|body| body.kind.is_boundary(rule)),
             )?;
 
             arms.push(ast::MatchArm { attrs, pat, guard, body });

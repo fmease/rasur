@@ -7,6 +7,7 @@ pub(crate) enum Pat<'src> {
     Ident(IdentPat<'src>),
     Lit(Sign, Lit<'src>),
     MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
+    Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),

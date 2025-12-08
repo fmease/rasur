@@ -236,8 +236,9 @@ impl Fmt for ast::MatchExpr<'_> {
             cx.line_break();
             let mut arms = arms.into_iter().peekable();
             while let Some(arm) = arms.next() {
-                let needs_comma =
-                    !arm.body.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::No);
+                let needs_comma = !arm.body.as_ref().is_some_and(|body| {
+                    body.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::No)
+                });
                 arm.fmt(cx);
                 if needs_comma {
                     fmt!(cx, ",");
@@ -266,8 +267,10 @@ impl Fmt for ast::MatchArm<'_> {
             fmt!(cx, " if ");
             guard.fmt(cx);
         }
-        fmt!(cx, " => ");
-        body.fmt(cx);
+        if let Some(body) = body {
+            fmt!(cx, " => ");
+            body.fmt(cx);
+        }
     }
 }
 

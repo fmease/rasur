@@ -30,6 +30,7 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::OpenSquareBracket
             | TokenKind::Ref
             | TokenKind::SingleAmpersand
+            | TokenKind::SingleBang
             | TokenKind::SingleHyphen
             | TokenKind::StrLit
             | TokenKind::True
@@ -256,6 +257,10 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::Ref => {
                 self.advance();
                 return self.fin_parse_by_ref_ident_pat(ast::Mutability::Not);
+            }
+            TokenKind::SingleBang => {
+                self.advance();
+                return Ok(ast::Pat::Never);
             }
             TokenKind::Underscore => {
                 self.advance();
