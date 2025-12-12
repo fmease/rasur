@@ -341,6 +341,10 @@ impl<'src> Parser<'_, 'src> {
             return Ok(preds);
         }
 
+        if self.pick_generic_param_list_over_ext_path(0) {
+            return Err(ParseError::ParametrizedWhereClause);
+        }
+
         while self.begins_predicate() {
             preds.push(self.parse_predicate()?);
 

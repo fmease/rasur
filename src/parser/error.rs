@@ -20,6 +20,7 @@ pub enum ParseError {
     MissingClosingDelimiters(Span),
     ModifiersOnInvalidBound,
     OpCannotBeChained(String),
+    ParametrizedWhereClause,
     ReservedLabel(Span),
     ReservedLifetime(Span),
     TraitImplModifierInInherentImpl(&'static str),
@@ -92,6 +93,9 @@ impl ParseError {
             }
             Self::VisibilityOnInvalidItem => {
                 Diag::new("this item kind may not be marked with visibility")
+            }
+            Self::ParametrizedWhereClause => {
+                Diag::new("generic parameter lists on where-clauses are reserved")
             }
         };
         eprintln!("{}", diag.render(cx));
