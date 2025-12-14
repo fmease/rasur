@@ -11,9 +11,16 @@ pub(crate) enum Stmt<'src> {
 #[derive(Debug)]
 pub(crate) struct LetStmt<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) superness: Superness,
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Option<Ty<'src>>,
     pub(crate) body: Option<LetStmtBody<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Superness {
+    Super,
+    Not,
 }
 
 #[derive(Debug)]

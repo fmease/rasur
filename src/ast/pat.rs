@@ -1,10 +1,13 @@
-use super::{ExtPath, Ident, Lit, MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs};
+use super::{
+    Attr, ExtPath, Ident, Lit, MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs,
+};
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
+    Binding(BindingPat<'src>),
     Borrow(Mutability, Box<Pat<'src>>),
+    Box(Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
-    Ident(IdentPat<'src>),
     Lit(Sign, Lit<'src>),
     MacroCall(MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>),
     Never,
@@ -30,9 +33,8 @@ pub(crate) enum WildcardKind {
     Empty,
 }
 
-// FIXME: I hate this name
 #[derive(Debug)]
-pub(crate) struct IdentPat<'src> {
+pub(crate) struct BindingPat<'src> {
     pub(crate) mut_: Mutability,
     pub(crate) by_ref: ByRef,
     pub(crate) ident: Ident<'src>,
@@ -59,6 +61,9 @@ pub(crate) struct StructPat<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructPatField<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) mut_: Mutability,
+    pub(crate) by_ref: ByRef,
     pub(crate) binder: Ident<'src>,
     pub(crate) body: Option<Pat<'src>>,
 }

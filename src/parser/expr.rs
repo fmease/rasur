@@ -385,18 +385,20 @@ impl<'src> Parser<'_, 'src> {
         right_level: Level,
         s_policy: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
-        // FIXME: "begins_expr_at(right_level)"?
-        let right = self
-            .begins_expr()
-            .then(|| {
-                self.parse_expr_at_level(
-                    right_level,
-                    s_policy,
-                    LetPolicy::Forbidden,
-                    OpPolicy::Allowed,
-                )
-            })
-            .transpose()?;
+        let right = if (s_policy == StructPolicy::Allowed
+            || self.token.kind != TokenKind::OpenCurlyBracket)
+            // FIXME: "begins_expr_at(right_level)"?
+            && self.begins_expr()
+        {
+            Some(self.parse_expr_at_level(
+                right_level,
+                s_policy,
+                LetPolicy::Forbidden,
+                OpPolicy::Allowed,
+            )?)
+        } else {
+            None
+        };
         Ok(ast::ExprKind::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive).into())
     }
 
@@ -413,12 +415,7 @@ impl<'src> Parser<'_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        return Ok(ast::ExprKind::Range(
-            left,
-            Some(Box::new(right)),
-            ast::RangeExprKind::Inclusive,
-        )
-        .into());
+        Ok(ast::ExprKind::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive).into())
     }
 
     fn parse_lower_expr(
@@ -716,6 +713,8 @@ impl<'src> Parser<'_, 'src> {
                             break;
                         }
 
+                        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
@@ -723,7 +722,7 @@ impl<'src> Parser<'_, 'src> {
                             None
                         };
 
-                        fields.push(ast::StructExprField { binder, body });
+                        fields.push(ast::StructExprField { attrs, binder, body });
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;
@@ -800,6 +799,8 @@ impl<'src> Parser<'_, 'src> {
     /// Block_Expr ::= "{" Attrs⟨Inner⟩* Stmt* "}"
     /// ```
     pub(super) fn fin_parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
+        // FIXME: Instead of tracking attrs inside the `BlockExpr`, they should be merged with the
+        //        outer attrs of the parent expr (created by the caller).
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let mut stmts = Vec::new();
 
@@ -843,6 +844,11 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         label: Option<ast::Ident<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
+        let awaitness = if self.consume(TokenKind::Await) {
+            ast::Awaitness::Await
+        } else {
+            ast::Awaitness::Not
+        };
         let pat = self.parse_pat(OrPolicy::Allowed)?;
         self.parse(TokenKind::In)?;
         let head = self.parse_expr_where(
@@ -851,7 +857,13 @@ impl<'src> Parser<'_, 'src> {
             OpPolicy::Allowed,
         )?;
         let body = self.parse_block_expr()?;
-        return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, pat, head, body })));
+        return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr {
+            label,
+            awaitness,
+            pat,
+            head,
+            body,
+        })));
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
@@ -899,6 +911,9 @@ impl<'src> Parser<'_, 'src> {
         kind: ast::MatchKind,
     ) -> Result<ast::ExprKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
+
+        // FIXME: Don't drop these, merge them with the own outer attrs.
+        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
 
         let mut arms = Vec::new();
         const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;

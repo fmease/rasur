@@ -255,6 +255,7 @@ pub(crate) struct StructExpr<'src> {
 
 #[derive(Debug)]
 pub(crate) struct StructExprField<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) binder: Ident<'src>,
     pub(crate) body: Option<Expr<'src>>,
 }
@@ -308,9 +309,17 @@ pub(crate) struct LetExpr<'src> {
 #[derive(Debug)]
 pub(crate) struct ForLoopExpr<'src> {
     pub(crate) label: Option<Ident<'src>>,
+    // FIXME: Horrendous naming scheme, replace.
+    pub(crate) awaitness: Awaitness,
     pub(crate) pat: Pat<'src>,
     pub(crate) head: Expr<'src>,
     pub(crate) body: BlockExpr<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Awaitness {
+    Await,
+    Not,
 }
 
 #[derive(Debug)]

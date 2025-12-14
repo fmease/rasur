@@ -215,6 +215,11 @@ impl Fmt for ast::PredicateKind<'_> {
                 }
                 Punctuated::new(bounds, " + ").fmt(cx);
             }
+            Self::Equality(lhs, rhs) => {
+                lhs.fmt(cx);
+                fmt!(cx, " == ");
+                rhs.fmt(cx);
+            }
         }
     }
 }

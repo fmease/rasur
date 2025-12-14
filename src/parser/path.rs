@@ -208,6 +208,7 @@ impl<'src> Parser<'_, 'src> {
     }
 
     // FIXME: Move into mod expr or a new expr::const_arg
+    // FIXME: Ideally we'd somewhat dedupe it with `parse_lower_expr_kind`
     pub(crate) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_const_arg`.
 

@@ -1,10 +1,14 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Ident(ident) => ident.fmt(cx),
+            Self::Binding(binding) => binding.fmt(cx),
+            Self::Box(pat) => {
+                fmt!(cx, "box ");
+                pat.fmt(cx);
+            }
             // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.
             Self::Wildcard(_) => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {
@@ -66,20 +70,12 @@ impl Fmt for ast::Pat<'_> {
     }
 }
 
-impl Fmt for ast::IdentPat<'_> {
+impl Fmt for ast::BindingPat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { mut_, by_ref, ident } = self;
 
         mut_.trailing_space().fmt(cx);
-
-        match by_ref {
-            ast::ByRef::Yes(mut_) => {
-                fmt!(cx, "ref ");
-                mut_.trailing_space().fmt(cx);
-            }
-            ast::ByRef::No => {}
-        }
-
+        by_ref.trailing_space().fmt(cx);
         fmt!(cx, "{ident}");
     }
 }
@@ -121,12 +117,33 @@ impl Fmt for ast::StructPat<'_> {
 
 impl Fmt for ast::StructPatField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, body } = self;
+        let Self { attrs, mut_, by_ref, binder, body } = self;
 
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+
+        mut_.trailing_space().fmt(cx);
+        by_ref.trailing_space().fmt(cx);
         fmt!(cx, "{binder}");
         if let Some(body) = body {
             fmt!(cx, ": ");
             body.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for TrailingSpace<ast::ByRef> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(by_ref) = self;
+
+        match by_ref {
+            ast::ByRef::Yes(mut_) => {
+                fmt!(cx, "ref ");
+                mut_.trailing_space().fmt(cx);
+            }
+            ast::ByRef::No => {}
         }
     }
 }

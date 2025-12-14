@@ -125,7 +125,7 @@ fn expr_or_nullary_closure() {
 fn pat_mut_ref_mut() {
     assert_matches!(
         parse_pat("mut ref mut x", Rust2015),
-        Ok(ast::Pat::Ident(ast::IdentPat {
+        Ok(ast::Pat::Binding(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::Mutability::Mut),
             ident: "x"

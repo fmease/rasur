@@ -35,7 +35,8 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Stmt::Item(item));
         }
 
-        if self.consume(TokenKind::Let) {
+        let super_ = self.consume(TokenKind::Super);
+        if self.consume_or_parse(TokenKind::Let, !super_)? {
             let pat = self.parse_pat(OrPolicy::Forbidden)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             // FIXME: Proper diagnostic for the !else_may_follow case.
@@ -55,7 +56,13 @@ impl<'src> Parser<'_, 'src> {
             };
             // FIXME: Should mention `else`, too, where applicable.
             self.parse(TokenKind::Semicolon)?;
-            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt { attrs, pat, ty, body })));
+            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt {
+                attrs,
+                superness: if super_ { ast::Superness::Super } else { ast::Superness::Not },
+                pat,
+                ty,
+                body,
+            })));
         }
 
         if self.begins_expr() {

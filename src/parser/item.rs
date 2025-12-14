@@ -476,7 +476,10 @@ impl<'src> Parser<'_, 'src> {
     /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let (target, _) = self.parse_common_ident_or(TokenKind::SelfLower)?;
-        let binder = self.consume(TokenKind::As).then(|| self.parse_common_ident()).transpose()?;
+        let binder = self
+            .consume(TokenKind::As)
+            .then(|| self.parse_common_ident_or(TokenKind::Underscore).map(|(binder, _)| binder))
+            .transpose()?;
 
         self.parse(TokenKind::Semicolon)?;
 

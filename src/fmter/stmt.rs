@@ -20,15 +20,18 @@ impl Fmt for ast::Stmt<'_> {
 
 impl Fmt for ast::LetStmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, pat, ty, body } = self;
+        let Self { attrs, superness, pat, ty, body } = self;
 
         // FIXME: Scan for & respect skip attr.
-
         for attr in attrs {
             attr.fmt(cx);
             cx.line_break();
         }
 
+        match superness {
+            ast::Superness::Super => fmt!(cx, "super "),
+            ast::Superness::Not => {}
+        }
         fmt!(cx, "let ");
         pat.fmt(cx);
         if let Some(ty) = ty {

@@ -57,7 +57,7 @@ impl<'src> Parser<'_, 'src> {
             this.parse(TokenKind::SelfLower).ok()?;
             Some((ref_, mut_))
         }) {
-            let pat = ast::Pat::Ident(ast::IdentPat {
+            let pat = ast::Pat::Binding(ast::BindingPat {
                 mut_: match ref_ {
                     Some(_) => ast::Mutability::Not,
                     None => mut_,

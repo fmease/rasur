@@ -70,6 +70,7 @@ pub(crate) struct Predicate<'src> {
 pub(crate) enum PredicateKind<'src> {
     Trait(TraitPredicate<'src>),
     Outlives(OutlivesPredicate<'src>),
+    Equality(Ty<'src>, Ty<'src>),
 }
 
 #[derive(Debug)]

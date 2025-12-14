@@ -310,7 +310,12 @@ impl Fmt for ast::StructExpr<'_> {
 
 impl Fmt for ast::StructExprField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, body } = self;
+        let Self { attrs, binder, body } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
 
         fmt!(cx, "{binder}");
         if let Some(body) = body {
@@ -396,13 +401,18 @@ impl Fmt for ast::ClosureParam<'_> {
 
 impl Fmt for ast::ForLoopExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { label, pat, head, body } = self;
+        let Self { label, awaitness, pat, head, body } = self;
 
         if let Some(label) = label {
             fmt!(cx, "{label}: ");
         }
 
         fmt!(cx, "for ");
+        match awaitness {
+            ast::Awaitness::Await => fmt!(cx, "await "),
+            ast::Awaitness::Not => {}
+        }
+
         pat.fmt(cx);
         fmt!(cx, " in ");
         head.fmt(cx);
