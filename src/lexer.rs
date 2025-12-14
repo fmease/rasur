@@ -3,6 +3,7 @@ use crate::{
     span::{ByteIndex, Span},
     token::{Token, TokenKind},
 };
+use unicode_xid::UnicodeXID;
 
 pub fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
     let offset = strip_shebang.apply(source, edition);
@@ -151,7 +152,7 @@ impl<'src> Lexer<'src> {
                 _ => self.fin_lex_ident(start),
             },
             'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal, start),
-            IdentStart!() => self.fin_lex_ident(start),
+            _ if is_ident_start(char) => self.fin_lex_ident(start),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -322,12 +323,14 @@ impl<'src> Lexer<'src> {
     }
 
     fn fin_lex_char_lit_or_ticked_ident(&mut self) -> TokenKind {
-        let Some(IdentMiddle![]) = self.peek() else { return self.fin_lex_char_lit() };
+        if !self.peek().is_some_and(is_ident_middle) {
+            return self.fin_lex_char_lit();
+        }
         self.advance();
 
         loop {
             match self.peek() {
-                Some(IdentMiddle![]) => self.advance(),
+                Some(char) if is_ident_middle(char) => self.advance(),
                 // FIXME: Escaped apostrophe
                 Some('\'') => {
                     self.advance();
@@ -363,7 +366,7 @@ impl<'src> Lexer<'src> {
                 self.advance();
 
                 if let RawStrKind::Normal = kind
-                    && let Some(IdentStart!()) = self.peek()
+                    && self.peek().is_some_and(is_ident_start)
                 {
                     self.advance();
                     return self.fin_lex_ident(start);
@@ -418,7 +421,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn fin_lex_ident(&mut self, start: ByteIndex) -> TokenKind {
-        while let Some(IdentMiddle![]) = self.peek() {
+        while self.peek().is_some_and(is_ident_middle) {
             self.advance();
         }
 
@@ -444,14 +447,6 @@ impl<'src> std::ops::DerefMut for Lexer<'src> {
     }
 }
 
-macro IdentStart() {
-    'a'..='z' | 'A'..='Z' | '_'
-}
-
-macro IdentMiddle() {
-    IdentStart!() | '0'..='9'
-}
-
 enum SkipBackslashes {
     Yes,
     No,
@@ -461,6 +456,14 @@ enum RawStrKind {
     Normal,
     Byte,
     Cee,
+}
+
+fn is_ident_start(char: char) -> bool {
+    char == '_' || char.is_xid_start()
+}
+
+fn is_ident_middle(char: char) -> bool {
+    char.is_xid_continue()
 }
 
 pub(crate) fn lex_ident_or_keyword(source: &str, edition: Edition) -> TokenKind {

@@ -5,5 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+# FIXME: Remove this from the core parser. Only the CLI really needs to depend on it; the CLI needs to be split into a separate bin crate
 annotate-snippets = { git = "https://github.com/rust-lang/annotate-snippets-rs.git", rev = "74964e91d845e39fb549c4028452beffa7c6562b" }
+unicode-xid = "=0.2.6"
 
