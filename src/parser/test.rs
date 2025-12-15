@@ -606,6 +606,7 @@ const safe: () = (); // [!]
 const trait Trait {}
 const unsafe auto trait Trait {} // [***]
 const unsafe extern "C" fn f() {}
+const unsafe impl Trait for () {} // [***]
 const unsafe trait Trait {} // [***]
 extern "C" fn f() {}
 extern "C" {}
@@ -628,15 +629,19 @@ pub fn f() {}
 safe extern "C" fn f() {}
 safe extern fn f() {}
 safe fn f() {}
+safe static X: ();
+static safe: ();
 trait Trait {}
 unsafe auto trait Trait {}
 unsafe extern "C" fn f() {}
 unsafe extern "C" {}
 unsafe extern {}
 unsafe fn f() {}
+unsafe mod m;
 unsafe impl Trait for () {}
 unsafe impl const !Trait for () {}
 unsafe impl const Trait for () {}
+unsafe static X: ();
 unsafe trait Trait {}
 "#,
             Rust2024 // for `async` and `gen`
@@ -677,6 +682,10 @@ fn expr_modifiers() {
 || {};
 |_| {};
 | | {};
+static || {};
+static |_| {};
+static move || {};
+static move | | {};
 move || {};
 move |_| {};
 gen || {}; // [***]
@@ -705,6 +714,7 @@ for<> const async gen || {}; // [***]
 for<> const async gen |_| {}; // [***]
 for<> const async gen move || {}; // [***]
 for<> const async gen move |_| {}; // [***]
+for<> const async gen static move | | {}; // [***]
 for<> async || {};
 for<> async |_| {};
 for<> async move || {};
@@ -715,6 +725,8 @@ for<> async gen move || {};
 for<> async gen move |_| {};
 const || {};
 const |_| {};
+const static || {};
+const static move | | {};
 const move || {};
 const move |_| {};
 const gen || {}; // [***]

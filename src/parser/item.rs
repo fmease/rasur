@@ -97,7 +97,7 @@ impl<'src> Parser<'_, 'src> {
         let mut qualified = false;
         for (qualifier, token) in self.clone().parse_item_qualifiers() {
             match qualifier {
-                Qualifier::Async | Qualifier::Const | Qualifier::Gen => {}
+                Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
                 _ => return true,
             }
 

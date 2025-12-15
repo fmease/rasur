@@ -59,6 +59,7 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::SingleBang
             | TokenKind::SingleHyphen
             | TokenKind::SinglePipe
+            | TokenKind::Static
             | TokenKind::StrLit
             | TokenKind::TickedIdent
             | TokenKind::True
@@ -521,6 +522,10 @@ impl<'src> Parser<'_, 'src> {
                 };
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                (modifiers.staticness, qualifiers) = match qualifiers {
+                    [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
+                    _ => (ast::Staticness::Not, qualifiers),
+                };
                 (modifiers.mode, qualifiers) = Qualifier::strip_move(qualifiers);
                 if !qualifiers.is_empty() {
                     return Err(ParseError::InvalidExprPrefix(start.until(self.token.span)));
@@ -798,6 +803,7 @@ impl<'src> Parser<'_, 'src> {
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
+                TokenKind::Static => Qualifier::Static,
                 TokenKind::Try => Qualifier::Try,
                 TokenKind::Unsafe => Qualifier::Unsafe,
                 _ => break,
@@ -1163,6 +1169,7 @@ enum Qualifier<'src> {
     Move,
     OpenCurlyBracket,
     Pipe,
+    Static,
     Try,
     Unsafe,
 }

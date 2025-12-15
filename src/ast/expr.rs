@@ -282,7 +282,15 @@ pub(crate) struct ClosureExprModifiers {
     pub(crate) asyncness: Asyncness,
     // FIXME: Horrible naming!
     pub(crate) genness: Genness,
+    pub(crate) staticness: Staticness,
     pub(crate) mode: CaptureMode,
+}
+
+#[derive(Default, Debug)]
+pub(crate) enum Staticness {
+    Static,
+    #[default]
+    Not,
 }
 
 #[derive(Default, Debug)]

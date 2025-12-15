@@ -388,12 +388,24 @@ impl Fmt for ast::ClosureExpr<'_> {
 
 impl Fmt for TrailingSpace<ast::ClosureExprModifiers> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::ClosureExprModifiers { constness, asyncness, genness, mode }) = self;
+        let Self(ast::ClosureExprModifiers { constness, asyncness, genness, staticness, mode }) =
+            self;
 
         constness.trailing_space().fmt(cx);
         asyncness.trailing_space().fmt(cx);
         genness.trailing_space().fmt(cx);
+        staticness.trailing_space().fmt(cx);
         mode.trailing_space().fmt(cx);
+    }
+}
+
+impl Fmt for TrailingSpace<ast::Staticness> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(staticness) = self;
+        match staticness {
+            ast::Staticness::Static => fmt!(cx, "static "),
+            ast::Staticness::Not => {}
+        }
     }
 }
 
