@@ -20,6 +20,13 @@ impl Fmt for ast::Expr<'_> {
 impl Fmt for ast::ExprKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
+            Self::Ascription(expr, ty) => {
+                fmt!(cx, "builtin # type_ascribe(");
+                expr.fmt(cx);
+                fmt!(cx, ", ");
+                ty.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::Await(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);

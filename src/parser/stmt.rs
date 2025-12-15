@@ -103,6 +103,7 @@ impl ast::ExprKind<'_> {
     fn else_may_follow(&self) -> bool {
         match self {
             | Self::Array(_)
+            | Self::Ascription(..)
             | Self::Await(_)
             | Self::Call(..)
             | Self::Cast(..)

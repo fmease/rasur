@@ -18,6 +18,7 @@ impl<'src> From<ExprKind<'src>> for Expr<'src> {
 #[derive(Debug)]
 pub(crate) enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
+    Ascription(Box<Expr<'src>>, Box<Ty<'src>>),
     Await(Box<Expr<'src>>),
     Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
@@ -71,6 +72,7 @@ impl ExprKind<'_> {
                 CurlyBracketedMacroCallIsBoundary::No => false,
             },
             | Self::Array(_)
+            | Self::Ascription(..)
             | Self::Await(_)
             | Self::Become(_)
             | Self::BinOp(..)

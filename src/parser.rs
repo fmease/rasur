@@ -470,15 +470,17 @@ macro PathSegIdent() {
         | TokenKind::CommonIdent
 }
 
-// Weak keywords.
-mod ident {
+/// Weak keywords.
+mod weak {
     pub(super) const AUTO: &str = "auto";
+    pub(super) const BUILTIN: &str = "builtin";
     pub(super) const DEFAULT: &str = "default";
     pub(super) const DYN: &str = "dyn"; // in Rust 2015
     pub(super) const MACRO_RULES: &str = "macro_rules";
     pub(super) const PIN: &str = "pin";
     pub(super) const RAW: &str = "raw";
     pub(super) const SAFE: &str = "safe";
+    pub(super) const TYPE_ASCRIBE: &str = "type_ascribe";
     pub(super) const UNION: &str = "union";
     pub(super) const YEET: &str = "yeet";
 }

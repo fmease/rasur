@@ -1,8 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
-    common::FnParamMode,
-    error::ParseError,
-    ident::{AUTO, DEFAULT, MACRO_RULES, SAFE, UNION},
+    ExpectedFragment, Parser, Result, TokenKind, common::FnParamMode, error::ParseError, weak,
 };
 use crate::{Edition, ast, span::Span};
 
@@ -43,7 +40,7 @@ impl<'src> Parser<'_, 'src> {
         let vis = self.parse_visibility()?;
 
         let defaultness =
-            if self.is_common_ident(DEFAULT) && self.look_ahead(1, |t| t.kind.is_ident()) {
+            if self.is_common_ident(weak::DEFAULT) && self.look_ahead(1, |t| t.kind.is_ident()) {
                 self.advance();
                 ast::Defaultness::Default
             } else {
@@ -80,7 +77,7 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Trait
             | TokenKind::Type
             | TokenKind::Use => return true,
-            TokenKind::CommonIdent if let UNION = self.source(self.token.span) => {
+            TokenKind::CommonIdent if self.source(self.token.span) == weak::UNION => {
                 return self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent);
             }
             _ => {}
@@ -90,7 +87,7 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        if self.is_common_ident(MACRO_RULES)
+        if self.is_common_ident(weak::MACRO_RULES)
             && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
             && self.look_ahead(2, |t| t.kind == TokenKind::CommonIdent)
         {
@@ -219,8 +216,8 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_enum_item();
             }
             TokenKind::CommonIdent => {
-                if let UNION = self.source(self.token.span)
-                    && self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
+                if self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
+                    && self.source(self.token.span) == weak::UNION
                 {
                     self.advance();
                     let binder = self.source(self.token.span);
@@ -269,10 +266,13 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::CommonIdent => match self.source(self.token.span) {
-                    AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => Qualifier::Auto,
-                    SAFE if self.look_ahead(1, |t| {
-                        matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)
-                    }) =>
+                    weak::AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => {
+                        Qualifier::Auto
+                    }
+                    weak::SAFE
+                        if self.look_ahead(1, |t| {
+                            matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)
+                        }) =>
                     {
                         Qualifier::Safe
                     }
@@ -844,7 +844,7 @@ impl<'src> Parser<'_, 'src> {
         let path = self.parse_path::<ast::NoGenericArgs>()?;
         self.parse(TokenKind::SingleBang)?;
 
-        let binder = if let [ast::PathSeg { ident: MACRO_RULES, args: () }] = *path.segs {
+        let binder = if let [ast::PathSeg { ident: weak::MACRO_RULES, args: () }] = *path.segs {
             self.consume_common_ident()
         } else {
             None

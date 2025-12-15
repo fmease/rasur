@@ -28,6 +28,7 @@ pub enum ParseError {
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
+    UnknownBuiltInSyntax,
     UnsafeTraitAlias,
     VisibilityOnInvalidItem,
 }
@@ -99,6 +100,7 @@ impl ParseError {
                 Diag::new("generic parameter lists on where-clauses are reserved")
             }
             Self::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
+            Self::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
         };
         eprintln!("{}", diag.render(cx));
     }

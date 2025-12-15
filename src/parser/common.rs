@@ -1,9 +1,4 @@
-use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
-    error::ParseError,
-    ident::{PIN, RAW},
-    pat::OrPolicy,
-};
+use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy, weak};
 use crate::ast;
 use std::mem;
 
@@ -188,7 +183,7 @@ impl<'src> Parser<'_, 'src> {
                 _ => None,
             })
             && let Some(kind) = match self.source(self.token.span) {
-                PIN => Some(ast::BorrowKind::Pin),
+                weak::PIN => Some(ast::BorrowKind::Pin),
                 source => X::parse(source),
             }
         {
@@ -219,7 +214,7 @@ impl ParseBorrowKind for ! {
 impl ParseBorrowKind for () {
     fn parse(source: &str) -> Option<ast::BorrowKind<Self>> {
         match source {
-            RAW => Some(ast::BorrowKind::Raw(())),
+            weak::RAW => Some(ast::BorrowKind::Raw(())),
             _ => None,
         }
     }

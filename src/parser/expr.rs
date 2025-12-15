@@ -1,6 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, ident::YEET, one_of,
-    pat::OrPolicy, path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
+    path::GenericArgsMode, weak,
 };
 use crate::ast;
 use std::{cmp::Ordering, mem};
@@ -558,13 +558,33 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Validate that the char lit only contains one scalar.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
+            TokenKind::CommonIdent
+                if self.look_ahead(1, |t| t.kind == TokenKind::Hash)
+                    && self.source(self.token.span) == weak::BUILTIN =>
+            {
+                self.advance();
+                self.advance();
+                let ident = self.parse_common_ident()?;
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let expr = match ident {
+                    weak::TYPE_ASCRIBE => {
+                        let expr = self.parse_expr()?;
+                        self.parse(TokenKind::Comma)?;
+                        let ty = self.parse_ty()?;
+                        ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
+                    }
+                    _ => return Err(ParseError::UnknownBuiltInSyntax),
+                };
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(expr);
+            }
             TokenKind::Continue => {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()?));
             }
             TokenKind::Do
                 if self.look_ahead(1, |t| {
-                    t.kind == TokenKind::CommonIdent && self.source(t.span) == YEET
+                    t.kind == TokenKind::CommonIdent && self.source(t.span) == weak::YEET
                 }) =>
             {
                 self.advance();

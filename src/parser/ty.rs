@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
-    error::ParseError, ident::DYN, one_of,
+    error::ParseError, one_of, weak,
 };
 use crate::{Edition, ast, span::Span, token::Token};
 use std::mem;
@@ -52,8 +52,8 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_dyn_trait_object_ty();
             }
             TokenKind::CommonIdent
-                if let DYN = self.source(self.token.span)
-                    && self.edition == Edition::Rust2015
+                if self.edition == Edition::Rust2015
+                    && self.source(self.token.span) == weak::DYN
                     && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
             {
                 self.advance();
