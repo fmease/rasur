@@ -7,6 +7,7 @@
 #![feature(deref_patterns)]
 #![feature(derive_const)]
 #![feature(gen_blocks)]
+#![feature(generic_const_items)]
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]
 #![feature(macro_metavar_expr)]

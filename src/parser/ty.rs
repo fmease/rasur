@@ -16,6 +16,36 @@ impl<'src> Parser<'_, '_, 'src> {
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
+        self.parse_ty_where(PlusPolicy::Parse)
+    }
+
+    // FIXME: Find ways to get rid of this function or make it return something richer that
+    //        can then be used inside `parse_ty` to perform less work / avoid prefix rechecking.
+    pub(super) fn begins_ty(&self, offset: usize) -> bool {
+        // FIXME: To be kept in sync with `Self::parse_ty`.
+
+        match self.peek(offset).kind {
+            | TokenKind::DoubleAmpersand
+            | TokenKind::Dyn
+            | TokenKind::Extern
+            | TokenKind::Fn
+            | TokenKind::For
+            | TokenKind::Impl
+            | TokenKind::OpenRoundBracket
+            | TokenKind::OpenSquareBracket
+            // NB: `?` is the only eligible trait bound modifier here!
+            | TokenKind::QuestionMark
+            | TokenKind::SingleAmpersand
+            | TokenKind::SingleAsterisk
+            | TokenKind::SingleBang
+            | TokenKind::Underscore
+            | TokenKind::Unsafe => true,
+            TokenKind::TickedIdent => TokenPrefix::Plus.matches(self.peek(offset + 1).kind),
+            _ => self.begins_ext_path(offset),
+        }
+    }
+
+    pub(super) fn parse_ty_where(&mut self, p_policy: PlusPolicy) -> Result<ast::Ty<'src>> {
         // NOTE: To be kept in sync with `Self::begins_ty`.
 
         let start = self.token.span;
@@ -39,6 +69,21 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
+            [Qualifier::ForBinder(bound_vars)] => {
+                let path = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
+                let mut bounds = vec![ast::Bound::Trait {
+                    bound_vars: mem::take(bound_vars),
+                    modifiers: ast::TraitBoundModifiers::NONE,
+                    path,
+                }];
+                if let PlusPolicy::Parse = p_policy
+                    && self.consume(TokenPrefix::Plus)
+                {
+                    // NB: Indeed, we're not meant to elevate the plus policy here.
+                    self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
+                }
+                return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
+            }
             _ => return self.fatal(Error::InvalidTyPrefix(start.until(self.token.span))),
         }
 
@@ -55,24 +100,20 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::Dyn => {
                 self.advance();
-                return self.fin_parse_dyn_trait_object_ty();
+                return self.fin_parse_dyn_trait_object_ty(p_policy);
             }
             TokenKind::CommonIdent if self.check(weak::Dyn) => {
                 self.advance();
-                return self.fin_parse_dyn_trait_object_ty();
+                return self.fin_parse_dyn_trait_object_ty(p_policy);
             }
             TokenKind::Impl => {
                 self.advance();
-                return Ok(ast::Ty::ImplTrait(self.parse_bounds()?));
+                let bounds = self.parse_bounds_where(p_policy.elevate())?;
+                return Ok(ast::Ty::ImplTrait(bounds));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-
-                return self.fin_parse_grouped_or_tuple(
-                    Self::parse_ty,
-                    ast::Ty::Grouped,
-                    ast::Ty::Tuple,
-                );
+                return self.fin_parse_grouped_or_tuple_or_bare_trait_object_ty(p_policy);
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
@@ -111,8 +152,23 @@ impl<'src> Parser<'_, '_, 'src> {
                         ));
                     }
                 };
-                let ty = self.parse_ty()?;
+                let ty = self.parse_ty_where(PlusPolicy::Yield)?;
                 return Ok(ast::Ty::Ptr(mut_, Box::new(ty)));
+            }
+            // NB: We're indeed committing to parsing a trait object type if the lifetime is
+            //     followed by a `+` while completely disregarding the plus policy! It means
+            //     we're briefly counting the plus as belonging to this lifetime bound but
+            //     then when it comes to actually parsing the list of bounds, we're involving
+            //     the policy again. It means we accept `fn f<T: Fn() -> 'a + B>() {}`. Moreover,
+            //     we interpret the bounds like `(Fn() -> 'a+) + B`, not even `Fn() -> ('a + B)`!
+            //     Clearly, this is an upstream bug. Such pluses should be flagged ambiguous.
+            TokenKind::TickedIdent => {
+                if !self.matches(TokenPrefix::Plus, self.peek(1)) {
+                    self.error(Error::LifetimeObjectTyWithoutPlus(start));
+                }
+
+                let bounds = self.parse_bounds_where(p_policy.maintain())?;
+                return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
             }
             TokenKind::Underscore => {
                 self.advance();
@@ -128,7 +184,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => {}
         }
 
-        if self.begins_ext_path(self.token) {
+        if self.begins_ext_path(0) {
             let path = self.parse_ext_path::<ast::UnambiguousGenericArgs>()?;
 
             if self.consume(TokenKind::SingleBang) {
@@ -139,33 +195,25 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::Ty::MacroCall(ast::MacroCall { path: path.path, bracket, stream }));
             }
 
+            if path.ext.is_none()
+                && let PlusPolicy::Parse = p_policy
+                && self.consume(TokenPrefix::Plus)
+            {
+                let mut bounds = vec![ast::Bound::from(path.path)];
+                self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
+                return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
+            }
+
             return Ok(ast::Ty::Path(Box::new(path)));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Ty))
-    }
-
-    // FIXME: Find ways to get rid of this function or make it return something richer that
-    //        can then be used inside `parse_ty` to perform less work / avoid prefix rechecking.
-    pub(super) fn begins_ty(&self, token: Token) -> bool {
-        // FIXME: To be kept in sync with `Self::parse_ty`.
-
-        match token.kind {
-            | TokenKind::DoubleAmpersand
-            | TokenKind::Dyn
-            | TokenKind::Extern
-            | TokenKind::Fn
-            | TokenKind::For
-            | TokenKind::Impl
-            | TokenKind::OpenRoundBracket
-            | TokenKind::OpenSquareBracket
-            | TokenKind::SingleAmpersand
-            | TokenKind::SingleAsterisk
-            | TokenKind::SingleBang
-            | TokenKind::Underscore
-            | TokenKind::Unsafe => true,
-            _ => self.begins_ext_path(token),
+        // NB: Indeed, `[const] Trait` won't reach here. Upstream has the same problem.
+        if self.begins_bound(0) {
+            let bounds = self.parse_bounds_where(p_policy.maintain())?;
+            return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
         }
+
+        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Ty))
     }
 
     fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -196,19 +244,82 @@ impl<'src> Parser<'_, '_, 'src> {
         Some(Ok(qualifier))
     }
 
-    pub(super) fn begins_2015_dyn_bound(&self, token: Token) -> bool {
-        matches!(
-            token.kind,
-            PathSegIdent!()
-                | TokenKind::For
-                | TokenKind::TickedIdent
-                | TokenKind::OpenRoundBracket
-                | TokenKind::QuestionMark
-        )
+    fn fin_parse_grouped_or_tuple_or_bare_trait_object_ty(
+        &mut self,
+        p_policy: PlusPolicy,
+    ) -> Result<ast::Ty<'src>> {
+        let mut tys = Vec::new();
+
+        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        const SEPARATOR: TokenKind = TokenKind::Comma;
+        while !self.consume(DELIMITER) {
+            let mut ty = self.parse_ty()?;
+
+            if self.token.kind == DELIMITER {
+                if tys.is_empty() {
+                    let trailing_plus =
+                        self.prev_token().is_some_and(|t| self.matches(TokenPrefix::Plus, t));
+
+                    self.advance();
+
+                    if !trailing_plus
+                        && let PlusPolicy::Parse = p_policy
+                        && self.check(TokenPrefix::Plus)
+                        && let Some(ty) =
+                            self.extract_fin_parse_bare_paren_trait_object_ty(&mut ty, p_policy)?
+                    {
+                        return Ok(ty);
+                    }
+
+                    return Ok(ast::Ty::Grouped(Box::new(ty)));
+                }
+            } else {
+                self.parse(SEPARATOR)?;
+            }
+
+            tys.push(ty);
+        }
+
+        Ok(ast::Ty::Tuple(tys))
     }
 
-    fn fin_parse_dyn_trait_object_ty(&mut self) -> Result<ast::Ty<'src>> {
-        Ok(ast::Ty::DynTrait(self.parse_bounds()?))
+    fn extract_fin_parse_bare_paren_trait_object_ty(
+        &mut self,
+        inner_ty: &mut ast::Ty<'src>,
+        p_policy: PlusPolicy,
+    ) -> Result<Option<ast::Ty<'src>>> {
+        const EMPTY<'src>: ast::Path<'src, ast::UnambiguousGenericArgs> =
+            ast::Path { segs: Vec::new() };
+
+        let bound = match inner_ty {
+            ast::Ty::Path(deref!(ast::ExtPath { ext: None, path })) => {
+                ast::Bound::from(mem::replace(path, EMPTY))
+            }
+            ast::Ty::DynTrait(ast::DynKind::Bare, deref!([bound])) => {
+                match bound {
+                    ast::Bound::Outlives(_) => return Ok(None),
+                    // NOTE: I'm not happy about this since use-bounds can't be parenthesized "normally".
+                    ast::Bound::Use(captures) => ast::Bound::Use(mem::take(captures)),
+                    ast::Bound::Trait { bound_vars, modifiers, path } => ast::Bound::Trait {
+                        bound_vars: mem::take(bound_vars),
+                        modifiers: *modifiers,
+                        path: mem::replace(path, EMPTY),
+                    },
+                }
+            }
+            _ => return Ok(None),
+        };
+
+        self.parse(TokenPrefix::Plus)?;
+
+        let mut bounds = vec![bound];
+        self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
+
+        Ok(Some(ast::Ty::DynTrait(ast::DynKind::Bare, bounds)))
+    }
+
+    fn fin_parse_dyn_trait_object_ty(&mut self, p_policy: PlusPolicy) -> Result<ast::Ty<'src>> {
+        Ok(ast::Ty::DynTrait(ast::DynKind::Dyn, self.parse_bounds_where(p_policy.elevate())?))
     }
 
     fn fin_parse_fn_ptr_ty(
@@ -217,7 +328,10 @@ impl<'src> Parser<'_, '_, 'src> {
         modifiers: ast::FnPtrTyModifiers<'src>,
     ) -> Result<ast::Ty<'src>> {
         let inputs = self.parse_fn_param_list(FnParamMode::Optional)?;
-        let output = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
+        let output = self
+            .consume(TokenKind::ThinArrow)
+            .then(|| self.parse_ty_where(PlusPolicy::Yield))
+            .transpose()?;
 
         return Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy {
             bound_vars,
@@ -230,7 +344,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
         let lt = self.parse_lifetime()?;
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
-        let pointee = self.parse_ty()?;
+        let pointee = self.parse_ty_where(PlusPolicy::Yield)?;
         Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee })))
     }
 
@@ -364,7 +478,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let bound_vars = self.parse_for_binder()?;
 
-        let kind = if bound_vars.is_some() || self.begins_ty(self.token) {
+        let kind = if bound_vars.is_some() || self.begins_ty(0) {
             let ty = self.parse_ty()?;
 
             match self.token.kind {
@@ -407,7 +521,7 @@ impl<'src> Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
         matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For)
-            || self.begins_ty(self.token)
+            || self.begins_ty(0)
             // FEATURE: `where_clause_attrs` <https://github.com/rust-lang/rust/issues/115590>
             || self.begins_outer_attr()
     }
@@ -420,17 +534,33 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Bounds ::= (Bound "+")* Bound?
     /// ```
     pub(super) fn parse_bounds(&mut self) -> Result<Vec<ast::Bound<'src>>> {
-        let mut bounds = Vec::new();
+        self.parse_bounds_where(PlusPolicy::Parse)
+    }
 
-        while self.begins_bound() {
+    fn parse_bounds_where(&mut self, p_policy: PlusPolicy<()>) -> Result<Vec<ast::Bound<'src>>> {
+        let mut bounds = Vec::new();
+        self.parse_bounds_into(p_policy, &mut bounds)?;
+        Ok(bounds)
+    }
+
+    fn parse_bounds_into(
+        &mut self,
+        p_policy: PlusPolicy<()>,
+        bounds: &mut Vec<ast::Bound<'src>>,
+    ) -> Result<()> {
+        while self.begins_bound(0) {
             bounds.push(self.parse_bound()?);
 
-            if !self.consume(TokenPrefix::Plus) {
+            let span = self.token.span;
+            if matches!(p_policy, PlusPolicy::Yield) || !self.consume(TokenPrefix::Plus) {
                 break;
+            }
+            if let PlusPolicy::Reject(()) = p_policy {
+                self.error(Error::AmbiguousPlus(span));
             }
         }
 
-        Ok(bounds)
+        Ok(())
     }
 
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
@@ -472,8 +602,8 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Bound::Use(captures));
         }
 
-        if self.begins_path(self.token) {
-            let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
+        if self.begins_path(0) {
+            let path = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
 
             if grouped {
                 self.parse(TokenKind::CloseRoundBracket)?;
@@ -482,7 +612,7 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Bound::Trait {
                 bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
                 modifiers,
-                trait_ref,
+                path,
             });
         }
 
@@ -513,20 +643,27 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(())
     }
 
-    fn begins_bound(&self) -> bool {
+    fn begins_bound(&self, offset: usize) -> bool {
         // NOTE: To be kept in sync with `Self::parse_bound`.
 
-        match self.token.kind {
-            TokenKind::TickedIdent
+        match self.peek(offset).kind {
+            | TokenKind::TickedIdent
             | TokenKind::For
             | TokenKind::Use
-            | TokenKind::OpenRoundBracket => {
-                return true;
-            }
-            _ => {}
+            | TokenKind::OpenRoundBracket => true,
+            _ => self.begins_trait_bound_modifiers(offset) || self.begins_path(offset),
         }
+    }
 
-        self.begins_trait_bound_modifiers() || self.begins_path(self.token)
+    pub(super) fn begins_2015_dyn_bound(&self, token: Token) -> bool {
+        matches!(
+            token.kind,
+            PathSegIdent!()
+                | TokenKind::For
+                | TokenKind::TickedIdent
+                | TokenKind::OpenRoundBracket
+                | TokenKind::QuestionMark
+        )
     }
 
     fn parse_trait_bound_modifiers(
@@ -564,8 +701,8 @@ impl<'src> Parser<'_, '_, 'src> {
 
         // FIXME: Find a nicer way to impl / expr this
         let polarity = if bound_vars.is_none()
-            && constness == ast::BoundConstness::Never
-            && asyncness == ast::BoundAsyncness::Never
+            && let ast::BoundConstness::Never = constness
+            && let ast::BoundAsyncness::Never = asyncness
         {
             match self.token.kind {
                 // FEATURE: `negative_bounds`
@@ -586,10 +723,10 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::TraitBoundModifiers { constness, asyncness, polarity })
     }
 
-    fn begins_trait_bound_modifiers(&self) -> bool {
+    fn begins_trait_bound_modifiers(&self, offset: usize) -> bool {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
-        match self.token.kind {
+        match self.peek(offset).kind {
             // FEATURE: `async_trait_bounds` <https://github.com/rust-lang/rust/issues/62290>
             | TokenKind::Async
             // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
@@ -601,8 +738,8 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::Tilde => true,
             // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             TokenKind::OpenSquareBracket => {
-                self.peek(1).kind == TokenKind::Const
-                    && self.peek(2).kind == TokenKind::CloseSquareBracket
+                self.peek(offset + 1).kind == TokenKind::Const
+                    && self.peek(offset + 2).kind == TokenKind::CloseSquareBracket
             }
             _ => false,
         }
@@ -643,6 +780,29 @@ impl<'src> Parser<'_, '_, 'src> {
             },
             Error::ReservedLifetime,
         )
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum PlusPolicy<X = !> {
+    Parse,
+    Yield,
+    Reject(X),
+}
+
+impl PlusPolicy {
+    fn maintain(self) -> PlusPolicy<()> {
+        match self {
+            Self::Parse => PlusPolicy::Parse,
+            Self::Yield => PlusPolicy::Yield,
+        }
+    }
+
+    fn elevate(self) -> PlusPolicy<()> {
+        match self {
+            Self::Parse => PlusPolicy::Parse,
+            Self::Yield => PlusPolicy::Reject(()),
+        }
     }
 }
 

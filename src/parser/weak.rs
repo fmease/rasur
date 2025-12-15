@@ -62,7 +62,7 @@ weak! {
         let token = p.peek(1);
         token.kind.is_ident()
             || TokenPrefix::LessThan.matches(token.kind)
-            && p.begins_ty(p.peek(2))
+            && p.begins_ty(2)
     },
     // FIXME: Do we want to generalize this to `is_ident`?
     Safe "safe" |p| matches!(p.peek(1).kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static),

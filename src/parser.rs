@@ -170,6 +170,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         Err(BufferedError(()))
     }
 
+    // FIXME: Overload the ret ty to allow for `-> Option<Span>`
     #[must_use]
     fn consume(&mut self, category: impl TokenCategory) -> bool {
         category.consume(self)
@@ -191,7 +192,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         }
     }
 
-    // FIXME: likely no longer correct due to modify_in_place
+    // FIXME: No longer correct due to existence of `modify_in_place`
     fn prev_token(&self) -> Option<Token> {
         Some(self.tokens[self.index.checked_sub(1)?])
     }
@@ -203,13 +204,15 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     }
 
     fn peek(&self, amount: usize) -> Token {
+        if amount == 0 {
+            return self.token;
+        }
         if let Some(index) = self.index.checked_add(amount)
             && let Some(&token) = self.tokens.get(index)
         {
-            token
-        } else {
-            *self.tokens.last().unwrap()
+            return token;
         }
+        *self.tokens.last().unwrap()
     }
 
     fn advance(&mut self) {

@@ -33,6 +33,7 @@ impl Buffer {
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum Error {
+    AmbiguousPlus(Span),
     AutoTraitAlias,
     DefaultOnInvalidItem(Span),
     EmptyCharLit(Span),
@@ -64,6 +65,7 @@ pub enum Error {
     InvalidStrLitDelim(Span),
     InvalidToken(char, Span),
     InvalidTyPrefix(Span),
+    LifetimeObjectTyWithoutPlus(Span),
     MisplacedReceiver(Span),
     MissingClosingDelimiters(Span),
     ModifiersOnInvalidBound,

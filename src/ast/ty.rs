@@ -8,7 +8,7 @@ use crate::span::Span;
 pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     CVariadics,
-    DynTrait(Vec<Bound<'src>>),
+    DynTrait(DynKind, Vec<Bound<'src>>),
     // FIXME: Get rid of this payload once `Ty` carries a `Span`
     Error(Span),
     FnPtr(Box<FnPtrTy<'src>>),
@@ -23,6 +23,12 @@ pub(crate) enum Ty<'src> {
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
     UnsafeBinder(Vec<GenericParam<'src>>, Box<Ty<'src>>),
+}
+
+#[derive(Debug)]
+pub(crate) enum DynKind {
+    Dyn,
+    Bare,
 }
 
 #[derive(Debug)]
@@ -102,13 +108,19 @@ pub(crate) enum Bound<'src> {
         //        incompatible with non-normal polarity
         bound_vars: Vec<GenericParam<'src>>,
         modifiers: TraitBoundModifiers,
-        trait_ref: Path<'src, UnambiguousGenericArgs>,
+        path: Path<'src, UnambiguousGenericArgs>,
     },
+}
+
+impl<'src> From<Path<'src, UnambiguousGenericArgs>> for Bound<'src> {
+    fn from(path: Path<'src, UnambiguousGenericArgs>) -> Self {
+        Self::Trait { bound_vars: Vec::new(), modifiers: TraitBoundModifiers::NONE, path }
+    }
 }
 
 // FIXME: Make this more type-safe: non-normal polarity is
 //        incompatible with constness & asyncness
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) struct TraitBoundModifiers {
     pub(crate) constness: BoundConstness,
     pub(crate) asyncness: BoundAsyncness,
@@ -123,20 +135,20 @@ impl TraitBoundModifiers {
     };
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum BoundConstness {
     Never,
     Maybe,
     Always,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum BoundAsyncness {
     Never,
     Always,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum BoundPolarity {
     Positive,
     Negative,
