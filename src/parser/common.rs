@@ -51,39 +51,47 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<Option<ast::FnParam<'src>>> {
-        if let Some((ref_, mut_)) = self.probe(|this| {
-            let ref_ = this.consume(TokenKind::SingleAmpersand).then(|| this.parse_lifetime());
-            let mut_ = this.parse_mutability();
+        enum ShorthandKind<'src> {
+            Ref(Result<Option<ast::Lifetime<'src>>>, ast::BorrowKind<!>),
+            Bare,
+        }
+
+        if let Some((kind, mut_)) = self.probe(|this| {
+            let shorthand = if this.consume(TokenKind::SingleAmpersand) {
+                let lt = this.parse_lifetime();
+                let (kind, mut_) = this.parse_borrow_kind_and_mutability();
+                (ShorthandKind::Ref(lt, kind), mut_)
+            } else {
+                (ShorthandKind::Bare, this.parse_mutability())
+            };
             this.parse(TokenKind::SelfLower).ok()?;
-            Some((ref_, mut_))
+            Some(shorthand)
         }) {
             let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
-                mut_: match ref_ {
-                    Some(_) => ast::Mutability::Not,
-                    None => mut_,
+                mut_: match kind {
+                    ShorthandKind::Ref(..) => ast::Mutability::Not,
+                    ShorthandKind::Bare => mut_,
                 },
                 by_ref: ast::ByRef::No,
                 binder: "self",
                 pat: None,
             }));
 
+            // FIXME: Reintroduce a Ty::SelfTy, so we can losslessly reconstruct shorthands
             let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
 
-            let ty = match ref_ {
-                Some(lt) => ast::Ty::Ref(Box::new(ast::RefTy {
-                    lt: lt?,
-                    kind: ast::BorrowKind::Ref,
-                    mut_,
-                    pointee: self_ty(),
-                })),
-                None => match self.consume(TokenKind::SingleColon) {
+            let ty = match kind {
+                ShorthandKind::Ref(lt, kind) => {
+                    ast::Ty::Ref(Box::new(ast::RefTy { lt: lt?, kind, mut_, pointee: self_ty() }))
+                }
+                ShorthandKind::Bare => match self.consume(TokenKind::SingleColon) {
                     // Indeed, C-variadics are not permitted here.
                     true => self.parse_ty()?,
                     false => self_ty(),
                 },
             };
 
-            return Ok(Some(ast::FnParam { attrs: mem::take(attrs), pat, ty }));
+            Ok(Some(ast::FnParam { attrs: mem::take(attrs), pat, ty }))
         } else {
             Ok(None)
         }
