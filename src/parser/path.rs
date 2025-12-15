@@ -207,68 +207,38 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    // FIXME: Move into mod expr or a new expr::const_arg
-    // FIXME: Ideally we'd somewhat dedupe it with `parse_lower_expr_kind`
     pub(crate) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_const_arg`.
 
-        // FIXME: Leading dash (unary minus)
+        if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
+            let expr = ast::ExprKind::Lit(lit).into();
+            return Ok(match sign {
+                ast::Sign::None => expr,
+                ast::Sign::Neg => ast::ExprKind::UnOp(ast::UnOp::Neg, Box::new(expr)).into(),
+            });
+        }
+
         match self.token.kind {
-            TokenKind::CharLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                // FIXME: Validate the char lit.
-                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)).into());
-            }
+            // NB: Only reachable when parsing terms. FIXME: We should make this a
+            //     policy param for clarity.
             TokenKind::CommonIdent => {
                 let ident = self.source(self.token.span);
                 self.advance();
-                return Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into());
-            }
-            TokenKind::False => {
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)).into());
-            }
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)).into());
+                Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                return Ok(
-                    ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into()
-                );
+                Ok(ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into())
             }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)).into());
-            }
-            TokenKind::True => {
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)).into());
-            }
-            _ => {}
+            _ => Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::ConstArg)),
         }
-
-        // FIXME: Proper fragment
-        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Expr))
     }
 
+    // NB: Intentionally excludes common idents. FIXME: This should be made more obvious.
     fn begins_const_arg(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_const_arg`.
 
-        // FIXME: Leading dash (unary minus)
-        match self.token.kind {
-            | TokenKind::CharLit
-            | TokenKind::False
-            | TokenKind::NumLit
-            | TokenKind::OpenCurlyBracket
-            | TokenKind::StrLit
-            | TokenKind::True => true,
-            _ => false,
-        }
+        self.token.kind == TokenKind::OpenCurlyBracket || self.begins_negatable_lit()
     }
 
     pub(super) fn parse_path_tree(&mut self) -> Result<ast::PathTree<'src>> {

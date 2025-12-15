@@ -160,6 +160,11 @@ impl<'src> Parser<'_, 'src> {
                 Ordering::Equal => return Err(ParseError::OpCannotBeChained(format!("{op:?}"))),
                 Ordering::Greater => {}
             }
+            if let ast::ExprKind::Cast(..) = left.kind
+                && let Op::Call | Op::Index | Op::Project | Op::Try = op
+            {
+                return Err(ParseError::InvalidOpAfterCast);
+            }
             self.advance();
 
             left = self.fin_parse_op_expr(op, left, s_policy)?;
@@ -300,6 +305,14 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_match_expr(left, ast::MatchKind::Postfix).map(Into::into);
             }
             TokenKind::NumLit => true,
+            TokenKind::Use => {
+                self.advance();
+                return Ok(ast::ExprKind::Use(Box::new(left)).into());
+            }
+            TokenKind::Yield => {
+                self.advance();
+                return Ok(ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left))).into());
+            }
             _ => {
                 return Err(ParseError::UnexpectedToken(
                     self.token,
@@ -671,7 +684,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
-                return Ok(ast::ExprKind::Yield(expr));
+                return Ok(ast::ExprKind::Yield(ast::YieldExpr::Prefix(expr)));
             }
             _ => {}
         }
@@ -818,10 +831,11 @@ impl<'src> Parser<'_, 'src> {
         modifiers: ast::ClosureExprModifiers,
     ) -> Result<ast::ExprKind<'src>> {
         let params = self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
+            let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let pat = this.parse_pat(OrPolicy::Forbidden)?;
             let ty = this.consume(TokenKind::SingleColon).then(|| this.parse_ty()).transpose()?;
 
-            Ok(ast::ClosureParam { pat, ty })
+            Ok(ast::ClosureParam { attrs, pat, ty })
         })?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 

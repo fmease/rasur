@@ -35,8 +35,15 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Stmt::Item(item));
         }
 
-        let super_ = self.consume(TokenKind::Super);
-        if self.consume_or_parse(TokenKind::Let, !super_)? {
+        let superness = if self.token.kind == TokenKind::Super
+            && self.look_ahead(1, |t| t.kind == TokenKind::Let)
+        {
+            self.advance();
+            ast::Superness::Super
+        } else {
+            ast::Superness::Not
+        };
+        if self.consume(TokenKind::Let) {
             let pat = self.parse_pat(OrPolicy::Forbidden)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             // FIXME: Proper diagnostic for the !else_may_follow case.
@@ -56,13 +63,7 @@ impl<'src> Parser<'_, 'src> {
             };
             // FIXME: Should mention `else`, too, where applicable.
             self.parse(TokenKind::Semicolon)?;
-            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt {
-                attrs,
-                superness: if super_ { ast::Superness::Super } else { ast::Superness::Not },
-                pat,
-                ty,
-                body,
-            })));
+            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt { attrs, superness, pat, ty, body })));
         }
 
         if self.begins_expr() {
@@ -116,7 +117,9 @@ impl ast::ExprKind<'_> {
             | Self::Repeat(..)
             | Self::Try(_)
             | Self::Tuple(_)
-            | Self::Wildcard => true,
+            | Self::Use(_)
+            | Self::Wildcard
+            | Self::Yield(ast::YieldExpr::Postfix(_)) => true,
             | Self::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
             | Self::Block(..)
             | Self::ForLoop(_)
@@ -140,7 +143,9 @@ impl ast::ExprKind<'_> {
             | Self::Range(_, expr, _)
             | Self::Return(expr)
             | Self::Yeet(expr)
-            | Self::Yield(expr) => expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow()),
+            | Self::Yield(ast::YieldExpr::Prefix(expr)) => {
+                expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow())
+            }
         }
     }
 }

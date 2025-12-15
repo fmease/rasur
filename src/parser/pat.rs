@@ -122,25 +122,11 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::Pat::Range(left, Some(Box::new(right)), ast::RangePatKind::Inclusive(kind)))
     }
 
-    fn begins_range_pat_bound(&self) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_range_pat_bound`.
-
-        match self.token.kind {
-            | TokenKind::CharLit
-            | TokenKind::False
-            | TokenKind::NumLit
-            | TokenKind::SingleHyphen
-            | TokenKind::StrLit
-            | TokenKind::True => true,
-            _ => self.begins_ext_path(),
-        }
-    }
-
     fn parse_range_pat_bound(&mut self) -> Result<ast::Pat<'src>> {
         // NOTE: To be kept in sync with `Self::begins_range_pat_bound`.
 
-        if let Some(lit) = self.parse_opt_lit_pat()? {
-            return Ok(lit);
+        if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
+            return Ok(ast::Pat::Lit(sign, lit));
         }
         if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
@@ -153,20 +139,20 @@ impl<'src> Parser<'_, 'src> {
         ))
     }
 
+    fn begins_range_pat_bound(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_range_pat_bound`.
+
+        self.begins_negatable_lit() || self.begins_ext_path()
+    }
+
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
-        if let Some(lit) = self.parse_opt_lit_pat()? {
-            return Ok(lit);
+        if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
+            return Ok(ast::Pat::Lit(sign, lit));
         }
 
-        let mut_ = self.parse_mutability();
-        let by_ref = if self.consume(TokenKind::Ref) {
-            ast::ByRef::Yes(self.parse_mutability())
-        } else {
-            ast::ByRef::No
-        };
-        match (mut_, by_ref) {
+        match (self.parse_mutability(), self.parse_by_ref()) {
             (ast::Mutability::Not, ast::ByRef::No) => {}
-            _ => {
+            (mut_, by_ref) => {
                 let binder = self.parse_common_ident()?;
                 return self.fin_parse_binding_pat(mut_, by_ref, binder);
             }
@@ -254,17 +240,12 @@ impl<'src> Parser<'_, 'src> {
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
                         let mut_ = self.parse_mutability();
-                        let by_ref = if self.consume(TokenKind::Ref) {
-                            ast::ByRef::Yes(self.parse_mutability())
-                        } else {
-                            ast::ByRef::No
-                        };
+                        let by_ref = self.parse_by_ref();
 
+                        // NOTE: Shorthand numeric fields are syntactically permitted in
+                        //       struct pats contrary to struct exprs.
                         let (binder, _) = self.parse_common_ident_or(TokenKind::NumLit)?;
-                        // NOTE: Indeed, contrary to struct exprs, shorthand numeric fields are
-                        //       syntactically permitted in struct pats.
-                        let body = if let ast::Mutability::Not = mut_
-                            && let ast::ByRef::No = by_ref
+                        let body = if let (ast::Mutability::Not, ast::ByRef::No) = (mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)
                         {
                             Some(self.parse_pat(OrPolicy::Allowed)?)
@@ -296,47 +277,6 @@ impl<'src> Parser<'_, 'src> {
         Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Pat))
     }
 
-    fn parse_opt_lit_pat(&mut self) -> Result<Option<ast::Pat<'src>>> {
-        let sign =
-            if self.consume(TokenKind::SingleHyphen) { ast::Sign::Neg } else { ast::Sign::None };
-
-        let lit = match self.token.kind {
-            TokenKind::CharLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Char(lit))
-            }
-            TokenKind::False => {
-                self.advance();
-                Some(ast::Lit::Bool(false))
-            }
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Num(lit))
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Str(lit))
-            }
-            TokenKind::True => {
-                self.advance();
-                Some(ast::Lit::Bool(true))
-            }
-            _ => None,
-        };
-
-        if let Some(lit) = lit {
-            return Ok(Some(ast::Pat::Lit(sign, lit)));
-        }
-        if let ast::Sign::Neg = sign {
-            return Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Literal));
-        }
-
-        Ok(None)
-    }
-
     fn fin_parse_binding_pat(
         &mut self,
         mut_: ast::Mutability,
@@ -347,7 +287,15 @@ impl<'src> Parser<'_, 'src> {
             .consume(TokenKind::At)
             .then(|| self.parse_pat(OrPolicy::Forbidden).map(Box::new))
             .transpose()?;
-        return Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })));
+        Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })))
+    }
+
+    fn parse_by_ref(&mut self) -> ast::ByRef {
+        if self.consume(TokenKind::Ref) {
+            ast::ByRef::Yes(self.parse_mutability())
+        } else {
+            ast::ByRef::No
+        }
     }
 }
 

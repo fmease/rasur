@@ -49,10 +49,11 @@ pub(crate) enum ExprKind<'src> {
     Try(Box<Expr<'src>>),
     Tuple(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
+    Use(Box<Expr<'src>>),
     WhileLoop(Box<WhileLoopExpr<'src>>),
     Wildcard,
     Yeet(Option<Box<Expr<'src>>>),
-    Yield(Option<Box<Expr<'src>>>),
+    Yield(YieldExpr<'src>),
 }
 
 impl ExprKind<'_> {
@@ -95,9 +96,10 @@ impl ExprKind<'_> {
             | Self::Try(_)
             | Self::Tuple(_)
             | Self::UnOp(..)
+            | Self::Use(_)
             | Self::Wildcard
             | Self::Yeet(_)
-            | Self::Yield(_) => false,
+            | Self::Yield(..) => false,
         }
     }
 }
@@ -296,6 +298,7 @@ pub(crate) enum CaptureMode {
 
 #[derive(Debug)]
 pub(crate) struct ClosureParam<'src> {
+    pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Option<Ty<'src>>,
 }
@@ -320,6 +323,12 @@ pub(crate) struct ForLoopExpr<'src> {
 pub(crate) enum Awaitness {
     Await,
     Not,
+}
+
+#[derive(Debug)]
+pub(crate) enum YieldExpr<'src> {
+    Prefix(Option<Box<Expr<'src>>>),
+    Postfix(Box<Expr<'src>>),
 }
 
 #[derive(Debug)]

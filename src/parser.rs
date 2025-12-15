@@ -490,6 +490,7 @@ macro one_of($( $frag:expr ),+ $(,)?) {
 pub enum ExpectedFragment {
     Bound,
     CommonIdent,
+    ConstArg,
     Expr,
     ExtPath,
     GenericArg,
@@ -517,6 +518,7 @@ impl fmt::Display for ExpectedFragment {
         f.write_str(match self {
             Self::Bound => "bound",
             Self::CommonIdent => "common identifier",
+            Self::ConstArg => "const argument",
             Self::Expr => "expression",
             Self::ExtPath => "extended path",
             Self::GenericArg => "generic argument",

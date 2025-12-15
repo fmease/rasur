@@ -15,6 +15,7 @@ pub enum ParseError {
     InvalidExternItemKind(Span),
     InvalidTyPrefix(Span),
     InvalidItemPrefix(Span),
+    InvalidOpAfterCast,
     InvalidParenthesizedBound,
     MisplacedReceiver,
     MissingClosingDelimiters(Span),
@@ -97,6 +98,7 @@ impl ParseError {
             Self::ParametrizedWhereClause => {
                 Diag::new("generic parameter lists on where-clauses are reserved")
             }
+            Self::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
         };
         eprintln!("{}", diag.render(cx));
     }

@@ -173,6 +173,11 @@ impl Fmt for ast::ExprKind<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
             Self::Struct(expr) => expr.fmt(cx),
+            Self::Use(expr) => {
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ").use");
+            }
             Self::Yeet(expr) => {
                 fmt!(cx, "do yeet");
                 if let Some(expr) = expr {
@@ -180,12 +185,17 @@ impl Fmt for ast::ExprKind<'_> {
                     expr.fmt(cx);
                 }
             }
-            Self::Yield(expr) => {
+            Self::Yield(ast::YieldExpr::Prefix(expr)) => {
                 fmt!(cx, "yield");
                 if let Some(expr) = expr {
                     fmt!(cx, " ");
                     expr.fmt(cx);
                 }
+            }
+            Self::Yield(ast::YieldExpr::Postfix(expr)) => {
+                fmt!(cx, "(");
+                expr.fmt(cx);
+                fmt!(cx, ").yield");
             }
         }
     }
@@ -390,7 +400,13 @@ impl Fmt for TrailingSpace<ast::CaptureMode> {
 
 impl Fmt for ast::ClosureParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { pat, ty } = self;
+        let Self { attrs, pat, ty } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+
         pat.fmt(cx);
         if let Some(ty) = ty {
             fmt!(cx, ": ");

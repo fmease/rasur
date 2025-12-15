@@ -1,4 +1,4 @@
-use super::{Parser, Result, TokenKind, error::ParseError, pat::OrPolicy};
+use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy};
 use crate::ast;
 use std::mem;
 
@@ -108,6 +108,64 @@ impl<'src> Parser<'_, 'src> {
                     || matches!(t.kind, TokenKind::TickedIdent | TokenKind::CommonIdent)
                 && self.look_ahead(offset + 2, |t| matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Comma| TokenKind::SingleColon | TokenKind::SingleEquals))
             })
+    }
+
+    pub(crate) fn opt_parse_negatable_lit(
+        &mut self,
+    ) -> Result<Option<(ast::Sign, ast::Lit<'src>)>> {
+        // NOTE: To be kept in sync with `Self::begins_negatable_lit`.
+
+        let sign =
+            if self.consume(TokenKind::SingleHyphen) { ast::Sign::Neg } else { ast::Sign::None };
+
+        let lit = match self.token.kind {
+            TokenKind::CharLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Char(lit))
+            }
+            TokenKind::False => {
+                self.advance();
+                Some(ast::Lit::Bool(false))
+            }
+            TokenKind::NumLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Num(lit))
+            }
+            TokenKind::StrLit => {
+                let lit = self.source(self.token.span);
+                self.advance();
+                Some(ast::Lit::Str(lit))
+            }
+            TokenKind::True => {
+                self.advance();
+                Some(ast::Lit::Bool(true))
+            }
+            _ => None,
+        };
+
+        if let Some(lit) = lit {
+            Ok(Some((sign, lit)))
+        } else if let ast::Sign::Neg = sign {
+            Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Literal))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn begins_negatable_lit(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::opt_parse_negatable_lit`.
+
+        match self.token.kind {
+            | TokenKind::CharLit
+            | TokenKind::False
+            | TokenKind::NumLit
+            | TokenKind::SingleHyphen
+            | TokenKind::StrLit
+            | TokenKind::True => true,
+            _ => false,
+        }
     }
 }
 

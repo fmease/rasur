@@ -445,6 +445,8 @@ impl<'src> Parser<'_, 'src> {
         abi: Option<&'src str>,
     ) -> Result<ast::ItemKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
+        // FIXME: Merge with outer attrs.
+        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let items = self
             .parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?
             .into_iter()
@@ -648,7 +650,7 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_mod_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
-            // FIXME: Smh. merge with outer attrs?
+            // FIXME: Merge with outer attrs.
             let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
             Some(self.parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?)
         } else {
@@ -868,7 +870,7 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_delimited_assoc_items(&mut self, cx: ItemCx) -> Result<Vec<ast::AssocItem<'src>>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
-        // FIXME: Smh. merge with outer attrs?
+        // FIXME: Merge with outer attrs
         let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         self.parse_items(cx, TokenKind::CloseCurlyBracket)?
             .into_iter()
