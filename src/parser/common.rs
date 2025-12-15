@@ -1,4 +1,9 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind,
+    error::ParseError,
+    ident::{PIN, RAW},
+    pat::OrPolicy,
+};
 use crate::ast;
 use std::mem;
 
@@ -70,7 +75,12 @@ impl<'src> Parser<'_, 'src> {
             let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
 
             let ty = match ref_ {
-                Some(lt) => ast::Ty::Ref(lt?, mut_, Box::new(self_ty())),
+                Some(lt) => ast::Ty::Ref(Box::new(ast::RefTy {
+                    lt: lt?,
+                    kind: ast::BorrowKind::Ref,
+                    mut_,
+                    pointee: self_ty(),
+                })),
                 None => match self.consume(TokenKind::SingleColon) {
                     // Indeed, C-variadics are not permitted here.
                     true => self.parse_ty()?,
@@ -167,9 +177,50 @@ impl<'src> Parser<'_, 'src> {
             _ => false,
         }
     }
+
+    pub(crate) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
+        &mut self,
+    ) -> (ast::BorrowKind<X>, ast::Mutability) {
+        if let TokenKind::CommonIdent = self.token.kind
+            && let Some(mut_) = self.look_ahead(1, |t| match t.kind {
+                TokenKind::Mut => Some(ast::Mutability::Mut),
+                TokenKind::Const => Some(ast::Mutability::Not),
+                _ => None,
+            })
+            && let Some(kind) = match self.source(self.token.span) {
+                PIN => Some(ast::BorrowKind::Pin),
+                source => X::parse(source),
+            }
+        {
+            self.advance();
+            self.advance();
+            (kind, mut_)
+        } else {
+            (ast::BorrowKind::Ref, self.parse_mutability())
+        }
+    }
 }
 
 pub(crate) enum FnParamMode {
     Required,
     Optional,
+}
+
+pub(crate) trait ParseBorrowKind: Sized {
+    fn parse(source: &str) -> Option<ast::BorrowKind<Self>>;
+}
+
+impl ParseBorrowKind for ! {
+    fn parse(_: &str) -> Option<ast::BorrowKind<Self>> {
+        None
+    }
+}
+
+impl ParseBorrowKind for () {
+    fn parse(source: &str) -> Option<ast::BorrowKind<Self>> {
+        match source {
+            RAW => Some(ast::BorrowKind::Raw(())),
+            _ => None,
+        }
+    }
 }

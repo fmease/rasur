@@ -1,6 +1,6 @@
 use super::{
-    Attr, Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path, Safety,
-    UnambiguousGenericArgs,
+    Attr, BorrowKind, Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path,
+    Safety, UnambiguousGenericArgs,
 };
 
 #[derive(Debug)]
@@ -17,7 +17,7 @@ pub(crate) enum Ty<'src> {
     Never,
     Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
     Ptr(Mutability, Box<Ty<'src>>),
-    Ref(Option<Lifetime<'src>>, Mutability, Box<Ty<'src>>),
+    Ref(Box<RefTy<'src>>),
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
     UnsafeBinder(Vec<GenericParam<'src>>, Box<Ty<'src>>),
@@ -35,6 +35,14 @@ pub(crate) struct FnPtrTy<'src> {
 pub(crate) struct FnPtrTyModifiers<'src> {
     pub(crate) safety: Safety,
     pub(crate) externness: Externness<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RefTy<'src> {
+    pub(crate) lt: Option<Lifetime<'src>>,
+    pub(crate) kind: BorrowKind<!>,
+    pub(crate) mut_: Mutability,
+    pub(crate) pointee: Ty<'src>,
 }
 
 #[derive(Debug)]

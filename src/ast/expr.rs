@@ -1,6 +1,6 @@
 use super::{
-    Asyncness, Attr, Bracket, Constness, ExtPath, GenericParam, Genness, Ident, Lit, MacroCall,
-    Mutability, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
+    Asyncness, Attr, BorrowKind, Bracket, Constness, ExtPath, GenericParam, Genness, Ident, Lit,
+    MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
 
 #[derive(Debug)]
@@ -108,12 +108,6 @@ impl ExprKind<'_> {
 pub(crate) enum CurlyBracketedMacroCallIsBoundary {
     Yes,
     No,
-}
-
-#[derive(Debug)]
-pub(crate) enum BorrowKind {
-    Ref,
-    Raw,
 }
 
 #[derive(Debug, Clone, Copy)]

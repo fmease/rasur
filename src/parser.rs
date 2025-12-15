@@ -476,6 +476,7 @@ mod ident {
     pub(super) const DEFAULT: &str = "default";
     pub(super) const DYN: &str = "dyn"; // in Rust 2015
     pub(super) const MACRO_RULES: &str = "macro_rules";
+    pub(super) const PIN: &str = "pin";
     pub(super) const RAW: &str = "raw";
     pub(super) const SAFE: &str = "safe";
     pub(super) const UNION: &str = "union";

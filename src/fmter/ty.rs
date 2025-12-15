@@ -8,15 +8,7 @@ impl Fmt for ast::Ty<'_> {
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
             Self::FnPtr(ty) => ty.fmt(cx),
-            Self::Ref(lt, mut_, ty) => {
-                fmt!(cx, "&");
-                if let Some(lt) = lt {
-                    lt.fmt(cx);
-                    fmt!(cx, " ");
-                }
-                mut_.trailing_space().fmt(cx);
-                ty.fmt(cx);
-            }
+            Self::Ref(ty) => ty.fmt(cx),
             Self::Ptr(mut_, ty) => {
                 fmt!(cx, "*");
                 match mut_ {
@@ -98,6 +90,24 @@ impl Fmt for TrailingSpace<ast::FnPtrTyModifiers<'_>> {
 
         safety.trailing_space().fmt(cx);
         externness.trailing_space().fmt(cx);
+    }
+}
+
+impl Fmt for ast::RefTy<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { lt, kind, mut_, pointee } = self;
+
+        fmt!(cx, "&");
+        if let Some(lt) = lt {
+            lt.fmt(cx);
+            fmt!(cx, " ");
+        }
+        kind.trailing_space().fmt(cx);
+        mut_.trailing_space().fmt(cx);
+        if let (ast::BorrowKind::Pin, ast::Mutability::Not) = (kind, mut_) {
+            fmt!(cx, "const ");
+        }
+        pointee.fmt(cx);
     }
 }
 

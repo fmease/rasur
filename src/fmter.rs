@@ -226,6 +226,18 @@ impl Fmt for TrailingSpace<ast::Mutability> {
     }
 }
 
+impl<X> Fmt for TrailingSpace<ast::BorrowKind<X>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(kind) = self;
+
+        match kind {
+            ast::BorrowKind::Pin => fmt!(cx, "pin "),
+            ast::BorrowKind::Raw(_) => fmt!(cx, "raw "),
+            ast::BorrowKind::Ref => {}
+        }
+    }
+}
+
 struct TrailingSpace<T>(T);
 
 trait TrailingSpaceExt: Sized {

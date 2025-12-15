@@ -16,9 +16,13 @@ impl Fmt for ast::Pat<'_> {
                 sign.fmt(cx);
                 lit.fmt(cx)
             }
-            Self::Borrow(mut_, pat) => {
+            Self::Borrow(kind, mut_, pat) => {
                 fmt!(cx, "&");
+                kind.trailing_space().fmt(cx);
                 mut_.trailing_space().fmt(cx);
+                if let (ast::BorrowKind::Pin, ast::Mutability::Not) = (kind, mut_) {
+                    fmt!(cx, "const ");
+                }
                 pat.fmt(cx);
             }
             Self::Tuple(pats) => Tup(pats).fmt(cx),

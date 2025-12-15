@@ -101,11 +101,13 @@ impl Fmt for ast::ExprKind<'_> {
             Self::Lit(lit) => lit.fmt(cx),
             Self::Borrow(kind, mut_, expr) => {
                 fmt!(cx, "&");
-                match kind {
-                    ast::BorrowKind::Ref => {}
-                    ast::BorrowKind::Raw => fmt!(cx, "raw "),
-                }
+                kind.trailing_space().fmt(cx);
                 mut_.trailing_space().fmt(cx);
+                if let ast::BorrowKind::Pin | ast::BorrowKind::Raw(_) = kind
+                    && let ast::Mutability::Not = mut_
+                {
+                    fmt!(cx, "const ");
+                }
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");

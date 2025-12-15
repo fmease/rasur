@@ -1,10 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
-    error::ParseError,
-    ident::{RAW, YEET},
-    one_of,
-    pat::OrPolicy,
-    path::GenericArgsMode,
+    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, ident::YEET, one_of,
+    pat::OrPolicy, path::GenericArgsMode,
 };
 use crate::ast;
 use std::{cmp::Ordering, mem};
@@ -364,20 +360,7 @@ impl<'src> Parser<'_, 'src> {
         right_level: Level,
         s_policy: StructPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let (kind, mut_) = if self.token.kind == TokenKind::CommonIdent
-            && self.is_common_ident(RAW)
-            && let Some(mut_) = self.look_ahead(1, |t| match t.kind {
-                TokenKind::Mut => Some(ast::Mutability::Mut),
-                TokenKind::Const => Some(ast::Mutability::Not),
-                _ => None,
-            }) {
-            self.advance();
-            self.advance();
-            (ast::BorrowKind::Raw, mut_)
-        } else {
-            (ast::BorrowKind::Ref, self.parse_mutability())
-        };
-
+        let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let expr = self.parse_expr_at_level(
             right_level,
             s_policy,

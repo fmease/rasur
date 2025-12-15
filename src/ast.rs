@@ -60,6 +60,13 @@ pub(crate) enum Mutability {
     Not,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum BorrowKind<X = ()> {
+    Pin,
+    Ref,
+    Raw(X),
+}
+
 #[derive_const(Default)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Safety<X = !> {

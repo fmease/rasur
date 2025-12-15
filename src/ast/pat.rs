@@ -1,11 +1,12 @@
 use super::{
-    Attr, ExtPath, Ident, Lit, MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs,
+    Attr, BorrowKind, ExtPath, Ident, Lit, MacroCall, Mutability,
+    ObligatorilyDisambiguatedGenericArgs,
 };
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
     Binding(Box<BindingPat<'src>>),
-    Borrow(Mutability, Box<Pat<'src>>),
+    Borrow(BorrowKind<!>, Mutability, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
     Lit(Sign, Lit<'src>),

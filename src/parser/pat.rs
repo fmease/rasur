@@ -56,7 +56,7 @@ impl<'src> Parser<'_, 'src> {
         match op {
             Op::DoubleBorrow => {
                 let borrow = self.fin_parse_borrow_pat(right_level, o_policy)?;
-                Ok(ast::Pat::Borrow(ast::Mutability::Not, Box::new(borrow)))
+                Ok(ast::Pat::Borrow(ast::BorrowKind::Ref, ast::Mutability::Not, Box::new(borrow)))
             }
             Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy),
             _ => unreachable!(),
@@ -83,9 +83,9 @@ impl<'src> Parser<'_, 'src> {
         right_level: Level,
         o_policy: OrPolicy,
     ) -> Result<ast::Pat<'src>> {
-        let mut_ = self.parse_mutability();
+        let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let pat = self.parse_pat_at_level(right_level, o_policy)?;
-        Ok(ast::Pat::Borrow(mut_, Box::new(pat)))
+        Ok(ast::Pat::Borrow(kind, mut_, Box::new(pat)))
     }
 
     fn fin_parse_range_exclusive_pat(

@@ -39,8 +39,13 @@ impl<'src> Parser<'_, 'src> {
         match self.token.kind {
             TokenKind::DoubleAmpersand => {
                 self.advance();
-                let inner_ty = self.fin_parse_ref_ty()?;
-                return Ok(ast::Ty::Ref(None, ast::Mutability::Not, Box::new(inner_ty)));
+                let pointee = self.fin_parse_ref_ty()?;
+                return Ok(ast::Ty::Ref(Box::new(ast::RefTy {
+                    lt: None,
+                    kind: ast::BorrowKind::Ref,
+                    mut_: ast::Mutability::Not,
+                    pointee,
+                })));
             }
             TokenKind::Dyn => {
                 self.advance();
@@ -225,9 +230,9 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
         let lt = self.parse_lifetime()?;
-        let mut_ = self.parse_mutability();
-        let ty = self.parse_ty()?;
-        Ok(ast::Ty::Ref(lt, mut_, Box::new(ty)))
+        let (kind, mut_) = self.parse_borrow_kind_and_mutability();
+        let pointee = self.parse_ty()?;
+        Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee })))
     }
 
     pub(super) fn parse_ty_annotation(&mut self) -> Result<ast::Ty<'src>> {
