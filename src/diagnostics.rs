@@ -19,6 +19,7 @@ pub(crate) fn render(errors: Vec<Error>, cx: RenderCx<'_>) {
 
 fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
     match error {
+        Error::AmbiguousPlus(span) => Diag::new("ambiguous `+`").highlight(span),
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
         Error::DefaultOnInvalidItem(span) => {
             Diag::new("this item kind may not be marked with `default`").highlight(span)
@@ -44,6 +45,9 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
                 .labeled_highlight(span, "unexpected delimiter")
         }
         Error::InvalidExternItemKind(span) => Diag::new("invalid extern item kind").highlight(span),
+        Error::LifetimeObjectTyWithoutPlus(span) => {
+            Diag::new("lifetime object type without plus").highlight(span)
+        }
         Error::ExpectedTraitFoundTy(span) => Diag::new("found type expected trait").highlight(span),
         Error::ModifiersOnInvalidBound => Diag::new("this bound kind may not have modifiers"),
         Error::HigherRankedBinderOnInvalidBound(span) => {

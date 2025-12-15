@@ -84,7 +84,7 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::While
             // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Yield => true,
-            _ => self.begins_ext_path(self.token),
+            _ => self.begins_ext_path(0),
         }
     }
 
@@ -700,9 +700,9 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
-                    |this| this.parse_expr(),
-                    |expr| ast::ExprKind::Grouped(expr),
-                    |exprs| ast::ExprKind::Tuple(exprs),
+                    Self::parse_expr,
+                    ast::ExprKind::Grouped,
+                    ast::ExprKind::Tuple,
                 );
             }
             TokenKind::OpenSquareBracket => {
@@ -763,7 +763,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => {}
         }
 
-        if self.begins_ext_path(self.token) {
+        if self.begins_ext_path(0) {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {

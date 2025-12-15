@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix, one_of};
+use super::{ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, one_of, ty::PlusPolicy};
 use crate::{ast, error::Error, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -26,10 +26,10 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(path)
     }
 
-    pub(super) fn begins_path(&self, token: Token) -> bool {
+    pub(super) fn begins_path(&self, offset: usize) -> bool {
         // NOTE: To be kept in sync with `Self::parse_path`.
 
-        matches!(token.kind, TokenKind::DoubleColon | PathSegIdent!())
+        matches!(self.peek(offset).kind, TokenKind::DoubleColon | PathSegIdent!())
     }
 
     fn parse_path_prefix<M: GenericArgsMode>(
@@ -78,10 +78,10 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok((Some(ast::PathExt { self_ty, trait_ref }), PathMode::Suffix))
     }
 
-    pub(super) fn begins_ext_path(&self, token: Token) -> bool {
+    pub(super) fn begins_ext_path(&self, offset: usize) -> bool {
         // NOTE: To be kept in sync with `Self::parse_ext_path`.
 
-        TokenPrefix::LessThan.matches(token.kind) || self.begins_path(token)
+        self.matches(TokenPrefix::LessThan, self.peek(offset)) || self.begins_path(offset)
     }
 
     fn parse_path_seg<M: GenericArgsMode>(&mut self) -> Result<ast::PathSeg<'src, M>> {
@@ -128,7 +128,7 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenPrefix::GreaterThan,
             SEPARATOR,
             |this: &mut Self| {
-                let mut arg = if this.begins_ty(this.token) {
+                let mut arg = if this.begins_ty(0) {
                     let ty = this.parse_ty()?;
                     ast::GenericArg::Ty(ty)
                 } else if let Some(lt) = this.parse_lifetime()? {
@@ -186,13 +186,17 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::Comma,
             Self::parse_ty,
         )?;
-        let output = if self.consume(TokenKind::ThinArrow) { Some(self.parse_ty()?) } else { None };
+        let output = if self.consume(TokenKind::ThinArrow) {
+            Some(self.parse_ty_where(PlusPolicy::Yield)?)
+        } else {
+            None
+        };
 
         Ok(ast::GenericArgs::Paren { inputs, output })
     }
 
     fn parse_term(&mut self) -> Result<ast::Term<'src>> {
-        if self.begins_ty(self.token) {
+        if self.begins_ty(0) {
             Ok(ast::Term::Ty(self.parse_ty()?))
         }
         // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>

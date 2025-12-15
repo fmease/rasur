@@ -18,10 +18,15 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
             }
             Self::Never => fmt!(cx, "!"),
-            Self::DynTrait(bounds) => {
-                fmt!(cx, "dyn");
-                if !bounds.is_empty() {
-                    fmt!(cx, " ");
+            Self::DynTrait(kind, bounds) => {
+                match kind {
+                    ast::DynKind::Dyn => {
+                        fmt!(cx, "dyn");
+                        if !bounds.is_empty() {
+                            fmt!(cx, " ");
+                        }
+                    }
+                    ast::DynKind::Bare => {}
                 }
                 bounds.fmt(cx);
             }
@@ -245,14 +250,14 @@ impl Fmt for ast::Bound<'_> {
                 }
                 fmt!(cx, ">");
             }
-            Self::Trait { bound_vars, modifiers, trait_ref } => {
+            Self::Trait { bound_vars, modifiers, path } => {
                 if !bound_vars.is_empty() {
                     fmt!(cx, "for");
                     bound_vars.fmt(cx);
                     fmt!(cx, " ");
                 }
                 modifiers.fmt(cx);
-                trait_ref.fmt(cx);
+                path.fmt(cx);
             }
         }
     }

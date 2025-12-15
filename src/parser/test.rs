@@ -766,6 +766,432 @@ fn method_receivers() {
     assert_matches!(parse_item(n!("fn f(&mut self::T: ());"), Rust2015), Ok(_));
 }
 
+#[test]
+fn bare_trait_object_tys() {
+    assert_matches!(
+        parse_ty(n!("A+"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+    );
+
+    assert_matches!(parse_ty(n!("Hold<A+>"), Rust2015), Ok(_));
+
+    assert_matches!(
+        parse_ty(n!("(A)+"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+    );
+
+    // It's easy to accidentally accept the following code while trying to support the form above.
+    assert_matches!(
+        parse_ty(n!("(A+)+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("?A"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
+                ..
+            }])
+        ))
+    );
+
+    // MB: `?` is the only trait bound modifier that also "formally begins a type".
+    //     `const`, `[const]`, `async` all don't.
+    assert_matches!(parse_ty(n!("Hold<?A>"), Rust2015), Ok(_));
+
+    assert_matches!(
+        parse_ty(n!("(?A)+"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
+                ..
+            }])
+        ))
+    );
+
+    assert_matches!(
+        parse_ty(n!("const A"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
+                ..
+            }])
+        ))
+    );
+
+    // See comment further up.
+    assert_matches!(
+        parse_ty(n!("Hold<const A>"), Rust2015),
+        // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::CommonIdent, .. },
+            ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
+        )]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("(const A)+"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
+                ..
+            }])
+        ))
+    );
+
+    // This is also a bug upstream, see also <https://github.com/rust-lang/rust/issues/146122>.
+    assert_matches!(
+        parse_ty(n!("[const] A"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::CloseSquareBracket, .. },
+            ExpectedFragment::Bound
+        )])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("async A"), Rust2018),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                modifiers: ast::TraitBoundModifiers { asyncness: ast::BoundAsyncness::Always, .. },
+                ..
+            }])
+        ))
+    );
+
+    // See comment further up.
+    assert_matches!(
+        parse_ty(n!("Hold<async A>"), Rust2018),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("for<>A"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+    );
+
+    assert_matches!(parse_ty(n!("Hold<for<>A>"), Rust2015), Ok(_));
+
+    assert_matches!(
+        parse_ty(n!("(for<>A)+"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+    );
+
+    // It's easy to accidentally accept the following code while trying to support the form above.
+    assert_matches!(
+        parse_ty(n!("(for<>A+)+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("for<>'a"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::TickedIdent, .. },
+            ExpectedFragment::PathSegIdent
+        )])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("for<>'a+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::TickedIdent, .. },
+            ExpectedFragment::PathSegIdent
+        )])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("'a+"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Outlives(_)])))
+    );
+
+    assert_matches!(parse_ty(n!("Hold<'a+>"), Rust2015), Ok(_));
+
+    assert_matches!(
+        parse_ty(n!("'a"), Rust2015),
+        Err(deref!([Error::LifetimeObjectTyWithoutPlus(_)]))
+    );
+
+    // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
+    assert_matches!(
+        parse_ty(n!("('a)+"), Rust2015),
+        Err(deref!([
+            Error::LifetimeObjectTyWithoutPlus(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::SinglePlus, .. },
+                ExpectedFragment::Token(TokenKind::EndOfInput)
+            )
+        ]))
+    );
+
+    // issue: <https://github.com/fmease/rasur/issues/20>
+    assert_matches!(
+        parse_ty(n!("use<>"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Use(_)])))
+    );
+
+    // Indeed, even though you can't parenthesize precise-capturing lists
+    // in "normal" bounds, you can do so in bare trait object type bounds.
+    // If find it a bit janky. Might report upstream.
+    assert_matches!(
+        parse_ty(n!("(use<>)+"), Rust2015),
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Use(_)])))
+    );
+
+    // It's easy to accidentally accept the following code while trying to support the form above.
+    assert_matches!(
+        parse_ty(n!("(use<>+)+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("Hold<use<>>"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("A + B"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+        ))
+    );
+
+    assert_matches!(
+        parse_ty(n!("&A + B"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("&for<>A + B"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("*const A + B"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("&A + B"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_ty(n!("fn() -> A + B"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+    );
+
+    // Like `dyn (Fn() -> A) + B`, not like `dyn Fn() -> (dyn A + B)`.
+    assert_matches!(
+        parse_ty(n!("Fn() -> A + B"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([
+                ast::Bound::Trait {
+                    path: ast::Path {
+                        segs: deref!([ast::PathSeg {
+                            ident: ast::Ident!("Fn"),
+                            args: Some(ast::GenericArgs::Paren {
+                                inputs: deref!([]),
+                                output: Some(ast::Ty::Path(ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: deref!([ast::PathSeg {
+                                            ident: ast::Ident!("A"),
+                                            ..
+                                        }])
+                                    }
+                                }))
+                            })
+                        }])
+                    },
+                    ..
+                },
+                ast::Bound::Trait {
+                    path: ast::Path {
+                        segs: deref!([ast::PathSeg { ident: ast::Ident!("B"), .. }])
+                    },
+                    ..
+                }
+            ]),
+        )),
+    );
+
+    // Similarly
+    assert_matches!(
+        parse_ty(n!("Fn() -> (A) + B"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]),
+        )),
+    );
+
+    // This is considered legal what I find slightly odd, see also my long comment in the type parser.
+    // Normally, bare lifetimes aren't allowed in type position. At least, they need to be followed by
+    // a `+` to count as a bare trait object type. However, below, the `+` doesn't actually "belong"
+    // to the lifetime bound, it belongs to the parent bound list.
+    assert_matches!(
+        parse_ty(n!("Fn() -> 'a + A"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([
+                ast::Bound::Trait {
+                    path: ast::Path {
+                        segs: deref!([ast::PathSeg {
+                            ident: ast::Ident!("Fn"),
+                            args: Some(ast::GenericArgs::Paren {
+                                inputs: deref!([]),
+                                output: Some(ast::Ty::DynTrait(
+                                    ast::DynKind::Bare,
+                                    deref!([ast::Bound::Outlives(_)])
+                                )),
+                            })
+                        }])
+                    },
+                    ..
+                },
+                ast::Bound::Trait { .. }
+            ]),
+        )),
+    );
+
+    // The same happens here, too, in our impl but on the surface the `+` could truly belong
+    // to either bare trait object type (still, it doesn't get rejected as ambiguous).
+    assert_matches!(
+        parse_ty(n!("Fn() -> 'a+"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([ast::Bound::Trait {
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: ast::Ident!("Fn"),
+                        args: Some(ast::GenericArgs::Paren {
+                            inputs: deref!([]),
+                            output: Some(ast::Ty::DynTrait(
+                                ast::DynKind::Bare,
+                                deref!([ast::Bound::Outlives(_)])
+                            )),
+                        })
+                    }])
+                },
+                ..
+            },]),
+        ))
+    );
+}
+
+#[test]
+fn ambiguous_plus() {
+    assert_matches!(parse_ty(n!("&dyn A + B"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])),);
+
+    assert_matches!(parse_ty(n!("&dyn A+"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])),);
+
+    assert_matches!(parse_ty(n!("&impl A + B"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])));
+
+    assert_matches!(parse_ty(n!("&impl A+"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])));
+
+    assert_matches!(
+        parse_ty(n!("F() -> dyn A + B"), Rust2015),
+        Err(deref!([Error::AmbiguousPlus(_)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("F() -> impl A + B"), Rust2015),
+        Err(deref!([Error::AmbiguousPlus(_)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("dyn F() -> impl A+"), Rust2015),
+        Err(deref!([Error::AmbiguousPlus(_)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("impl F() -> dyn A+"), Rust2015),
+        Err(deref!([Error::AmbiguousPlus(_)]))
+    );
+
+    // Indeed, this is not (to be) flagged as ambiguous.
+    // I wonder if it's an oversight or intentional?
+    assert_matches!(
+        parse_ty(n!("impl F() -> for<> A + B"), Rust2015),
+        Ok(ast::Ty::ImplTrait(deref!([
+            ast::Bound::Trait {
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg {
+                        ident: ast::Ident!("F"),
+                        args: Some(ast::GenericArgs::Paren {
+                            inputs: deref!([]),
+                            output: Some(ast::Ty::DynTrait(
+                                ast::DynKind::Bare,
+                                deref!([ast::Bound::Trait { .. }])
+                            )),
+                        })
+                    }])
+                },
+                ..
+            },
+            ast::Bound::Trait { .. }
+        ])))
+    );
+
+    // ... after all, you could hypothetically parse it like this:
+    assert_matches!(
+        parse_ty(n!("impl F() -> (for<> A + B)"), Rust2015),
+        Ok(ast::Ty::ImplTrait(deref!([ast::Bound::Trait {
+            path: ast::Path {
+                segs: deref!([ast::PathSeg {
+                    ident: ast::Ident!("F"),
+                    args: Some(ast::GenericArgs::Paren {
+                        inputs: deref!([]),
+                        output: Some(ast::Ty::Grouped(ast::Ty::DynTrait(
+                            ast::DynKind::Bare,
+                            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+                        ))),
+                    })
+                }])
+            },
+            ..
+        },])))
+    );
+
+    // Not ambiguous (counterexample).
+    assert_matches!(
+        parse_ty(n!("F() -> fn() -> A + B"), Rust2015),
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            deref!([
+                ast::Bound::Trait {
+                    path: ast::Path {
+                        segs: deref!([ast::PathSeg {
+                            ident: ast::Ident!("F"),
+                            args: Some(ast::GenericArgs::Paren {
+                                inputs: deref!([]),
+                                output: Some(ast::Ty::FnPtr(..)),
+                            })
+                        }])
+                    },
+                    ..
+                },
+                ast::Bound::Trait { .. }
+            ])
+        ))
+    );
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.
@@ -809,7 +1235,6 @@ fn item_modifiers() {
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
-    // FIXME: Add `type const`, `const impl`, `reuse impl`
     assert_matches!(
         parse_file(
             n!(r#"
@@ -876,6 +1301,8 @@ safe fn f() {}
 safe static X: ();
 static safe: ();
 trait Trait {}
+type const F: ();
+type const safe: (); // [!]
 unsafe auto trait Trait {}
 unsafe extern "C" fn f() {}
 unsafe extern "C" {}

@@ -295,7 +295,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => {}
         }
 
-        if self.begins_path(self.token) {
+        if self.begins_path(0) {
             return self.parse_macro_call_item();
         }
 

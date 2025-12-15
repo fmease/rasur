@@ -62,7 +62,7 @@ impl StripShebang {
 
         loop {
             match lexer.lex().kind {
-                TokenKind::Trivia => continue,
+                TokenKind::Trivia => {}
                 TokenKind::OpenSquareBracket => return None,
                 _ => break,
             }
