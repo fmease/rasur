@@ -14,17 +14,12 @@ impl<'src> Parser<'_, 'src> {
         self.parse_pat_at_level(Level::Initial, o_policy)
     }
 
-    // FIXME: We must also ensure that the LHS of a range is a RangePatBound, not a general Pat!
     fn parse_pat_at_level(&mut self, level: Level, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
-        // Negation (of literals) is handled in `Self::parse_lower_pat` instead!
+        // Negation and ranges aren't handled here since they don't operate on general patterns
+        // but on literals and range bounds, respectively.
         let op = match self.token.kind {
             TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
             TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
-            TokenKind::DoubleDot => Some(Op::RangeExclusive),
-            TokenKind::DoubleDotEquals => {
-                Some(Op::RangeInclusive(ast::RangeInclusivePatKind::Normal))
-            }
-            // `...` isn't included here because it has to have an explicit lower bound.
             _ => None,
         };
         let mut left = if let Some(op) = op {
@@ -37,11 +32,6 @@ impl<'src> Parser<'_, 'src> {
         loop {
             let op = match self.token.kind {
                 TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
-                TokenKind::DoubleDot => Op::RangeExclusive,
-                TokenKind::DoubleDotEquals => {
-                    Op::RangeInclusive(ast::RangeInclusivePatKind::Normal)
-                }
-                TokenKind::TripleDot => Op::RangeInclusive(ast::RangeInclusivePatKind::Legacy),
                 _ => break,
             };
 
@@ -69,8 +59,6 @@ impl<'src> Parser<'_, 'src> {
                 Ok(ast::Pat::Borrow(ast::Mutability::Not, Box::new(borrow)))
             }
             Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy),
-            Op::RangeExclusive => self.fin_parse_range_exclusive_pat(None),
-            Op::RangeInclusive(kind) => self.fin_parse_range_inclusive_pat(kind, None),
             _ => unreachable!(),
         }
     }
@@ -85,10 +73,6 @@ impl<'src> Parser<'_, 'src> {
             Op::Or => {
                 let right = self.parse_pat_at_level(op.right_level().unwrap(), o_policy)?;
                 Ok(ast::Pat::Or(Box::new(left), Box::new(right)))
-            }
-            Op::RangeExclusive => self.fin_parse_range_exclusive_pat(Some(Box::new(left))),
-            Op::RangeInclusive(kind) => {
-                self.fin_parse_range_inclusive_pat(kind, Some(Box::new(left)))
             }
             _ => unreachable!(),
         }
@@ -106,37 +90,36 @@ impl<'src> Parser<'_, 'src> {
 
     fn fin_parse_range_exclusive_pat(
         &mut self,
-        left: Option<Box<ast::Pat<'src>>>,
+        left: Option<ast::RangePatBound<'src>>,
     ) -> Result<ast::Pat<'src>> {
         let right =
             self.begins_range_pat_bound().then(|| self.parse_range_pat_bound()).transpose()?;
-        Ok(ast::Pat::Range(left, right.map(Box::new), ast::RangePatKind::Exclusive))
+        Ok(ast::Pat::Range(left, right, ast::RangePatKind::Exclusive))
     }
 
     fn fin_parse_range_inclusive_pat(
         &mut self,
         kind: ast::RangeInclusivePatKind,
-        left: Option<Box<ast::Pat<'src>>>,
+        left: Option<ast::RangePatBound<'src>>,
     ) -> Result<ast::Pat<'src>> {
         let right = self.parse_range_pat_bound()?;
-        Ok(ast::Pat::Range(left, Some(Box::new(right)), ast::RangePatKind::Inclusive(kind)))
+        Ok(ast::Pat::Range(left, Some(right), ast::RangePatKind::Inclusive(kind)))
     }
 
-    fn parse_range_pat_bound(&mut self) -> Result<ast::Pat<'src>> {
+    fn parse_range_pat_bound(&mut self) -> Result<ast::RangePatBound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_range_pat_bound`.
 
         if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
-            return Ok(ast::Pat::Lit(sign, lit));
-        }
-        if self.begins_ext_path() {
+            Ok(ast::RangePatBound::Lit(sign, lit))
+        } else if self.begins_ext_path() {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
-            return Ok(ast::Pat::Path(Box::new(path)));
+            Ok(ast::RangePatBound::Path(path))
+        } else {
+            Err(ParseError::UnexpectedToken(
+                self.token,
+                one_of![ExpectedFragment::Literal, ExpectedFragment::ExtPath],
+            ))
         }
-
-        Err(ParseError::UnexpectedToken(
-            self.token,
-            one_of![ExpectedFragment::Literal, ExpectedFragment::ExtPath],
-        ))
     }
 
     fn begins_range_pat_bound(&self) -> bool {
@@ -146,8 +129,42 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
+        // `TripleDot` isn't included here as the corresponding range has to be bounded on the left.
+        match self.token.kind {
+            TokenKind::DoubleDot => {
+                self.advance();
+                return self.fin_parse_range_exclusive_pat(None);
+            }
+            TokenKind::DoubleDotEquals => {
+                self.advance();
+                return self
+                    .fin_parse_range_inclusive_pat(ast::RangeInclusivePatKind::Normal, None);
+            }
+            _ => {}
+        }
+
         if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
-            return Ok(ast::Pat::Lit(sign, lit));
+            return match self.token.kind {
+                TokenKind::DoubleDot => {
+                    self.advance();
+                    self.fin_parse_range_exclusive_pat(Some(ast::RangePatBound::Lit(sign, lit)))
+                }
+                TokenKind::DoubleDotEquals => {
+                    self.advance();
+                    self.fin_parse_range_inclusive_pat(
+                        ast::RangeInclusivePatKind::Normal,
+                        Some(ast::RangePatBound::Lit(sign, lit)),
+                    )
+                }
+                TokenKind::TripleDot => {
+                    self.advance();
+                    self.fin_parse_range_inclusive_pat(
+                        ast::RangeInclusivePatKind::Legacy,
+                        Some(ast::RangePatBound::Lit(sign, lit)),
+                    )
+                }
+                _ => Ok(ast::Pat::Lit(sign, lit)),
+            };
         }
 
         match (self.parse_mutability(), self.parse_by_ref()) {
@@ -195,32 +212,17 @@ impl<'src> Parser<'_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {
-                TokenKind::SingleBang => {
-                    let ast::ExtPath { ext: None, path } = path else {
-                        return Err(ParseError::TyRelMacroCall);
-                    };
-
+                TokenKind::DoubleDot => {
                     self.advance();
-                    let (bracket, stream) = self.parse_delimited_token_stream()?;
-
-                    return Ok(ast::Pat::MacroCall(Box::new(ast::MacroCall {
-                        path,
-                        bracket,
-                        stream,
-                    })));
+                    return self
+                        .fin_parse_range_exclusive_pat(Some(ast::RangePatBound::Path(path)));
                 }
-                TokenKind::OpenRoundBracket => {
+                TokenKind::DoubleDotEquals => {
                     self.advance();
-
-                    let fields = self.fin_parse_delim_seq(
-                        TokenKind::CloseRoundBracket,
-                        TokenKind::Comma,
-                        |this| this.parse_pat(OrPolicy::Allowed),
-                    )?;
-                    return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
-                        path,
-                        fields,
-                    })));
+                    return self.fin_parse_range_inclusive_pat(
+                        ast::RangeInclusivePatKind::Normal,
+                        Some(ast::RangePatBound::Path(path)),
+                    );
                 }
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
@@ -261,6 +263,40 @@ impl<'src> Parser<'_, 'src> {
                     }
 
                     return Ok(ast::Pat::Struct(Box::new(ast::StructPat { path, fields, rest })));
+                }
+                TokenKind::OpenRoundBracket => {
+                    self.advance();
+
+                    let fields = self.fin_parse_delim_seq(
+                        TokenKind::CloseRoundBracket,
+                        TokenKind::Comma,
+                        |this| this.parse_pat(OrPolicy::Allowed),
+                    )?;
+                    return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
+                        path,
+                        fields,
+                    })));
+                }
+                TokenKind::SingleBang => {
+                    let ast::ExtPath { ext: None, path } = path else {
+                        return Err(ParseError::TyRelMacroCall);
+                    };
+
+                    self.advance();
+                    let (bracket, stream) = self.parse_delimited_token_stream()?;
+
+                    return Ok(ast::Pat::MacroCall(Box::new(ast::MacroCall {
+                        path,
+                        bracket,
+                        stream,
+                    })));
+                }
+                TokenKind::TripleDot => {
+                    self.advance();
+                    return self.fin_parse_range_inclusive_pat(
+                        ast::RangeInclusivePatKind::Legacy,
+                        Some(ast::RangePatBound::Path(path)),
+                    );
                 }
                 _ => {}
             }
@@ -308,7 +344,6 @@ pub(super) enum OrPolicy {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Initial,
-    Range,
     OrLeft,
     OrRight,
     Prefix,
@@ -318,8 +353,6 @@ enum Level {
 enum Op {
     DoubleBorrow,
     Or,
-    RangeExclusive,
-    RangeInclusive(ast::RangeInclusivePatKind),
     SingleBorrow,
 }
 
@@ -327,7 +360,6 @@ impl Op {
     fn left_level(self) -> Option<Level> {
         Some(match self {
             Self::Or => Level::OrLeft,
-            Self::RangeExclusive | Self::RangeInclusive(_) => Level::Range,
             Self::SingleBorrow | Self::DoubleBorrow => return None,
         })
     }
@@ -335,7 +367,6 @@ impl Op {
     fn right_level(self) -> Option<Level> {
         Some(match self {
             Self::Or => Level::OrRight,
-            Self::RangeExclusive | Self::RangeInclusive(_) => Level::Range,
             Self::SingleBorrow | Self::DoubleBorrow => Level::Prefix,
         })
     }

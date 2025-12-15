@@ -1,6 +1,7 @@
 use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
+// FIXME: Don't print unnecessary parens & properly respect precedence.
 impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
@@ -12,10 +13,7 @@ impl Fmt for ast::Pat<'_> {
             // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.
             Self::Wildcard(_) => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {
-                match sign {
-                    ast::Sign::None => {}
-                    ast::Sign::Neg => fmt!(cx, "-"),
-                }
+                sign.fmt(cx);
                 lit.fmt(cx)
             }
             Self::Borrow(mut_, pat) => {
@@ -33,7 +31,6 @@ impl Fmt for ast::Pat<'_> {
             Self::MacroCall(call) => call.fmt(cx),
             Self::TupleStruct(pat) => pat.fmt(cx),
             Self::Struct(pat) => pat.fmt(cx),
-            // FIXME: Eliminate unnecessary parens.
             Self::Or(left, right) => {
                 fmt!(cx, "(");
                 left.fmt(cx);
@@ -42,23 +39,14 @@ impl Fmt for ast::Pat<'_> {
                 fmt!(cx, ")");
             }
             Self::Range(left, right, kind) => {
-                // FIXME: Temporary: Don't render unnecessary parentheses!
-                if let Some(left) = left {
-                    fmt!(cx, "(");
-                    left.fmt(cx);
-                    fmt!(cx, ")");
-                }
+                left.fmt(cx);
                 let symbol = match kind {
                     ast::RangePatKind::Exclusive => "..",
                     ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Normal) => "..=",
                     ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Legacy) => "...",
                 };
                 fmt!(cx, "{symbol}");
-                if let Some(right) = right {
-                    fmt!(cx, "(");
-                    right.fmt(cx);
-                    fmt!(cx, ")");
-                }
+                right.fmt(cx);
             }
             Self::Slice(elems) => {
                 fmt!(cx, "[");
@@ -135,6 +123,27 @@ impl Fmt for ast::StructPatField<'_> {
         if let Some(body) = body {
             fmt!(cx, ": ");
             body.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for ast::RangePatBound<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Lit(sign, lit) => {
+                sign.fmt(cx);
+                lit.fmt(cx);
+            }
+            Self::Path(path) => path.fmt(cx),
+        }
+    }
+}
+
+impl Fmt for ast::Sign {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::None => {}
+            Self::Neg => fmt!(cx, "-"),
         }
     }
 }

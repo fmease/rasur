@@ -13,7 +13,7 @@ pub(crate) enum Pat<'src> {
     Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
-    Range(Option<Box<Pat<'src>>>, Option<Box<Pat<'src>>>, RangePatKind),
+    Range(Option<RangePatBound<'src>>, Option<RangePatBound<'src>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
     Tuple(Vec<Pat<'src>>),
@@ -67,6 +67,12 @@ pub(crate) struct StructPatField<'src> {
     pub(crate) by_ref: ByRef,
     pub(crate) binder: Ident<'src>,
     pub(crate) body: Option<Pat<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum RangePatBound<'src> {
+    Lit(Sign, Lit<'src>),
+    Path(ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>),
 }
 
 #[derive(Debug)]

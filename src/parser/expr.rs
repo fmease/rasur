@@ -316,7 +316,14 @@ impl<'src> Parser<'_, 'src> {
             _ => {
                 return Err(ParseError::UnexpectedToken(
                     self.token,
-                    one_of![TokenKind::Await, TokenKind::CommonIdent, TokenKind::NumLit],
+                    one_of![
+                        TokenKind::Await,
+                        TokenKind::CommonIdent,
+                        TokenKind::Match,
+                        TokenKind::NumLit,
+                        TokenKind::Use,
+                        TokenKind::Yield
+                    ],
                 ));
             }
         };
