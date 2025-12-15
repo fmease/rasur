@@ -44,7 +44,7 @@ pub(crate) struct BindingPat<'src> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ByRef {
-    Yes(Mutability),
+    Yes(BorrowKind<!>, Mutability),
     No,
 }
 

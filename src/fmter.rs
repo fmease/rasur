@@ -226,14 +226,19 @@ impl Fmt for TrailingSpace<ast::Mutability> {
     }
 }
 
-impl<X> Fmt for TrailingSpace<ast::BorrowKind<X>> {
+impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mutability)> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(kind) = self;
+        let Self((kind, mut_)) = self;
 
         match kind {
             ast::BorrowKind::Pin => fmt!(cx, "pin "),
             ast::BorrowKind::Raw(_) => fmt!(cx, "raw "),
             ast::BorrowKind::Ref => {}
+        }
+        mut_.trailing_space().fmt(cx);
+        if let (ast::BorrowKind::Pin | ast::BorrowKind::Raw(_), ast::Mutability::Not) = (kind, mut_)
+        {
+            fmt!(cx, "const ");
         }
     }
 }

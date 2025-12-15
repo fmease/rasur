@@ -18,11 +18,7 @@ impl Fmt for ast::Pat<'_> {
             }
             Self::Borrow(kind, mut_, pat) => {
                 fmt!(cx, "&");
-                kind.trailing_space().fmt(cx);
-                mut_.trailing_space().fmt(cx);
-                if let (ast::BorrowKind::Pin, ast::Mutability::Not) = (kind, mut_) {
-                    fmt!(cx, "const ");
-                }
+                (kind, mut_).trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
             Self::Tuple(pats) => Tup(pats).fmt(cx),
@@ -157,9 +153,9 @@ impl Fmt for TrailingSpace<ast::ByRef> {
         let Self(by_ref) = self;
 
         match by_ref {
-            ast::ByRef::Yes(mut_) => {
+            ast::ByRef::Yes(kind, mut_) => {
                 fmt!(cx, "ref ");
-                mut_.trailing_space().fmt(cx);
+                (kind, mut_).trailing_space().fmt(cx);
             }
             ast::ByRef::No => {}
         }

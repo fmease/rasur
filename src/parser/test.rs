@@ -127,7 +127,7 @@ fn pat_mut_ref_mut() {
         parse_pat("mut ref mut x", Rust2015),
         Ok(ast::Pat::Binding(ast::BindingPat {
             mut_: ast::Mutability::Mut,
-            by_ref: ast::ByRef::Yes(ast::Mutability::Mut),
+            by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
             binder: "x",
             pat: None,
         }))

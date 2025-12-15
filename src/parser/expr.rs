@@ -477,6 +477,7 @@ impl<'src> Parser<'_, 'src> {
         match self.parse_expr_qualifiers()?.as_mut_slice() {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
+                // FIXME: Parse `async use` closures etc.
                 if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
@@ -522,6 +523,7 @@ impl<'src> Parser<'_, 'src> {
                 };
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                // FIXME: Parse "useness" here. *However*, staticness and mode may *not* follow! Tricky
                 (modifiers.staticness, qualifiers) = match qualifiers {
                     [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
                     _ => (ast::Staticness::Not, qualifiers),

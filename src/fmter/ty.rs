@@ -102,11 +102,7 @@ impl Fmt for ast::RefTy<'_> {
             lt.fmt(cx);
             fmt!(cx, " ");
         }
-        kind.trailing_space().fmt(cx);
-        mut_.trailing_space().fmt(cx);
-        if let (ast::BorrowKind::Pin, ast::Mutability::Not) = (kind, mut_) {
-            fmt!(cx, "const ");
-        }
+        (kind, mut_).trailing_space().fmt(cx);
         pointee.fmt(cx);
     }
 }

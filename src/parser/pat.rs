@@ -328,7 +328,8 @@ impl<'src> Parser<'_, 'src> {
 
     fn parse_by_ref(&mut self) -> ast::ByRef {
         if self.consume(TokenKind::Ref) {
-            ast::ByRef::Yes(self.parse_mutability())
+            let (kind, mut_) = self.parse_borrow_kind_and_mutability();
+            ast::ByRef::Yes(kind, mut_)
         } else {
             ast::ByRef::No
         }
