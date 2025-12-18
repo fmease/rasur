@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
     path::GenericArgsMode, weak,
 };
-use crate::ast;
+use crate::{Edition, ast};
 use std::{cmp::Ordering, mem};
 
 impl<'src> Parser<'_, 'src> {
@@ -23,7 +23,10 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
-        self.parse_expr_at_level(Level::Initial, s_policy, l_policy, o_policy)
+        let expr = self.parse_expr_at_level(Level::Initial, s_policy, l_policy, o_policy)?;
+        self.validate_let_chain(&expr, l_policy)?;
+
+        Ok(expr)
     }
 
     pub(super) fn begins_expr(&self) -> bool {
@@ -164,7 +167,7 @@ impl<'src> Parser<'_, 'src> {
             }
             self.advance();
 
-            left = self.fin_parse_op_expr(op, left, s_policy)?;
+            left = self.fin_parse_suffix_op_expr(op, left, s_policy, l_policy)?;
         }
 
         Ok(left)
@@ -211,27 +214,30 @@ impl<'src> Parser<'_, 'src> {
         Ok(ast::ExprKind::UnOp(ast_op, Box::new(right)).into())
     }
 
-    fn fin_parse_op_expr(
+    fn fin_parse_suffix_op_expr(
         &mut self,
         op: Op,
         left: ast::Expr<'src>,
         s_policy: StructPolicy,
+        l_policy: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
+        let right_level = op.right_level();
+
         let ast_op = match op {
             Op::Add => ast::BinOp::Add,
-            Op::AddAssign => ast::BinOp::AddAssign,
+            Op::AddAssign => ast::BinOp::Assign(ast::AssignOp::Add),
             Op::And => ast::BinOp::And,
-            Op::Assign => ast::BinOp::Assign,
+            Op::Assign => ast::BinOp::Assign(ast::AssignOp::Normal),
             Op::BitAnd => ast::BinOp::BitAnd,
-            Op::BitAndAssign => ast::BinOp::BitAndAssign,
+            Op::BitAndAssign => ast::BinOp::Assign(ast::AssignOp::BitAnd),
             Op::BitOr => ast::BinOp::BitOr,
-            Op::BitOrAssign => ast::BinOp::BitOrAssign,
+            Op::BitOrAssign => ast::BinOp::Assign(ast::AssignOp::BitOr),
             Op::BitShiftLeft => ast::BinOp::BitShiftLeft,
-            Op::BitShiftLeftAssign => ast::BinOp::BitShiftLeftAssign,
+            Op::BitShiftLeftAssign => ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
             Op::BitShiftRight => ast::BinOp::BitShiftRight,
-            Op::BitShiftRightAssign => ast::BinOp::BitShiftRightAssign,
+            Op::BitShiftRightAssign => ast::BinOp::Assign(ast::AssignOp::BitShiftRight),
             Op::BitXor => ast::BinOp::BitXor,
-            Op::BitXorAssign => ast::BinOp::BitXorAssign,
+            Op::BitXorAssign => ast::BinOp::Assign(ast::AssignOp::BitXor),
             Op::Call => {
                 let args = self.fin_parse_fn_args()?;
                 return Ok(ast::ExprKind::Call(Box::new(left), args).into());
@@ -241,7 +247,7 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into());
             }
             Op::Div => ast::BinOp::Div,
-            Op::DivAssign => ast::BinOp::DivAssign,
+            Op::DivAssign => ast::BinOp::Assign(ast::AssignOp::Div),
             Op::Eq => ast::BinOp::Eq,
             Op::Project => {
                 return self.fin_parse_projection_expr(left);
@@ -256,37 +262,39 @@ impl<'src> Parser<'_, 'src> {
             Op::Le => ast::BinOp::Le,
             Op::Lt => ast::BinOp::Lt,
             Op::Mul => ast::BinOp::Mul,
-            Op::MulAssign => ast::BinOp::MulAssign,
+            Op::MulAssign => ast::BinOp::Assign(ast::AssignOp::Mul),
             Op::Ne => ast::BinOp::Ne,
             Op::Or => ast::BinOp::Or,
             Op::RangeExclusive => {
                 return self.fin_parse_range_exclusive_expr(
                     Some(Box::new(left)),
-                    op.right_level().unwrap(),
+                    right_level.unwrap(),
                     s_policy,
                 );
             }
             Op::RangeInclusive => {
                 return self.fin_parse_range_inclusive_expr(
                     Some(Box::new(left)),
-                    op.right_level().unwrap(),
+                    right_level.unwrap(),
                     s_policy,
                 );
             }
             Op::Rem => ast::BinOp::Rem,
-            Op::RemAssign => ast::BinOp::RemAssign,
+            Op::RemAssign => ast::BinOp::Assign(ast::AssignOp::Rem),
             Op::Sub => ast::BinOp::Sub,
-            Op::SubAssign => ast::BinOp::SubAssign,
+            Op::SubAssign => ast::BinOp::Assign(ast::AssignOp::Sub),
             Op::Try => return Ok(ast::ExprKind::Try(Box::new(left)).into()),
             _ => unreachable!(),
         };
 
-        let right = self.parse_expr_at_level(
-            op.right_level().unwrap(),
-            s_policy,
-            LetPolicy::Forbidden,
-            OpPolicy::Allowed,
-        )?;
+        let l_policy = match ast_op {
+            ast::BinOp::And => l_policy,
+            _ => LetPolicy::Forbidden,
+        };
+
+        let right =
+            self.parse_expr_at_level(right_level.unwrap(), s_policy, l_policy, OpPolicy::Allowed)?;
+
         Ok(ast::ExprKind::BinOp(ast_op, Box::new(left), Box::new(right)).into())
     }
 
@@ -612,14 +620,19 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_if_expr();
             }
-            TokenKind::Let if let LetPolicy::Allowed = l_policy => {
+            TokenKind::Let
+                if let LetPolicy::Allowed | LetPolicy::AllowedAtTopLevelOnly = l_policy =>
+            {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
                 self.parse(TokenKind::SingleEquals)?;
-                // FIXME: This prolly parses `if let _ = true && true` with wrong precedence.
-                let expr =
-                    self.parse_expr_where(s_policy, LetPolicy::Forbidden, OpPolicy::Allowed)?;
-                return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body: expr })));
+                let body = self.parse_expr_at_level(
+                    Level::AndRight,
+                    s_policy,
+                    LetPolicy::Forbidden,
+                    OpPolicy::Allowed,
+                )?;
+                return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body })));
             }
             TokenKind::Loop => {
                 self.advance();
@@ -899,8 +912,14 @@ impl<'src> Parser<'_, 'src> {
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
+        let l_policy = if self.edition >= Edition::Rust2024 {
+            LetPolicy::Allowed
+        } else {
+            LetPolicy::AllowedAtTopLevelOnly
+        };
+
         let condition =
-            self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed, OpPolicy::Allowed)?;
+            self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
         let consequent = self.parse_block_expr()?;
 
         let alternate = if self.consume(TokenKind::Else) {
@@ -993,11 +1012,58 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         label: Option<ast::Ident<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
+        let l_policy = if self.edition >= Edition::Rust2024 {
+            LetPolicy::Allowed
+        } else {
+            LetPolicy::AllowedAtTopLevelOnly
+        };
+
         let condition =
-            self.parse_expr_where(StructPolicy::Forbidden, LetPolicy::Allowed, OpPolicy::Allowed)?;
+            self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
         let body = self.parse_block_expr()?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
+    }
+
+    fn validate_let_chain(&self, expr: &ast::Expr<'src>, l_policy: LetPolicy) -> Result<()> {
+        if let LetPolicy::Forbidden = l_policy {
+            // The parser fully takes care of this.
+            return Ok(());
+        }
+
+        fn validate(expr: &ast::Expr<'_>, root: bool, l_policy: LetPolicy) -> Result<()> {
+            // We only check the cases that weren't already covered by the parser.
+
+            match &expr.kind {
+                ast::ExprKind::Let(_) => {
+                    if match l_policy {
+                        LetPolicy::Allowed => false,
+                        LetPolicy::AllowedAtTopLevelOnly => !root,
+                        LetPolicy::Forbidden => true,
+                    } {
+                        // FIXME: Fake an UnexpectedToken(Let, ExpectedFragment::Expr) in the
+                        // relevant cases for uniformity with the corresp. parser diagnostic.
+                        return Err(ParseError::InvalidLetChain);
+                    }
+                }
+                ast::ExprKind::BinOp(ast::BinOp::And, left, right) => {
+                    validate(left, false, l_policy)?;
+                    validate(right, false, l_policy)?;
+                }
+                ast::ExprKind::BinOp(ast::BinOp::Or | ast::BinOp::Assign(_), left, right) => {
+                    validate(left, false, LetPolicy::Forbidden)?;
+                    validate(right, false, LetPolicy::Forbidden)?;
+                }
+                ast::ExprKind::Range(Some(left), _right, _) => {
+                    validate(left, false, LetPolicy::Forbidden)?;
+                }
+                _ => {}
+            }
+
+            Ok(())
+        }
+
+        validate(expr, true, l_policy)
     }
 }
 
@@ -1007,9 +1073,11 @@ pub(crate) enum StructPolicy {
     Forbidden,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum LetPolicy {
     Allowed,
+    // FIXME: I'm not really sure about encoding this piece of information here.
+    AllowedAtTopLevelOnly,
     Forbidden,
 }
 
@@ -1133,7 +1201,7 @@ impl Op {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Level {
     Initial,
     AssignRight,

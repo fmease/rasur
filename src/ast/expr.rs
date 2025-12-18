@@ -122,68 +122,81 @@ pub(crate) enum UnOp {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum BinOp {
     Add,
-    AddAssign,
     And,
-    Assign,
+    Assign(AssignOp),
     BitAnd,
-    BitAndAssign,
     BitOr,
-    BitOrAssign,
     BitShiftLeft,
-    BitShiftLeftAssign,
     BitShiftRight,
-    BitShiftRightAssign,
     BitXor,
-    BitXorAssign,
     Div,
-    DivAssign,
     Eq,
     Ge,
     Gt,
     Le,
     Lt,
     Mul,
-    MulAssign,
     Ne,
     Or,
     Rem,
-    RemAssign,
     Sub,
-    SubAssign,
 }
 
 impl BinOp {
     pub(crate) fn symbol(self) -> &'static str {
         match self {
             Self::Add => "+",
-            Self::AddAssign => "+=",
             Self::And => "&&",
-            Self::Assign => "=",
+            Self::Assign(op) => op.symbol(),
             Self::BitAnd => "&",
-            Self::BitAndAssign => "&=",
             Self::BitOr => "|",
-            Self::BitOrAssign => "|=",
             Self::BitShiftLeft => "<<",
-            Self::BitShiftLeftAssign => ">>=",
             Self::BitShiftRight => ">>",
-            Self::BitShiftRightAssign => "<<=",
             Self::BitXor => "^",
-            Self::BitXorAssign => "^=",
             Self::Div => "/",
-            Self::DivAssign => "/=",
             Self::Eq => "==",
             Self::Ge => ">=",
             Self::Gt => ">",
             Self::Le => "<=",
             Self::Lt => "<",
             Self::Mul => "*",
-            Self::MulAssign => "*=",
             Self::Ne => "!=",
             Self::Or => "||",
             Self::Rem => "%",
-            Self::RemAssign => "%=",
             Self::Sub => "-",
-            Self::SubAssign => "-=",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AssignOp {
+    Normal,
+    Add,
+    BitAnd,
+    BitOr,
+    BitShiftLeft,
+    BitShiftRight,
+    BitXor,
+    Div,
+    Mul,
+    Rem,
+    Sub,
+}
+
+impl AssignOp {
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Normal => "=",
+            Self::Add => "+=",
+            Self::BitAnd => "&=",
+            Self::BitOr => "|=",
+            Self::BitShiftLeft => ">>=",
+            Self::BitShiftRight => "<<=",
+            Self::BitXor => "^=",
+            Self::Div => "/=",
+            Self::Mul => "*=",
+            Self::Rem => "%=",
+            Self::Sub => "-=",
         }
     }
 }

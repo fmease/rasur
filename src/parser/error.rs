@@ -31,6 +31,7 @@ pub enum ParseError {
     UnknownBuiltInSyntax,
     UnsafeTraitAlias,
     VisibilityOnInvalidItem,
+    InvalidLetChain,
 }
 
 impl ParseError {
@@ -101,6 +102,7 @@ impl ParseError {
             }
             Self::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
             Self::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
+            Self::InvalidLetChain => Diag::new("invalid let-chain"),
         };
         eprintln!("{}", diag.render(cx));
     }

@@ -44,7 +44,7 @@ impl<'src> Parser<'_, 'src> {
             }
             self.advance();
 
-            left = self.fin_parse_op_pat(op, left, o_policy)?;
+            left = self.fin_parse_suffix_op_pat(op, left, o_policy)?;
         }
 
         Ok(left)
@@ -63,7 +63,7 @@ impl<'src> Parser<'_, 'src> {
         }
     }
 
-    fn fin_parse_op_pat(
+    fn fin_parse_suffix_op_pat(
         &mut self,
         op: Op,
         left: ast::Pat<'src>,
