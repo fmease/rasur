@@ -45,7 +45,7 @@ pub(crate) enum ExprKind<'src> {
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
     Repeat(Box<Expr<'src>>, Box<Expr<'src>>),
     Return(Option<Box<Expr<'src>>>),
-    SpecialBlock(SpecialBlockKind, Box<BlockExpr<'src>>),
+    SpecialBlock(SpecialBlockKind<'src>, Box<BlockExpr<'src>>),
     Struct(Box<StructExpr<'src>>),
     Try(Box<Expr<'src>>),
     Tuple(Vec<Expr<'src>>),
@@ -61,7 +61,7 @@ impl ExprKind<'_> {
     pub(crate) fn is_boundary(&self, extra: CurlyBracketedMacroCallIsBoundary) -> bool {
         match self {
             | Self::Block(..)
-            | Self::SpecialBlock(SpecialBlockKind::Const | SpecialBlockKind::Try | SpecialBlockKind::Unsafe, _)
+            | Self::SpecialBlock(SpecialBlockKind::Const | SpecialBlockKind::Try(_) | SpecialBlockKind::Unsafe, _)
             | Self::If(_)
             | Self::Loop(..)
             | Self::Match(_)
@@ -237,10 +237,10 @@ pub(crate) struct WhileLoopExpr<'src> {
 }
 
 // FIXME: Bad name
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum SpecialBlockKind {
+#[derive(Debug)]
+pub(crate) enum SpecialBlockKind<'src> {
     Const,
-    Try,
+    Try(Option<Box<Ty<'src>>>),
     Unsafe,
 }
 

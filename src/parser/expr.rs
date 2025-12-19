@@ -506,7 +506,7 @@ impl<'src> Parser<'_, 'src> {
                 let kind = match qualifiers {
                     [] => None,
                     [Qualifier::Const] => Some(ast::SpecialBlockKind::Const),
-                    [Qualifier::Try] => Some(ast::SpecialBlockKind::Try),
+                    [Qualifier::Try(ty)] => Some(ast::SpecialBlockKind::Try(mem::take(ty))),
                     [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
                     _ => return Err(ParseError::InvalidExprPrefix(start.until(self.token.span))),
                 };
@@ -819,7 +819,17 @@ impl<'src> Parser<'_, 'src> {
                     break;
                 }
                 TokenKind::Static => Qualifier::Static,
-                TokenKind::Try => Qualifier::Try,
+                TokenKind::Try => {
+                    self.advance();
+                    let ty = if self.is_common_ident(weak::BIKESHED) {
+                        self.advance();
+                        Some(Box::new(self.parse_ty()?))
+                    } else {
+                        None
+                    };
+                    qualifiers.push(Qualifier::Try(ty));
+                    continue;
+                }
                 TokenKind::Unsafe => Qualifier::Unsafe,
                 _ => break,
             };
@@ -1240,7 +1250,7 @@ enum Qualifier<'src> {
     OpenCurlyBracket,
     Pipe,
     Static,
-    Try,
+    Try(Option<Box<ast::Ty<'src>>>),
     Unsafe,
 }
 

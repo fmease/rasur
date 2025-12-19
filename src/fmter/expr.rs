@@ -452,15 +452,21 @@ impl Fmt for ast::ForLoopExpr<'_> {
     }
 }
 
-impl Fmt for TrailingSpace<ast::SpecialBlockKind> {
+impl Fmt for TrailingSpace<ast::SpecialBlockKind<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(kind) = self;
-        let kind = match kind {
-            ast::SpecialBlockKind::Const => "const",
-            ast::SpecialBlockKind::Try => "try",
-            ast::SpecialBlockKind::Unsafe => "unsafe",
-        };
-        fmt!(cx, "{kind} ");
+        match kind {
+            ast::SpecialBlockKind::Const => fmt!(cx, "const"),
+            ast::SpecialBlockKind::Try(ty) => {
+                fmt!(cx, "try");
+                if let Some(ty) = ty {
+                    fmt!(cx, " bikeshed ");
+                    ty.fmt(cx);
+                }
+            }
+            ast::SpecialBlockKind::Unsafe => fmt!(cx, "unsafe"),
+        }
+        fmt!(cx, " ");
     }
 }
 

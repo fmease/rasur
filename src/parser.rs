@@ -473,6 +473,7 @@ macro PathSegIdent() {
 /// Weak keywords.
 mod weak {
     pub(super) const AUTO: &str = "auto";
+    pub(super) const BIKESHED: &str = "bikeshed";
     pub(super) const BUILTIN: &str = "builtin";
     pub(super) const DEFAULT: &str = "default";
     pub(super) const DYN: &str = "dyn"; // in Rust 2015
