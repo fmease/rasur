@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Ty<'_> {
@@ -75,7 +75,7 @@ impl Fmt for ast::FnPtrTy<'_> {
         modifiers.trailing_space().fmt(cx);
 
         fmt!(cx, "fn(");
-        Punctuated::new(inputs, ", ").fmt(cx);
+        inputs.interleave(", ").fmt(cx);
         fmt!(cx, ")");
         if let Some(output) = output {
             fmt!(cx, " -> ");
@@ -128,7 +128,7 @@ impl Fmt for ast::Generics<'_> {
 impl Fmt for Vec<ast::GenericParam<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "<");
-        Punctuated::new(self, ", ").fmt(cx);
+        self.interleave(", ").fmt(cx);
         fmt!(cx, ">");
     }
 }
@@ -166,7 +166,7 @@ impl Fmt for ast::GenericParam<'_> {
                 ast::Lifetime(binder).fmt(cx);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
-                    Punctuated::new(bounds, " + ").fmt(cx);
+                    bounds.interleave(" + ").fmt(cx);
                 }
             }
         }
@@ -179,7 +179,7 @@ impl Fmt for Vec<ast::Predicate<'_>> {
             return;
         }
         fmt!(cx, " where ");
-        Punctuated::new(self, ", ").fmt(cx);
+        self.interleave(", ").fmt(cx);
     }
 }
 
@@ -219,7 +219,7 @@ impl Fmt for ast::PredicateKind<'_> {
                 if !bounds.is_empty() {
                     fmt!(cx, " ");
                 }
-                Punctuated::new(bounds, " + ").fmt(cx);
+                bounds.interleave(" + ").fmt(cx);
             }
             Self::Equality(lhs, rhs) => {
                 lhs.fmt(cx);
@@ -232,7 +232,7 @@ impl Fmt for ast::PredicateKind<'_> {
 
 impl Fmt for Vec<ast::Bound<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        Punctuated::new(self, " + ").fmt(cx);
+        self.interleave(" + ").fmt(cx);
     }
 }
 

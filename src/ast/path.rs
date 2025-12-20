@@ -1,8 +1,8 @@
 use super::{Bound, Expr, Lifetime, Ty};
+use std::fmt;
 
-#[derive(Debug)]
 pub(crate) struct Path<'src, M: GenericArgsMode> {
-    // Invariant: Has to be non-empty!
+    // INVARIANT: Has to be non-empty!
     pub(crate) segs: Vec<PathSeg<'src, M>>,
 }
 
@@ -12,7 +12,14 @@ impl<'src, M: GenericArgsMode> Path<'src, M> {
     }
 }
 
-#[derive(Debug)]
+impl<'src, M: GenericArgsMode> fmt::Debug for Path<'src, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { segs } = self;
+
+        f.debug_struct("Path").field("segs", segs).finish()
+    }
+}
+
 pub(crate) struct PathSeg<'src, M: GenericArgsMode> {
     pub(crate) ident: Ident<'src>,
     pub(crate) args: M::Args<'src>,
@@ -24,10 +31,17 @@ impl<'src, M: GenericArgsMode> PathSeg<'src, M> {
     }
 }
 
+impl<'src, M: GenericArgsMode> fmt::Debug for PathSeg<'src, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { ident, args } = self;
+
+        f.debug_struct("PathSeg").field("ident", ident).field("args", args).finish()
+    }
+}
+
 // FIXME: Create newtype for idents!
 pub(crate) type Ident<'src> = &'src str;
 
-#[derive(Debug)]
 pub(crate) struct ExtPath<'src, S: GenericArgsStyle> {
     pub(crate) ext: Option<PathExt<'src>>,
     pub(crate) path: Path<'src, S>,
@@ -36,6 +50,14 @@ pub(crate) struct ExtPath<'src, S: GenericArgsStyle> {
 impl<'src, S: GenericArgsStyle> ExtPath<'src, S> {
     pub(crate) fn ident(ident: Ident<'src>) -> Self {
         Self { ext: None, path: Path::ident(ident) }
+    }
+}
+
+impl<'src, S: GenericArgsStyle> fmt::Debug for ExtPath<'src, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { ext, path } = self;
+
+        f.debug_struct("ExtPath").field("ext", ext).field("path", path).finish()
     }
 }
 
@@ -99,15 +121,12 @@ pub(crate) enum Term<'src> {
     Const(Expr<'src>),
 }
 
-#[derive(Debug)]
 pub(crate) enum NoGenericArgs {}
-#[derive(Debug)]
 pub(crate) enum UnambiguousGenericArgs {}
-#[derive(Debug)]
 pub(crate) enum ObligatorilyDisambiguatedGenericArgs {}
 
 pub(crate) trait GenericArgsMode {
-    type Args<'src>: Default + std::fmt::Debug;
+    type Args<'src>: Default + fmt::Debug;
 }
 
 impl GenericArgsMode for NoGenericArgs {

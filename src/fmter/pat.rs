@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 // FIXME: Don't print unnecessary parens & properly respect precedence.
@@ -50,7 +50,7 @@ impl Fmt for ast::Pat<'_> {
             }
             Self::Slice(elems) => {
                 fmt!(cx, "[");
-                Punctuated::new(elems, ", ").fmt(cx);
+                elems.interleave(", ").fmt(cx);
                 fmt!(cx, "]");
             }
             Self::Never => fmt!(cx, "!"),
@@ -79,7 +79,7 @@ impl Fmt for ast::TupleStructPat<'_> {
 
         path.fmt(cx);
         fmt!(cx, "(");
-        Punctuated::new(fields, ", ").fmt(cx);
+        fields.interleave(", ").fmt(cx);
         fmt!(cx, ")");
     }
 }
@@ -94,7 +94,7 @@ impl Fmt for ast::StructPat<'_> {
         if non_empty {
             fmt!(cx, " ");
         }
-        Punctuated::new(fields, ", ").fmt(cx);
+        fields.interleave(", ").fmt(cx);
         if rest {
             if non_empty {
                 fmt!(cx, ", ");

@@ -307,7 +307,11 @@ impl<'src> Parser<'_, 'src> {
             TokenKind::CommonIdent => false,
             TokenKind::Match => {
                 self.advance();
-                return self.fin_parse_match_expr(left, ast::MatchKind::Postfix).map(Into::into);
+                // FIXME: Don't send inner attrs down the drain! Requires patching up
+                //        expr attr parsing (more specifically *where* we parse them)!
+                return self
+                    .fin_parse_match_expr(left, ast::MatchKind::Postfix, &mut Vec::new())
+                    .map(Into::into);
             }
             TokenKind::NumLit => true,
             TokenKind::Use => {
@@ -435,8 +439,9 @@ impl<'src> Parser<'_, 'src> {
         s_policy: StructPolicy,
         l_policy: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        let kind = self.parse_lower_expr_kind(s_policy, l_policy)?;
+        // FIXME: This isn't the right place for parsing attrs I'm certain.
+        let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        let kind = self.parse_lower_expr_kind(s_policy, l_policy, &mut attrs)?;
         Ok(ast::Expr { attrs, kind })
     }
 
@@ -445,6 +450,7 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         s_policy: StructPolicy,
         l_policy: LetPolicy,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         if let label @ Some(_) = self.parse_label()? {
             self.parse(TokenKind::SingleColon)?;
@@ -647,7 +653,7 @@ impl<'src> Parser<'_, 'src> {
                     OpPolicy::Allowed,
                 )?;
 
-                return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix);
+                return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix, attrs);
             }
             TokenKind::NumLit => {
                 let lit = self.source(self.token.span);
@@ -970,11 +976,11 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         scrutinee: ast::Expr<'src>,
         kind: ast::MatchKind,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
 
-        // FIXME: Don't drop these, merge them with the own outer attrs.
-        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+        self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
 
         let mut arms = Vec::new();
         const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;

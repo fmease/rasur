@@ -11,19 +11,31 @@ impl<'src> Parser<'_, 'src> {
     /// Bang⟨Outer⟩ ::= ""
     /// Bang⟨Inner⟩ ::= "!"
     /// ```
+    // FIXME: Get rid of this in favor of `parse_inner_attrs` & `parse_outer_attrs`
+    //        which return type-safe Attrs (i.e., M!=Any)
     pub(super) fn parse_attrs(&mut self, style: ast::AttrStyle) -> Result<Vec<ast::Attr<'src>>> {
         // NOTE: To be kept in sync with `Self::begins_outer_attr`.
-        // FIXME: Parse doc comments.
 
         let mut attrs = Vec::new();
+        self.parse_attrs_into(style, &mut attrs)?;
+        Ok(attrs)
+    }
 
-        while self.token.kind == TokenKind::Hash {
+    pub(super) fn parse_attrs_into(
+        &mut self,
+        style: ast::AttrStyle,
+        attrs: &mut Vec<ast::Attr<'src>>,
+    ) -> Result<()> {
+        // NOTE: To be kept in sync with `Self::begins_outer_attr`.
+
+        // FIXME: Parse doc comments.
+        while let TokenKind::Hash = self.token.kind {
             match style {
                 ast::AttrStyle::Outer => self.advance(),
-                // We don't expect(Bang) here because the caller may want to
+                // We don't *expect* a bang here because the caller may want to
                 // parse outer attributes next.
                 ast::AttrStyle::Inner => {
-                    if self.look_ahead(1, |token| token.kind == TokenKind::SingleBang) {
+                    if self.look_ahead(1, |t| t.kind == TokenKind::SingleBang) {
                         self.advance();
                         self.advance();
                     } else {
@@ -34,7 +46,7 @@ impl<'src> Parser<'_, 'src> {
             attrs.push(self.fin_parse_attr(style)?);
         }
 
-        Ok(attrs)
+        Ok(())
     }
 
     pub(super) fn begins_outer_attr(&self) -> bool {

@@ -62,12 +62,7 @@ impl<'src> Cx<'src> {
         self.indent -= self.cfg.indent;
     }
 
-    fn line_break(&mut self) {
-        self.output.push('\n');
-        _ = self.output.write_fmt(format_args!("{0:1$}", "", self.indent));
-    }
-
-    fn skip(&self, attrs: &[ast::Attr<'_>]) -> bool {
+    fn skip<M: ast::AttrMode>(&self, attrs: &[ast::Attr<'_, M>]) -> bool {
         if let SkipMarker::None = self.cfg.skip_marker {
             return false;
         }
@@ -102,22 +97,28 @@ impl Fmt for ast::File<'_> {
             return;
         }
 
-        if !attrs.is_empty() {
-            for attr in attrs {
-                attr.fmt(cx);
-                cx.line_break();
-            }
-            cx.line_break();
+        let non_empty_attrs = !attrs.is_empty();
+        attrs.interleave(LineBreak).fmt(cx);
+        if non_empty_attrs && !items.is_empty() {
+            LineBreak.fmt(cx);
         }
-
-        for item in items {
-            item.fmt(cx);
-            cx.line_break();
-        }
+        items.interleave(LineBreak).fmt(cx);
     }
 }
 
-impl Fmt for ast::Attr<'_> {
+impl Fmt for ast::Attr<'_, ast::attr::Outer> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.upcast().fmt(cx);
+    }
+}
+
+impl Fmt for ast::Attr<'_, ast::attr::Inner> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.upcast().fmt(cx);
+    }
+}
+
+impl Fmt for ast::Attr<'_, ast::attr::Any> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { style, safety, path, kind } = self;
 
@@ -168,9 +169,9 @@ impl Fmt for ast::Lit<'_> {
 }
 
 impl Fmt for ast::TokenStream {
-    // FIXME: Actually just print as is for now
     fn fmt(self, cx: &mut Cx<'_>) {
-        Punctuated::new(self, " ").fmt(cx);
+        // FIXME: Actually just print the source temporarily.
+        self.interleave(" ").fmt(cx);
     }
 }
 
@@ -243,6 +244,56 @@ impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mutability)> {
     }
 }
 
+struct Cluster<'src, T> {
+    attrs: Vec<ast::Attr<'src, ast::attr::Inner>>,
+    nodes: Vec<T>,
+}
+
+impl<T: Fmt> Fmt for Cluster<'_, T> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        // FIXME: Honor fmt skips here or check if all callers do!
+
+        let Self { attrs, nodes } = self;
+
+        let non_empty = !attrs.is_empty() || !nodes.is_empty();
+
+        fmt!(cx, "{{");
+        if non_empty {
+            cx.indent();
+            LineBreak.fmt(cx);
+        }
+
+        let non_empty_attrs = !attrs.is_empty();
+        attrs.interleave(LineBreak).fmt(cx);
+        if non_empty_attrs && !nodes.is_empty() {
+            LineBreak.fmt(cx);
+        }
+        nodes.interleave(LineBreak).fmt(cx);
+
+        if non_empty {
+            cx.dedent();
+            LineBreak.fmt(cx);
+        }
+        fmt!(cx, "}}");
+    }
+}
+
+#[derive(Clone, Copy)]
+struct LineBreak;
+
+impl Fmt for LineBreak {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        cx.output.push('\n');
+        _ = cx.output.write_fmt(format_args!("{0:1$}", "", cx.indent));
+    }
+}
+
+impl Fmt for &'static str {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "{self}");
+    }
+}
+
 struct TrailingSpace<T>(T);
 
 trait TrailingSpaceExt: Sized {
@@ -253,30 +304,37 @@ trait TrailingSpaceExt: Sized {
 
 impl<T> TrailingSpaceExt for T {}
 
-struct Punctuated<T> {
-    nodes: Vec<T>,
-    sep: &'static str,
+struct Interleave<Nodes, Sep> {
+    nodes: Nodes,
+    sep: Sep,
 }
 
-impl<T> Punctuated<T> {
-    fn new(nodes: Vec<T>, sep: &'static str) -> Self {
-        Self { nodes, sep }
-    }
-}
-
-impl<T: Fmt> Fmt for Punctuated<T> {
+impl<Node, Sep> Fmt for Interleave<Node, Sep>
+where
+    Node: IntoIterator<Item: Fmt>,
+    Sep: Fmt + Copy,
+{
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { nodes, sep } = self;
+
         let mut nodes = nodes.into_iter();
         if let Some(node) = nodes.next() {
             node.fmt(cx);
         }
         for node in nodes {
-            fmt!(cx, "{sep}");
+            sep.fmt(cx);
             node.fmt(cx);
         }
     }
 }
+
+trait InterleaveExt: Sized {
+    fn interleave<Sep>(self, sep: Sep) -> Interleave<Self, Sep> {
+        Interleave { nodes: self, sep }
+    }
+}
+
+impl<T> InterleaveExt for T {}
 
 struct Tup<T>(Vec<T>);
 

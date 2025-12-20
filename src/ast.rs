@@ -5,10 +5,11 @@ pub(crate) use expr::*;
 pub(crate) use item::*;
 pub(crate) use pat::*;
 pub(crate) use path::*;
+use std::fmt;
 pub(crate) use stmt::*;
 pub(crate) use ty::*;
 
-mod attr;
+pub(crate) mod attr;
 mod expr;
 mod item;
 mod pat;
@@ -23,11 +24,22 @@ pub struct File<'src> {
     pub(crate) span: Span,
 }
 
-#[derive(Debug)]
 pub(crate) struct MacroCall<'src, M: GenericArgsMode> {
     pub(crate) path: Path<'src, M>,
     pub(crate) bracket: Bracket,
     pub(crate) stream: TokenStream,
+}
+
+impl<'src, M: GenericArgsMode> fmt::Debug for MacroCall<'src, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { path, bracket, stream } = self;
+
+        f.debug_struct("MacroCall")
+            .field("path", path)
+            .field("bracket", bracket)
+            .field("stream", stream)
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

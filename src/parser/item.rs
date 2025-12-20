@@ -36,7 +36,7 @@ impl<'src> Parser<'_, 'src> {
 
         let start = self.token.span;
 
-        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let vis = self.parse_visibility()?;
 
         let defaultness =
@@ -47,7 +47,7 @@ impl<'src> Parser<'_, 'src> {
                 ast::Defaultness::Final
             };
 
-        let kind = self.parse_item_kind(defaultness, cx)?;
+        let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
             return Err(ParseError::VisibilityOnInvalidItem);
@@ -121,6 +121,7 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         defaultness: ast::Defaultness,
         cx: ItemCx,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_final_non_macro_call_item`.
 
@@ -143,7 +144,7 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_mod_item(safety);
+                return self.fin_parse_mod_item(safety, attrs);
             }
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
@@ -186,7 +187,7 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_trait_item(modifiers);
+                return self.fin_parse_trait_item(modifiers, attrs);
             }
             [qualifiers @ .., Qualifier::Impl] => {
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
@@ -195,7 +196,7 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(defaultness, constness, safety);
+                return self.fin_parse_impl_item(defaultness, constness, safety, attrs);
             }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -203,7 +204,7 @@ impl<'src> Parser<'_, 'src> {
                     return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_extern_block_item(safety, *abi);
+                return self.fin_parse_extern_block_item(safety, *abi, attrs);
             }
             _ => {
                 return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
@@ -443,10 +444,10 @@ impl<'src> Parser<'_, 'src> {
         &mut self,
         safety: ast::Safety,
         abi: Option<&'src str>,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
-        // FIXME: Merge with outer attrs.
-        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+        self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
         let items = self
             .parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?
             .into_iter()
@@ -541,6 +542,7 @@ impl<'src> Parser<'_, 'src> {
         defaultness: ast::Defaultness,
         constness: ast::Constness,
         safety: ast::Safety,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let params = if self.pick_generic_param_list_over_ext_path(0) {
             self.parse_generic_param_list()?
@@ -583,7 +585,7 @@ impl<'src> Parser<'_, 'src> {
         };
 
         let preds = self.parse_where_clause()?;
-        let items = self.parse_delimited_assoc_items(ItemCx::Boring)?;
+        let body = self.parse_delimited_assoc_items(ItemCx::Boring, attrs)?;
 
         let trait_ref = match trait_ref {
             Some(path) => Some(ast::ImplTraitRef { defaultness, safety, polarity, path }),
@@ -611,7 +613,7 @@ impl<'src> Parser<'_, 'src> {
             constness,
             trait_ref,
             self_ty,
-            body: items,
+            body,
         })))
     }
 
@@ -647,11 +649,14 @@ impl<'src> Parser<'_, 'src> {
     /// ```grammar
     /// Mod_Item ::= "unsafe"? "mod" Common_Ident ("{" … "}" | ";")
     /// ```
-    fn fin_parse_mod_item(&mut self, safety: ast::Safety) -> Result<ast::ItemKind<'src>> {
+    fn fin_parse_mod_item(
+        &mut self,
+        safety: ast::Safety,
+        attrs: &mut Vec<ast::Attr<'src>>,
+    ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let items = if self.consume(TokenKind::OpenCurlyBracket) {
-            // FIXME: Merge with outer attrs.
-            let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+            self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
             Some(self.parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?)
         } else {
             // FIXME: Should this really be inside parse_fn or rather inside parse_item?
@@ -709,10 +714,10 @@ impl<'src> Parser<'_, 'src> {
     ///     Where_Clause?
     ///     "{" … "}"
     /// ```
-    // FIXME: Take a different kind of safety, on that's boolean, not a tristate (explicit "safe" trait is impossible)
     fn fin_parse_trait_item(
         &mut self,
         modifiers: ast::TraitItemModifiers,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?;
@@ -725,14 +730,14 @@ impl<'src> Parser<'_, 'src> {
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
         let preds = self.parse_where_clause()?;
 
-        let items = self.parse_delimited_assoc_items(ItemCx::Trait)?;
+        let body = self.parse_delimited_assoc_items(ItemCx::Trait, attrs)?;
 
         Ok(ast::ItemKind::Trait(Box::new(ast::TraitItem {
             modifiers,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
-            body: items,
+            body,
         })))
     }
 
@@ -868,10 +873,13 @@ impl<'src> Parser<'_, 'src> {
         })
     }
 
-    fn parse_delimited_assoc_items(&mut self, cx: ItemCx) -> Result<Vec<ast::AssocItem<'src>>> {
+    fn parse_delimited_assoc_items(
+        &mut self,
+        cx: ItemCx,
+        attrs: &mut Vec<ast::Attr<'src>>,
+    ) -> Result<Vec<ast::AssocItem<'src>>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
-        // FIXME: Merge with outer attrs
-        let _attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+        self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
         self.parse_items(cx, TokenKind::CloseCurlyBracket)?
             .into_iter()
             .map(|item| {

@@ -14,6 +14,7 @@
 #![feature(negative_impls)]
 #![feature(never_type)]
 #![feature(super_let)]
+#![feature(type_changing_struct_update)]
 // Lints
 #![expect(incomplete_features, reason = "deref_patterns")]
 #![deny(unused_must_use, rust_2018_idioms)]

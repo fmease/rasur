@@ -1,59 +1,65 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
-use crate::ast;
+use super::{
+    Cluster, Cx, Fmt, InterleaveExt as _, LineBreak, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
+};
+use crate::ast::{self, AttrsExt as _};
 
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, kind } = self;
 
-        // FIXME: Scan for & respect skip attr.
+        let (outer_attrs, inner_attrs) = attrs.partition();
 
-        for attr in attrs {
+        // FIXME: Honor skip attrs (requires expr span)!
+        for attr in outer_attrs {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
 
-        kind.fmt(cx);
+        (kind, inner_attrs).fmt(cx);
     }
 }
 
 // FIXME: Don't render unnecessary parentheses!
-impl Fmt for ast::ExprKind<'_> {
+impl Fmt for (ast::ExprKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self {
-            Self::Ascription(expr, ty) => {
+        // FIXME: Assert inner attrs for most expr kinds.
+        let (expr, attrs) = self;
+
+        match expr {
+            ast::ExprKind::Ascription(expr, ty) => {
                 fmt!(cx, "builtin # type_ascribe(");
                 expr.fmt(cx);
                 fmt!(cx, ", ");
                 ty.fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Await(expr) => {
+            ast::ExprKind::Await(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ").await");
             }
-            Self::Become(expr) => {
+            ast::ExprKind::Become(expr) => {
                 fmt!(cx, "become ");
                 expr.fmt(cx);
             }
-            Self::UnOp(op, expr) => {
+            ast::ExprKind::UnOp(op, expr) => {
                 fmt!(cx, "{}(", op.symbol());
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Cast(expr, ty) => {
+            ast::ExprKind::Cast(expr, ty) => {
                 expr.fmt(cx);
                 fmt!(cx, " as ");
                 ty.fmt(cx);
             }
-            Self::BinOp(op, left, right) => {
+            ast::ExprKind::BinOp(op, left, right) => {
                 fmt!(cx, "(");
                 left.fmt(cx);
                 fmt!(cx, ") {} (", op.symbol());
                 right.fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Range(left, right, kind) => {
+            ast::ExprKind::Range(left, right, kind) => {
                 if let Some(left) = left {
                     fmt!(cx, "(");
                     left.fmt(cx);
@@ -70,14 +76,14 @@ impl Fmt for ast::ExprKind<'_> {
                     fmt!(cx, ")");
                 }
             }
-            Self::Wildcard => fmt!(cx, "_"),
-            Self::Continue(label) => {
+            ast::ExprKind::Wildcard => fmt!(cx, "_"),
+            ast::ExprKind::Continue(label) => {
                 fmt!(cx, "continue");
                 if let Some(label) = label {
                     fmt!(cx, " {label}");
                 }
             }
-            Self::Break(label, expr) => {
+            ast::ExprKind::Break(label, expr) => {
                 fmt!(cx, "break");
                 if let Some(label) = label {
                     fmt!(cx, " {label}");
@@ -87,115 +93,115 @@ impl Fmt for ast::ExprKind<'_> {
                     expr.fmt(cx);
                 }
             }
-            Self::Return(expr) => {
+            ast::ExprKind::Return(expr) => {
                 fmt!(cx, "return");
                 if let Some(expr) = expr {
                     fmt!(cx, " ");
                     expr.fmt(cx);
                 }
             }
-            Self::If(expr) => expr.fmt(cx),
-            Self::Loop(label, body) => {
+            ast::ExprKind::If(expr) => expr.fmt(cx),
+            ast::ExprKind::Loop(label, body) => {
                 if let Some(label) = label {
                     fmt!(cx, "{label}: ");
                 }
                 fmt!(cx, "loop ");
                 body.fmt(cx);
             }
-            Self::Match(expr) => expr.fmt(cx),
-            Self::WhileLoop(expr) => expr.fmt(cx),
-            Self::Let(expr) => expr.fmt(cx),
-            Self::Lit(lit) => lit.fmt(cx),
-            Self::Borrow(kind, mut_, expr) => {
+            ast::ExprKind::Match(expr) => (*expr, attrs).fmt(cx),
+            ast::ExprKind::WhileLoop(expr) => expr.fmt(cx),
+            ast::ExprKind::Let(expr) => expr.fmt(cx),
+            ast::ExprKind::Lit(lit) => lit.fmt(cx),
+            ast::ExprKind::Borrow(kind, mut_, expr) => {
                 fmt!(cx, "&");
                 (kind, mut_).trailing_space().fmt(cx);
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Try(expr) => {
+            ast::ExprKind::Try(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")?");
             }
-            Self::Field(expr, field) => {
+            ast::ExprKind::Field(expr, field) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ").{field}");
             }
-            Self::Call(expr, args) => {
+            ast::ExprKind::Call(expr, args) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")(");
-                Punctuated::new(args, ", ").fmt(cx);
+                args.interleave(", ").fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::MethodCall(call) => call.fmt(cx),
-            Self::Index(expr, index) => {
+            ast::ExprKind::MethodCall(call) => call.fmt(cx),
+            ast::ExprKind::Index(expr, index) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")[");
                 index.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Block(label, block) => {
+            ast::ExprKind::Block(label, block) => {
                 if let Some(label) = label {
                     fmt!(cx, "{label}: ");
                 }
                 block.fmt(cx);
             }
-            Self::GenBlock(kind, mode, block) => {
+            ast::ExprKind::GenBlock(kind, mode, block) => {
                 kind.trailing_space().fmt(cx);
                 mode.trailing_space().fmt(cx);
                 block.fmt(cx);
             }
-            Self::SpecialBlock(kind, block) => {
+            ast::ExprKind::SpecialBlock(kind, block) => {
                 kind.trailing_space().fmt(cx);
                 block.fmt(cx);
             }
-            Self::Closure(expr) => expr.fmt(cx),
-            Self::ForLoop(expr) => expr.fmt(cx),
-            Self::Tuple(exprs) => Tup(exprs).fmt(cx),
-            Self::Array(elems) => {
+            ast::ExprKind::Closure(expr) => expr.fmt(cx),
+            ast::ExprKind::ForLoop(expr) => expr.fmt(cx),
+            ast::ExprKind::Tuple(exprs) => Tup(exprs).fmt(cx),
+            ast::ExprKind::Array(elems) => {
                 fmt!(cx, "[");
-                Punctuated::new(elems, ", ").fmt(cx);
+                elems.interleave(", ").fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Repeat(elem, count) => {
+            ast::ExprKind::Repeat(elem, count) => {
                 fmt!(cx, "[");
                 elem.fmt(cx);
                 fmt!(cx, "; ");
                 count.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Grouped(expr) => {
+            ast::ExprKind::Grouped(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ")");
             }
-            Self::Path(path) => path.fmt(cx),
-            Self::MacroCall(call) => call.fmt(cx),
-            Self::Struct(expr) => expr.fmt(cx),
-            Self::Use(expr) => {
+            ast::ExprKind::Path(path) => path.fmt(cx),
+            ast::ExprKind::MacroCall(call) => call.fmt(cx),
+            ast::ExprKind::Struct(expr) => expr.fmt(cx),
+            ast::ExprKind::Use(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ").use");
             }
-            Self::Yeet(expr) => {
+            ast::ExprKind::Yeet(expr) => {
                 fmt!(cx, "do yeet");
                 if let Some(expr) = expr {
                     fmt!(cx, " ");
                     expr.fmt(cx);
                 }
             }
-            Self::Yield(ast::YieldExpr::Prefix(expr)) => {
+            ast::ExprKind::Yield(ast::YieldExpr::Prefix(expr)) => {
                 fmt!(cx, "yield");
                 if let Some(expr) = expr {
                     fmt!(cx, " ");
                     expr.fmt(cx);
                 }
             }
-            Self::Yield(ast::YieldExpr::Postfix(expr)) => {
+            ast::ExprKind::Yield(ast::YieldExpr::Postfix(expr)) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
                 fmt!(cx, ").yield");
@@ -229,9 +235,10 @@ impl Fmt for ast::IfExpr<'_> {
     }
 }
 
-impl Fmt for ast::MatchExpr<'_> {
+impl Fmt for (ast::MatchExpr<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { kind, scrutinee, arms } = self;
+        let (expr, attrs) = self;
+        let ast::MatchExpr { kind, scrutinee, arms } = expr;
 
         match kind {
             ast::MatchKind::Prefix => fmt!(cx, "match "),
@@ -243,27 +250,8 @@ impl Fmt for ast::MatchExpr<'_> {
             ast::MatchKind::Postfix => fmt!(cx, ".match"),
         }
 
-        fmt!(cx, " {{");
-        if !arms.is_empty() {
-            cx.indent();
-            cx.line_break();
-            let mut arms = arms.into_iter().peekable();
-            while let Some(arm) = arms.next() {
-                let needs_comma = !arm.body.as_ref().is_some_and(|body| {
-                    body.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::No)
-                });
-                arm.fmt(cx);
-                if needs_comma {
-                    fmt!(cx, ",");
-                }
-                if arms.peek().is_some() {
-                    cx.line_break();
-                }
-            }
-            cx.dedent();
-            cx.line_break();
-        }
-        fmt!(cx, "}}");
+        fmt!(cx, " ");
+        Cluster { attrs, nodes: arms }.fmt(cx);
     }
 }
 
@@ -271,10 +259,15 @@ impl Fmt for ast::MatchArm<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, pat, guard, body } = self;
 
+        let needs_comma = body
+            .as_ref()
+            .is_none_or(|body| !body.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::No));
+
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
+
         pat.fmt(cx);
         if let Some(guard) = guard {
             fmt!(cx, " if ");
@@ -283,6 +276,9 @@ impl Fmt for ast::MatchArm<'_> {
         if let Some(body) = body {
             fmt!(cx, " => ");
             body.fmt(cx);
+        }
+        if needs_comma {
+            fmt!(cx, ",");
         }
     }
 }
@@ -309,7 +305,7 @@ impl Fmt for ast::StructExpr<'_> {
 
         path.fmt(cx);
         fmt!(cx, " {{ ");
-        Punctuated::new(fields, ", ").fmt(cx);
+        fields.interleave(", ").fmt(cx);
         if let Some(base) = base {
             if non_empty {
                 fmt!(cx, ", ");
@@ -348,7 +344,7 @@ impl Fmt for ast::MethodCallExpr<'_> {
         fmt!(cx, ").");
         seg.fmt(cx);
         fmt!(cx, "(");
-        Punctuated::new(args, ", ").fmt(cx);
+        args.interleave(", ").fmt(cx);
         fmt!(cx, ")");
     }
 }
@@ -366,7 +362,7 @@ impl Fmt for ast::ClosureExpr<'_> {
         modifiers.trailing_space().fmt(cx);
 
         fmt!(cx, "|");
-        Punctuated::new(params, ", ").fmt(cx);
+        params.interleave(", ").fmt(cx);
         fmt!(cx, "|");
 
         if let Some(ty) = ret_ty {
@@ -489,10 +485,10 @@ impl Fmt for ast::BlockExpr<'_> {
         fmt!(cx, "{{");
         if !attrs.is_empty() || !stmts.is_empty() {
             cx.indent();
-            cx.line_break();
+            LineBreak.fmt(cx);
             for attr in attrs {
                 attr.fmt(cx);
-                cx.line_break();
+                LineBreak.fmt(cx);
             }
             let mut stmts = stmts.into_iter().peekable();
             while let Some(stmt) = stmts.next() {
@@ -501,11 +497,11 @@ impl Fmt for ast::BlockExpr<'_> {
                 }
                 stmt.fmt(cx);
                 if stmts.peek().is_some() {
-                    cx.line_break();
+                    LineBreak.fmt(cx);
                 }
             }
             cx.dedent();
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
         fmt!(cx, "}}");
     }

@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, fmt};
+use super::{Cx, Fmt, LineBreak, fmt};
 use crate::ast;
 
 impl Fmt for ast::Stmt<'_> {
@@ -25,7 +25,7 @@ impl Fmt for ast::LetStmt<'_> {
         // FIXME: Scan for & respect skip attr.
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         match superness {

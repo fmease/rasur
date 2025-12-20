@@ -1,10 +1,11 @@
-use super::{Cx, Fmt, Punctuated, fmt};
+use super::{Cx, Fmt, InterleaveExt as _, fmt};
 use crate::ast;
 
 impl<M: GenericArgsMode> Fmt for ast::Path<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { segs } = self;
-        Punctuated::new(segs, "::").fmt(cx);
+
+        segs.interleave("::").fmt(cx);
     }
 }
 
@@ -79,7 +80,7 @@ impl Fmt for ast::GenericArgs<'_> {
             Self::Angle(args) => args.fmt(cx),
             Self::Paren { inputs, output } => {
                 fmt!(cx, "(");
-                Punctuated::new(inputs, ", ").fmt(cx);
+                inputs.interleave(", ").fmt(cx);
                 fmt!(cx, ")");
                 if let Some(output) = output {
                     fmt!(cx, " -> ");
@@ -94,7 +95,7 @@ impl Fmt for ast::GenericArgs<'_> {
 impl Fmt for Vec<ast::AngleGenericArg<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "<");
-        Punctuated::new(self, ", ").fmt(cx);
+        self.interleave(", ").fmt(cx);
         fmt!(cx, ">");
     }
 }

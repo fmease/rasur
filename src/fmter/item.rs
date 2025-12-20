@@ -1,33 +1,45 @@
-use super::{Cx, Fmt, Punctuated, TrailingSpace, TrailingSpaceExt as _, fmt};
-use crate::ast;
+use super::{
+    Cluster, Cx, Fmt, InterleaveExt as _, LineBreak, TrailingSpace, TrailingSpaceExt as _, fmt,
+};
+use crate::ast::{self, AttrsExt as _};
 use std::mem;
 
 impl Fmt for ast::Item<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        let (outer_attrs, inner_attrs) = attrs.partition();
+
+        if cx.skip(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in attrs {
+        for attr in outer_attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         vis.trailing_space().fmt(cx);
+        (kind, inner_attrs).fmt(cx);
+    }
+}
 
-        match kind {
+impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        // FIXME: Assert inner attrs is empty for most item kinds.
+        let (item, attrs) = self;
+
+        match item {
             ast::ItemKind::Const(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
-            ast::ItemKind::ExternBlock(item) => item.fmt(cx),
+            ast::ItemKind::ExternBlock(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::ExternCrate(item) => item.fmt(cx),
             ast::ItemKind::Fn(item) => item.fmt(cx),
-            ast::ItemKind::Impl(item) => item.fmt(cx),
-            ast::ItemKind::Mod(item) => item.fmt(cx),
+            ast::ItemKind::Impl(item) => (*item, attrs).fmt(cx),
+            ast::ItemKind::Mod(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::Static(item) => item.fmt(cx),
             ast::ItemKind::Struct(item) => item.fmt(cx),
-            ast::ItemKind::Trait(item) => item.fmt(cx),
+            ast::ItemKind::Trait(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::TraitAlias(item) => item.fmt(cx),
             ast::ItemKind::TyAlias(item) => item.fmt(cx),
             ast::ItemKind::Union(item) => item.fmt(cx),
@@ -74,17 +86,17 @@ impl Fmt for ast::EnumItem<'_> {
         fmt!(cx, " {{");
         if !variants.is_empty() {
             cx.indent();
-            cx.line_break();
+            LineBreak.fmt(cx);
             let mut variants = variants.into_iter().peekable();
             while let Some(variant) = variants.next() {
                 variant.fmt(cx);
                 fmt!(cx, ",");
                 if variants.peek().is_some() {
-                    cx.line_break();
+                    LineBreak.fmt(cx);
                 }
             }
             cx.dedent();
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
         fmt!(cx, "}}");
     }
@@ -97,7 +109,7 @@ impl Fmt for ast::Variant<'_> {
         // FIXME: Skip variant if it contains `#[rustfmt::skip]` (we need a span for that tho)
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         vis.trailing_space().fmt(cx);
@@ -119,7 +131,7 @@ impl Fmt for ast::VariantKind<'_> {
             Self::Unit => {}
             Self::Tuple(fields) => {
                 fmt!(cx, "(");
-                Punctuated::new(fields, ", ").fmt(cx);
+                fields.interleave(", ").fmt(cx);
                 fmt!(cx, ")");
             }
             Self::Struct(fields) => fields.fmt(cx),
@@ -132,17 +144,17 @@ impl Fmt for Vec<ast::StructFieldDef<'_>> {
         fmt!(cx, " {{");
         if !self.is_empty() {
             cx.indent();
-            cx.line_break();
+            LineBreak.fmt(cx);
             let mut fields = self.into_iter().peekable();
             while let Some(field) = fields.next() {
                 field.fmt(cx);
                 fmt!(cx, ",");
                 if fields.peek().is_some() {
-                    cx.line_break();
+                    LineBreak.fmt(cx);
                 }
             }
             cx.dedent();
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
         fmt!(cx, "}}");
     }
@@ -171,7 +183,7 @@ impl Fmt for ast::StructFieldDef<'_> {
         // FIXME: Inspect attrs to look for fmt skips.
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         vis.trailing_space().fmt(cx);
@@ -186,16 +198,17 @@ impl Fmt for ast::StructFieldDef<'_> {
     }
 }
 
-impl Fmt for ast::ExternBlockItem<'_> {
+impl Fmt for (ast::ExternBlockItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { safety, abi, body } = self;
+        let (item, attrs) = self;
+        let ast::ExternBlockItem { safety, abi, body } = item;
 
         safety.trailing_space().fmt(cx);
         fmt!(cx, "extern ");
         if let Some(abi) = abi {
             fmt!(cx, "{abi} ");
         }
-        body.fmt(cx);
+        Cluster { attrs, nodes: body }.fmt(cx);
     }
 }
 
@@ -211,26 +224,6 @@ impl Fmt for ast::ExternCrateItem<'_> {
     }
 }
 
-impl Fmt for Vec<ast::ExternItem<'_>> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, "{{");
-        if !self.is_empty() {
-            cx.indent();
-            cx.line_break();
-            let mut items = self.into_iter().peekable();
-            while let Some(item) = items.next() {
-                item.fmt(cx);
-                if items.peek().is_some() {
-                    cx.line_break();
-                }
-            }
-            cx.dedent();
-            cx.line_break();
-        }
-        fmt!(cx, "}}");
-    }
-}
-
 impl Fmt for ast::ExternItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
@@ -241,7 +234,7 @@ impl Fmt for ast::ExternItem<'_> {
         }
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         vis.trailing_space().fmt(cx);
@@ -271,7 +264,7 @@ impl Fmt for ast::FnItem<'_> {
             generics.params.fmt(cx);
         }
         fmt!(cx, "(");
-        Punctuated::new(params, ", ").fmt(cx);
+        params.interleave(", ").fmt(cx);
         fmt!(cx, ")");
         if let Some(ty) = ret_ty {
             fmt!(cx, " -> ");
@@ -324,13 +317,14 @@ impl Fmt for ast::FnParam<'_> {
     }
 }
 
-impl Fmt for ast::ImplItem<'_> {
+impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { generics, constness, trait_ref, self_ty, body } = self;
+        let (item, attrs) = self;
+        let ast::ImplItem { generics, constness, trait_ref, self_ty, body } = item;
 
-        if let Some(trait_ref) = &trait_ref {
-            trait_ref.defaultness.trailing_space().fmt(cx);
-            trait_ref.safety.trailing_space().fmt(cx);
+        if let Some(ast::ImplTraitRef { defaultness, safety, polarity: _, path: _ }) = trait_ref {
+            defaultness.trailing_space().fmt(cx);
+            safety.trailing_space().fmt(cx);
         }
 
         fmt!(cx, "impl");
@@ -339,47 +333,33 @@ impl Fmt for ast::ImplItem<'_> {
         }
         fmt!(cx, " ");
         constness.trailing_space().fmt(cx);
-        if let Some(trait_ref) = &trait_ref {
-            match trait_ref.polarity {
+        if let Some(ast::ImplTraitRef { defaultness: _, safety: _, polarity, path }) = trait_ref {
+            match polarity {
                 ast::ImplPolarity::Positive => {}
                 ast::ImplPolarity::Negative => fmt!(cx, "!"),
             }
-        }
-        if let Some(trait_ref) = trait_ref {
-            trait_ref.path.fmt(cx);
+            path.fmt(cx);
             fmt!(cx, " for ");
         }
         self_ty.fmt(cx);
         generics.preds.fmt(cx);
-        body.fmt(cx);
+        fmt!(cx, " ");
+        Cluster { attrs, nodes: body }.fmt(cx);
     }
 }
 
-impl Fmt for ast::ModItem<'_> {
+impl Fmt for (ast::ModItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { safety, binder, body } = self;
+        let (item, attrs) = self;
+        let ast::ModItem { safety, binder, body } = item;
 
         safety.trailing_space().fmt(cx);
         fmt!(cx, "mod {binder}");
-        match body {
-            Some(items) => {
-                fmt!(cx, " {{");
-                if !items.is_empty() {
-                    cx.indent();
-                    cx.line_break();
-                    let mut items = items.into_iter().peekable();
-                    while let Some(item) = items.next() {
-                        item.fmt(cx);
-                        if items.peek().is_some() {
-                            cx.line_break();
-                        }
-                    }
-                    cx.dedent();
-                    cx.line_break();
-                }
-                fmt!(cx, "}}");
-            }
-            None => fmt!(cx, ";"),
+        if let Some(items) = body {
+            fmt!(cx, " ");
+            Cluster { attrs, nodes: items }.fmt(cx);
+        } else {
+            fmt!(cx, ";")
         }
     }
 }
@@ -425,9 +405,10 @@ impl Fmt for ast::StructItem<'_> {
     }
 }
 
-impl Fmt for ast::TraitItem<'_> {
+impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { modifiers, binder, generics, bounds, body } = self;
+        let (item, attrs) = self;
+        let ast::TraitItem { modifiers, binder, generics, bounds, body } = item;
 
         modifiers.trailing_space().fmt(cx);
         fmt!(cx, "trait {binder}");
@@ -439,7 +420,7 @@ impl Fmt for ast::TraitItem<'_> {
             bounds.fmt(cx);
         }
         generics.preds.fmt(cx);
-        body.fmt(cx);
+        Cluster { attrs, nodes: body }.fmt(cx);
     }
 }
 
@@ -533,7 +514,7 @@ impl Fmt for ast::PathTreeKind<'_> {
             Self::Stump(None) => {}
             Self::Branch(trees) => {
                 fmt!(cx, "{{");
-                Punctuated::new(trees, ", ").fmt(cx);
+                trees.interleave(", ").fmt(cx);
                 fmt!(cx, "}}");
             }
         }
@@ -561,26 +542,6 @@ impl Fmt for ast::MacroDef<'_> {
     }
 }
 
-impl Fmt for Vec<ast::AssocItem<'_>> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        fmt!(cx, " {{");
-        if !self.is_empty() {
-            cx.indent();
-            cx.line_break();
-            let mut items = self.into_iter().peekable();
-            while let Some(item) = items.next() {
-                item.fmt(cx);
-                if items.peek().is_some() {
-                    cx.line_break();
-                }
-            }
-            cx.dedent();
-            cx.line_break();
-        }
-        fmt!(cx, "}}");
-    }
-}
-
 impl Fmt for ast::AssocItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
@@ -591,7 +552,7 @@ impl Fmt for ast::AssocItem<'_> {
         }
         for attr in attrs {
             attr.fmt(cx);
-            cx.line_break();
+            LineBreak.fmt(cx);
         }
 
         vis.trailing_space().fmt(cx);

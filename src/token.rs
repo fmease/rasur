@@ -15,7 +15,9 @@ impl Token {
 
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}@{:?}", self.kind, self.span)
+        let Self { kind, span } = self;
+
+        write!(f, "{kind:?}@{span:?}")
     }
 }
 
