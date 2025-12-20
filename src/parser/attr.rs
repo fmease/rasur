@@ -1,4 +1,4 @@
-use super::{Parser, Result, TokenKind};
+use super::{Parser, Result, TokenKind, path::PathMode};
 use crate::ast;
 
 impl<'src> Parser<'_, 'src> {
@@ -65,7 +65,7 @@ impl<'src> Parser<'_, 'src> {
             ast::Safety::Inherited
         };
 
-        let path = self.parse_path::<ast::NoGenericArgs>()?;
+        let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
 
         let kind = match self.token.kind {
             TokenKind::SingleEquals => {

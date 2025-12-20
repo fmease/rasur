@@ -454,14 +454,6 @@ impl TokenPrefix {
     }
 }
 
-// FIXME: Ideally, everbody would use the TokenCategory/TokenPrefix API instead (once it's powerful enough).
-macro LessThan() {
-    TokenKind::SingleLessThan
-        | TokenKind::DoubleLessThan
-        | TokenKind::LessThanEquals
-        | TokenKind::DoubleLessThanEquals
-}
-
 macro PathSegIdent() {
     TokenKind::SelfLower
         | TokenKind::Super
@@ -472,6 +464,8 @@ macro PathSegIdent() {
 
 /// Weak keywords.
 mod weak {
+    use super::*;
+
     pub(super) const AUTO: &str = "auto";
     pub(super) const BIKESHED: &str = "bikeshed";
     pub(super) const BUILTIN: &str = "builtin";
@@ -482,8 +476,34 @@ mod weak {
     pub(super) const RAW: &str = "raw";
     pub(super) const SAFE: &str = "safe";
     pub(super) const TYPE_ASCRIBE: &str = "type_ascribe";
-    pub(super) const UNION: &str = "union";
     pub(super) const YEET: &str = "yeet";
+
+    pub(super) enum Reuse {}
+
+    impl Reuse {
+        pub(super) const SRC: &str = "reuse";
+
+        pub(super) fn applies(parser: &Parser<'_, '_>) -> bool {
+            // NOTE: This check isn't precise enough. See upstream issue:
+            //       <https://github.com/rust-lang/rust/issues/148238>
+
+            parser.look_ahead(1, |t| {
+                matches!(t.kind, PathSegIdent!())
+                    || TokenPrefix::LessThan.matches(t.kind)
+                        && parser.look_ahead(2, |t| parser.begins_ty(t))
+            })
+        }
+    }
+
+    pub(super) enum Union {}
+
+    impl Union {
+        pub(super) const SRC: &str = "union";
+
+        pub(super) fn applies(parser: &Parser<'_, '_>) -> bool {
+            parser.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
+        }
+    }
 }
 
 macro one_of($( $frag:expr ),+ $(,)?) {

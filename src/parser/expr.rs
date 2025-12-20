@@ -70,15 +70,9 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Underscore
             | TokenKind::Unsafe
             | TokenKind::While
-            | TokenKind::Yield => return true,
-            _ => {}
+            | TokenKind::Yield => true,
+            _ => self.begins_ext_path(self.token),
         }
-
-        if self.begins_ext_path() {
-            return true;
-        }
-
-        false
     }
 
     fn parse_expr_at_level(
@@ -725,7 +719,7 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        if self.begins_ext_path() {
+        if self.begins_ext_path(self.token) {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {

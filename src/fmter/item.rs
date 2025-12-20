@@ -31,6 +31,7 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
 
         match item {
             ast::ItemKind::Const(item) => item.fmt(cx),
+            ast::ItemKind::Delegation(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
             ast::ItemKind::ExternBlock(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::ExternCrate(item) => item.fmt(cx),
@@ -73,6 +74,22 @@ impl Fmt for ast::ConstItem<'_> {
         }
         generics.preds.fmt(cx);
         fmt!(cx, ";");
+    }
+}
+
+impl Fmt for ast::DelegationItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { ext, path, body } = self;
+
+        fmt!(cx, "reuse ");
+        ext.fmt(cx);
+        path.fmt(cx);
+        if let Some(body) = body {
+            fmt!(cx, " ");
+            body.fmt(cx);
+        } else {
+            fmt!(cx, ";");
+        }
     }
 }
 
@@ -487,9 +504,9 @@ impl Fmt for ast::UnionItem<'_> {
 
 impl Fmt for ast::UseItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { tree } = self;
+        let Self { path } = self;
         fmt!(cx, "use ");
-        tree.fmt(cx);
+        path.fmt(cx);
         fmt!(cx, ";");
     }
 }
@@ -559,6 +576,7 @@ impl Fmt for ast::AssocItem<'_> {
 
         match kind {
             ast::AssocItemKind::Const(item) => item.fmt(cx),
+            ast::AssocItemKind::Delegation(item) => item.fmt(cx),
             ast::AssocItemKind::Fn(item) => item.fmt(cx),
             ast::AssocItemKind::Ty(item) => item.fmt(cx),
             ast::AssocItemKind::MacroCall(call) => {

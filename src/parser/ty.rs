@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
-    error::ParseError, one_of, weak,
+    error::ParseError, one_of, path::PathMode, weak,
 };
 use crate::{Edition, ast, span::Span, token::Token};
 use std::mem;
@@ -125,7 +125,7 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        if self.begins_ext_path() {
+        if self.begins_ext_path(self.token) {
             let path = self.parse_ext_path::<ast::UnambiguousGenericArgs>()?;
 
             if self.consume(TokenKind::SingleBang) {
@@ -144,10 +144,10 @@ impl<'src> Parser<'_, 'src> {
 
     // FIXME: Find ways to get rid of this function or make it return something richer that
     //        can then be used inside `parse_ty` to perform less work / avoid prefix rechecking.
-    pub(super) fn begins_ty(&self) -> bool {
+    pub(super) fn begins_ty(&self, token: Token) -> bool {
         // FIXME: To be kept in sync with `Self::parse_ty`.
 
-        match self.token.kind {
+        match token.kind {
             | TokenKind::DoubleAmpersand
             | TokenKind::Dyn
             | TokenKind::Extern
@@ -160,15 +160,9 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::SingleAsterisk
             | TokenKind::SingleBang
             | TokenKind::Underscore
-            | TokenKind::Unsafe => return true,
-            _ => {}
+            | TokenKind::Unsafe => true,
+            _ => self.begins_ext_path(token),
         }
-
-        if self.begins_ext_path() {
-            return true;
-        }
-
-        false
     }
 
     fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -367,7 +361,7 @@ impl<'src> Parser<'_, 'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let bound_vars = self.parse_for_binder()?;
 
-        let kind = if bound_vars.is_some() || self.begins_ty() {
+        let kind = if bound_vars.is_some() || self.begins_ty(self.token) {
             let ty = self.parse_ty()?;
 
             match self.token.kind {
@@ -410,7 +404,7 @@ impl<'src> Parser<'_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_predicate`.
 
         matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For)
-            || self.begins_ty()
+            || self.begins_ty(self.token)
             || self.begins_outer_attr()
     }
 
@@ -479,7 +473,7 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.begins_path(self.token) {
-            let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>()?;
+            let trait_ref = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
 
             if grouped {
                 self.parse(TokenKind::CloseRoundBracket)?;

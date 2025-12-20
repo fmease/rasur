@@ -1,5 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, common::FnParamMode, error::ParseError, weak,
+    ExpectedFragment, Parser, Result, TokenKind, common::FnParamMode, error::ParseError,
+    path::PathMode, weak,
 };
 use crate::{Edition, ast, span::Span};
 
@@ -77,9 +78,11 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Trait
             | TokenKind::Type
             | TokenKind::Use => return true,
-            TokenKind::CommonIdent if self.source(self.token.span) == weak::UNION => {
-                return self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent);
-            }
+            TokenKind::CommonIdent => match self.source(self.token.span) {
+                weak::Reuse::SRC => return weak::Reuse::applies(self),
+                weak::Union::SRC => return weak::Union::applies(self),
+                _ => {}
+            },
             _ => {}
         }
 
@@ -216,16 +219,19 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_enum_item();
             }
-            TokenKind::CommonIdent => {
-                if self.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
-                    && self.source(self.token.span) == weak::UNION
-                {
+            TokenKind::CommonIdent => match self.source(self.token.span) {
+                weak::Reuse::SRC if weak::Reuse::applies(self) => {
+                    self.advance();
+                    return self.fin_parse_delegation_item();
+                }
+                weak::Union::SRC if weak::Union::applies(self) => {
                     self.advance();
                     let binder = self.source(self.token.span);
                     self.advance();
                     return self.fin_parse_union_item(binder);
                 }
-            }
+                _ => {}
+            },
             TokenKind::Macro => {
                 self.advance();
                 return self.fin_parse_macro_def();
@@ -833,20 +839,20 @@ impl<'src> Parser<'_, 'src> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Use_Item ::= "use" Use_Path_Tree ";"
-    /// Use_Path_Tree ::= …
+    /// Use_Item ::= "use" Path_Tree ";"
+    /// Path_Tree ::= …
     /// ```
     fn fin_parse_use_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let tree = self.parse_path_tree()?;
+        let path = self.parse_path_tree(PathMode::Normal)?;
         self.parse(TokenKind::Semicolon)?;
 
-        Ok(ast::ItemKind::Use(Box::new(ast::UseItem { tree })))
+        Ok(ast::ItemKind::Use(Box::new(ast::UseItem { path })))
     }
 
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
         // NOTE: To be kept in sync with `Self::begins_macro_item`.
 
-        let path = self.parse_path::<ast::NoGenericArgs>()?;
+        let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
         self.parse(TokenKind::SingleBang)?;
 
         let binder = if let [ast::PathSeg { ident: weak::MACRO_RULES, args: () }] = *path.segs {
@@ -888,6 +894,7 @@ impl<'src> Parser<'_, 'src> {
                     vis: item.vis,
                     kind: match item.kind {
                         ast::ItemKind::Const(item) => ast::AssocItemKind::Const(item),
+                        ast::ItemKind::Delegation(item) => ast::AssocItemKind::Delegation(item),
                         ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
                         ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
@@ -897,6 +904,22 @@ impl<'src> Parser<'_, 'src> {
                 })
             })
             .collect()
+    }
+
+    /// Finish parsing a delegation item assuming the leading `reuse` has been parsed already.
+    fn fin_parse_delegation_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let (ext, mode) = self.parse_path_ext()?;
+        // FIXME: Permit generic args at the top level!
+        let path = self.parse_path_tree(mode)?;
+        let body = if self.consume(TokenKind::OpenCurlyBracket) {
+            // FIXME: Reject inner attrs. For some reason, they're syntactically forbidden.
+            Some(self.fin_parse_block_expr()?)
+        } else {
+            self.parse(TokenKind::Semicolon)?;
+            None
+        };
+
+        Ok(ast::ItemKind::Delegation(Box::new(ast::DelegationItem { ext, path, body })))
     }
 
     fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
@@ -914,9 +937,9 @@ impl<'src> Parser<'_, 'src> {
         // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
         // can give better errors on invalid vis restrictions in the common cases.
         if self.token.kind == TokenKind::OpenRoundBracket
-            && let Some(keyword) = self.look_ahead(1, |token| match token.kind {
+            && let Some(keyword) = self.look_ahead(1, |t| match t.kind {
                 TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
-                    Some(VisKeyword::CrateSuperSelf(token.span))
+                    Some(VisKeyword::CrateSuperSelf(t.span))
                 }
                 TokenKind::In => Some(VisKeyword::In),
                 _ => None,
@@ -926,7 +949,7 @@ impl<'src> Parser<'_, 'src> {
             self.advance();
 
             let path = match keyword {
-                VisKeyword::In => self.parse_path()?,
+                VisKeyword::In => self.parse_path(PathMode::Normal)?,
                 VisKeyword::CrateSuperSelf(span) => ast::Path::ident(self.source(span)),
             };
             self.parse(TokenKind::CloseRoundBracket)?;
@@ -947,6 +970,7 @@ impl ast::ItemKind<'_> {
     fn supports_visibility(&self) -> bool {
         match self {
             | Self::Const(_)
+            | Self::Delegation(_)
             | Self::Enum(_)
             | Self::ExternBlock(_)
             | Self::ExternCrate(_)
@@ -969,6 +993,7 @@ impl ast::ItemKind<'_> {
         match self {
             Self::Const(_) | Self::Fn(_) | Self::TyAlias(_) => true,
             Self::Impl(item) => item.trait_ref.is_some(),
+            | Self::Delegation(_)
             | Self::Enum(_)
             | Self::ExternBlock(_)
             | Self::ExternCrate(_)

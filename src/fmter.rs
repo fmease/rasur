@@ -62,6 +62,7 @@ impl<'src> Cx<'src> {
         self.indent -= self.cfg.indent;
     }
 
+    // FIXME: rename to `should_skip`
     fn skip<M: ast::AttrMode>(&self, attrs: &[ast::Attr<'_, M>]) -> bool {
         if let SkipMarker::None = self.cfg.skip_marker {
             return false;

@@ -111,7 +111,7 @@ impl<'src> Parser<'_, 'src> {
 
         if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
             Ok(ast::RangePatBound::Lit(sign, lit))
-        } else if self.begins_ext_path() {
+        } else if self.begins_ext_path(self.token) {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
             Ok(ast::RangePatBound::Path(path))
         } else {
@@ -125,7 +125,7 @@ impl<'src> Parser<'_, 'src> {
     fn begins_range_pat_bound(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_range_pat_bound`.
 
-        self.begins_negatable_lit() || self.begins_ext_path()
+        self.begins_negatable_lit() || self.begins_ext_path(self.token)
     }
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
@@ -208,7 +208,7 @@ impl<'src> Parser<'_, 'src> {
             _ => {}
         }
 
-        if self.begins_ext_path() {
+        if self.begins_ext_path(self.token) {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {

@@ -21,16 +21,23 @@ impl<M: GenericArgsMode> Fmt for ast::PathSeg<'_, M> {
 impl<S: GenericArgsStyle> Fmt for ast::ExtPath<'_, S> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ext, path } = self;
-        if let Some(ast::PathExt { self_ty, trait_ref }) = ext {
-            fmt!(cx, "<");
-            self_ty.fmt(cx);
-            if let Some(trait_ref) = trait_ref {
-                fmt!(cx, " as ");
-                trait_ref.fmt(cx);
-            }
-            fmt!(cx, ">::");
-        }
+
+        ext.fmt(cx);
         path.fmt(cx);
+    }
+}
+
+impl Fmt for ast::PathExt<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { self_ty, trait_ref } = self;
+
+        fmt!(cx, "<");
+        self_ty.fmt(cx);
+        if let Some(trait_ref) = trait_ref {
+            fmt!(cx, " as ");
+            trait_ref.fmt(cx);
+        }
+        fmt!(cx, ">::");
     }
 }
 

@@ -1,6 +1,7 @@
 use super::{
     Attr, BlockExpr, Bound, Expr, Externness, Generics, Ident, MacroCall, Mutability,
-    NoGenericArgs, Pat, Path, PathTree, Safety, Span, TokenStream, Ty, UnambiguousGenericArgs,
+    NoGenericArgs, Pat, Path, PathExt, PathTree, Safety, Span, TokenStream, Ty,
+    UnambiguousGenericArgs,
 };
 use Default::default;
 
@@ -16,6 +17,7 @@ pub(crate) struct Item<'src> {
 #[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
     Const(Box<ConstItem<'src>>),
+    Delegation(Box<DelegationItem<'src>>),
     Enum(Box<EnumItem<'src>>),
     ExternBlock(Box<ExternBlockItem<'src>>),
     ExternCrate(Box<ExternCrateItem<'src>>),
@@ -40,6 +42,13 @@ pub(crate) struct ConstItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DelegationItem<'src> {
+    pub(crate) ext: Option<PathExt<'src>>,
+    pub(crate) path: PathTree<'src>,
+    pub(crate) body: Option<BlockExpr<'src>>,
 }
 
 #[derive(Debug)]
@@ -264,6 +273,7 @@ pub(crate) struct AssocItem<'src> {
 #[derive(Debug)]
 pub(crate) enum AssocItemKind<'src> {
     Const(Box<ConstItem<'src>>),
+    Delegation(Box<DelegationItem<'src>>),
     Fn(Box<FnItem<'src>>),
     MacroCall(Box<MacroCall<'src, NoGenericArgs>>),
     Ty(Box<TyAliasItem<'src>>),
@@ -287,7 +297,7 @@ pub(crate) struct UnionItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct UseItem<'src> {
-    pub(crate) tree: PathTree<'src>,
+    pub(crate) path: PathTree<'src>,
 }
 
 #[derive(Debug)]
