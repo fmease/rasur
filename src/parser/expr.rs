@@ -1,6 +1,10 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, error::ParseError, one_of, pat::OrPolicy,
-    path::GenericArgsMode, weak,
+    ExpectedFragment, Parser, Result, TokenKind,
+    error::ParseError,
+    one_of,
+    pat::OrPolicy,
+    path::GenericArgsMode,
+    weak::{self, Weak as _},
 };
 use crate::{Edition, ast};
 use std::{cmp::Ordering, mem};
@@ -573,16 +577,13 @@ impl<'src> Parser<'_, 'src> {
                 // FIXME: Validate that the char lit only contains one scalar.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
-            TokenKind::CommonIdent
-                if self.look_ahead(1, |t| t.kind == TokenKind::Hash)
-                    && self.source(self.token.span) == weak::BUILTIN =>
-            {
+            TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
                 self.advance();
                 let ident = self.parse_common_ident()?;
                 self.parse(TokenKind::OpenRoundBracket)?;
                 let expr = match ident {
-                    weak::TYPE_ASCRIBE => {
+                    weak::TypeAscribe::STR => {
                         let expr = self.parse_expr()?;
                         self.parse(TokenKind::Comma)?;
                         let ty = self.parse_ty()?;
@@ -597,11 +598,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()?));
             }
-            TokenKind::Do
-                if self.look_ahead(1, |t| {
-                    t.kind == TokenKind::CommonIdent && self.source(t.span) == weak::YEET
-                }) =>
-            {
+            TokenKind::Do if self.look_ahead(1, |t| self.matches(weak::Yeet, t)) => {
                 self.advance();
                 self.advance();
                 let expr =
@@ -821,12 +818,10 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Try => {
                     self.advance();
-                    let ty = if self.is_common_ident(weak::BIKESHED) {
-                        self.advance();
-                        Some(Box::new(self.parse_ty()?))
-                    } else {
-                        None
-                    };
+                    let ty = self
+                        .consume(weak::Bikeshed)
+                        .then(|| self.parse_ty().map(Box::new))
+                        .transpose()?;
                     qualifiers.push(Qualifier::Try(ty));
                     continue;
                 }

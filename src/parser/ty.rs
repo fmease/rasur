@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
     error::ParseError, one_of, path::PathMode, weak,
 };
-use crate::{Edition, ast, span::Span, token::Token};
+use crate::{ast, span::Span, token::Token};
 use std::mem;
 
 impl<'src> Parser<'_, 'src> {
@@ -51,11 +51,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
-            TokenKind::CommonIdent
-                if self.edition == Edition::Rust2015
-                    && self.source(self.token.span) == weak::DYN
-                    && self.look_ahead(1, |t| self.begins_2015_dyn_bound(t)) =>
-            {
+            TokenKind::CommonIdent if self.check(weak::Dyn) => {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty();
             }
@@ -191,7 +187,7 @@ impl<'src> Parser<'_, 'src> {
         Some(Ok(qualifier))
     }
 
-    fn begins_2015_dyn_bound(&self, token: Token) -> bool {
+    pub(super) fn begins_2015_dyn_bound(&self, token: Token) -> bool {
         matches!(
             token.kind,
             PathSegIdent!()

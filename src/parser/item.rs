@@ -1,6 +1,9 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, common::FnParamMode, error::ParseError,
-    path::PathMode, weak,
+    ExpectedFragment, Parser, Result, TokenKind,
+    common::FnParamMode,
+    error::ParseError,
+    path::PathMode,
+    weak::{self, Weak as _},
 };
 use crate::{Edition, ast, span::Span};
 
@@ -40,13 +43,11 @@ impl<'src> Parser<'_, 'src> {
         let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let vis = self.parse_visibility()?;
 
-        let defaultness =
-            if self.is_common_ident(weak::DEFAULT) && self.look_ahead(1, |t| t.kind.is_ident()) {
-                self.advance();
-                ast::Defaultness::Default
-            } else {
-                ast::Defaultness::Final
-            };
+        let defaultness = if self.consume(weak::Default) {
+            ast::Defaultness::Default
+        } else {
+            ast::Defaultness::Final
+        };
 
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
@@ -79,8 +80,8 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Type
             | TokenKind::Use => return true,
             TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Reuse::SRC => return weak::Reuse::applies(self),
-                weak::Union::SRC => return weak::Union::applies(self),
+                weak::Reuse::STR => return weak::Reuse.qualifies(self),
+                weak::Union::STR => return weak::Union.qualifies(self),
                 _ => {}
             },
             _ => {}
@@ -90,10 +91,7 @@ impl<'src> Parser<'_, 'src> {
             return true;
         }
 
-        if self.is_common_ident(weak::MACRO_RULES)
-            && self.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
-            && self.look_ahead(2, |t| t.kind == TokenKind::CommonIdent)
-        {
+        if self.check(weak::MacroRules) {
             return true;
         }
 
@@ -220,11 +218,11 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_enum_item();
             }
             TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Reuse::SRC if weak::Reuse::applies(self) => {
+                weak::Reuse::STR if weak::Reuse.qualifies(self) => {
                     self.advance();
                     return self.fin_parse_delegation_item();
                 }
-                weak::Union::SRC if weak::Union::applies(self) => {
+                weak::Union::STR if weak::Union.qualifies(self) => {
                     self.advance();
                     let binder = self.source(self.token.span);
                     self.advance();
@@ -273,16 +271,8 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::CommonIdent => match self.source(self.token.span) {
-                    weak::AUTO if self.look_ahead(1, |t| t.kind == TokenKind::Trait) => {
-                        Qualifier::Auto
-                    }
-                    weak::SAFE
-                        if self.look_ahead(1, |t| {
-                            matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)
-                        }) =>
-                    {
-                        Qualifier::Safe
-                    }
+                    weak::Auto::STR if weak::Auto.qualifies(self) => Qualifier::Auto,
+                    weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
                     _ => return,
                 },
                 TokenKind::Impl => {
@@ -855,7 +845,7 @@ impl<'src> Parser<'_, 'src> {
         let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
         self.parse(TokenKind::SingleBang)?;
 
-        let binder = if let [ast::PathSeg { ident: weak::MACRO_RULES, args: () }] = *path.segs {
+        let binder = if let [ast::PathSeg { ident: weak::MacroRules::STR, args: () }] = *path.segs {
             self.consume_common_ident()
         } else {
             None

@@ -18,6 +18,7 @@ mod stmt;
 #[cfg(test)]
 mod test;
 mod ty;
+mod weak;
 
 pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
 
@@ -350,9 +351,15 @@ impl<'a, 'src> Parser<'a, 'src> {
         Some(ident)
     }
 
-    // FIXME: Temporary API, replace with is(WeakKeyword::Xyz)
-    fn is_common_ident(&self, source: &str) -> bool {
-        matches!(self.token.kind, TokenKind::CommonIdent if self.source(self.token.span) == source)
+    fn check(&self, category: impl TokenCategory) -> bool {
+        category.check(self)
+    }
+
+    fn matches<T>(&self, category: T, token: Token) -> bool
+    where
+        T: TokenCategory + MatchAgainstArbitraryToken,
+    {
+        category.matches(token, self)
     }
 }
 
@@ -381,19 +388,36 @@ impl TokenKind {
 }
 
 trait TokenCategory: Copy {
-    fn consume(self, parser: &mut Parser<'_, '_>) -> bool;
+    fn check(self, p: &Parser<'_, '_>) -> bool;
+
+    fn matches(self, token: Token, p: &Parser<'_, '_>) -> bool
+    where
+        Self: MatchAgainstArbitraryToken;
+
+    fn consume(self, p: &mut Parser<'_, '_>) -> bool {
+        if self.check(p) {
+            p.advance();
+            return true;
+        }
+        false
+    }
 
     fn fragment(self) -> ExpectedFragment;
 }
 
+#[diagnostic::on_unimplemented(
+    message = "token category `{Self}` cannot be matched against arbitrary tokens",
+    label = "cannot be matched against arbitrary tokens"
+)]
+trait MatchAgainstArbitraryToken: TokenCategory {}
+
 impl TokenCategory for TokenKind {
-    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
-        if self == parser.token.kind {
-            parser.advance();
-            true
-        } else {
-            false
-        }
+    fn check(self, p: &Parser<'_, '_>) -> bool {
+        self == p.token.kind
+    }
+
+    fn matches(self, token: Token, _: &Parser<'_, '_>) -> bool {
+        self == token.kind
     }
 
     fn fragment(self) -> ExpectedFragment {
@@ -401,19 +425,49 @@ impl TokenCategory for TokenKind {
     }
 }
 
+impl MatchAgainstArbitraryToken for TokenKind {}
+
 impl TokenCategory for TokenPrefix {
-    fn consume(self, parser: &mut Parser<'_, '_>) -> bool {
-        let Ok(replacement) = self.strip(parser.token.kind) else { return false };
+    fn check(self, p: &Parser<'_, '_>) -> bool {
+        self.matches(p.token.kind)
+    }
+
+    fn matches(self, token: Token, _: &Parser<'_, '_>) -> bool {
+        self.matches(token.kind)
+    }
+
+    fn consume(self, p: &mut Parser<'_, '_>) -> bool {
+        let Ok(replacement) = self.strip(p.token.kind) else { return false };
         match replacement {
-            Some(replacement) => parser.modify_in_place(replacement),
-            None => parser.advance(),
+            Some(replacement) => p.modify_in_place(replacement),
+            None => p.advance(),
         }
         true
     }
 
     fn fragment(self) -> ExpectedFragment {
-        // FIXME: List all possibilities.
+        // FIXME: Should we list all possible tokens or keep it under wraps?
         self.single().into()
+    }
+}
+
+impl MatchAgainstArbitraryToken for TokenPrefix {}
+
+impl<W: weak::Weak> TokenCategory for W {
+    fn check(self, parser: &Parser<'_, '_>) -> bool {
+        self.check(parser)
+    }
+
+    fn matches(self, token: Token, p: &Parser<'_, '_>) -> bool
+    where
+        Self: MatchAgainstArbitraryToken,
+    {
+        weak::Weak::matches(self, token, p)
+    }
+
+    fn fragment(self) -> ExpectedFragment {
+        // FIXME: Ideally, we'd just disable this method
+        unimplemented!()
     }
 }
 
@@ -460,50 +514,6 @@ macro PathSegIdent() {
         | TokenKind::Crate
         | TokenKind::SelfUpper
         | TokenKind::CommonIdent
-}
-
-/// Weak keywords.
-mod weak {
-    use super::*;
-
-    pub(super) const AUTO: &str = "auto";
-    pub(super) const BIKESHED: &str = "bikeshed";
-    pub(super) const BUILTIN: &str = "builtin";
-    pub(super) const DEFAULT: &str = "default";
-    pub(super) const DYN: &str = "dyn"; // in Rust 2015
-    pub(super) const MACRO_RULES: &str = "macro_rules";
-    pub(super) const PIN: &str = "pin";
-    pub(super) const RAW: &str = "raw";
-    pub(super) const SAFE: &str = "safe";
-    pub(super) const TYPE_ASCRIBE: &str = "type_ascribe";
-    pub(super) const YEET: &str = "yeet";
-
-    pub(super) enum Reuse {}
-
-    impl Reuse {
-        pub(super) const SRC: &str = "reuse";
-
-        pub(super) fn applies(parser: &Parser<'_, '_>) -> bool {
-            // NOTE: This check isn't precise enough. See upstream issue:
-            //       <https://github.com/rust-lang/rust/issues/148238>
-
-            parser.look_ahead(1, |t| {
-                matches!(t.kind, PathSegIdent!())
-                    || TokenPrefix::LessThan.matches(t.kind)
-                        && parser.look_ahead(2, |t| parser.begins_ty(t))
-            })
-        }
-    }
-
-    pub(super) enum Union {}
-
-    impl Union {
-        pub(super) const SRC: &str = "union";
-
-        pub(super) fn applies(parser: &Parser<'_, '_>) -> bool {
-            parser.look_ahead(1, |t| t.kind == TokenKind::CommonIdent)
-        }
-    }
 }
 
 macro one_of($( $frag:expr ),+ $(,)?) {

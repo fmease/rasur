@@ -1,4 +1,9 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::ParseError, pat::OrPolicy, weak};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind,
+    error::ParseError,
+    pat::OrPolicy,
+    weak::{self, Weak as _},
+};
 use crate::ast;
 use std::mem;
 
@@ -191,7 +196,7 @@ impl<'src> Parser<'_, 'src> {
                 _ => None,
             })
             && let Some(kind) = match self.source(self.token.span) {
-                weak::PIN => Some(ast::BorrowKind::Pin),
+                weak::Pin::STR => Some(ast::BorrowKind::Pin),
                 source => X::parse(source),
             }
         {
@@ -222,7 +227,7 @@ impl ParseBorrowKind for ! {
 impl ParseBorrowKind for () {
     fn parse(source: &str) -> Option<ast::BorrowKind<Self>> {
         match source {
-            weak::RAW => Some(ast::BorrowKind::Raw(())),
+            weak::Raw::STR => Some(ast::BorrowKind::Raw(())),
             _ => None,
         }
     }

@@ -10,6 +10,7 @@
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
+#![feature(macro_metavar_expr)]
 #![feature(mut_ref)]
 #![feature(negative_impls)]
 #![feature(never_type)]
