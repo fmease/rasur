@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
-    error::ParseError, one_of, path::PathMode, weak,
+    error::Error, one_of, path::PathMode, weak,
 };
 use crate::{ast, span::Span, token::Token};
 use std::mem;
@@ -29,11 +29,11 @@ impl<'src> Parser<'_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidTyPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidTyPrefix(start.until(self.token.span)));
                 }
                 return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
-            _ => return Err(ParseError::InvalidTyPrefix(start.until(self.token.span))),
+            _ => return self.error(Error::InvalidTyPrefix(start.until(self.token.span))),
         }
 
         match self.token.kind {
@@ -99,7 +99,7 @@ impl<'src> Parser<'_, 'src> {
                         ast::Mutability::Mut
                     }
                     _ => {
-                        return Err(ParseError::UnexpectedToken(
+                        return self.error(Error::UnexpectedToken(
                             self.token,
                             one_of![TokenKind::Mut, TokenKind::Const],
                         ));
@@ -126,7 +126,7 @@ impl<'src> Parser<'_, 'src> {
 
             if self.consume(TokenKind::SingleBang) {
                 let ast::ExtPath { ext: None, path } = path else {
-                    return Err(ParseError::TyRelMacroCall);
+                    return self.error(Error::TyRelMacroCall);
                 };
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
                 return Ok(ast::Ty::MacroCall(ast::MacroCall { path, bracket, stream }));
@@ -135,7 +135,7 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::Ty::Path(Box::new(path)));
         }
 
-        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Ty))
+        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Ty))
     }
 
     // FIXME: Find ways to get rid of this function or make it return something richer that
@@ -301,7 +301,7 @@ impl<'src> Parser<'_, 'src> {
                             (ident, ast::GenericParamKind::Ty { bounds, default })
                         }
                         _ => {
-                            return Err(ParseError::UnexpectedToken(
+                            return this.error(Error::UnexpectedToken(
                                 this.token,
                                 one_of![
                                     ExpectedFragment::GenericParam,
@@ -337,7 +337,7 @@ impl<'src> Parser<'_, 'src> {
         }
 
         if self.pick_generic_param_list_over_ext_path(0) {
-            return Err(ParseError::ParametrizedWhereClause);
+            return self.error(Error::ParametrizedWhereClause);
         }
 
         while self.begins_predicate() {
@@ -375,7 +375,7 @@ impl<'src> Parser<'_, 'src> {
                     ast::PredicateKind::Equality(ty, self.parse_ty()?)
                 }
                 _ => {
-                    return Err(ParseError::UnexpectedToken(
+                    return self.error(Error::UnexpectedToken(
                         self.token,
                         one_of![
                             TokenKind::SingleColon,
@@ -390,7 +390,7 @@ impl<'src> Parser<'_, 'src> {
             let bounds = self.parse_outlives_bounds()?;
             ast::PredicateKind::Outlives(ast::OutlivesPredicate { lt, bounds })
         } else {
-            return Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Predicate));
+            return self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Predicate));
         };
 
         Ok(ast::Predicate { attrs, kind })
@@ -455,7 +455,7 @@ impl<'src> Parser<'_, 'src> {
                             this.advance();
                             Ok(ident)
                         }
-                        _ => Err(ParseError::UnexpectedToken(
+                        _ => this.error(Error::UnexpectedToken(
                             this.token,
                             ExpectedFragment::GenericParam,
                         )),
@@ -482,7 +482,7 @@ impl<'src> Parser<'_, 'src> {
             });
         }
 
-        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Bound))
+        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Bound))
     }
 
     fn reject_trait_bound_frontmatter(
@@ -494,16 +494,16 @@ impl<'src> Parser<'_, 'src> {
         if grouped {
             self.parse(TokenKind::CloseRoundBracket)?;
             // FIXME: Span
-            return Err(ParseError::InvalidParenthesizedBound);
+            return self.error(Error::InvalidParenthesizedBound);
         }
 
         if let Some((_, span)) = bound_vars {
-            return Err(ParseError::HigherRankedBinderOnInvalidBound(span));
+            return self.error(Error::HigherRankedBinderOnInvalidBound(span));
         }
 
         if modifiers != ast::TraitBoundModifiers::NONE {
             // FIXME: Span
-            return Err(ParseError::ModifiersOnInvalidBound);
+            return self.error(Error::ModifiersOnInvalidBound);
         }
 
         Ok(())
@@ -615,6 +615,16 @@ impl<'src> Parser<'_, 'src> {
 
         // FIXME: Better span
         Ok(Some((bound_vars, start.until(self.token.span))))
+    }
+
+    /// Optionally parse a lifetime.
+    pub(super) fn parse_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
+        self.parse_ticked_ident(|this, kind, lifetime, span| match kind {
+            TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static => {
+                Ok(ast::Lifetime(lifetime))
+            }
+            _ => this.error(Error::ReservedLifetime(span)),
+        })
     }
 }
 

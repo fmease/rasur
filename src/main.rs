@@ -45,7 +45,9 @@ fn try_main() -> Result<(), ()> {
     }
 
     let cx = rasur::parser::RenderCx { source: &source, path: &path, short: opts.short };
-    let file = rasur::parser::parse(&tokens, &source, edition).map_err(|error| error.print(cx))?;
+    let (file, errors) = rasur::parser::parse(&tokens, &source, edition);
+    errors.into_iter().for_each(|error| error.print(cx));
+    let file = file?;
 
     if opts.emit_ast {
         eprintln!("{file:#?}");

@@ -75,6 +75,8 @@ impl<'src> Lexer<'src> {
             return Token::new(TokenKind::EndOfInput, Span::new(index, index));
         };
 
+        // FIXME: Don't lex prefixes manually below (e.g., `c`, `br`), just parse the
+        //        potential prefix as an ident and decide later if it's one.
         let kind = match char {
             _ if char.is_whitespace() => {
                 while self.peek().is_some_and(|char| char.is_whitespace()) {
@@ -328,6 +330,7 @@ impl<'src> Lexer<'src> {
         }
         self.advance();
 
+        // FIXME: In >=2021 detect & smw reject arbitrary ticked ident prefixes unless it's `r`.
         loop {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => self.advance(),
@@ -423,6 +426,12 @@ impl<'src> Lexer<'src> {
     fn fin_lex_ident(&mut self, start: ByteIndex) -> TokenKind {
         while self.peek().is_some_and(is_ident_middle) {
             self.advance();
+        }
+
+        if self.edition >= Edition::Rust2021
+            && let Some('#' | '"' | '\'') = self.peek()
+        {
+            return TokenKind::ReservedPrefix;
         }
 
         lex_ident_or_keyword(self.source(start), self.edition)

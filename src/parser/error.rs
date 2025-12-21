@@ -3,8 +3,9 @@ use crate::{span::Span, token::Token};
 use annotate_snippets as ann;
 use std::{borrow::Cow, path::Path};
 
+#[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
-pub enum ParseError {
+pub enum Error {
     AutoTraitAlias,
     DefaultnessOnInvalidItem,
     ExpectedTraitFoundTy,
@@ -24,6 +25,7 @@ pub enum ParseError {
     ParametrizedWhereClause,
     ReservedLabel(Span),
     ReservedLifetime(Span),
+    ReservedPrefix(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
@@ -34,7 +36,7 @@ pub enum ParseError {
     InvalidLetChain,
 }
 
-impl ParseError {
+impl Error {
     // FIXME: Move into binary crate?
     pub fn print(self, cx: RenderCx<'_>) {
         let diag = match self {
@@ -75,6 +77,7 @@ impl ParseError {
             Self::ReservedLifetime(span) => {
                 Diag::new("reserved lifetime").unlabeled_highlight(span)
             }
+            Self::ReservedPrefix(span) => Diag::new("reserved prefix").unlabeled_highlight(span),
             Self::GenericArgsOnFieldExpr(span) => {
                 Diag::new("generic args on field expression").unlabeled_highlight(span)
             }
@@ -147,6 +150,7 @@ impl Diag {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct RenderCx<'a> {
     pub source: &'a str,
     pub path: &'a Path,

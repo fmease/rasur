@@ -1,7 +1,7 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
     common::FnParamMode,
-    error::ParseError,
+    error::Error,
     path::PathMode,
     weak::{self, Weak as _},
 };
@@ -52,13 +52,13 @@ impl<'src> Parser<'_, 'src> {
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
-            return Err(ParseError::VisibilityOnInvalidItem);
+            return self.error(Error::VisibilityOnInvalidItem);
         }
 
         if let ast::Defaultness::Default = defaultness
             && !kind.supports_defaultness()
         {
-            return Err(ParseError::DefaultnessOnInvalidItem);
+            return self.error(Error::DefaultnessOnInvalidItem);
         }
 
         let span = start.to(self.prev_token().map(|token| token.span));
@@ -142,7 +142,7 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_mod_item(safety, attrs);
@@ -150,7 +150,7 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_static_item(safety);
@@ -170,7 +170,7 @@ impl<'src> Parser<'_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_fn_item(modifiers, cx);
@@ -185,7 +185,7 @@ impl<'src> Parser<'_, 'src> {
                     _ => (ast::Autoness::Not, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_trait_item(modifiers, attrs);
@@ -194,7 +194,7 @@ impl<'src> Parser<'_, 'src> {
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(defaultness, constness, safety, attrs);
@@ -202,13 +202,13 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi, attrs);
             }
             _ => {
-                return Err(ParseError::InvalidItemPrefix(start.until(self.token.span)));
+                return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
             }
         }
 
@@ -253,7 +253,7 @@ impl<'src> Parser<'_, 'src> {
             return self.parse_macro_call_item();
         }
 
-        Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Item))
+        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Item))
     }
 
     gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
@@ -456,7 +456,7 @@ impl<'src> Parser<'_, 'src> {
                         ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
                         ast::ItemKind::TyAlias(item) => ast::ExternItemKind::Ty(item),
-                        _ => return Err(ParseError::InvalidExternItemKind(item.span)),
+                        _ => return self.error(Error::InvalidExternItemKind(item.span)),
                     },
                     span: item.span,
                 })
@@ -588,7 +588,7 @@ impl<'src> Parser<'_, 'src> {
                 false => self.parse_ty()?,
             };
             let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty else {
-                return Err(ParseError::ExpectedTraitFoundTy);
+                return self.error(Error::ExpectedTraitFoundTy);
             };
             (Some(trait_ref), self_ty)
         } else {
@@ -604,14 +604,14 @@ impl<'src> Parser<'_, 'src> {
                 match polarity {
                     ast::ImplPolarity::Positive => {}
                     ast::ImplPolarity::Negative => {
-                        return Err(ParseError::TraitImplModifierInInherentImpl("!"));
+                        return self.error(Error::TraitImplModifierInInherentImpl("!"));
                     }
                 }
 
                 match safety {
                     ast::Safety::Inherited => {}
                     ast::Safety::Unsafe => {
-                        return Err(ParseError::TraitImplModifierInInherentImpl("unsafe"));
+                        return self.error(Error::TraitImplModifierInInherentImpl("unsafe"));
                     }
                 }
 
@@ -768,11 +768,11 @@ impl<'src> Parser<'_, 'src> {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => return Err(ParseError::UnsafeTraitAlias),
+            ast::Safety::Unsafe => return self.error(Error::UnsafeTraitAlias),
         }
 
         match autoness {
-            ast::Autoness::Auto => return Err(ParseError::AutoTraitAlias),
+            ast::Autoness::Auto => return self.error(Error::AutoTraitAlias),
             ast::Autoness::Not => {}
         }
 
@@ -903,7 +903,7 @@ impl<'src> Parser<'_, 'src> {
                         ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
                         ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
                         ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
-                        _ => return Err(ParseError::InvalidAssocItemKind(item.span)),
+                        _ => return self.error(Error::InvalidAssocItemKind(item.span)),
                     },
                     span: item.span,
                 })

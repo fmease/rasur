@@ -4,7 +4,7 @@ use crate::{
     span::Span,
     token::{Token, TokenKind},
 };
-pub use error::{ParseError, RenderCx};
+pub use error::{Error, RenderCx};
 use std::{borrow::Cow, fmt};
 
 mod attr;
@@ -15,24 +15,33 @@ mod item;
 mod pat;
 mod path;
 mod stmt;
+mod stream;
 #[cfg(test)]
 mod test;
 mod ty;
 mod weak;
 
-pub(crate) type Result<T, E = ParseError> = std::result::Result<T, E>;
+type Result<T, E = BufferedError> = std::result::Result<T, E>;
+
+struct BufferedError(());
 
 pub fn parse<'src>(
     tokens: &[Token],
     source: &'src str,
     edition: Edition,
-) -> Result<ast::File<'src>> {
-    Parser::new(tokens, source, edition).parse_file()
+) -> (Result<ast::File<'src>, ()>, Vec<Error>) {
+    let mut p = Parser::new(tokens, source, edition);
+    let r = match p.parse_file() {
+        Ok(file) if p.errors.is_empty() => Ok(file),
+        _ => Err(()),
+    };
+    (r, p.errors)
 }
 
 #[derive(Clone)]
 struct Parser<'a, 'src> {
     tokens: &'a [Token],
+    errors: Vec<Error>,
     token: Token,
     index: usize,
     source: &'src str,
@@ -45,7 +54,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     fn new(tokens: &'a [Token], source: &'src str, edition: Edition) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, token, index, source, edition }
+        Self { tokens, errors: Vec::new(), token, index, source, edition }
     }
 
     /// Parse a source file.
@@ -66,27 +75,9 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    /// Optionally parse a lifetime.
-    fn parse_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
-        self.parse_ticked_ident(|kind, lifetime, span| match kind {
-            TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static => {
-                Ok(ast::Lifetime(lifetime))
-            }
-            _ => Err(ParseError::ReservedLifetime(span)),
-        })
-    }
-
-    /// Optionally parse a label.
-    fn parse_label(&mut self) -> Result<Option<ast::Ident<'src>>> {
-        self.parse_ticked_ident(|kind, label, span| match kind {
-            TokenKind::CommonIdent => Ok(label),
-            _ => Err(ParseError::ReservedLabel(span)),
-        })
-    }
-
     fn parse_ticked_ident<T>(
         &mut self,
-        parse: impl FnOnce(TokenKind, &'src str, Span) -> Result<T>,
+        parse: impl FnOnce(&mut Self, TokenKind, &'src str, Span) -> Result<T>,
     ) -> Result<Option<T>> {
         let TokenKind::TickedIdent = self.token.kind else { return Ok(None) };
         let span = self.token.span;
@@ -94,7 +85,9 @@ impl<'a, 'src> Parser<'a, 'src> {
         self.advance();
         // For better diagnostics, we lex here in the parser instead of in the lexer.
         // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
-        parse(lex_ident_or_keyword(&source[1..], self.edition), source, span).map(Some)
+        // FIXME: Now that we have token validation on `self.advance()`, we can rethink this approach.
+        let ident = lex_ident_or_keyword(&source[1..], self.edition);
+        parse(self, ident, source, span).map(Some)
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(
@@ -168,98 +161,16 @@ impl<'a, 'src> Parser<'a, 'src> {
         Ok(nodes)
     }
 
-    fn parse_delimited_token_stream(&mut self) -> Result<(ast::Bracket, ast::TokenStream)> {
-        match self.token.kind {
-            TokenKind::OpenRoundBracket => {
-                self.advance();
-                self.fin_parse_delimited_token_stream(ast::Bracket::Round)
-            }
-            TokenKind::OpenSquareBracket => {
-                self.advance();
-                self.fin_parse_delimited_token_stream(ast::Bracket::Square)
-            }
-            TokenKind::OpenCurlyBracket => {
-                self.advance();
-                self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
-            }
-            _ => Err(ParseError::UnexpectedToken(
-                self.token,
-                one_of![
-                    TokenKind::OpenRoundBracket,
-                    TokenKind::OpenSquareBracket,
-                    TokenKind::OpenCurlyBracket,
-                ],
-            )),
-        }
-    }
-
-    fn fin_parse_delimited_token_stream(
-        &mut self,
-        bracket: ast::Bracket,
-    ) -> Result<(ast::Bracket, ast::TokenStream)> {
-        let stream = self.parse_token_stream(bracket)?;
-        self.parse(match bracket {
-            ast::Bracket::Round => TokenKind::CloseRoundBracket,
-            ast::Bracket::Square => TokenKind::CloseSquareBracket,
-            ast::Bracket::Curly => TokenKind::CloseCurlyBracket,
-        })?;
-        Ok((bracket, stream))
-    }
-
-    fn parse_token_stream(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
-        let mut tokens = Vec::new();
-        let mut stack = Vec::new();
-        let mut is_delimited = false;
-
-        #[expect(clippy::enum_glob_use)]
-        loop {
-            use ast::Bracket::*;
-            use ast::Orientation::*;
-
-            let act_delim = {
-                match self.token.kind {
-                    TokenKind::OpenRoundBracket => Some((Round, Open)),
-                    TokenKind::OpenSquareBracket => Some((Square, Open)),
-                    TokenKind::OpenCurlyBracket => Some((Curly, Open)),
-                    TokenKind::CloseRoundBracket => Some((Round, Close)),
-                    TokenKind::CloseSquareBracket => Some((Square, Close)),
-                    TokenKind::CloseCurlyBracket => Some((Curly, Close)),
-                    TokenKind::EndOfInput => break,
-                    _ => None,
-                }
-            };
-
-            if let Some((act_delim, orient)) = act_delim {
-                if stack.is_empty() && (act_delim, orient) == (exp_close_delim, Close) {
-                    is_delimited = true;
-                    break;
-                }
-
-                match orient {
-                    Open => stack.push(act_delim),
-                    Close => match stack.pop() {
-                        Some(open_delim) if act_delim == open_delim => {}
-                        _ => return Err(ParseError::UnexpectedClosingDelimiter(self.token)),
-                    },
-                }
-            }
-
-            tokens.push(self.token);
-            self.advance();
-        }
-
-        if is_delimited && stack.is_empty() {
-            Ok(tokens)
-        } else {
-            Err(ParseError::MissingClosingDelimiters(self.token.span))
-        }
-    }
-
     fn parse_mutability(&mut self) -> ast::Mutability {
         match self.consume(TokenKind::Mut) {
             true => ast::Mutability::Mut,
             false => ast::Mutability::Not,
         }
+    }
+
+    fn error<T>(&mut self, error: Error) -> Result<T> {
+        self.errors.push(error);
+        Err(BufferedError(()))
     }
 
     fn consume(&mut self, category: impl TokenCategory) -> bool {
@@ -271,7 +182,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             return Ok(());
         }
 
-        Err(ParseError::UnexpectedToken(self.token, category.fragment()))
+        self.error(Error::UnexpectedToken(self.token, category.fragment()))
     }
 
     // FIXME: better name
@@ -304,10 +215,30 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn advance(&mut self) {
+        self.advance_unchecked();
+        // FIXME: I'm not so sure if that's really how we want to deal with essentially lexer errors.
+        self.validate_token();
+    }
+
+    fn advance_unchecked(&mut self) {
         self.index += 1;
         if let Some(&token) = self.tokens.get(self.index) {
             self.token = token;
         }
+    }
+
+    fn validate_token(&mut self) {
+        _ = match self.token.kind {
+            TokenKind::ReservedPrefix => {
+                let span = self.token.span;
+                self.advance_unchecked();
+                if let TokenKind::Hash = self.token.kind {
+                    self.advance_unchecked();
+                }
+                self.error::<!>(Error::ReservedPrefix(span))
+            }
+            _ => return,
+        };
     }
 
     fn source(&self, span: Span) -> &'src str {
@@ -326,7 +257,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         } else if self.token.kind == exception {
             true
         } else {
-            return Err(ParseError::UnexpectedToken(
+            return self.error(Error::UnexpectedToken(
                 self.token,
                 one_of![ExpectedFragment::CommonIdent, exception],
             ));
@@ -339,8 +270,10 @@ impl<'a, 'src> Parser<'a, 'src> {
 
     // FIXME: Temporary API, replace with parse(CommonIdent)
     fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
-        self.consume_common_ident()
-            .ok_or_else(|| ParseError::UnexpectedToken(self.token, ExpectedFragment::CommonIdent))
+        match self.consume_common_ident() {
+            Some(ident) => Ok(ident),
+            None => self.error(Error::UnexpectedToken(self.token, ExpectedFragment::CommonIdent)),
+        }
     }
 
     // FIXME: Temporary API, replace with consume(CommonIdent)
@@ -520,6 +453,7 @@ macro one_of($( $frag:expr ),+ $(,)?) {
     ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
 }
 
+#[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum ExpectedFragment {
     Bound,

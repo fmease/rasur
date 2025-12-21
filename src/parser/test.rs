@@ -1,4 +1,4 @@
-use super::error::ParseError;
+use super::error::Error;
 use crate::{
     Edition::{self, *},
     ast,
@@ -9,39 +9,42 @@ use std::assert_matches::assert_matches;
 
 // FIXME: Replace these tests with golden tests of ~debug fmt'ed nodes (custom fmt, derived, compact)
 
-fn parse_file(source: &str, edition: Edition) -> super::Result<ast::File<'_>> {
-    super::parse(&lex(source, edition, StripShebang::Yes), source, edition)
+type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
+
+fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>> {
+    let (file, errors) = super::parse(&lex(source, edition, StripShebang::Yes), source, edition);
+    file.map_err(|()| errors)
 }
 
 fn parse_via<'src, T>(
     source: &'src str,
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, 'src>) -> super::Result<T>,
-) -> super::Result<T> {
+) -> Result<T, Vec<Error>> {
     let tokens = lex(source, edition, StripShebang::No);
-    let mut parser = super::Parser::new(&tokens, source, edition);
-    let result = parse(&mut parser)?;
-    parser.parse(TokenKind::EndOfInput)?;
-    Ok(result)
+    let mut p = super::Parser::new(&tokens, source, edition);
+    let Ok(r) = parse(&mut p) else { return Err(p.errors) };
+    p.parse(TokenKind::EndOfInput).map_err(|_| p.errors)?;
+    Ok(r)
 }
 
-fn parse_item(source: &str, edition: Edition) -> super::Result<ast::Item<'_>> {
+fn parse_item(source: &str, edition: Edition) -> Result<ast::Item<'_>> {
     parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
 }
 
-fn parse_ty(source: &str, edition: Edition) -> super::Result<ast::Ty<'_>> {
+fn parse_ty(source: &str, edition: Edition) -> Result<ast::Ty<'_>> {
     parse_via(source, edition, |this| this.parse_ty())
 }
 
-fn parse_stmt(source: &str, edition: Edition) -> super::Result<ast::Stmt<'_>> {
+fn parse_stmt(source: &str, edition: Edition) -> Result<ast::Stmt<'_>> {
     parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
 }
 
-fn parse_expr(source: &str, edition: Edition) -> super::Result<ast::Expr<'_>> {
+fn parse_expr(source: &str, edition: Edition) -> Result<ast::Expr<'_>> {
     parse_via(source, edition, |this| this.parse_expr())
 }
 
-fn parse_pat(source: &str, edition: Edition) -> super::Result<ast::Pat<'_>> {
+fn parse_pat(source: &str, edition: Edition) -> Result<ast::Pat<'_>> {
     parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Allowed))
 }
 
@@ -140,13 +143,13 @@ fn expr_false_angle_gen_args() {
         parse_expr("f<i32>()", Rust2015),
         // FIXME: We should report sth. like OpCannotBeChained(Level::Compare) instead
         //        since we have {`<`, `>`} here, not {`>`, `>`}.
-        Err(ParseError::OpCannotBeChained(deref!("Gt"))),
+        Err(deref!([Error::OpCannotBeChained(deref!("Gt"))])),
     );
 
     assert_matches!(
         parse_expr("f<i32>", Rust2015),
         // FIXME: Same here.
-        Err(ParseError::OpCannotBeChained(deref!("Gt"))),
+        Err(deref!([Error::OpCannotBeChained(deref!("Gt"))])),
     );
 }
 
@@ -154,7 +157,10 @@ fn expr_false_angle_gen_args() {
 fn pat_false_angle_gen_args() {
     assert_matches!(
         parse_pat("Some<i32>(0)", Rust2015),
-        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SingleLessThan, span: _ },
+            _
+        )]))
     );
 }
 
@@ -330,12 +336,18 @@ fn expr_pat_paren_gen_args_arrow() {
 fn item_macro_call_gen_args() {
     assert_matches!(
         parse_item("path::to::<>::call!();", Rust2015),
-        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SingleLessThan, span: _ },
+            _
+        )]))
     );
 
     assert_matches!(
         parse_item("path::to::call<()>!();", Rust2015),
-        Err(ParseError::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _))
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SingleLessThan, span: _ },
+            _
+        )]))
     );
 }
 
@@ -422,10 +434,10 @@ fn stmts_const_item_const_block() {
 fn expr_control_flow_ops_block() {
     assert_matches!(
         parse_expr("if return {}", Rust2015),
-        Err(ParseError::UnexpectedToken(
+        Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
             super::ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
-        ))
+        )]))
     );
     assert_matches!(
         parse_expr("if return {} {}", Rust2015),

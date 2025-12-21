@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
-    error::ParseError,
+    error::Error,
     expr::{LetPolicy, OpPolicy, StructPolicy},
     item::ItemCx,
     pat::OrPolicy,
@@ -94,7 +94,7 @@ impl<'src> Parser<'_, 'src> {
             self.advance();
             Ok(ast::Stmt::Empty)
         } else {
-            Err(ParseError::UnexpectedToken(self.token, ExpectedFragment::Stmt))
+            self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Stmt))
         }
     }
 }
