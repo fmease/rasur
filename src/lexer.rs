@@ -328,17 +328,35 @@ impl<'src> Lexer<'src> {
         if !self.peek().is_some_and(is_ident_middle) {
             return self.fin_lex_char_lit();
         }
+
+        let start = self.index();
         self.advance();
 
-        // FIXME: In >=2021 detect & smw reject arbitrary ticked ident prefixes unless it's `r`.
+        let mut is_raw = false;
+        let mut is_lit = false;
+
         loop {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => self.advance(),
-                // FIXME: Escaped apostrophe
+                Some('#') if !is_raw && self.edition >= Edition::Rust2021 => {
+                    match self.source(start) {
+                        "r" => {
+                            is_raw = true;
+                            self.advance();
+                        }
+                        _ => break TokenKind::ReservedPrefix,
+                    }
+                }
+                Some('\\') => {
+                    is_lit = true;
+                    self.advance();
+                    self.advance();
+                }
                 Some('\'') => {
                     self.advance();
                     break TokenKind::CharLit;
                 }
+                _ if is_lit => break TokenKind::CharLit,
                 _ => break TokenKind::TickedIdent,
             }
         }
