@@ -48,6 +48,8 @@ weak! {
     Auto "auto" |p| p.look_ahead(1, |t| t.kind == TokenKind::Trait),
     Bikeshed "bikeshed",
     Builtin "builtin" |p| p.look_ahead(1, |t| t.kind == TokenKind::Hash),
+    ContractEnsures "contract_ensures",
+    ContractRequires "contract_requires",
     Default "default" |p| p.look_ahead(1, |t| t.kind.is_ident()),
     Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.look_ahead(1, |t| p.begins_2015_dyn_bound(t)),
     MacroRules "macro_rules" |p|

@@ -138,6 +138,7 @@ pub(crate) struct FnItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) params: Vec<FnParam<'src>>,
     pub(crate) ret_ty: Option<Ty<'src>>,
+    pub(crate) contract: Contract<'src>,
     pub(crate) body: Option<BlockExpr<'src>>,
 }
 
@@ -181,6 +182,12 @@ pub(crate) struct FnParam<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) pat: Pat<'src>,
     pub(crate) ty: Ty<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Contract<'src> {
+    pub(crate) requires: Option<Box<BlockExpr<'src>>>,
+    pub(crate) ensures: Option<Box<Expr<'src>>>,
 }
 
 #[derive(Debug)]

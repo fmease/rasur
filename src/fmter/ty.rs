@@ -173,6 +173,7 @@ impl Fmt for ast::GenericParam<'_> {
     }
 }
 
+// FIXME: LeadingSpace<_>
 impl Fmt for Vec<ast::Predicate<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         if self.is_empty() {

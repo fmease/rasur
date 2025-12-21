@@ -273,7 +273,7 @@ impl Fmt for ast::ExternItem<'_> {
 
 impl Fmt for ast::FnItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { modifiers, binder, generics, params, ret_ty, body } = self;
+        let Self { modifiers, binder, generics, params, ret_ty, contract, body } = self;
 
         modifiers.trailing_space().fmt(cx);
         fmt!(cx, "fn {binder}");
@@ -287,6 +287,7 @@ impl Fmt for ast::FnItem<'_> {
             fmt!(cx, " -> ");
             ty.fmt(cx);
         }
+        contract.fmt(cx);
         generics.preds.fmt(cx);
         if let Some(body) = body {
             fmt!(cx, " ");
@@ -331,6 +332,25 @@ impl Fmt for ast::FnParam<'_> {
         }
 
         ty.fmt(cx);
+    }
+}
+
+// FIXME: LeadingSpace<_>
+impl Fmt for ast::Contract<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { requires, ensures } = self;
+
+        if let Some(requires) = requires {
+            fmt!(cx, " contract_requires ");
+            requires.fmt(cx);
+            if ensures.is_some() {
+                fmt!(cx, " ");
+            }
+        }
+        if let Some(ensures) = ensures {
+            fmt!(cx, " contract_ensures ");
+            ensures.fmt(cx);
+        }
     }
 }
 

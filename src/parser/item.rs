@@ -511,6 +511,7 @@ impl<'src> Parser<'_, 'src> {
             _ => FnParamMode::Required,
         })?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
+        let contract = self.parse_contract()?;
         let preds = self.parse_where_clause()?;
 
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
@@ -526,8 +527,22 @@ impl<'src> Parser<'_, 'src> {
             generics: ast::Generics { params: gen_params, preds },
             params,
             ret_ty,
+            contract,
             body,
         })))
+    }
+
+    fn parse_contract(&mut self) -> Result<ast::Contract<'src>> {
+        // FIXME: Reject inner attrs inside of the block.
+        let requires = self
+            .consume(weak::ContractRequires)
+            .then(|| self.parse_block_expr().map(Box::new))
+            .transpose()?;
+        let ensures = self
+            .consume(weak::ContractEnsures)
+            .then(|| self.parse_expr().map(Box::new))
+            .transpose()?;
+        Ok(ast::Contract { requires, ensures })
     }
 
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
