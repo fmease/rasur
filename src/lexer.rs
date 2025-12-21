@@ -75,8 +75,6 @@ impl<'src> Lexer<'src> {
             return Token::new(TokenKind::EndOfInput, Span::new(index, index));
         };
 
-        // FIXME: Don't lex prefixes manually below (e.g., `c`, `br`), just parse the
-        //        potential prefix as an ident and decide later if it's one.
         let kind = match char {
             _ if char.is_whitespace() => {
                 while self.peek().is_some_and(|char| char.is_whitespace()) {
@@ -127,34 +125,7 @@ impl<'src> Lexer<'src> {
                     _ => TokenKind::SingleSlash,
                 }
             }
-            'b' => match self.peek() {
-                Some('\'') => {
-                    self.advance();
-                    self.fin_lex_char_lit()
-                }
-                Some('"') => {
-                    self.advance();
-                    self.fin_lex_str_lit(SkipBackslashes::Yes)
-                }
-                Some('r') => {
-                    self.advance();
-                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Byte, start)
-                }
-                _ => self.fin_lex_ident(start),
-            },
-            'c' if self.edition >= Edition::Rust2021 => match self.peek() {
-                Some('"') => {
-                    self.advance();
-                    self.fin_lex_str_lit(SkipBackslashes::Yes)
-                }
-                Some('r') => {
-                    self.advance();
-                    self.fin_lex_raw_str_lit_or_ident(RawStrKind::Cee, start)
-                }
-                _ => self.fin_lex_ident(start),
-            },
-            'r' => self.fin_lex_raw_str_lit_or_ident(RawStrKind::Normal, start),
-            _ if is_ident_start(char) => self.fin_lex_ident(start),
+            _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
             '0'..='9' => {
                 // FIXME: Float literals
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
@@ -376,55 +347,6 @@ impl<'src> Lexer<'src> {
         TokenKind::CharLit
     }
 
-    // FIXME: Do the 256 `#` max validation in the parser.
-    fn fin_lex_raw_str_lit_or_ident(&mut self, kind: RawStrKind, start: ByteIndex) -> TokenKind {
-        match self.peek() {
-            Some('"') => {
-                self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::No)
-            }
-            Some('#') => {
-                self.advance();
-
-                if let RawStrKind::Normal = kind
-                    && self.peek().is_some_and(is_ident_start)
-                {
-                    self.advance();
-                    return self.fin_lex_ident(start);
-                }
-
-                let mut open = 1usize;
-                while let Some('#') = self.peek() {
-                    self.advance();
-                    open += 1;
-                }
-
-                'outer: loop {
-                    while self.next().is_some_and(|(_, char)| char != '"') {}
-
-                    let mut close = 0usize;
-
-                    loop {
-                        match self.peek() {
-                            Some('#') => {
-                                self.advance();
-                                close += 1;
-                                if open == close {
-                                    break 'outer;
-                                }
-                            }
-                            Some(_) => break,
-                            None => break 'outer,
-                        }
-                    }
-                }
-
-                TokenKind::StrLit
-            }
-            _ => self.fin_lex_ident(start),
-        }
-    }
-
     fn fin_lex_str_lit(&mut self, skip: SkipBackslashes) -> TokenKind {
         while let Some((_, char)) = self.next() {
             match char {
@@ -441,18 +363,95 @@ impl<'src> Lexer<'src> {
         TokenKind::StrLit
     }
 
-    fn fin_lex_ident(&mut self, start: ByteIndex) -> TokenKind {
+    fn fin_lex_ident_or_str_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
         while self.peek().is_some_and(is_ident_middle) {
             self.advance();
         }
 
-        if self.edition >= Edition::Rust2021
-            && let Some('#' | '"' | '\'') = self.peek()
-        {
-            return TokenKind::ReservedPrefix;
+        let ident = self.source(start);
+
+        match (ident, self.peek()) {
+            ("b", Some('"')) => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::Yes)
+            }
+            ("br", Some('"')) => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::No)
+            }
+            ("c", Some('"')) if self.edition >= Edition::Rust2021 => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::Yes)
+            }
+            ("cr", Some('"')) if self.edition >= Edition::Rust2021 => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::No)
+            }
+            ("r", Some('"')) => {
+                self.advance();
+                self.fin_lex_str_lit(SkipBackslashes::No)
+            }
+            ("b", Some('\'')) => {
+                self.advance();
+                self.fin_lex_char_lit()
+            }
+            ("r", Some('#')) => {
+                self.advance();
+
+                if self.peek().is_some_and(is_ident_start) {
+                    while self.peek().is_some_and(is_ident_middle) {
+                        self.advance();
+                    }
+
+                    return TokenKind::CommonIdent;
+                }
+
+                self.fin_lex_raw_guarded_str_lit()
+            }
+            ("br", Some('#')) => {
+                self.advance();
+                self.fin_lex_raw_guarded_str_lit()
+            }
+            ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
+                self.advance();
+                self.fin_lex_raw_guarded_str_lit()
+            }
+            (_, Some('"' | '\'' | '#')) if self.edition >= Edition::Rust2021 => {
+                TokenKind::ReservedPrefix
+            }
+            _ => lex_ident(ident, self.edition),
+        }
+    }
+
+    // FIXME: Do the "256 `#` max" validation smw (here or in the parser).
+    fn fin_lex_raw_guarded_str_lit(&mut self) -> TokenKind {
+        let mut open = 1usize;
+        while let Some('#') = self.peek() {
+            self.advance();
+            open += 1;
         }
 
-        lex_ident_or_keyword(self.source(start), self.edition)
+        'outer: loop {
+            while self.next().is_some_and(|(_, char)| char != '"') {}
+
+            let mut close = 0usize;
+
+            loop {
+                match self.peek() {
+                    Some('#') => {
+                        self.advance();
+                        close += 1;
+                        if open == close {
+                            break 'outer;
+                        }
+                    }
+                    Some(_) => break,
+                    None => break 'outer,
+                }
+            }
+        }
+
+        TokenKind::StrLit
     }
 
     fn source(&self, start: ByteIndex) -> &'src str {
@@ -479,12 +478,6 @@ enum SkipBackslashes {
     No,
 }
 
-enum RawStrKind {
-    Normal,
-    Byte,
-    Cee,
-}
-
 fn is_ident_start(char: char) -> bool {
     char == '_' || char.is_xid_start()
 }
@@ -493,7 +486,7 @@ fn is_ident_middle(char: char) -> bool {
     char.is_xid_continue()
 }
 
-pub(crate) fn lex_ident_or_keyword(source: &str, edition: Edition) -> TokenKind {
+pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {
     match source {
         "Self" => TokenKind::SelfUpper,
         "_" => TokenKind::Underscore,

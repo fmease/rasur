@@ -1,6 +1,6 @@
 use crate::{
     Edition, ast,
-    lexer::lex_ident_or_keyword,
+    lexer::lex_ident,
     span::Span,
     token::{Token, TokenKind},
 };
@@ -86,7 +86,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         // For better diagnostics, we lex here in the parser instead of in the lexer.
         // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
         // FIXME: Now that we have token validation on `self.advance()`, we can rethink this approach.
-        let ident = lex_ident_or_keyword(&source[1..], self.edition);
+        let ident = lex_ident(&source[1..], self.edition);
         parse(self, ident, source, span).map(Some)
     }
 
