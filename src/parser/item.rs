@@ -52,13 +52,13 @@ impl<'src> Parser<'_, 'src> {
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
-            return self.error(Error::VisibilityOnInvalidItem);
+            return self.fatal(Error::VisibilityOnInvalidItem);
         }
 
         if let ast::Defaultness::Default = defaultness
             && !kind.supports_defaultness()
         {
-            return self.error(Error::DefaultnessOnInvalidItem);
+            return self.fatal(Error::DefaultnessOnInvalidItem);
         }
 
         let span = start.to(self.prev_token().map(|token| token.span));
@@ -142,7 +142,7 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_mod_item(safety, attrs);
@@ -150,7 +150,7 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_static_item(safety);
@@ -170,7 +170,7 @@ impl<'src> Parser<'_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_fn_item(modifiers, cx);
@@ -185,7 +185,7 @@ impl<'src> Parser<'_, 'src> {
                     _ => (ast::Autoness::Not, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_trait_item(modifiers, attrs);
@@ -198,7 +198,7 @@ impl<'src> Parser<'_, 'src> {
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(defaultness, kind, constness, safety, attrs);
@@ -206,13 +206,13 @@ impl<'src> Parser<'_, 'src> {
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi, attrs);
             }
             _ => {
-                return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
             }
         }
 
@@ -253,7 +253,7 @@ impl<'src> Parser<'_, 'src> {
             return self.parse_macro_call_item();
         }
 
-        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Item))
+        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Item))
     }
 
     gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
@@ -445,24 +445,26 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<ast::ItemKind<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
-        let items = self
-            .parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)?
-            .into_iter()
-            .map(|item| {
-                Ok(ast::ExternItem {
-                    attrs: item.attrs,
-                    vis: item.vis,
-                    kind: match item.kind {
-                        ast::ItemKind::Static(item) => ast::ExternItemKind::Static(item),
-                        ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
-                        ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
-                        ast::ItemKind::TyAlias(item) => ast::ExternItemKind::Ty(item),
-                        _ => return self.error(Error::InvalidExternItemKind(item.span)),
-                    },
-                    span: item.span,
-                })
+
+        let mut items = Vec::new();
+
+        for item in self.parse_items(ItemCx::Boring, TokenKind::CloseCurlyBracket)? {
+            items.push(ast::ExternItem {
+                attrs: item.attrs,
+                vis: item.vis,
+                kind: match item.kind {
+                    ast::ItemKind::Static(item) => ast::ExternItemKind::Static(item),
+                    ast::ItemKind::Fn(item) => ast::ExternItemKind::Fn(item),
+                    ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
+                    ast::ItemKind::TyAlias(item) => ast::ExternItemKind::Ty(item),
+                    _ => {
+                        self.error(Error::InvalidExternItemKind(item.span));
+                        continue;
+                    }
+                },
+                span: item.span,
             })
-            .collect::<Result<_>>()?;
+        }
 
         Ok(ast::ItemKind::ExternBlock(Box::new(ast::ExternBlockItem { safety, abi, body: items })))
     }
@@ -590,7 +592,7 @@ impl<'src> Parser<'_, 'src> {
                 false => self.parse_ty()?,
             };
             let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty else {
-                return self.error(Error::ExpectedTraitFoundTy);
+                return self.fatal(Error::ExpectedTraitFoundTy);
             };
             (Some(trait_ref), self_ty)
         } else {
@@ -605,14 +607,14 @@ impl<'src> Parser<'_, 'src> {
                 match polarity {
                     ast::ImplPolarity::Positive => {}
                     ast::ImplPolarity::Negative => {
-                        _ = self.error::<!>(Error::TraitImplModifierInInherentImpl("!"));
+                        self.error(Error::TraitImplModifierInInherentImpl("!"))
                     }
                 }
 
                 match safety {
                     ast::Safety::Inherited => {}
                     ast::Safety::Unsafe => {
-                        _ = self.error::<!>(Error::TraitImplModifierInInherentImpl("unsafe"));
+                        self.error(Error::TraitImplModifierInInherentImpl("unsafe"))
                     }
                 }
 
@@ -627,7 +629,7 @@ impl<'src> Parser<'_, 'src> {
             }
             ImplKind::Delegation => {
                 if trait_ref.is_none() {
-                    _ = self.error::<!>(Error::ReuseInherentImpl);
+                    self.error(Error::ReuseInherentImpl);
                 }
 
                 let body = self.parse_delegation_body()?;
@@ -730,17 +732,7 @@ impl<'src> Parser<'_, 'src> {
 
     /// Finish parsing a trait item assuming the leading `trait` has been parsed already.
     ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Trait_Item ::=
-    ///     "const"? "unsafe"? "auto"?
-    ///     "trait" Common_Ident
-    ///     Generic_Params
-    ///     (":" Bounds)?
-    ///     Where_Clause?
-    ///     "{" … "}"
-    /// ```
+    /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_trait_item(
         &mut self,
         modifiers: ast::TraitItemModifiers,
@@ -784,11 +776,11 @@ impl<'src> Parser<'_, 'src> {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => return self.error(Error::UnsafeTraitAlias),
+            ast::Safety::Unsafe => self.error(Error::UnsafeTraitAlias),
         }
 
         match autoness {
-            ast::Autoness::Auto => return self.error(Error::AutoTraitAlias),
+            ast::Autoness::Auto => self.error(Error::AutoTraitAlias),
             ast::Autoness::Not => {}
         }
 
@@ -907,24 +899,29 @@ impl<'src> Parser<'_, 'src> {
     ) -> Result<Vec<ast::AssocItem<'src>>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
         self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
-        self.parse_items(cx, TokenKind::CloseCurlyBracket)?
-            .into_iter()
-            .map(|item| {
-                Ok(ast::AssocItem {
-                    attrs: item.attrs,
-                    vis: item.vis,
-                    kind: match item.kind {
-                        ast::ItemKind::Const(item) => ast::AssocItemKind::Const(item),
-                        ast::ItemKind::Delegation(item) => ast::AssocItemKind::Delegation(item),
-                        ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
-                        ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
-                        ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
-                        _ => return self.error(Error::InvalidAssocItemKind(item.span)),
-                    },
-                    span: item.span,
-                })
-            })
-            .collect()
+
+        let mut items = Vec::new();
+
+        for item in self.parse_items(cx, TokenKind::CloseCurlyBracket)? {
+            items.push(ast::AssocItem {
+                attrs: item.attrs,
+                vis: item.vis,
+                kind: match item.kind {
+                    ast::ItemKind::Const(item) => ast::AssocItemKind::Const(item),
+                    ast::ItemKind::Delegation(item) => ast::AssocItemKind::Delegation(item),
+                    ast::ItemKind::Fn(item) => ast::AssocItemKind::Fn(item),
+                    ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
+                    ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
+                    _ => {
+                        self.error(Error::InvalidAssocItemKind(item.span));
+                        continue;
+                    }
+                },
+                span: item.span,
+            });
+        }
+
+        Ok(items)
     }
 
     /// Finish parsing a delegation item assuming the leading `reuse` has been parsed already.

@@ -155,13 +155,13 @@ impl<'src> Parser<'_, 'src> {
             match left_level.cmp(&level) {
                 Ordering::Less => break,
                 // FIXME: Don't use Debug repr of op, use surface-language symbol.
-                Ordering::Equal => return self.error(Error::OpCannotBeChained(format!("{op:?}"))),
+                Ordering::Equal => return self.fatal(Error::OpCannotBeChained(format!("{op:?}"))),
                 Ordering::Greater => {}
             }
             if let ast::ExprKind::Cast(..) = left.kind
                 && let Op::Call | Op::Index | Op::Project | Op::Try = op
             {
-                return self.error(Error::InvalidOpAfterCast);
+                return self.fatal(Error::InvalidOpAfterCast);
             }
             self.advance();
 
@@ -321,7 +321,7 @@ impl<'src> Parser<'_, 'src> {
                 return Ok(ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left))).into());
             }
             _ => {
-                return self.error(Error::UnexpectedToken(
+                return self.fatal(Error::UnexpectedToken(
                     self.token,
                     one_of![
                         TokenKind::Await,
@@ -352,7 +352,7 @@ impl<'src> Parser<'_, 'src> {
                 .into());
             } else if gen_args.is_some() {
                 return self
-                    .error(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
+                    .fatal(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
             }
         }
 
@@ -470,7 +470,7 @@ impl<'src> Parser<'_, 'src> {
                     self.advance();
                     self.fin_parse_while_loop_expr(label)
                 }
-                _ => self.error(Error::UnexpectedToken(
+                _ => self.fatal(Error::UnexpectedToken(
                     self.token,
                     one_of![
                         TokenKind::For,
@@ -494,7 +494,7 @@ impl<'src> Parser<'_, 'src> {
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                     let (mode, qualifiers) = Qualifier::strip_move(qualifiers);
                     if !qualifiers.is_empty() {
-                        return self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                        return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
                     let block = self.fin_parse_block_expr()?;
                     let kind = match (asyncness, genness) {
@@ -511,7 +511,7 @@ impl<'src> Parser<'_, 'src> {
                     [Qualifier::Const] => Some(ast::SpecialBlockKind::Const),
                     [Qualifier::Try(ty)] => Some(ast::SpecialBlockKind::Try(mem::take(ty))),
                     [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
-                    _ => return self.error(Error::InvalidExprPrefix(start.until(self.token.span))),
+                    _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
                 };
                 let block = self.fin_parse_block_expr()?;
                 return Ok(match kind {
@@ -541,12 +541,12 @@ impl<'src> Parser<'_, 'src> {
                 };
                 (modifiers.mode, qualifiers) = Qualifier::strip_move(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                    return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_closure_expr(bound_vars, modifiers);
             }
-            _ => return self.error(Error::InvalidExprPrefix(start.until(self.token.span))),
+            _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
         }
 
         match self.token.kind {
@@ -588,7 +588,7 @@ impl<'src> Parser<'_, 'src> {
                         let ty = self.parse_ty()?;
                         ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
                     }
-                    _ => return self.error(Error::UnknownBuiltInSyntax),
+                    _ => return self.fatal(Error::UnknownBuiltInSyntax),
                 };
                 self.parse(TokenKind::CloseRoundBracket)?;
                 return Ok(expr);
@@ -721,7 +721,7 @@ impl<'src> Parser<'_, 'src> {
             match self.token.kind {
                 TokenKind::SingleBang => {
                     let ast::ExtPath { ext: None, path } = path else {
-                        return self.error(Error::TyRelMacroCall);
+                        return self.fatal(Error::TyRelMacroCall);
                     };
 
                     self.advance();
@@ -780,7 +780,7 @@ impl<'src> Parser<'_, 'src> {
             return Ok(ast::ExprKind::Path(Box::new(path)));
         }
 
-        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Expr))
+        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Expr))
     }
 
     fn parse_expr_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -939,7 +939,7 @@ impl<'src> Parser<'_, 'src> {
                         self.fin_parse_if_expr()?
                     }
                     _ => {
-                        return self.error(Error::UnexpectedToken(
+                        return self.fatal(Error::UnexpectedToken(
                             self.token,
                             one_of![TokenKind::OpenCurlyBracket, TokenKind::If],
                         ));
@@ -1055,7 +1055,7 @@ impl<'src> Parser<'_, 'src> {
                 } {
                     // FIXME: Fake an UnexpectedToken(Let, ExpectedFragment::Expr) in the
                     // relevant cases for uniformity with the corresp. parser diagnostic.
-                    return self.error(Error::InvalidLetChain);
+                    return self.fatal(Error::InvalidLetChain);
                 }
             }
             ast::ExprKind::BinOp(ast::BinOp::And, left, right) => {
@@ -1077,10 +1077,11 @@ impl<'src> Parser<'_, 'src> {
 
     /// Optionally parse a label.
     fn parse_label(&mut self) -> Result<Option<ast::Ident<'src>>> {
-        self.parse_ticked_ident(|this, kind, label, span| match kind {
-            TokenKind::CommonIdent => Ok(label),
-            _ => this.error(Error::ReservedLabel(span)),
-        })
+        self.parse_ticked_ident(
+            |kind| matches!(kind, TokenKind::CommonIdent),
+            Error::ReservedLabel,
+            std::convert::identity,
+        )
     }
 }
 

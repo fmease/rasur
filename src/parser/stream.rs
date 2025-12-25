@@ -18,7 +18,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
             }
-            _ => self.error(Error::UnexpectedToken(
+            _ => self.fatal(Error::UnexpectedToken(
                 self.token,
                 one_of![
                     TokenKind::OpenRoundBracket,
@@ -75,7 +75,7 @@ impl<'src> Parser<'_, 'src> {
                     Open => stack.push(act_delim),
                     Close => match stack.pop() {
                         Some(open_delim) if act_delim == open_delim => {}
-                        _ => return self.error(Error::UnexpectedClosingDelimiter(self.token)),
+                        _ => return self.fatal(Error::UnexpectedClosingDelimiter(self.token)),
                     },
                 }
             }
@@ -87,7 +87,7 @@ impl<'src> Parser<'_, 'src> {
         if is_delimited && stack.is_empty() {
             Ok(tokens)
         } else {
-            self.error(Error::MissingClosingDelimiters(self.token.span))
+            self.fatal(Error::MissingClosingDelimiters(self.token.span))
         }
     }
 }

@@ -93,7 +93,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 Ok(ast::PathSeg { ident, args: M::parse(self)? })
             }
-            _ => self.error(Error::UnexpectedToken(self.token, ExpectedFragment::PathSegIdent)),
+            _ => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::PathSegIdent)),
         }
     }
 
@@ -150,7 +150,7 @@ impl<'src> Parser<'_, 'src> {
                     let expr = this.parse_const_arg()?;
                     ast::GenericArg::Const(expr)
                 } else {
-                    return this.error(Error::UnexpectedToken(
+                    return this.fatal(Error::UnexpectedToken(
                         this.token,
                         one_of![
                             ExpectedFragment::GenericArg,
@@ -209,7 +209,7 @@ impl<'src> Parser<'_, 'src> {
         } else if self.begins_const_arg() {
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
-            self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Term))
+            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Term))
         }
     }
 
@@ -236,7 +236,7 @@ impl<'src> Parser<'_, 'src> {
                 self.advance();
                 Ok(ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into())
             }
-            _ => self.error(Error::UnexpectedToken(self.token, ExpectedFragment::ConstArg)),
+            _ => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::ConstArg)),
         }
     }
 
@@ -294,7 +294,7 @@ impl<'src> Parser<'_, 'src> {
                 ast::PathTreeKind::Stump(binder)
             }
             _ => {
-                return self.error(Error::UnexpectedToken(
+                return self.fatal(Error::UnexpectedToken(
                     self.token,
                     // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
                     one_of![

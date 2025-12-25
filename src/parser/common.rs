@@ -25,7 +25,7 @@ impl<'src> Parser<'_, 'src> {
 
             if let Some(param) = this.parse_self_param(&mut attrs)? {
                 if !first {
-                    return this.error(Error::MisplacedReceiver);
+                    return this.fatal(Error::MisplacedReceiver);
                 }
                 return Ok(param);
             }
@@ -166,7 +166,7 @@ impl<'src> Parser<'_, 'src> {
         if let Some(lit) = lit {
             Ok(Some((sign, lit)))
         } else if let ast::Sign::Neg = sign {
-            self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Literal))
+            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Literal))
         } else {
             Ok(None)
         }

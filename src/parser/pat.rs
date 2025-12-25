@@ -39,7 +39,7 @@ impl<'src> Parser<'_, 'src> {
             match left_level.cmp(&level) {
                 Ordering::Less => break,
                 // FIXME: Don't use Debug repr of op, use surface-language symbol.
-                Ordering::Equal => return self.error(Error::OpCannotBeChained(format!("{op:?}"))),
+                Ordering::Equal => return self.fatal(Error::OpCannotBeChained(format!("{op:?}"))),
                 Ordering::Greater => {}
             }
             self.advance();
@@ -115,7 +115,7 @@ impl<'src> Parser<'_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
             Ok(ast::RangePatBound::Path(path))
         } else {
-            self.error(Error::UnexpectedToken(
+            self.fatal(Error::UnexpectedToken(
                 self.token,
                 one_of![ExpectedFragment::Literal, ExpectedFragment::ExtPath],
             ))
@@ -279,7 +279,7 @@ impl<'src> Parser<'_, 'src> {
                 }
                 TokenKind::SingleBang => {
                     let ast::ExtPath { ext: None, path } = path else {
-                        return self.error(Error::TyRelMacroCall);
+                        return self.fatal(Error::TyRelMacroCall);
                     };
 
                     self.advance();
@@ -310,7 +310,7 @@ impl<'src> Parser<'_, 'src> {
             };
         }
 
-        self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Pat))
+        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Pat))
     }
 
     fn fin_parse_binding_pat(

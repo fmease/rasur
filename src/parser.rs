@@ -77,7 +77,9 @@ impl<'a, 'src> Parser<'a, 'src> {
 
     fn parse_ticked_ident<T>(
         &mut self,
-        parse: impl FnOnce(&mut Self, TokenKind, &'src str, Span) -> Result<T>,
+        validate: fn(TokenKind) -> bool,
+        error: fn(Span) -> Error,
+        make: fn(&'src str) -> T,
     ) -> Result<Option<T>> {
         let TokenKind::TickedIdent = self.token.kind else { return Ok(None) };
         let span = self.token.span;
@@ -87,7 +89,10 @@ impl<'a, 'src> Parser<'a, 'src> {
         // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
         // FIXME: Now that we have token validation on `self.advance()`, we can rethink this approach.
         let ident = lex_ident(&source[1..], self.edition);
-        parse(self, ident, source, span).map(Some)
+        if !validate(ident) {
+            self.error(error(span));
+        }
+        Ok(Some(make(source)))
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(
@@ -168,8 +173,12 @@ impl<'a, 'src> Parser<'a, 'src> {
         }
     }
 
-    fn error<T>(&mut self, error: Error) -> Result<T> {
+    fn error(&mut self, error: Error) {
         self.errors.push(error);
+    }
+
+    fn fatal<T>(&mut self, error: Error) -> Result<T> {
+        self.error(error);
         Err(BufferedError(()))
     }
 
@@ -182,7 +191,7 @@ impl<'a, 'src> Parser<'a, 'src> {
             return Ok(());
         }
 
-        self.error(Error::UnexpectedToken(self.token, category.fragment()))
+        self.fatal(Error::UnexpectedToken(self.token, category.fragment()))
     }
 
     // FIXME: better name
@@ -228,17 +237,17 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn validate_token(&mut self) {
-        _ = match self.token.kind {
+        match self.token.kind {
             TokenKind::ReservedPrefix => {
                 let span = self.token.span;
                 self.advance_unchecked();
                 if let TokenKind::Hash = self.token.kind {
                     self.advance_unchecked();
                 }
-                self.error::<!>(Error::ReservedPrefix(span))
+                self.error(Error::ReservedPrefix(span));
             }
-            _ => return,
-        };
+            _ => {}
+        }
     }
 
     fn source(&self, span: Span) -> &'src str {
@@ -257,7 +266,7 @@ impl<'a, 'src> Parser<'a, 'src> {
         } else if self.token.kind == exception {
             true
         } else {
-            return self.error(Error::UnexpectedToken(
+            return self.fatal(Error::UnexpectedToken(
                 self.token,
                 one_of![ExpectedFragment::CommonIdent, exception],
             ));
@@ -272,7 +281,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         match self.consume_common_ident() {
             Some(ident) => Ok(ident),
-            None => self.error(Error::UnexpectedToken(self.token, ExpectedFragment::CommonIdent)),
+            None => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::CommonIdent)),
         }
     }
 

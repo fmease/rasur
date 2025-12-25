@@ -94,7 +94,7 @@ impl<'src> Parser<'_, 'src> {
             self.advance();
             Ok(ast::Stmt::Empty)
         } else {
-            self.error(Error::UnexpectedToken(self.token, ExpectedFragment::Stmt))
+            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Stmt))
         }
     }
 }
