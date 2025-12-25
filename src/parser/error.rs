@@ -35,6 +35,8 @@ pub enum Error {
     VisibilityOnInvalidItem,
     InvalidLetChain,
     ReuseInherentImpl,
+    InvalidRawTickedIdent,
+    InvalidRawIdent,
 }
 
 impl Error {
@@ -108,6 +110,8 @@ impl Error {
             Self::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
             Self::InvalidLetChain => Diag::new("invalid let-chain"),
             Self::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
+            Self::InvalidRawTickedIdent => Diag::new("invalid raw ticked identifier"),
+            Self::InvalidRawIdent => Diag::new("invalid raw identifier"),
         };
         eprintln!("{}", diag.render(cx));
     }

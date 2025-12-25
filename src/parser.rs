@@ -236,8 +236,19 @@ impl<'a, 'src> Parser<'a, 'src> {
         }
     }
 
+    // FIXME: I'm not so sure if that's really how we want to deal with essentially lexer errors.
+    //        We might want to compute some things in the lexer, so we don't need to retrieve
+    //        source strings here & do possibly "expensive" checking.
     fn validate_token(&mut self) {
         match self.token.kind {
+            TokenKind::CommonIdent
+                if let Some(source) = self.source(self.token.span).strip_prefix("r#")
+                    && let PathSegKeyword!() | TokenKind::Underscore =
+                        lex_ident(source, self.edition) =>
+            {
+                self.error(Error::InvalidRawIdent);
+            }
+            TokenKind::CommonIdent => {}
             TokenKind::ReservedPrefix => {
                 let span = self.token.span;
                 self.advance_unchecked();
@@ -245,6 +256,9 @@ impl<'a, 'src> Parser<'a, 'src> {
                     self.advance_unchecked();
                 }
                 self.error(Error::ReservedPrefix(span));
+            }
+            TokenKind::TickedIdent if let "'r#_" = self.source(self.token.span) => {
+                self.error(Error::InvalidRawTickedIdent);
             }
             _ => {}
         }
@@ -450,12 +464,12 @@ impl TokenPrefix {
     }
 }
 
+macro PathSegKeyword() {
+    TokenKind::SelfLower | TokenKind::Super | TokenKind::Crate | TokenKind::SelfUpper
+}
+
 macro PathSegIdent() {
-    TokenKind::SelfLower
-        | TokenKind::Super
-        | TokenKind::Crate
-        | TokenKind::SelfUpper
-        | TokenKind::CommonIdent
+    PathSegKeyword!() | TokenKind::CommonIdent
 }
 
 macro one_of($( $frag:expr ),+ $(,)?) {
