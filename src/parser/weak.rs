@@ -1,8 +1,6 @@
 //! Weak keywords.
 
-use super::{
-    Edition, MatchAgainstArbitraryToken, Parser, PathSegIdent, Token, TokenKind, TokenPrefix,
-};
+use super::{Edition, MatchAgainstArbitraryToken, Parser, Token, TokenKind, TokenPrefix};
 
 pub(super) trait Weak: Copy {
     const STR: &str;
@@ -60,7 +58,7 @@ weak! {
     // NOTE: This check isn't precise enough. See upstream issue:
     //       <https://github.com/rust-lang/rust/issues/148238>
     Reuse "reuse" |p| p.look_ahead(1, |t| {
-        matches!(t.kind, PathSegIdent!())
+        t.kind.is_ident()
             || TokenPrefix::LessThan.matches(t.kind)
             && p.look_ahead(2, |t| p.begins_ty(t))
     }),

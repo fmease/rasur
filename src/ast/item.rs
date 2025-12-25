@@ -196,7 +196,7 @@ pub(crate) struct ImplItem<'src> {
     pub(crate) constness: Constness,
     pub(crate) trait_ref: Option<ImplTraitRef<'src>>,
     pub(crate) self_ty: Ty<'src>,
-    pub(crate) body: Vec<AssocItem<'src>>,
+    pub(crate) body: ImplBody<'src>,
 }
 
 #[derive(Debug)]
@@ -211,6 +211,12 @@ pub(crate) struct ImplTraitRef<'src> {
 pub(crate) enum ImplPolarity {
     Positive,
     Negative,
+}
+
+#[derive(Debug)]
+pub(crate) enum ImplBody<'src> {
+    Normal(Vec<AssocItem<'src>>),
+    Delegated(Option<BlockExpr<'src>>),
 }
 
 #[derive(Debug)]

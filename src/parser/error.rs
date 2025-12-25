@@ -34,6 +34,7 @@ pub enum Error {
     UnsafeTraitAlias,
     VisibilityOnInvalidItem,
     InvalidLetChain,
+    ReuseInherentImpl,
 }
 
 impl Error {
@@ -106,6 +107,7 @@ impl Error {
             Self::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
             Self::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
             Self::InvalidLetChain => Diag::new("invalid let-chain"),
+            Self::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
         };
         eprintln!("{}", diag.render(cx));
     }

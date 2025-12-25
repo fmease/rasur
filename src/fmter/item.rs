@@ -359,8 +359,18 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
         let (item, attrs) = self;
         let ast::ImplItem { generics, constness, trait_ref, self_ty, body } = item;
 
-        if let Some(ast::ImplTraitRef { defaultness, safety, polarity: _, path: _ }) = trait_ref {
+        if let Some(ast::ImplTraitRef { defaultness, safety: _, polarity: _, path: _ }) = trait_ref
+        {
             defaultness.trailing_space().fmt(cx);
+        }
+
+        match body {
+            ast::ImplBody::Normal(_) => {}
+            ast::ImplBody::Delegated(_) => fmt!(cx, "reuse "),
+        }
+
+        if let Some(ast::ImplTraitRef { defaultness: _, safety, polarity: _, path: _ }) = trait_ref
+        {
             safety.trailing_space().fmt(cx);
         }
 
@@ -380,8 +390,30 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
         }
         self_ty.fmt(cx);
         generics.preds.fmt(cx);
-        fmt!(cx, " ");
-        Cluster { attrs, nodes: body }.fmt(cx);
+        (body, attrs).fmt(cx);
+    }
+}
+
+impl Fmt for (ast::ImplBody<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let (body, attrs) = self;
+
+        match body {
+            ast::ImplBody::Normal(items) => {
+                fmt!(cx, " ");
+                Cluster { attrs, nodes: items }.fmt(cx);
+            }
+            ast::ImplBody::Delegated(block) => {
+                debug_assert!(attrs.is_empty());
+
+                if let Some(block) = block {
+                    fmt!(cx, " ");
+                    block.fmt(cx);
+                } else {
+                    fmt!(cx, ";");
+                }
+            }
+        }
     }
 }
 

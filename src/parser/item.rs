@@ -80,7 +80,6 @@ impl<'src> Parser<'_, 'src> {
             | TokenKind::Type
             | TokenKind::Use => return true,
             TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Reuse::STR => return weak::Reuse.qualifies(self),
                 weak::Union::STR => return weak::Union.qualifies(self),
                 _ => {}
             },
@@ -135,10 +134,11 @@ impl<'src> Parser<'_, 'src> {
         match qualifiers.as_slice() {
             [] => {}
             [Qualifier::Const] => return self.fin_parse_const_item(defaultness),
-            // `crate` can't be a qualifier itself because it may also begin paths.
+            // `crate` can't be a qualifier itself because it may also begin paths & it's not worth the look-ahead.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
             }
+            [Qualifier::Reuse] => return self.fin_parse_delegation_item(),
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
@@ -191,13 +191,17 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_trait_item(modifiers, attrs);
             }
             [qualifiers @ .., Qualifier::Impl] => {
+                let (kind, qualifiers) = match qualifiers {
+                    [Qualifier::Reuse, qualifiers @ ..] => (ImplKind::Delegation, qualifiers),
+                    _ => (ImplKind::Normal, qualifiers),
+                };
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
                     return self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(defaultness, constness, safety, attrs);
+                return self.fin_parse_impl_item(defaultness, kind, constness, safety, attrs);
             }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -218,10 +222,6 @@ impl<'src> Parser<'_, 'src> {
                 return self.fin_parse_enum_item();
             }
             TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Reuse::STR if weak::Reuse.qualifies(self) => {
-                    self.advance();
-                    return self.fin_parse_delegation_item();
-                }
                 weak::Union::STR if weak::Union.qualifies(self) => {
                     self.advance();
                     let binder = self.source(self.token.span);
@@ -272,6 +272,7 @@ impl<'src> Parser<'_, 'src> {
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::CommonIdent => match self.source(self.token.span) {
                     weak::Auto::STR if weak::Auto.qualifies(self) => Qualifier::Auto,
+                    weak::Reuse::STR if weak::Reuse.qualifies(self) => Qualifier::Reuse,
                     weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
                     _ => return,
                 },
@@ -551,6 +552,7 @@ impl<'src> Parser<'_, 'src> {
     fn fin_parse_impl_item(
         &mut self,
         defaultness: ast::Defaultness,
+        kind: ImplKind,
         constness: ast::Constness,
         safety: ast::Safety,
         attrs: &mut Vec<ast::Attr<'src>>,
@@ -596,7 +598,6 @@ impl<'src> Parser<'_, 'src> {
         };
 
         let preds = self.parse_where_clause()?;
-        let body = self.parse_delimited_assoc_items(ItemCx::Boring, attrs)?;
 
         let trait_ref = match trait_ref {
             Some(path) => Some(ast::ImplTraitRef { defaultness, safety, polarity, path }),
@@ -604,18 +605,33 @@ impl<'src> Parser<'_, 'src> {
                 match polarity {
                     ast::ImplPolarity::Positive => {}
                     ast::ImplPolarity::Negative => {
-                        return self.error(Error::TraitImplModifierInInherentImpl("!"));
+                        _ = self.error::<!>(Error::TraitImplModifierInInherentImpl("!"));
                     }
                 }
 
                 match safety {
                     ast::Safety::Inherited => {}
                     ast::Safety::Unsafe => {
-                        return self.error(Error::TraitImplModifierInInherentImpl("unsafe"));
+                        _ = self.error::<!>(Error::TraitImplModifierInInherentImpl("unsafe"));
                     }
                 }
 
                 None
+            }
+        };
+
+        let body = match kind {
+            ImplKind::Normal => {
+                let items = self.parse_delimited_assoc_items(ItemCx::Boring, attrs)?;
+                ast::ImplBody::Normal(items)
+            }
+            ImplKind::Delegation => {
+                if trait_ref.is_none() {
+                    _ = self.error::<!>(Error::ReuseInherentImpl);
+                }
+
+                let body = self.parse_delegation_body()?;
+                ast::ImplBody::Delegated(body)
             }
         };
 
@@ -916,15 +932,19 @@ impl<'src> Parser<'_, 'src> {
         let (ext, mode) = self.parse_path_ext()?;
         // FIXME: Permit generic args at the top level!
         let path = self.parse_path_tree(mode)?;
-        let body = if self.consume(TokenKind::OpenCurlyBracket) {
-            // FIXME: Reject inner attrs. For some reason, they're syntactically forbidden.
-            Some(self.fin_parse_block_expr()?)
-        } else {
-            self.parse(TokenKind::Semicolon)?;
-            None
-        };
+        let body = self.parse_delegation_body()?;
 
         Ok(ast::ItemKind::Delegation(Box::new(ast::DelegationItem { ext, path, body })))
+    }
+
+    fn parse_delegation_body(&mut self) -> Result<Option<ast::BlockExpr<'src>>> {
+        if self.consume(TokenKind::OpenCurlyBracket) {
+            // FIXME: Reject inner attrs. For some reason, they're syntactically forbidden.
+            self.fin_parse_block_expr().map(Some)
+        } else {
+            self.parse(TokenKind::Semicolon)?;
+            Ok(None)
+        }
     }
 
     fn parse_visibility(&mut self) -> Result<ast::Visibility<'src>> {
@@ -1031,6 +1051,7 @@ enum Qualifier<'src> {
     Gen,
     Impl,
     Mod,
+    Reuse,
     Safe,
     Static,
     Trait,
@@ -1066,4 +1087,9 @@ impl<'src> Qualifier<'src> {
             _ => (ast::Externness::Not, qualifiers),
         }
     }
+}
+
+enum ImplKind {
+    Normal,
+    Delegation,
 }
