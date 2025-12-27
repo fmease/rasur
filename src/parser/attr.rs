@@ -28,22 +28,37 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<()> {
         // NOTE: To be kept in sync with `Self::begins_outer_attr`.
 
-        // FIXME: Parse doc comments.
-        while let TokenKind::Hash = self.token.kind {
-            match style {
-                ast::AttrStyle::Outer => self.advance(),
-                // We don't *expect* a bang here because the caller may want to
-                // parse outer attributes next.
-                ast::AttrStyle::Inner => {
-                    if self.look_ahead(1, |t| t.kind == TokenKind::SingleBang) {
-                        self.advance();
-                        self.advance();
-                    } else {
-                        break;
+        loop {
+            let kind = match self.token.kind {
+                TokenKind::Hash => {
+                    match style {
+                        ast::AttrStyle::Outer => self.advance(),
+                        // We don't *expect* a bang here because the caller may want to
+                        // parse outer attributes next.
+                        ast::AttrStyle::Inner => {
+                            if self.look_ahead(1, |t| t.kind == TokenKind::SingleBang) {
+                                self.advance();
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
                     }
+                    ast::AttrKind::Normal(self.fin_parse_normal_attr()?)
                 }
-            }
-            attrs.push(self.fin_parse_attr(style)?);
+                TokenKind::OuterDocComment if let ast::AttrStyle::Outer = style => {
+                    let span = self.token.span;
+                    self.advance();
+                    ast::AttrKind::DocComment(span)
+                }
+                TokenKind::InnerDocComment if let ast::AttrStyle::Inner = style => {
+                    let span = self.token.span;
+                    self.advance();
+                    ast::AttrKind::DocComment(span)
+                }
+                _ => break,
+            };
+            attrs.push(ast::Attr { style, kind });
         }
 
         Ok(())
@@ -52,10 +67,10 @@ impl<'src> Parser<'_, '_, 'src> {
     pub(super) fn begins_outer_attr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_attr`.
 
-        self.token.kind == TokenKind::Hash
+        matches!(self.token.kind, TokenKind::Hash | TokenKind::OuterDocComment)
     }
 
-    fn fin_parse_attr(&mut self, style: ast::AttrStyle) -> Result<ast::Attr<'src>> {
+    fn fin_parse_normal_attr(&mut self) -> Result<ast::NormalAttr<'src>> {
         self.parse(TokenKind::OpenSquareBracket)?;
 
         let safety = if self.consume(TokenKind::Unsafe) {
@@ -67,32 +82,32 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
 
-        let kind = match self.token.kind {
+        let args = match self.token.kind {
             TokenKind::SingleEquals => {
                 self.advance();
                 let expr = self.parse_expr()?;
-                ast::AttrKind::Assign(expr)
+                ast::AttrArgs::Assign(expr)
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                ast::AttrKind::Call(bracket, stream)
+                ast::AttrArgs::Call(bracket, stream)
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Square)?;
-                ast::AttrKind::Call(bracket, stream)
+                ast::AttrArgs::Call(bracket, stream)
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
-                ast::AttrKind::Call(bracket, stream)
+                ast::AttrArgs::Call(bracket, stream)
             }
             // FIXME: Better expectation for `#[x@]` where `@` is a bad token.
-            _ => ast::AttrKind::Unit,
+            _ => ast::AttrArgs::Unit,
         };
 
         match safety {
@@ -102,6 +117,6 @@ impl<'src> Parser<'_, '_, 'src> {
 
         self.parse(TokenKind::CloseSquareBracket)?;
 
-        Ok(ast::Attr { style, safety, path, kind })
+        Ok(ast::NormalAttr { safety, path, args })
     }
 }

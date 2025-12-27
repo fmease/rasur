@@ -1,10 +1,9 @@
 use super::{Bracket, Expr, NoGenericArgs, Path, Safety, TokenStream};
+use crate::span::Span;
 use std::fmt;
 
 pub(crate) struct Attr<'src, M: AttrMode = Any> {
     pub(crate) style: M::Style,
-    pub(crate) safety: Safety,
-    pub(crate) path: Path<'src, NoGenericArgs>,
     pub(crate) kind: AttrKind<'src>,
 }
 
@@ -20,16 +19,21 @@ impl<'src> Attr<'src, Inner> {
     }
 }
 
+impl<'src> Attr<'src, Any> {
+    // FIXME: Temporary API (until BlockExpr no longer stores inner attrs).
+    pub(crate) fn downcast(self) -> Option<Attr<'src, Inner>> {
+        match self.style {
+            AttrStyle::Inner => Some(Attr { style: (), ..self }),
+            AttrStyle::Outer => None,
+        }
+    }
+}
+
 impl<'src, M: AttrMode> fmt::Debug for Attr<'src, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { style, safety, path, kind } = self;
+        let Self { style, kind } = self;
 
-        f.debug_struct("Attr")
-            .field("style", style)
-            .field("safety", safety)
-            .field("path", path)
-            .field("kind", kind)
-            .finish()
+        f.debug_struct("Attr").field("style", style).field("kind", kind).finish()
     }
 }
 
@@ -41,6 +45,19 @@ pub(crate) enum AttrStyle {
 
 #[derive(Debug)]
 pub(crate) enum AttrKind<'src> {
+    Normal(NormalAttr<'src>),
+    DocComment(Span),
+}
+
+#[derive(Debug)]
+pub(crate) struct NormalAttr<'src> {
+    pub(crate) safety: Safety,
+    pub(crate) path: Path<'src, NoGenericArgs>,
+    pub(crate) args: AttrArgs<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum AttrArgs<'src> {
     Unit,
     Call(Bracket, TokenStream),
     Assign(Expr<'src>),

@@ -25,7 +25,7 @@ pub fn lex(
 
         tokens.push(token);
 
-        if token.kind == TokenKind::EndOfInput {
+        if let TokenKind::EndOfInput = token.kind {
             break;
         }
     }
@@ -53,7 +53,7 @@ impl StripShebang {
                 continue;
             }
 
-            if token.kind == TokenKind::OpenSquareBracket {
+            if let TokenKind::OpenSquareBracket = token.kind {
                 return 0;
             }
 
@@ -96,41 +96,32 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '/' => match self.peek() {
                 Some('/') => {
                     self.advance();
+
+                    // FIXME: Using peek2 would lead to nicer code
+                    let kind = match self.peek() {
+                        Some('!') => {
+                            self.advance();
+                            TokenKind::InnerDocComment
+                        }
+                        Some('/') => {
+                            self.advance();
+                            match self.peek() {
+                                Some('/') => TokenKind::Trivia,
+                                _ => TokenKind::OuterDocComment,
+                            }
+                        }
+                        _ => TokenKind::Trivia,
+                    };
+
                     while self.peek().is_some_and(|char| char != '\n') {
                         self.advance();
                     }
 
-                    TokenKind::Trivia
+                    kind
                 }
                 Some('*') => {
                     self.advance();
-
-                    let mut depth = 0;
-                    let mut terminated = false;
-
-                    while let Some((_, prev)) = self.next() {
-                        match (prev, self.peek()) {
-                            ('/', Some('*')) => {
-                                self.advance();
-                                depth += 1;
-                            }
-                            ('*', Some('/')) => {
-                                self.advance();
-                                if depth == 0 {
-                                    terminated = true;
-                                    break;
-                                }
-                                depth -= 1;
-                            }
-                            _ => (),
-                        }
-                    }
-
-                    if !terminated {
-                        self.error(Error::UnterminatedBlockComment(self.span(start)));
-                    }
-
-                    TokenKind::Trivia
+                    self.fin_lex_block_comment(start)
                 }
                 Some('=') => {
                     self.advance();
@@ -307,6 +298,55 @@ impl<'a, 'src> Lexer<'a, 'src> {
         };
 
         Token::new(kind, Span::new(start, self.index()))
+    }
+
+    fn fin_lex_block_comment(&mut self, start: ByteIndex) -> TokenKind {
+        let mut depth = 0;
+        let mut terminated = false;
+
+        let kind = match self.peek() {
+            Some('!') => {
+                self.advance();
+                TokenKind::InnerDocComment
+            }
+            // FIXME: Using peek2 would lead to nicer code
+            Some('*') => {
+                self.advance();
+                match self.peek() {
+                    Some('*') => TokenKind::Trivia,
+                    Some('/') => {
+                        self.advance();
+                        return TokenKind::Trivia;
+                    }
+                    _ => TokenKind::OuterDocComment,
+                }
+            }
+            _ => TokenKind::Trivia,
+        };
+
+        while let Some((_, char)) = self.next() {
+            match (char, self.peek()) {
+                ('/', Some('*')) => {
+                    self.advance();
+                    depth += 1;
+                }
+                ('*', Some('/')) => {
+                    self.advance();
+                    if depth == 0 {
+                        terminated = true;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+
+        if !terminated {
+            self.error(Error::UnterminatedBlockComment(self.span(start)));
+        }
+
+        kind
     }
 
     // FIXME: Consolidate with fin_lex_char_lit smh

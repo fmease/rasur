@@ -2,6 +2,7 @@ use crate::token;
 use crate::{ast, span::Span};
 use std::fmt::Write as _;
 
+mod attr;
 mod expr;
 mod item;
 mod pat;
@@ -71,7 +72,8 @@ impl<'src> Cx<'src> {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Support rustfmt_skip or whatever that legacy attr is called
         attrs.iter().any(|attr| {
-            let ast::AttrKind::Unit = attr.kind else { return false };
+            let ast::AttrKind::Normal(attr) = &attr.kind else { return false };
+            let ast::AttrArgs::Unit = attr.args else { return false };
 
             let &[ast::PathSeg { ident: tool, args: () }, ast::PathSeg { ident: "skip", args: () }] =
                 attr.path.segs.as_slice()
@@ -104,58 +106,6 @@ impl Fmt for ast::File<'_> {
             LineBreak.fmt(cx);
         }
         items.interleave(LineBreak).fmt(cx);
-    }
-}
-
-impl Fmt for ast::Attr<'_, ast::attr::Outer> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        self.upcast().fmt(cx);
-    }
-}
-
-impl Fmt for ast::Attr<'_, ast::attr::Inner> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        self.upcast().fmt(cx);
-    }
-}
-
-impl Fmt for ast::Attr<'_, ast::attr::Any> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { style, safety, path, kind } = self;
-
-        fmt!(cx, "#");
-        match style {
-            ast::AttrStyle::Inner => fmt!(cx, "!"),
-            ast::AttrStyle::Outer => {}
-        }
-        fmt!(cx, "[");
-
-        match safety {
-            ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => fmt!(cx, "unsafe("),
-        }
-
-        path.fmt(cx);
-
-        match kind {
-            ast::AttrKind::Unit => {}
-            ast::AttrKind::Call(bracket, stream) => {
-                (bracket, ast::Orientation::Open).fmt(cx);
-                stream.fmt(cx);
-                (bracket, ast::Orientation::Close).fmt(cx);
-            }
-            ast::AttrKind::Assign(expr) => {
-                fmt!(cx, " = ");
-                expr.fmt(cx);
-            }
-        }
-
-        match safety {
-            ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => fmt!(cx, ")"),
-        }
-
-        fmt!(cx, "]");
     }
 }
 

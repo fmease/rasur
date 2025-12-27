@@ -142,6 +142,8 @@ pub enum TokenKind {
     TripleDot,
     Trivia,
     WideArrow,
+    InnerDocComment,
+    OuterDocComment,
 }
 
 impl TokenKind {
@@ -261,6 +263,8 @@ impl TokenKind {
             Self::While => Repr::Src("while"),
             Self::WideArrow => Repr::Src("=>"),
             Self::Yield => Repr::Src("yield"),
+            Self::InnerDocComment => Repr::Tag("inner doc comment"),
+            Self::OuterDocComment => Repr::Tag("outer doc comment"),
         }
     }
 }

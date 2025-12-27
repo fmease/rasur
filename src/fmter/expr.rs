@@ -482,28 +482,8 @@ impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, stmts } = self;
 
-        fmt!(cx, "{{");
-        if !attrs.is_empty() || !stmts.is_empty() {
-            cx.indent();
-            LineBreak.fmt(cx);
-            for attr in attrs {
-                attr.fmt(cx);
-                LineBreak.fmt(cx);
-            }
-            let mut stmts = stmts.into_iter().peekable();
-            while let Some(stmt) = stmts.next() {
-                if let ast::Stmt::Empty = stmt {
-                    continue;
-                }
-                stmt.fmt(cx);
-                if stmts.peek().is_some() {
-                    LineBreak.fmt(cx);
-                }
-            }
-            cx.dedent();
-            LineBreak.fmt(cx);
-        }
-        fmt!(cx, "}}");
+        // FIXME: Skip Stmt::Empty here
+        Cluster { attrs, nodes: stmts }.fmt(cx);
     }
 }
 

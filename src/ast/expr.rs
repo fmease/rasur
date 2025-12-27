@@ -253,7 +253,7 @@ pub(crate) enum GenBlockKind {
 
 #[derive(Debug)]
 pub(crate) struct BlockExpr<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
+    pub(crate) attrs: Vec<Attr<'src, super::attr::Inner>>,
     pub(crate) stmts: Vec<Stmt<'src>>,
 }
 

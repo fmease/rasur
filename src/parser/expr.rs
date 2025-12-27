@@ -847,7 +847,11 @@ impl<'src> Parser<'_, '_, 'src> {
     pub(super) fn fin_parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
         // FIXME: Instead of tracking attrs inside the `BlockExpr`, they should be merged with the
         //        outer attrs of the parent expr (created by the caller).
-        let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+        let attrs = self
+            .parse_attrs(ast::AttrStyle::Inner)?
+            .into_iter()
+            .map(|attr| attr.downcast().unwrap())
+            .collect();
         let mut stmts = Vec::new();
 
         const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
