@@ -38,7 +38,7 @@ if [[ -z $SOURCE ]]; then
 fi
 
 print -P "%S-- RUSTC --------------------------------%s"
-printf -- $([[ -z $FILE ]] && echo "$SOURCE") | rustc +nightly \
+printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc +nightly \
   $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
   -Zparse-crate-root-only \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \

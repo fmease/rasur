@@ -33,7 +33,6 @@ fn try_main() -> Result<(), ()> {
     let edition = opts.edition.unwrap_or_default();
     let cx = diagnostics::RenderCx { source: &source, path: &path, short: opts.short };
 
-    // FIXME: report errors
     let mut errors = rasur::error::Buffer::Hold(Vec::new());
 
     let tokens = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes, &mut errors);
@@ -49,7 +48,7 @@ fn try_main() -> Result<(), ()> {
 
     if opts.lex_only {
         if let Some(errors) = errors.non_empty() {
-            errors.into_iter().for_each(|error| diagnostics::print(error, cx));
+            errors.into_iter().for_each(|error| diagnostics::eprint(error, cx));
             return Err(());
         }
 
@@ -65,11 +64,11 @@ fn try_main() -> Result<(), ()> {
     }
 
     if let Some(errors) = errors.non_empty() {
-        errors.into_iter().for_each(|error| diagnostics::print(error, cx));
+        errors.into_iter().for_each(|error| diagnostics::eprint(error, cx));
         return Err(());
     }
 
-    let file = file?;
+    let file = file.unwrap();
 
     if opts.fmt {
         let result = rasur::fmter::fmt(

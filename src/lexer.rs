@@ -93,58 +93,62 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                 TokenKind::Trivia
             }
-            '/' => {
-                match self.peek() {
-                    Some('/') => {
+            '/' => match self.peek() {
+                Some('/') => {
+                    self.advance();
+                    while self.peek().is_some_and(|char| char != '\n') {
                         self.advance();
-                        while self.peek().is_some_and(|char| char != '\n') {
-                            self.advance();
-                        }
-
-                        TokenKind::Trivia
                     }
-                    Some('*') => {
-                        self.advance();
 
-                        let mut depth = 0;
-
-                        while let Some((_, prev)) = self.next() {
-                            match (prev, self.peek()) {
-                                ('/', Some('*')) => {
-                                    self.advance();
-                                    depth += 1;
-                                }
-                                ('*', Some('/')) => {
-                                    self.advance();
-                                    if depth == 0 {
-                                        break;
-                                    }
-                                    depth -= 1;
-                                }
-                                _ => (),
-                            }
-                        }
-
-                        // FIXME: Return `UnterminatedBlockComment` or `Trivia(Xyz)` on unterminated block comments.
-                        TokenKind::Trivia
-                    }
-                    Some('=') => {
-                        self.advance();
-                        TokenKind::SlashEquals
-                    }
-                    _ => TokenKind::SingleSlash,
+                    TokenKind::Trivia
                 }
-            }
+                Some('*') => {
+                    self.advance();
+
+                    let mut depth = 0;
+                    let mut terminated = false;
+
+                    while let Some((_, prev)) = self.next() {
+                        match (prev, self.peek()) {
+                            ('/', Some('*')) => {
+                                self.advance();
+                                depth += 1;
+                            }
+                            ('*', Some('/')) => {
+                                self.advance();
+                                if depth == 0 {
+                                    terminated = true;
+                                    break;
+                                }
+                                depth -= 1;
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    if !terminated {
+                        self.error(Error::UnterminatedBlockComment(self.span(start)));
+                    }
+
+                    TokenKind::Trivia
+                }
+                Some('=') => {
+                    self.advance();
+                    TokenKind::SlashEquals
+                }
+                _ => TokenKind::SingleSlash,
+            },
             _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
             '0'..='9' => {
                 // FIXME: Float literals
+                // FIXME: Int literal validation if it has an explicit base
                 while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
                     self.advance();
                 }
 
                 TokenKind::NumLit
             }
-            '"' => self.fin_lex_str_lit(SkipBackslashes::Yes),
+            '"' => self.fin_lex_str_lit(start, SkipBackslashes::Yes),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
@@ -298,19 +302,20 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 _ => TokenKind::SingleGreaterThan,
             },
-            '\'' => self.fin_lex_char_lit_or_ticked_ident(),
+            '\'' => self.fin_lex_char_lit_or_ticked_ident(start),
             _ => TokenKind::Invalid,
         };
 
         Token::new(kind, Span::new(start, self.index()))
     }
 
-    fn fin_lex_char_lit_or_ticked_ident(&mut self) -> TokenKind {
+    // FIXME: Consolidate with fin_lex_char_lit smh
+    fn fin_lex_char_lit_or_ticked_ident(&mut self, start: ByteIndex) -> TokenKind {
         if !self.peek().is_some_and(is_ident_middle) {
-            return self.fin_lex_char_lit();
+            return self.fin_lex_char_lit(start);
         }
 
-        let start = self.index();
+        let unticked = self.index();
         self.advance();
 
         let mut raw = None;
@@ -320,13 +325,13 @@ impl<'a, 'src> Lexer<'a, 'src> {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => self.advance(),
                 Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
-                    match self.source(start) {
+                    match self.source(unticked) {
                         "r" => {
                             self.advance();
                             raw = Some(self.index());
                         }
                         _ => {
-                            self.error(Error::ReservedPrefix(self.span(start)));
+                            self.error(Error::ReservedPrefix(self.span(unticked)));
                             break TokenKind::Error;
                         }
                     }
@@ -340,12 +345,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     self.advance();
                     break TokenKind::CharLit;
                 }
-                _ if is_lit => break TokenKind::CharLit,
+                _ if is_lit => {
+                    self.error(Error::UnterminatedCharLit(self.span(start)));
+                    break TokenKind::CharLit;
+                }
                 _ => {
                     if let Some(start) = raw
                         && let TokenKind::Underscore = lex_ident(self.source(start), self.edition)
                     {
-                        self.error(Error::InvalidRawTickedIdent);
+                        self.error(Error::InvalidRawTickedIdent(self.span(start)));
                     }
 
                     break TokenKind::TickedIdent;
@@ -354,33 +362,49 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    fn fin_lex_char_lit(&mut self) -> TokenKind {
+    fn fin_lex_char_lit(&mut self, start: ByteIndex) -> TokenKind {
+        let mut terminated = false;
+
         while let Some((_, char)) = self.next() {
             match char {
                 '\\' => self.advance(),
-                '\'' => break,
+                '\'' => {
+                    terminated = true;
+                    break;
+                }
                 _ => {}
             }
         }
 
-        // FIXME: We currently don't mark unterminated str lits
-        //        and the parser doesn't report them.
+        if !terminated {
+            self.error(Error::UnterminatedCharLit(self.span(start)));
+        }
+
+        // FIXME: Lex suffixes.
+
         TokenKind::CharLit
     }
 
-    fn fin_lex_str_lit(&mut self, skip: SkipBackslashes) -> TokenKind {
+    fn fin_lex_str_lit(&mut self, start: ByteIndex, skip: SkipBackslashes) -> TokenKind {
+        let mut terminated = false;
+
         while let Some((_, char)) = self.next() {
             match char {
                 '\\' if let SkipBackslashes::Yes = skip => self.advance(),
-                '"' => break,
+                '"' => {
+                    terminated = true;
+                    break;
+                }
                 _ => {}
             }
+        }
+
+        if !terminated {
+            self.error(Error::UnterminatedStrLit(self.span(start)));
         }
 
         // FIXME: Suffixes
 
-        // FIXME: We currently don't mark unterminated str lits
-        //        and the parser doesn't report them.
         TokenKind::StrLit
     }
 
@@ -394,55 +418,55 @@ impl<'a, 'src> Lexer<'a, 'src> {
         match (ident, self.peek()) {
             ("b", Some('"')) => {
                 self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::Yes)
+                self.fin_lex_str_lit(start, SkipBackslashes::Yes)
             }
             ("br", Some('"')) => {
                 self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::No)
+                self.fin_lex_str_lit(start, SkipBackslashes::No)
             }
             ("c", Some('"')) if self.edition >= Edition::Rust2021 => {
                 self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::Yes)
+                self.fin_lex_str_lit(start, SkipBackslashes::Yes)
             }
             ("cr", Some('"')) if self.edition >= Edition::Rust2021 => {
                 self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::No)
+                self.fin_lex_str_lit(start, SkipBackslashes::No)
             }
             ("r", Some('"')) => {
                 self.advance();
-                self.fin_lex_str_lit(SkipBackslashes::No)
+                self.fin_lex_str_lit(start, SkipBackslashes::No)
             }
             ("b", Some('\'')) => {
                 self.advance();
-                self.fin_lex_char_lit()
+                self.fin_lex_char_lit(start)
             }
             ("r", Some('#')) => {
                 self.advance();
 
-                let start = self.index();
+                let unprefixed = self.index();
                 if self.peek().is_some_and(is_ident_start) {
                     while self.peek().is_some_and(is_ident_middle) {
                         self.advance();
                     }
 
                     if let PathSegKeyword!() | TokenKind::Underscore =
-                        lex_ident(self.source(start), self.edition)
+                        lex_ident(self.source(unprefixed), self.edition)
                     {
-                        self.error(Error::InvalidRawIdent);
+                        self.error(Error::InvalidRawIdent(self.span(unprefixed)));
                     }
 
                     return TokenKind::CommonIdent;
                 }
 
-                self.fin_lex_raw_guarded_str_lit()
+                self.fin_lex_raw_guarded_str_lit(start)
             }
             ("br", Some('#')) => {
                 self.advance();
-                self.fin_lex_raw_guarded_str_lit()
+                self.fin_lex_raw_guarded_str_lit(start)
             }
             ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
                 self.advance();
-                self.fin_lex_raw_guarded_str_lit()
+                self.fin_lex_raw_guarded_str_lit(start)
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
@@ -455,14 +479,17 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    // FIXME: Do the "256 `#` max" validation smw (here or in the parser).
-    fn fin_lex_raw_guarded_str_lit(&mut self) -> TokenKind {
+    // FIXME: Consolidate with `fin_lex_str_lit` smh
+    fn fin_lex_raw_guarded_str_lit(&mut self, start: ByteIndex) -> TokenKind {
+        let mut terminated = false;
         let mut open = 1usize;
+
         while let Some('#') = self.peek() {
             self.advance();
             open += 1;
         }
 
+        // FIXME: Emit an error if there isn't any double quote.
         'outer: loop {
             while self.next().is_some_and(|(_, char)| char != '"') {}
 
@@ -474,6 +501,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         self.advance();
                         close += 1;
                         if open == close {
+                            terminated = true;
                             break 'outer;
                         }
                     }
@@ -482,6 +510,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
             }
         }
+
+        if !terminated {
+            self.error(Error::UnterminatedStrLit(self.span(start)));
+        } else if open > 255 {
+            self.error(Error::StrLitGuardTooLarge(self.span(start)));
+        }
+
+        // FIXME: Lex suffixes.
 
         TokenKind::StrLit
     }

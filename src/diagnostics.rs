@@ -7,7 +7,7 @@ use rasur::{
 };
 use std::{borrow::Cow, path::Path};
 
-pub(crate) fn print(error: Error, cx: RenderCx<'_>) {
+pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
     let diag = match error {
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
         Error::DefaultnessOnInvalidItem => {
@@ -72,8 +72,24 @@ pub(crate) fn print(error: Error, cx: RenderCx<'_>) {
         Error::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
         Error::InvalidLetChain => Diag::new("invalid let-chain"),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
-        Error::InvalidRawTickedIdent => Diag::new("invalid raw ticked identifier"),
-        Error::InvalidRawIdent => Diag::new("invalid raw identifier"),
+        Error::InvalidRawTickedIdent(span) => {
+            Diag::new("invalid raw ticked identifier").unlabeled_highlight(span)
+        }
+        Error::InvalidRawIdent(span) => {
+            Diag::new("invalid raw identifier").unlabeled_highlight(span)
+        }
+        Error::UnterminatedBlockComment(span) => {
+            Diag::new("unterminated block comment").unlabeled_highlight(span)
+        }
+        Error::UnterminatedCharLit(span) => {
+            Diag::new("unterminated char literal").unlabeled_highlight(span)
+        }
+        Error::UnterminatedStrLit(span) => {
+            Diag::new("unterminated string literal").unlabeled_highlight(span)
+        }
+        Error::StrLitGuardTooLarge(span) => {
+            Diag::new("string literal guard too large").unlabeled_highlight(span)
+        }
     };
     eprintln!("{}", diag.render(cx));
 }

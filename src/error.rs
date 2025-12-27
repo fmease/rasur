@@ -29,6 +29,7 @@ impl Buffer {
 }
 
 // FIXME: Overhaul this error type; most of the variants are just placeholders.
+// FIXME: All errors should have spans
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum Error {
@@ -40,10 +41,13 @@ pub enum Error {
     InvalidAssocItemKind(Span),
     InvalidExprPrefix(Span),
     InvalidExternItemKind(Span),
-    InvalidTyPrefix(Span),
     InvalidItemPrefix(Span),
+    InvalidLetChain,
     InvalidOpAfterCast,
     InvalidParenthesizedBound,
+    InvalidRawIdent(Span),
+    InvalidRawTickedIdent(Span),
+    InvalidTyPrefix(Span),
     MisplacedReceiver,
     MissingClosingDelimiters(Span),
     ModifiersOnInvalidBound,
@@ -52,15 +56,16 @@ pub enum Error {
     ReservedLabel(Span),
     ReservedLifetime(Span),
     ReservedPrefix(Span),
+    ReuseInherentImpl,
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
     UnknownBuiltInSyntax,
     UnsafeTraitAlias,
+    UnterminatedBlockComment(Span),
+    UnterminatedCharLit(Span),
+    UnterminatedStrLit(Span),
     VisibilityOnInvalidItem,
-    InvalidLetChain,
-    ReuseInherentImpl,
-    InvalidRawTickedIdent,
-    InvalidRawIdent,
+    StrLitGuardTooLarge(Span),
 }
