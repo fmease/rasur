@@ -14,7 +14,9 @@ do case "$1" in
   ;;
   -v | --verbose) VERBOSE=1
   ;;
-  -F | --format | --fmt) FORMAT=1
+  -f | --file) FILE=1
+  ;;
+  --format | --fmt) FORMAT=1
   ;;
   --ast) AST=1
   ;;
@@ -36,7 +38,9 @@ if [[ -z $SOURCE ]]; then
 fi
 
 print -P "%S-- RUSTC --------------------------------%s"
-printf -- "$SOURCE" | rustc +nightly - -Zparse-crate-root-only \
+printf -- $([[ -z $FILE ]] && echo "$SOURCE") | rustc +nightly \
+  $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
+  -Zparse-crate-root-only \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -z $VERBOSE ]] && echo --error-format=short) \
   $([[ -n $FORMAT ]] && echo -Zunpretty=normal) \
@@ -44,7 +48,8 @@ printf -- "$SOURCE" | rustc +nightly - -Zparse-crate-root-only \
 RUSTC_RESULT="$?"
 
 print -P "%S-- RASUR --------------------------------%s"
-./rasur --source "$SOURCE" \
+./rasur \
+  $([[ -z $FILE ]] && echo --source) "$SOURCE" \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -z $VERBOSE ]] && echo --short) \
   $([[ -n $FORMAT ]] && echo --fmt) \
