@@ -1,13 +1,12 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
-    error::Error,
     expr::{LetPolicy, OpPolicy, StructPolicy},
     item::ItemCx,
     pat::OrPolicy,
 };
-use crate::ast;
+use crate::{ast, error::Error};
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a statement.
     ///
     /// # Grammar

@@ -1,20 +1,25 @@
 use crate::{
     Edition,
+    error::{Buffer as ErrorBuffer, Error},
     span::{ByteIndex, Span},
-    token::{Token, TokenKind},
+    token::{PathSegKeyword, Token, TokenKind},
 };
 use unicode_xid::UnicodeXID;
 
-pub fn lex(source: &str, edition: Edition, strip_shebang: StripShebang) -> Vec<Token> {
+pub fn lex(
+    source: &str,
+    edition: Edition,
+    strip_shebang: StripShebang,
+    errors: &mut ErrorBuffer,
+) -> Vec<Token> {
     let offset = strip_shebang.apply(source, edition);
-    let mut chars = Lexer::new(source, offset, edition);
+    let mut chars = Lexer::new(source, offset, edition, errors);
     let mut tokens = Vec::new();
 
     loop {
         let token = chars.lex();
 
-        if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment = token.kind
-        {
+        if let TokenKind::Trivia | TokenKind::Error = token.kind {
             continue;
         }
 
@@ -38,14 +43,13 @@ impl StripShebang {
     fn apply(self, source: &str, edition: Edition) -> usize {
         let Self::Yes = self else { return 0 };
         let Some(suffix) = source.strip_prefix("#!") else { return 0 };
-        let mut lexer = Lexer::new(suffix, 0, edition);
+        let mut errors = ErrorBuffer::Void;
+        let mut lexer = Lexer::new(suffix, 0, edition, &mut errors);
 
         loop {
             let token = lexer.lex();
 
-            if let TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment =
-                token.kind
-            {
+            if let TokenKind::Trivia = token.kind {
                 continue;
             }
 
@@ -58,15 +62,21 @@ impl StripShebang {
     }
 }
 
-struct Lexer<'src> {
+struct Lexer<'a, 'src> {
     source: &'src str,
     edition: Edition,
     chars: iter::PeekableCharIndices<'src>,
+    errors: &'a mut ErrorBuffer,
 }
 
-impl<'src> Lexer<'src> {
-    fn new(source: &'src str, offset: usize, edition: Edition) -> Self {
-        Self { source, edition, chars: iter::PeekableCharIndices::new(source, offset) }
+impl<'a, 'src> Lexer<'a, 'src> {
+    fn new(
+        source: &'src str,
+        offset: usize,
+        edition: Edition,
+        errors: &'a mut ErrorBuffer,
+    ) -> Self {
+        Self { source, edition, chars: iter::PeekableCharIndices::new(source, offset), errors }
     }
 
     fn lex(&mut self) -> Token {
@@ -81,7 +91,7 @@ impl<'src> Lexer<'src> {
                     self.advance();
                 }
 
-                TokenKind::Whitespace
+                TokenKind::Trivia
             }
             '/' => {
                 match self.peek() {
@@ -91,9 +101,8 @@ impl<'src> Lexer<'src> {
                             self.advance();
                         }
 
-                        TokenKind::LineComment
+                        TokenKind::Trivia
                     }
-                    // FIXME: Smh. taint unterminated m-l comments (but don't fatal!)
                     Some('*') => {
                         self.advance();
 
@@ -116,7 +125,8 @@ impl<'src> Lexer<'src> {
                             }
                         }
 
-                        TokenKind::BlockComment
+                        // FIXME: Return `UnterminatedBlockComment` or `Trivia(Xyz)` on unterminated block comments.
+                        TokenKind::Trivia
                     }
                     Some('=') => {
                         self.advance();
@@ -303,19 +313,22 @@ impl<'src> Lexer<'src> {
         let start = self.index();
         self.advance();
 
-        let mut is_raw = false;
+        let mut raw = None;
         let mut is_lit = false;
 
         loop {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => self.advance(),
-                Some('#') if !is_raw && self.edition >= Edition::Rust2021 => {
+                Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
                     match self.source(start) {
                         "r" => {
-                            is_raw = true;
                             self.advance();
+                            raw = Some(self.index());
                         }
-                        _ => break TokenKind::ReservedPrefix,
+                        _ => {
+                            self.error(Error::ReservedPrefix(self.span(start)));
+                            break TokenKind::Error;
+                        }
                     }
                 }
                 Some('\\') => {
@@ -328,7 +341,15 @@ impl<'src> Lexer<'src> {
                     break TokenKind::CharLit;
                 }
                 _ if is_lit => break TokenKind::CharLit,
-                _ => break TokenKind::TickedIdent,
+                _ => {
+                    if let Some(start) = raw
+                        && let TokenKind::Underscore = lex_ident(self.source(start), self.edition)
+                    {
+                        self.error(Error::InvalidRawTickedIdent);
+                    }
+
+                    break TokenKind::TickedIdent;
+                }
             }
         }
     }
@@ -398,9 +419,16 @@ impl<'src> Lexer<'src> {
             ("r", Some('#')) => {
                 self.advance();
 
+                let start = self.index();
                 if self.peek().is_some_and(is_ident_start) {
                     while self.peek().is_some_and(is_ident_middle) {
                         self.advance();
+                    }
+
+                    if let PathSegKeyword!() | TokenKind::Underscore =
+                        lex_ident(self.source(start), self.edition)
+                    {
+                        self.error(Error::InvalidRawIdent);
                     }
 
                     return TokenKind::CommonIdent;
@@ -416,8 +444,12 @@ impl<'src> Lexer<'src> {
                 self.advance();
                 self.fin_lex_raw_guarded_str_lit()
             }
-            (_, Some('"' | '\'' | '#')) if self.edition >= Edition::Rust2021 => {
-                TokenKind::ReservedPrefix
+            (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
+                self.error(Error::ReservedPrefix(self.span(start)));
+                if let '#' = char {
+                    self.advance();
+                }
+                TokenKind::Error
             }
             _ => lex_ident(ident, self.edition),
         }
@@ -454,12 +486,20 @@ impl<'src> Lexer<'src> {
         TokenKind::StrLit
     }
 
+    fn span(&self, start: ByteIndex) -> Span {
+        Span::new(start, self.index())
+    }
+
     fn source(&self, start: ByteIndex) -> &'src str {
-        &self.source[Span::new(start, self.index()).range()]
+        &self.source[self.span(start).range()]
+    }
+
+    fn error(&mut self, error: Error) {
+        self.errors.add(error);
     }
 }
 
-impl<'src> std::ops::Deref for Lexer<'src> {
+impl<'src> std::ops::Deref for Lexer<'_, 'src> {
     type Target = iter::PeekableCharIndices<'src>;
 
     fn deref(&self) -> &Self::Target {
@@ -467,7 +507,7 @@ impl<'src> std::ops::Deref for Lexer<'src> {
     }
 }
 
-impl<'src> std::ops::DerefMut for Lexer<'src> {
+impl std::ops::DerefMut for Lexer<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.chars
     }

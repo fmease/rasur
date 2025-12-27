@@ -5,20 +5,20 @@ use super::{Edition, MatchAgainstArbitraryToken, Parser, Token, TokenKind, Token
 pub(super) trait Weak: Copy {
     const STR: &str;
 
-    fn check(self, p: &Parser<'_, '_>) -> bool {
+    fn check(self, p: &Parser<'_, '_, '_>) -> bool {
         p.token.kind == TokenKind::CommonIdent
             && p.source(p.token.span) == Self::STR
             && self.qualifies(p)
     }
 
-    fn matches(self, token: Token, p: &Parser<'_, '_>) -> bool
+    fn matches(self, token: Token, p: &Parser<'_, '_, '_>) -> bool
     where
         Self: MatchAgainstArbitraryToken,
     {
         token.kind == TokenKind::CommonIdent && p.source(token.span) == Self::STR
     }
 
-    fn qualifies(self, _: &Parser<'_, '_>) -> bool {
+    fn qualifies(self, _: &Parser<'_, '_, '_>) -> bool {
         true
     }
 }
@@ -31,8 +31,8 @@ macro_rules! weak {
             impl Weak for $ty {
                 const STR: &str = $str;
                 $(
-                    fn qualifies(self, p: &Parser<'_, '_>) -> bool {
-                        ($qualifies as fn(&Parser<'_, '_>) -> _)(p)
+                    fn qualifies(self, p: &Parser<'_, '_, '_>) -> bool {
+                        ($qualifies as fn(&Parser<'_, '_, '_>) -> _)(p)
                     }
                 )?
             }

@@ -1,13 +1,16 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
     common::FnParamMode,
-    error::Error,
     path::PathMode,
     weak::{self, Weak as _},
 };
-use crate::{Edition, ast, span::Span};
+use crate::{
+    Edition, ast,
+    error::{Buffer as ErrorBuffer, Error},
+    span::Span,
+};
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a sequence of items.
     ///
     /// # Grammar
@@ -95,7 +98,7 @@ impl<'src> Parser<'_, 'src> {
         }
 
         let mut qualified = false;
-        for (qualifier, token) in self.clone().parse_item_qualifiers() {
+        for (qualifier, token) in self.snapshot(&mut ErrorBuffer::Void).parse_item_qualifiers() {
             match qualifier {
                 Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
                 _ => return true,

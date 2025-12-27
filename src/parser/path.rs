@@ -1,10 +1,7 @@
-use super::{
-    ExpectedFragment, Parser, PathSegIdent, Result, Token, TokenKind, TokenPrefix, error::Error,
-    one_of,
-};
-use crate::ast;
+use super::{ExpectedFragment, Parser, Result, Token, TokenKind, TokenPrefix, one_of};
+use crate::{ast, error::Error, token::PathSegIdent};
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
     ///
     /// # Grammar
@@ -314,23 +311,23 @@ pub(super) enum PathMode {
 }
 
 pub(super) trait GenericArgsMode: ast::GenericArgsMode {
-    fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>>;
+    fn parse<'src>(parser: &mut Parser<'_, '_, 'src>) -> Result<Self::Args<'src>>;
 }
 
 impl GenericArgsMode for ast::NoGenericArgs {
-    fn parse<'src>(_: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
+    fn parse<'src>(_: &mut Parser<'_, '_, 'src>) -> Result<Self::Args<'src>> {
         Ok(())
     }
 }
 
 impl GenericArgsMode for ast::UnambiguousGenericArgs {
-    fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
+    fn parse<'src>(parser: &mut Parser<'_, '_, 'src>) -> Result<Self::Args<'src>> {
         parser.parse_generic_args(GenericArgsAmbiguity::No)
     }
 }
 
 impl GenericArgsMode for ast::ObligatorilyDisambiguatedGenericArgs {
-    fn parse<'src>(parser: &mut Parser<'_, 'src>) -> Result<Self::Args<'src>> {
+    fn parse<'src>(parser: &mut Parser<'_, '_, 'src>) -> Result<Self::Args<'src>> {
         parser.parse_generic_args(GenericArgsAmbiguity::Yes)
     }
 }

@@ -1,8 +1,8 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, error::Error, one_of};
-use crate::ast;
+use super::{ExpectedFragment, Parser, Result, TokenKind, one_of};
+use crate::{ast, error::Error};
 use std::cmp::Ordering;
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a pattern.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->

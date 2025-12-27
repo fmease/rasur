@@ -89,7 +89,6 @@ pub enum TokenKind {
     AsteriskEquals,
     At,
     BangEquals,
-    BlockComment,
     CaretEquals,
     CharLit,
     CloseCurlyBracket,
@@ -107,12 +106,12 @@ pub enum TokenKind {
     DoubleLessThanEquals,
     DoublePipe,
     EndOfInput,
+    Error,
     GreaterThanEquals,
     Hash,
     HypenEquals,
     Invalid,
     LessThanEquals,
-    LineComment,
     NumLit,
     OpenCurlyBracket,
     OpenRoundBracket,
@@ -121,7 +120,6 @@ pub enum TokenKind {
     PipeEquals,
     PlusEquals,
     QuestionMark,
-    ReservedPrefix,
     Semicolon,
     SingleAmpersand,
     SingleAsterisk,
@@ -142,7 +140,7 @@ pub enum TokenKind {
     ThinArrow,
     TickedIdent,
     TripleDot,
-    Whitespace,
+    Trivia,
     WideArrow,
 }
 
@@ -151,7 +149,7 @@ impl TokenKind {
         Self::Abstract as u8 <= self as u8 && self as u8 <= Self::Yield as u8
     }
 
-    pub(crate) fn repr(self) -> Repr {
+    pub fn repr(self) -> Repr {
         match self {
             Self::Abstract => Repr::Src("abstract"),
             Self::AmpersandEquals => Repr::Src("&="),
@@ -162,7 +160,6 @@ impl TokenKind {
             Self::Await => Repr::Src("await"),
             Self::BangEquals => Repr::Src("!="),
             Self::Become => Repr::Src("become"),
-            Self::BlockComment => Repr::Tag("block comment"),
             Self::Box => Repr::Src("box"),
             Self::Break => Repr::Src("break"),
             Self::CaretEquals => Repr::Src("^="),
@@ -190,6 +187,7 @@ impl TokenKind {
             Self::Else => Repr::Src("else"),
             Self::EndOfInput => Repr::Tag("end of input"),
             Self::Enum => Repr::Src("enum"),
+            Self::Error => Repr::Tag("error"),
             Self::Extern => Repr::Src("extern"),
             Self::False => Repr::Src("false"),
             Self::Final => Repr::Src("final"),
@@ -205,7 +203,6 @@ impl TokenKind {
             Self::Invalid => Repr::Tag("invalid"),
             Self::LessThanEquals => Repr::Src("`<=`"),
             Self::Let => Repr::Src("let"),
-            Self::LineComment => Repr::Tag("line comment"),
             Self::Loop => Repr::Src("loop"),
             Self::Macro => Repr::Src("macro"),
             Self::Match => Repr::Src("match"),
@@ -224,7 +221,6 @@ impl TokenKind {
             Self::Pub => Repr::Src("pub"),
             Self::QuestionMark => Repr::Src("?"),
             Self::Ref => Repr::Src("ref"),
-            Self::ReservedPrefix => Repr::Tag("reserved prefix"),
             Self::Return => Repr::Src("return"),
             Self::SelfLower => Repr::Src("self"),
             Self::SelfUpper => Repr::Src("Self"),
@@ -252,6 +248,7 @@ impl TokenKind {
             Self::TickedIdent => Repr::Tag("ticked identifier"),
             Self::Trait => Repr::Src("trait"),
             Self::TripleDot => Repr::Src("..."),
+            Self::Trivia => Repr::Tag("trivia"),
             Self::True => Repr::Src("true"),
             Self::Try => Repr::Src("try"),
             Self::Type => Repr::Src("type"),
@@ -262,14 +259,21 @@ impl TokenKind {
             Self::Virtual => Repr::Src("virtual"),
             Self::Where => Repr::Src("where"),
             Self::While => Repr::Src("while"),
-            Self::Whitespace => Repr::Tag("whitespace"),
             Self::WideArrow => Repr::Src("=>"),
             Self::Yield => Repr::Src("yield"),
         }
     }
 }
 
-pub(crate) enum Repr {
+pub enum Repr {
     Src(&'static str),
     Tag(&'static str),
+}
+
+pub(crate) macro PathSegKeyword() {
+    TokenKind::SelfLower | TokenKind::Super | TokenKind::Crate | TokenKind::SelfUpper
+}
+
+pub(crate) macro PathSegIdent() {
+    PathSegKeyword!() | TokenKind::CommonIdent
 }

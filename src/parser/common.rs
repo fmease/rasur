@@ -1,13 +1,12 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
-    error::Error,
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
-use crate::ast;
+use crate::{ast, error::Error};
 use std::mem;
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a list of function parameters.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->

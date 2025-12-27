@@ -1,7 +1,7 @@
 use super::{Parser, Result, TokenKind, path::PathMode};
 use crate::ast;
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a sequence of attributes of the given style.
     ///
     /// # Grammar

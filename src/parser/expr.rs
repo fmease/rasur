@@ -1,15 +1,13 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
-    error::Error,
-    one_of,
+    ExpectedFragment, Parser, Result, TokenKind, one_of,
     pat::OrPolicy,
     path::GenericArgsMode,
     weak::{self, Weak as _},
 };
-use crate::{Edition, ast};
+use crate::{Edition, ast, error::Error};
 use std::{cmp::Ordering, mem};
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse an expression.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->

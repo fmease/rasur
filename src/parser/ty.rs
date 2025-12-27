@@ -1,11 +1,16 @@
 use super::{
-    ExpectedFragment, Parser, PathSegIdent, Result, TokenKind, TokenPrefix, common::FnParamMode,
-    error::Error, one_of, path::PathMode, weak,
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, common::FnParamMode, one_of,
+    path::PathMode, weak,
 };
-use crate::{ast, span::Span, token::Token};
+use crate::{
+    ast,
+    error::Error,
+    span::Span,
+    token::{PathSegIdent, Token},
+};
 use std::mem;
 
-impl<'src> Parser<'_, 'src> {
+impl<'src> Parser<'_, '_, 'src> {
     /// Parse a type.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->

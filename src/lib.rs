@@ -9,12 +9,10 @@
 #![feature(gen_blocks)]
 #![feature(if_let_guard)]
 #![feature(import_trait_associated_functions)]
-#![feature(iter_intersperse)]
 #![feature(macro_metavar_expr)]
 #![feature(mut_ref)]
 #![feature(negative_impls)]
 #![feature(never_type)]
-#![feature(super_let)]
 #![feature(type_changing_struct_update)]
 // Lints
 #![expect(incomplete_features, reason = "deref_patterns")]
@@ -25,6 +23,7 @@
 #![allow(clippy::option_option)]
 
 pub mod ast;
+pub mod error;
 pub mod fmter;
 pub mod lexer;
 pub mod parser;

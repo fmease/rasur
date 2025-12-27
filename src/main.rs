@@ -1,9 +1,12 @@
 #![feature(import_trait_associated_functions)]
+#![feature(iter_intersperse)]
+#![feature(super_let)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use Default::default;
 use std::process::ExitCode;
 
+mod diagnostics;
 mod interface;
 
 fn main() -> ExitCode {
@@ -28,8 +31,12 @@ fn try_main() -> Result<(), ()> {
     };
 
     let edition = opts.edition.unwrap_or_default();
+    let cx = diagnostics::RenderCx { source: &source, path: &path, short: opts.short };
 
-    let tokens = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes);
+    // FIXME: report errors
+    let mut errors = rasur::error::Buffer::Hold(Vec::new());
+
+    let tokens = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes, &mut errors);
 
     if opts.emit_tokens {
         let mut stderr = std::io::stderr().lock();
@@ -41,17 +48,28 @@ fn try_main() -> Result<(), ()> {
     }
 
     if opts.lex_only {
+        if let Some(errors) = errors.non_empty() {
+            errors.into_iter().for_each(|error| diagnostics::print(error, cx));
+            return Err(());
+        }
+
         return Ok(());
     }
 
-    let cx = rasur::parser::RenderCx { source: &source, path: &path, short: opts.short };
-    let (file, errors) = rasur::parser::parse(&tokens, &source, edition);
-    errors.into_iter().for_each(|error| error.print(cx));
-    let file = file?;
+    let file = rasur::parser::parse(&tokens, &source, edition, &mut errors);
 
-    if opts.emit_ast {
+    if let Ok(file) = &file
+        && opts.emit_ast
+    {
         eprintln!("{file:#?}");
     }
+
+    if let Some(errors) = errors.non_empty() {
+        errors.into_iter().for_each(|error| diagnostics::print(error, cx));
+        return Err(());
+    }
+
+    let file = file?;
 
     if opts.fmt {
         let result = rasur::fmter::fmt(

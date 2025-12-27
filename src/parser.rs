@@ -1,15 +1,13 @@
 use crate::{
     Edition, ast,
+    error::{Buffer as ErrorBuffer, Error},
     lexer::lex_ident,
     span::Span,
     token::{Token, TokenKind},
 };
-pub use error::{Error, RenderCx};
-use std::{borrow::Cow, fmt};
 
 mod attr;
 mod common;
-mod error;
 mod expr;
 mod item;
 mod pat;
@@ -29,19 +27,14 @@ pub fn parse<'src>(
     tokens: &[Token],
     source: &'src str,
     edition: Edition,
-) -> (Result<ast::File<'src>, ()>, Vec<Error>) {
-    let mut p = Parser::new(tokens, source, edition);
-    let r = match p.parse_file() {
-        Ok(file) if p.errors.is_empty() => Ok(file),
-        _ => Err(()),
-    };
-    (r, p.errors)
+    errors: &mut ErrorBuffer,
+) -> Result<ast::File<'src>, ()> {
+    Parser::new(tokens, source, edition, errors).parse_file().map_err(drop)
 }
 
-#[derive(Clone)]
-struct Parser<'a, 'src> {
-    tokens: &'a [Token],
-    errors: Vec<Error>,
+struct Parser<'t, 'e, 'src> {
+    tokens: &'t [Token],
+    errors: &'e mut ErrorBuffer,
     token: Token,
     index: usize,
     source: &'src str,
@@ -50,11 +43,16 @@ struct Parser<'a, 'src> {
 
 // FIXME: Move some parsing methods into mod common.
 
-impl<'a, 'src> Parser<'a, 'src> {
-    fn new(tokens: &'a [Token], source: &'src str, edition: Edition) -> Self {
+impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
+    fn new(
+        tokens: &'t [Token],
+        source: &'src str,
+        edition: Edition,
+        errors: &'e mut ErrorBuffer,
+    ) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, errors: Vec::new(), token, index, source, edition }
+        Self { tokens, errors, token, index, source, edition }
     }
 
     /// Parse a source file.
@@ -174,7 +172,7 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn error(&mut self, error: Error) {
-        self.errors.push(error);
+        self.errors.add(error);
     }
 
     fn fatal<T>(&mut self, error: Error) -> Result<T> {
@@ -224,43 +222,9 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 
     fn advance(&mut self) {
-        self.advance_unchecked();
-        // FIXME: I'm not so sure if that's really how we want to deal with essentially lexer errors.
-        self.validate_token();
-    }
-
-    fn advance_unchecked(&mut self) {
         self.index += 1;
         if let Some(&token) = self.tokens.get(self.index) {
             self.token = token;
-        }
-    }
-
-    // FIXME: I'm not so sure if that's really how we want to deal with essentially lexer errors.
-    //        We might want to compute some things in the lexer, so we don't need to retrieve
-    //        source strings here & do possibly "expensive" checking.
-    fn validate_token(&mut self) {
-        match self.token.kind {
-            TokenKind::CommonIdent
-                if let Some(source) = self.source(self.token.span).strip_prefix("r#")
-                    && let PathSegKeyword!() | TokenKind::Underscore =
-                        lex_ident(source, self.edition) =>
-            {
-                self.error(Error::InvalidRawIdent);
-            }
-            TokenKind::CommonIdent => {}
-            TokenKind::ReservedPrefix => {
-                let span = self.token.span;
-                self.advance_unchecked();
-                if let TokenKind::Hash = self.token.kind {
-                    self.advance_unchecked();
-                }
-                self.error(Error::ReservedPrefix(span));
-            }
-            TokenKind::TickedIdent if let "'r#_" = self.source(self.token.span) => {
-                self.error(Error::InvalidRawTickedIdent);
-            }
-            _ => {}
         }
     }
 
@@ -268,9 +232,25 @@ impl<'a, 'src> Parser<'a, 'src> {
         &self.source[span.range()]
     }
 
-    fn probe<T>(&mut self, parse: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
-        let mut this = self.clone();
-        parse(&mut this).inspect(|_| *self = this)
+    fn snapshot<'r>(&self, errors: &'r mut ErrorBuffer) -> Parser<'t, 'r, 'src> {
+        Parser { errors, ..*self }
+    }
+
+    // FIXME: Improve impl
+    fn probe<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> Option<T>,
+    ) -> Option<T> {
+        let mut errors = ErrorBuffer::Hold(Vec::new());
+        let mut this = self.snapshot(&mut errors);
+        parse(&mut this).inspect(|_| {
+            self.tokens = this.tokens;
+            self.token = this.token;
+            self.index = this.index;
+            self.source = this.source;
+            self.edition = this.edition;
+            self.errors.extend(errors);
+        })
     }
 
     // FIXME: Temporary API
@@ -319,38 +299,14 @@ impl<'a, 'src> Parser<'a, 'src> {
     }
 }
 
-impl !Copy for Parser<'_, '_> {}
-
-impl Token {
-    fn to_diag_str(self, source: Option<&str>) -> Cow<'static, str> {
-        // FIXME: Say "`{source}` (U+NNNN)" on TokenKind::Error | invalid tokens.
-        match (self.kind, source) {
-            (TokenKind::CommonIdent, Some(source)) => {
-                let ident = &source[self.span.range()];
-                format!("identifier `{ident}`").into()
-            }
-            _ => self.kind.to_diag_str(),
-        }
-    }
-}
-
-impl TokenKind {
-    fn to_diag_str(self) -> Cow<'static, str> {
-        match self.repr() {
-            crate::token::Repr::Src(src) => format!("`{src}`").into(),
-            crate::token::Repr::Tag(tag) => tag.into(),
-        }
-    }
-}
-
 trait TokenCategory: Copy {
-    fn check(self, p: &Parser<'_, '_>) -> bool;
+    fn check(self, p: &Parser<'_, '_, '_>) -> bool;
 
-    fn matches(self, token: Token, p: &Parser<'_, '_>) -> bool
+    fn matches(self, token: Token, p: &Parser<'_, '_, '_>) -> bool
     where
         Self: MatchAgainstArbitraryToken;
 
-    fn consume(self, p: &mut Parser<'_, '_>) -> bool {
+    fn consume(self, p: &mut Parser<'_, '_, '_>) -> bool {
         if self.check(p) {
             p.advance();
             return true;
@@ -368,11 +324,11 @@ trait TokenCategory: Copy {
 trait MatchAgainstArbitraryToken: TokenCategory {}
 
 impl TokenCategory for TokenKind {
-    fn check(self, p: &Parser<'_, '_>) -> bool {
+    fn check(self, p: &Parser<'_, '_, '_>) -> bool {
         self == p.token.kind
     }
 
-    fn matches(self, token: Token, _: &Parser<'_, '_>) -> bool {
+    fn matches(self, token: Token, _: &Parser<'_, '_, '_>) -> bool {
         self == token.kind
     }
 
@@ -384,15 +340,15 @@ impl TokenCategory for TokenKind {
 impl MatchAgainstArbitraryToken for TokenKind {}
 
 impl TokenCategory for TokenPrefix {
-    fn check(self, p: &Parser<'_, '_>) -> bool {
+    fn check(self, p: &Parser<'_, '_, '_>) -> bool {
         self.matches(p.token.kind)
     }
 
-    fn matches(self, token: Token, _: &Parser<'_, '_>) -> bool {
+    fn matches(self, token: Token, _: &Parser<'_, '_, '_>) -> bool {
         self.matches(token.kind)
     }
 
-    fn consume(self, p: &mut Parser<'_, '_>) -> bool {
+    fn consume(self, p: &mut Parser<'_, '_, '_>) -> bool {
         let Ok(replacement) = self.strip(p.token.kind) else { return false };
         match replacement {
             Some(replacement) => p.modify_in_place(replacement),
@@ -410,11 +366,11 @@ impl TokenCategory for TokenPrefix {
 impl MatchAgainstArbitraryToken for TokenPrefix {}
 
 impl<W: weak::Weak> TokenCategory for W {
-    fn check(self, parser: &Parser<'_, '_>) -> bool {
+    fn check(self, parser: &Parser<'_, '_, '_>) -> bool {
         self.check(parser)
     }
 
-    fn matches(self, token: Token, p: &Parser<'_, '_>) -> bool
+    fn matches(self, token: Token, p: &Parser<'_, '_, '_>) -> bool
     where
         Self: MatchAgainstArbitraryToken,
     {
@@ -464,14 +420,6 @@ impl TokenPrefix {
     }
 }
 
-macro PathSegKeyword() {
-    TokenKind::SelfLower | TokenKind::Super | TokenKind::Crate | TokenKind::SelfUpper
-}
-
-macro PathSegIdent() {
-    PathSegKeyword!() | TokenKind::CommonIdent
-}
-
 macro one_of($( $frag:expr ),+ $(,)?) {
     ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
 }
@@ -501,36 +449,5 @@ pub enum ExpectedFragment {
 impl From<TokenKind> for ExpectedFragment {
     fn from(token: TokenKind) -> Self {
         Self::Token(token)
-    }
-}
-
-impl fmt::Display for ExpectedFragment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Bound => "bound",
-            Self::CommonIdent => "common identifier",
-            Self::ConstArg => "const argument",
-            Self::Expr => "expression",
-            Self::ExtPath => "extended path",
-            Self::GenericArg => "generic argument",
-            Self::GenericParam => "generic parameter",
-            Self::Item => "item",
-            Self::Literal => "literal",
-            Self::OneOf(frags) => {
-                let frags = frags
-                    .iter()
-                    .map(|frag| Cow::Owned(frag.to_string()))
-                    .intersperse(Cow::Borrowed(" or "))
-                    .collect::<String>();
-                return write!(f, "{frags}");
-            }
-            Self::Pat => "pattern",
-            Self::PathSegIdent => "path segment",
-            Self::Predicate => "predicate",
-            Self::Stmt => "statement",
-            Self::Term => "type or const argument",
-            Self::Token(token) => return write!(f, "{}", token.to_diag_str()),
-            Self::Ty => "type",
-        })
     }
 }

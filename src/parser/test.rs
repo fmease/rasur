@@ -1,7 +1,7 @@
-use super::error::Error;
 use crate::{
     Edition::{self, *},
     ast,
+    error::{Buffer as ErrorBuffer, Error},
     lexer::{StripShebang, lex},
     token::{Token, TokenKind},
 };
@@ -11,21 +11,31 @@ use std::assert_matches::assert_matches;
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
-fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>> {
-    let (file, errors) = super::parse(&lex(source, edition, StripShebang::Yes), source, edition);
-    file.map_err(|()| errors)
+fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>, ()> {
+    let mut errors = ErrorBuffer::Void;
+    let tokens = lex(source, edition, StripShebang::Yes, &mut errors);
+    let file = super::parse(&tokens, source, edition, &mut errors);
+    file.map_err(drop)
 }
 
+// FIXME: make the impl nicer
 fn parse_via<'src, T>(
     source: &'src str,
     edition: Edition,
-    parse: impl FnOnce(&mut super::Parser<'_, 'src>) -> super::Result<T>,
-) -> Result<T, Vec<Error>> {
-    let tokens = lex(source, edition, StripShebang::No);
-    let mut p = super::Parser::new(&tokens, source, edition);
-    let Ok(r) = parse(&mut p) else { return Err(p.errors) };
-    p.parse(TokenKind::EndOfInput).map_err(|_| p.errors)?;
-    Ok(r)
+    parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
+) -> Result<T> {
+    let mut errors = ErrorBuffer::Hold(Vec::new());
+    let tokens = lex(source, edition, StripShebang::No, &mut errors);
+    let mut p = super::Parser::new(&tokens, source, edition, &mut errors);
+    parse(&mut p)
+        .and_then(|r| {
+            p.parse(TokenKind::EndOfInput)?;
+            Ok(r)
+        })
+        .map_err(|_| match errors {
+            ErrorBuffer::Void => unreachable!(),
+            ErrorBuffer::Hold(errors) => errors,
+        })
 }
 
 fn parse_item(source: &str, edition: Edition) -> Result<ast::Item<'_>> {
