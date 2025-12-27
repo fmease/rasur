@@ -216,7 +216,22 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 _ => TokenKind::SingleEquals,
             },
-            '#' => TokenKind::Hash,
+            '#' => {
+                if self.edition >= Edition::Rust2024
+                    && let Some('#') = self.peek()
+                {
+                    self.advance();
+                    while self.peek().is_some_and(|char| char == '#') {
+                        self.advance();
+                    }
+
+                    self.error(Error::ReservedMultiHash(self.span(start)));
+
+                    TokenKind::Error
+                } else {
+                    TokenKind::Hash
+                }
+            }
             '&' => match self.peek() {
                 Some('&') => {
                     self.advance();

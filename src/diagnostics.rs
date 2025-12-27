@@ -90,6 +90,9 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::StrLitGuardTooLarge(span) => {
             Diag::new("string literal guard too large").unlabeled_highlight(span)
         }
+        Error::ReservedMultiHash(span) => {
+            Diag::new("reserved multi-hash").unlabeled_highlight(span)
+        }
     };
     eprintln!("{}", diag.render(cx));
 }

@@ -68,4 +68,5 @@ pub enum Error {
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem,
     StrLitGuardTooLarge(Span),
+    ReservedMultiHash(Span),
 }
