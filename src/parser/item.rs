@@ -308,9 +308,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Mod => Qualifier::Mod,
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
-                TokenKind::Unsafe
-                    if self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket) =>
-                {
+                TokenKind::Unsafe if self.peek(1).kind != TokenKind::OpenCurlyBracket => {
                     Qualifier::Unsafe
                 }
                 _ => return,
@@ -577,7 +575,7 @@ impl<'src> Parser<'_, '_, 'src> {
         };
 
         let polarity = if self.token.kind == TokenKind::SingleBang
-            && self.look_ahead(1, |t| t.kind != TokenKind::OpenCurlyBracket)
+            && self.peek(1).kind != TokenKind::OpenCurlyBracket
         {
             self.advance();
             ast::ImplPolarity::Negative
@@ -962,13 +960,14 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
         // can give better errors on invalid vis restrictions in the common cases.
         if self.token.kind == TokenKind::OpenRoundBracket
-            && let Some(keyword) = self.look_ahead(1, |t| match t.kind {
+            && let token = self.peek(1)
+            && let Some(keyword) = match token.kind {
                 TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
-                    Some(VisKeyword::CrateSuperSelf(t.span))
+                    Some(VisKeyword::CrateSuperSelf(token.span))
                 }
                 TokenKind::In => Some(VisKeyword::In),
                 _ => None,
-            })
+            }
         {
             self.advance();
             self.advance();

@@ -107,24 +107,40 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::Mut | TokenKind::SingleAmpersand | TokenKind::DoubleAmpersand => 1,
             _ => 0,
         };
-        self.look_ahead(offset, |t| {
-            matches!(
-                t.kind,
-                TokenKind::False | TokenKind::CommonIdent | TokenKind::True | TokenKind::Underscore
-            )
-        }) && self.look_ahead(offset + 1, |t| t.kind == TokenKind::SingleColon)
+
+        if let TokenKind::False | TokenKind::CommonIdent | TokenKind::True | TokenKind::Underscore =
+            self.peek(offset).kind
+            && let TokenKind::SingleColon = self.peek(offset + 1).kind
+        {
+            return true;
+        }
+
+        false
     }
 
     // FIXME: Rewrite this using "probe2"?
     pub(crate) fn pick_generic_param_list_over_ext_path(&self, offset: usize) -> bool {
-        self.look_ahead(offset, |t| t.kind == TokenKind::SingleLessThan)
-            && self.look_ahead(offset + 1, |t| {
-                matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Const | TokenKind::Hash)
-                    // FIXME: In rustc, it's general idents, not just common idents.
-                    //        Investigate if/where it truly matters.
-                    || matches!(t.kind, TokenKind::TickedIdent | TokenKind::CommonIdent)
-                && self.look_ahead(offset + 2, |t| matches!(t.kind, TokenKind::SingleGreaterThan | TokenKind::Comma| TokenKind::SingleColon | TokenKind::SingleEquals))
-            })
+        if self.peek(offset).kind != TokenKind::SingleLessThan {
+            return false;
+        }
+
+        let token = self.peek(offset + 1);
+
+        if let TokenKind::SingleGreaterThan | TokenKind::Const | TokenKind::Hash = token.kind {
+            return true;
+        }
+
+        // FIXME: rustc checks for (general) Ident, not CommonIdent. Investigate if it really matters.
+        if let TokenKind::TickedIdent | TokenKind::CommonIdent = token.kind
+            && let TokenKind::SingleGreaterThan
+            | TokenKind::Comma
+            | TokenKind::SingleColon
+            | TokenKind::SingleEquals = self.peek(offset + 2).kind
+        {
+            return true;
+        }
+
+        false
     }
 
     pub(crate) fn opt_parse_negatable_lit(
@@ -189,11 +205,11 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
     ) -> (ast::BorrowKind<X>, ast::Mutability) {
         if let TokenKind::CommonIdent = self.token.kind
-            && let Some(mut_) = self.look_ahead(1, |t| match t.kind {
+            && let Some(mut_) = match self.peek(1).kind {
                 TokenKind::Mut => Some(ast::Mutability::Mut),
                 TokenKind::Const => Some(ast::Mutability::Not),
                 _ => None,
-            })
+            }
             && let Some(kind) = match self.source(self.token.span) {
                 weak::Pin::STR => Some(ast::BorrowKind::Pin),
                 source => X::parse(source),

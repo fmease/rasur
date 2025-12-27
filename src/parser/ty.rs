@@ -183,7 +183,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Some(self.parse_generic_param_list().map(Qualifier::ForBinder));
             }
-            TokenKind::Unsafe if self.look_ahead(1, |t| t.kind != TokenKind::SingleLessThan) => {
+            TokenKind::Unsafe if self.peek(1).kind != TokenKind::SingleLessThan => {
                 Qualifier::Unsafe
             }
             _ => return None,
@@ -588,8 +588,8 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::QuestionMark
             | TokenKind::SingleBang => true,
             TokenKind::OpenSquareBracket => {
-                self.look_ahead(1, |t| t.kind == TokenKind::Const)
-                    && self.look_ahead(2, |t| t.kind == TokenKind::CloseSquareBracket)
+                self.peek(1).kind == TokenKind::Const
+                    && self.peek(2).kind == TokenKind::CloseSquareBracket
             }
             _ => false,
         }

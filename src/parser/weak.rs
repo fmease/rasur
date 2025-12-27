@@ -43,28 +43,29 @@ macro_rules! weak {
 
 weak! {
     // FIXME: Do we want to generalize this to `is_ident`?
-    Auto "auto" |p| p.look_ahead(1, |t| t.kind == TokenKind::Trait),
+    Auto "auto" |p| p.peek(1).kind == TokenKind::Trait,
     Bikeshed "bikeshed",
-    Builtin "builtin" |p| p.look_ahead(1, |t| t.kind == TokenKind::Hash),
+    Builtin "builtin" |p| p.peek(1).kind == TokenKind::Hash,
     ContractEnsures "contract_ensures",
     ContractRequires "contract_requires",
-    Default "default" |p| p.look_ahead(1, |t| t.kind.is_ident()),
-    Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.look_ahead(1, |t| p.begins_2015_dyn_bound(t)),
+    Default "default" |p| p.peek(1).kind.is_ident(),
+    Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.begins_2015_dyn_bound(p.peek(1)),
     MacroRules "macro_rules" |p|
-        p.look_ahead(1, |t| t.kind == TokenKind::SingleBang)
-            && p.look_ahead(2, |t| t.kind == TokenKind::CommonIdent),
+        p.peek(1).kind == TokenKind::SingleBang
+            && p.peek(2).kind == TokenKind::CommonIdent,
     Pin "pin",
     Raw "raw",
     // NOTE: This check isn't precise enough. See upstream issue:
     //       <https://github.com/rust-lang/rust/issues/148238>
-    Reuse "reuse" |p| p.look_ahead(1, |t| {
-        t.kind.is_ident()
-            || TokenPrefix::LessThan.matches(t.kind)
-            && p.look_ahead(2, |t| p.begins_ty(t))
-    }),
+    Reuse "reuse" |p| {
+        let token = p.peek(1);
+        token.kind.is_ident()
+            || TokenPrefix::LessThan.matches(token.kind)
+            && p.begins_ty(p.peek(2))
+    },
     // FIXME: Do we want to generalize this to `is_ident`?
-    Safe "safe" |p| p.look_ahead(1, |t| matches!(t.kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static)),
+    Safe "safe" |p| matches!(p.peek(1).kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static),
     TypeAscribe "type_ascribe",
-    Union "union" |p| p.look_ahead(1, |t| t.kind == TokenKind::CommonIdent),
+    Union "union" |p| p.peek(1).kind == TokenKind::CommonIdent,
     Yeet "yeet",
 }

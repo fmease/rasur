@@ -211,13 +211,13 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         self.token.span.start += 1;
     }
 
-    fn look_ahead<T: Default>(&self, amount: usize, inspect: impl FnOnce(Token) -> T) -> T {
+    fn peek(&self, amount: usize) -> Token {
         if let Some(index) = self.index.checked_add(amount)
             && let Some(&token) = self.tokens.get(index)
         {
-            inspect(token)
+            token
         } else {
-            T::default()
+            *self.tokens.last().unwrap()
         }
     }
 

@@ -99,9 +99,10 @@ impl<'src> Parser<'_, '_, 'src> {
         ambiguity: GenericArgsAmbiguity,
     ) -> Result<Option<ast::GenericArgs<'src>>> {
         let disambiguated = if let TokenKind::DoubleColon = self.token.kind
-            && self.look_ahead(1, |t| {
-                t.kind == TokenKind::OpenRoundBracket || TokenPrefix::LessThan.matches(t.kind)
-            }) {
+            && let token = self.peek(1)
+            && (token.kind == TokenKind::OpenRoundBracket
+                || TokenPrefix::LessThan.matches(token.kind))
+        {
             self.advance();
             true
         } else {

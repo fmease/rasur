@@ -34,14 +34,13 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Stmt::Item(item));
         }
 
-        let superness = if self.token.kind == TokenKind::Super
-            && self.look_ahead(1, |t| t.kind == TokenKind::Let)
-        {
-            self.advance();
-            ast::Superness::Super
-        } else {
-            ast::Superness::Not
-        };
+        let superness =
+            if self.token.kind == TokenKind::Super && self.peek(1).kind == TokenKind::Let {
+                self.advance();
+                ast::Superness::Super
+            } else {
+                ast::Superness::Not
+            };
         if self.consume(TokenKind::Let) {
             let pat = self.parse_pat(OrPolicy::Forbidden)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;

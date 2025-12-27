@@ -595,7 +595,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()?));
             }
-            TokenKind::Do if self.look_ahead(1, |t| self.matches(weak::Yeet, t)) => {
+            TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
                 self.advance();
                 self.advance();
                 let expr =

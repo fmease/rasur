@@ -36,7 +36,7 @@ impl<'src> Parser<'_, '_, 'src> {
                         // We don't *expect* a bang here because the caller may want to
                         // parse outer attributes next.
                         ast::AttrStyle::Inner => {
-                            if self.look_ahead(1, |t| t.kind == TokenKind::SingleBang) {
+                            if self.peek(1).kind == TokenKind::SingleBang {
                                 self.advance();
                                 self.advance();
                             } else {
