@@ -59,6 +59,7 @@ fn try_main() -> Result<(), ()> {
                             eprintln!("error: missing required argument `EDITION`")
                         })?);
                 }
+                b"I" | b"-invert" => opts.invert = true,
                 b"j" | b"-jobs" => {
                     jobs = Some(
                         args.next()
@@ -158,6 +159,7 @@ fn try_main() -> Result<(), ()> {
 
 #[derive(Default)]
 struct Opts {
+    invert: bool,
     skip_true_ill: bool,
     edition: Option<OsString>,
     verbose: bool,
@@ -276,7 +278,7 @@ fn compare(
     }
     let rasur_exit_status = rasur_call.status().expect("failed to execute `rasur`");
 
-    if rasur_exit_status != rustc_exit_status {
+    if (rasur_exit_status == rustc_exit_status) == opts.invert {
         return Some(Err((rasur_exit_status, rustc_exit_status)));
     }
 
