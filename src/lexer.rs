@@ -80,12 +80,17 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     fn lex(&mut self) -> Token {
-        let Some((start, char)) = self.next() else {
+        if let Some((start, char)) = self.next() {
+            let kind = self.fin_lex(char, start);
+            Token::new(kind, Span::new(start, self.index()))
+        } else {
             let index = self.index();
-            return Token::new(TokenKind::EndOfInput, Span::new(index, index));
-        };
+            Token::new(TokenKind::EndOfInput, Span::new(index, index))
+        }
+    }
 
-        let kind = match char {
+    fn fin_lex(&mut self, char: char, start: ByteIndex) -> TokenKind {
+        match char {
             _ if char.is_whitespace() => {
                 while self.peek().is_some_and(|char| char.is_whitespace()) {
                     self.advance();
@@ -121,7 +126,53 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 Some('*') => {
                     self.advance();
-                    self.fin_lex_block_comment(start)
+
+                    let mut depth = 0;
+                    let mut terminated = false;
+
+                    let kind = match self.peek() {
+                        Some('!') => {
+                            self.advance();
+                            TokenKind::InnerDocComment
+                        }
+                        // FIXME: Using peek2 would lead to nicer code
+                        Some('*') => {
+                            self.advance();
+                            match self.peek() {
+                                Some('*') => TokenKind::Trivia,
+                                Some('/') => {
+                                    self.advance();
+                                    return TokenKind::Trivia;
+                                }
+                                _ => TokenKind::OuterDocComment,
+                            }
+                        }
+                        _ => TokenKind::Trivia,
+                    };
+
+                    while let Some((_, char)) = self.next() {
+                        match (char, self.peek()) {
+                            ('/', Some('*')) => {
+                                self.advance();
+                                depth += 1;
+                            }
+                            ('*', Some('/')) => {
+                                self.advance();
+                                if depth == 0 {
+                                    terminated = true;
+                                    break;
+                                }
+                                depth -= 1;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if !terminated {
+                        self.error(Error::UnterminatedBlockComment(self.span(start)));
+                    }
+
+                    kind
                 }
                 Some('=') => {
                     self.advance();
@@ -217,20 +268,26 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 _ => TokenKind::SingleEquals,
             },
             '#' => {
-                if self.edition >= Edition::Rust2024
-                    && let Some('#') = self.peek()
-                {
-                    self.advance();
+                if self.edition >= Edition::Rust2024 {
+                    let mut multi = false;
+
                     while self.peek().is_some_and(|char| char == '#') {
+                        multi = true;
                         self.advance();
                     }
 
-                    self.error(Error::ReservedMultiHash(self.span(start)));
+                    if let Some('"') = self.peek() {
+                        self.error(Error::ReservedPrefix(self.span(start)));
+                        return TokenKind::Error;
+                    }
 
-                    TokenKind::Error
-                } else {
-                    TokenKind::Hash
+                    if multi {
+                        self.error(Error::ReservedMultiHash(self.span(start)));
+                        return TokenKind::Error;
+                    }
                 }
+
+                TokenKind::Hash
             }
             '&' => match self.peek() {
                 Some('&') => {
@@ -310,58 +367,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             },
             '\'' => self.fin_lex_char_lit_or_ticked_ident(start),
             _ => TokenKind::Invalid,
-        };
-
-        Token::new(kind, Span::new(start, self.index()))
-    }
-
-    fn fin_lex_block_comment(&mut self, start: ByteIndex) -> TokenKind {
-        let mut depth = 0;
-        let mut terminated = false;
-
-        let kind = match self.peek() {
-            Some('!') => {
-                self.advance();
-                TokenKind::InnerDocComment
-            }
-            // FIXME: Using peek2 would lead to nicer code
-            Some('*') => {
-                self.advance();
-                match self.peek() {
-                    Some('*') => TokenKind::Trivia,
-                    Some('/') => {
-                        self.advance();
-                        return TokenKind::Trivia;
-                    }
-                    _ => TokenKind::OuterDocComment,
-                }
-            }
-            _ => TokenKind::Trivia,
-        };
-
-        while let Some((_, char)) = self.next() {
-            match (char, self.peek()) {
-                ('/', Some('*')) => {
-                    self.advance();
-                    depth += 1;
-                }
-                ('*', Some('/')) => {
-                    self.advance();
-                    if depth == 0 {
-                        terminated = true;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                _ => {}
-            }
         }
-
-        if !terminated {
-            self.error(Error::UnterminatedBlockComment(self.span(start)));
-        }
-
-        kind
     }
 
     // FIXME: Consolidate with fin_lex_char_lit smh
@@ -398,10 +404,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 Some('\'') => {
                     self.advance();
+                    // FIXME: Validate length of char lit.
                     break TokenKind::CharLit;
                 }
                 _ if is_lit => {
                     self.error(Error::UnterminatedCharLit(self.span(start)));
+                    // FIXME: Validate length of char lit.
                     break TokenKind::CharLit;
                 }
                 _ => {
@@ -437,6 +445,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         // FIXME: Lex suffixes.
 
+        // FIXME: Validate length of char lit.
         TokenKind::CharLit
     }
 
@@ -539,12 +548,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut terminated = false;
         let mut open = 1usize;
 
-        while let Some('#') = self.peek() {
+        // FIXME: Emit an error if the delimiter isn't a double quote.
+        while let Some((_, '#')) = self.next() {
             self.advance();
             open += 1;
         }
 
-        // FIXME: Emit an error if there isn't any double quote.
         'outer: loop {
             while self.next().is_some_and(|(_, char)| char != '"') {}
 

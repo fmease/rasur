@@ -37,7 +37,9 @@ if [[ -z $SOURCE ]]; then
   die 'missing argument `SOURCE`'
 fi
 
-print -P "%S-- RUSTC --------------------------------%s"
+print
+
+print -P '%S-- RUSTC --------------------------------%s'
 printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc +nightly \
   $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
   -Zparse-crate-root-only \
@@ -47,7 +49,7 @@ printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc +nightly \
   $([[ -n $AST ]] && echo -Zunpretty=ast-tree)
 RUSTC_RESULT="$?"
 
-print -P "%S-- RASUR --------------------------------%s"
+print -P '%S-- RASUR --------------------------------%s'
 ./rasur \
   $([[ -z $FILE ]] && echo --source) "$SOURCE" \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
@@ -56,4 +58,14 @@ print -P "%S-- RASUR --------------------------------%s"
   $([[ -n $AST ]] && echo --ast)
 RASUR_RESULT="$?"
 
-[[ $RUSTC_RESULT == $RASUR_RESULT ]]
+RESULT=$(( $RUSTC_RESULT != $RASUR_RESULT ))
+
+if [[ $RESULT != 0 ]]; then
+  print -P '%S%F{red}.. MISMATCH! ............................%f%s'
+else
+  print -P '%S%F{green}.. MATCH! ...............................%f%s'
+fi
+
+print
+
+exit $RESULT
