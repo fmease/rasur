@@ -6,6 +6,9 @@ use crate::{
 };
 use unicode_xid::UnicodeXID;
 
+// FIXME: Unicode BOM removal
+// FIXME: CRLF→LF normalization
+
 pub fn lex(
     source: &str,
     edition: Edition,
@@ -91,8 +94,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
     fn fin_lex(&mut self, char: char, start: ByteIndex) -> TokenKind {
         match char {
-            _ if char.is_whitespace() => {
-                while self.peek().is_some_and(|char| char.is_whitespace()) {
+            _ if is_whitespace(char) => {
+                while self.peek().is_some_and(is_whitespace) {
                     self.advance();
                 }
 
@@ -190,7 +193,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                 TokenKind::NumLit
             }
-            '"' => self.fin_lex_str_lit(start, SkipBackslashes::Yes),
+            '"' => self.fin_lex_str_lit(Raw::No, LitKind::Str, start),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
@@ -327,6 +330,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     TokenKind::SingleCaret
                 }
             }
+            '$' => TokenKind::Dollar,
+            '~' => TokenKind::Tilde,
             '(' => TokenKind::OpenRoundBracket,
             ')' => TokenKind::CloseRoundBracket,
             '[' => TokenKind::OpenSquareBracket,
@@ -365,26 +370,32 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 _ => TokenKind::SingleGreaterThan,
             },
-            '\'' => self.fin_lex_char_lit_or_ticked_ident(start),
-            _ => TokenKind::Invalid,
+            '\'' => self.fin_lex_ticked_ident_or_char_lit(start),
+            _ => {
+                self.error(Error::InvalidToken(char, self.span(start)));
+                TokenKind::Error
+            }
         }
     }
 
     // FIXME: Consolidate with fin_lex_char_lit smh
-    fn fin_lex_char_lit_or_ticked_ident(&mut self, start: ByteIndex) -> TokenKind {
+    fn fin_lex_ticked_ident_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
         if !self.peek().is_some_and(is_ident_middle) {
-            return self.fin_lex_char_lit(start);
+            return self.fin_lex_char_lit(LitKind::Char, start);
         }
 
         let unticked = self.index();
         self.advance();
 
         let mut raw = None;
-        let mut is_lit = false;
+        let mut count = 1usize;
 
         loop {
             match self.peek() {
-                Some(char) if is_ident_middle(char) => self.advance(),
+                Some(char) if is_ident_middle(char) => {
+                    self.advance();
+                    count += 1;
+                }
                 Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
                     match self.source(unticked) {
                         "r" => {
@@ -397,19 +408,17 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         }
                     }
                 }
-                Some('\\') => {
-                    is_lit = true;
-                    self.advance();
-                    self.advance();
-                }
                 Some('\'') => {
                     self.advance();
-                    // FIXME: Validate length of char lit.
-                    break TokenKind::CharLit;
-                }
-                _ if is_lit => {
-                    self.error(Error::UnterminatedCharLit(self.span(start)));
-                    // FIXME: Validate length of char lit.
+
+                    match count {
+                        0 => unreachable!(),
+                        1 => {}
+                        _ => self.error(Error::MultiScalarCharLit(self.span(start))),
+                    }
+
+                    // FIXME: suffix
+
                     break TokenKind::CharLit;
                 }
                 _ => {
@@ -425,36 +434,48 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    fn fin_lex_char_lit(&mut self, start: ByteIndex) -> TokenKind {
+    fn fin_lex_char_lit(&mut self, kind: LitKind, start: ByteIndex) -> TokenKind {
+        let mut count = 0usize;
         let mut terminated = false;
 
         while let Some((_, char)) = self.next() {
             match char {
-                '\\' => self.advance(),
+                '\\' => self.fin_lex_escape_seq(kind),
                 '\'' => {
                     terminated = true;
                     break;
                 }
                 _ => {}
             }
+            count += 1;
         }
 
+        let span = self.span(start);
+
         if !terminated {
-            self.error(Error::UnterminatedCharLit(self.span(start)));
+            self.error(Error::UnterminatedCharLit(span));
+        } else {
+            match count {
+                0 => self.error(Error::EmptyCharLit(span)),
+                1 => {}
+                // FIXME: Suppress if there were any invalid escape sequences.
+                _ => self.error(Error::MultiScalarCharLit(span)),
+            }
         }
 
         // FIXME: Lex suffixes.
 
-        // FIXME: Validate length of char lit.
         TokenKind::CharLit
     }
 
-    fn fin_lex_str_lit(&mut self, start: ByteIndex, skip: SkipBackslashes) -> TokenKind {
+    fn fin_lex_str_lit(&mut self, raw: Raw, kind: LitKind, start: ByteIndex) -> TokenKind {
         let mut terminated = false;
 
         while let Some((_, char)) = self.next() {
             match char {
-                '\\' if let SkipBackslashes::Yes = skip => self.advance(),
+                '\\' if let Raw::No = raw => {
+                    self.fin_lex_escape_seq(kind);
+                }
                 '"' => {
                     terminated = true;
                     break;
@@ -479,30 +500,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         let ident = self.source(start);
 
-        match (ident, self.peek()) {
-            ("b", Some('"')) => {
-                self.advance();
-                self.fin_lex_str_lit(start, SkipBackslashes::Yes)
-            }
-            ("br", Some('"')) => {
-                self.advance();
-                self.fin_lex_str_lit(start, SkipBackslashes::No)
-            }
-            ("c", Some('"')) if self.edition >= Edition::Rust2021 => {
-                self.advance();
-                self.fin_lex_str_lit(start, SkipBackslashes::Yes)
-            }
-            ("cr", Some('"')) if self.edition >= Edition::Rust2021 => {
-                self.advance();
-                self.fin_lex_str_lit(start, SkipBackslashes::No)
-            }
-            ("r", Some('"')) => {
-                self.advance();
-                self.fin_lex_str_lit(start, SkipBackslashes::No)
-            }
+        let (raw, kind) = match (ident, self.peek()) {
+            ("b", Some('"')) => (Raw::No, LitKind::ByteStr),
+            ("br", Some('"')) => (Raw::Yes, LitKind::ByteStr),
+            ("c", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::No, LitKind::CStr),
+            ("cr", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::Yes, LitKind::CStr),
+            ("r", Some('"')) => (Raw::Yes, LitKind::Str),
             ("b", Some('\'')) => {
                 self.advance();
-                self.fin_lex_char_lit(start)
+                return self.fin_lex_char_lit(LitKind::Byte, start);
             }
             ("r", Some('#')) => {
                 self.advance();
@@ -522,25 +528,27 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     return TokenKind::CommonIdent;
                 }
 
-                self.fin_lex_raw_guarded_str_lit(start)
+                return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("br", Some('#')) => {
                 self.advance();
-                self.fin_lex_raw_guarded_str_lit(start)
+                return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
                 self.advance();
-                self.fin_lex_raw_guarded_str_lit(start)
+                return self.fin_lex_raw_guarded_str_lit(start);
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
                 if let '#' = char {
                     self.advance();
                 }
-                TokenKind::Error
+                return TokenKind::Error;
             }
-            _ => lex_ident(ident, self.edition),
-        }
+            _ => return lex_ident(ident, self.edition),
+        };
+        self.advance();
+        self.fin_lex_str_lit(raw, kind, start)
     }
 
     // FIXME: Consolidate with `fin_lex_str_lit` smh
@@ -548,10 +556,16 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut terminated = false;
         let mut open = 1usize;
 
-        // FIXME: Emit an error if the delimiter isn't a double quote.
-        while let Some((_, '#')) = self.next() {
+        while let Some('#') = self.peek() {
             self.advance();
             open += 1;
+        }
+
+        if let Some((index, char)) = self.next()
+            && char != '"'
+        {
+            self.error(Error::InvalidStrLitDelim(self.span(index)));
+            return TokenKind::StrLit;
         }
 
         'outer: loop {
@@ -586,6 +600,73 @@ impl<'a, 'src> Lexer<'a, 'src> {
         TokenKind::StrLit
     }
 
+    fn fin_lex_escape_seq(&mut self, kind: LitKind) {
+        let index = self.index();
+        if !self.fin_lex_escape_seq_inner(kind) {
+            self.error(Error::InvalidEscapeSequence(self.span(index)))
+        }
+    }
+
+    // FIXME: Emit slightly more precise diagnostics.
+    fn fin_lex_escape_seq_inner(&mut self, kind: LitKind) -> bool {
+        let Some((_, char)) = self.next() else { return false };
+
+        match (char, kind) {
+            | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _)
+            | ('0', LitKind::Char | LitKind::Byte | LitKind::Str | LitKind::ByteStr)
+            | ('\n', LitKind::Str | LitKind::ByteStr | LitKind::CStr) => true,
+            ('x', _) => {
+                let Some(char) = self.peek() else { return false };
+                match (char, kind) {
+                    | ('0'..='7', LitKind::Char | LitKind::Str)
+                    | (HexDigit!(), LitKind::Byte | LitKind::ByteStr | LitKind::CStr) => {
+                        self.advance()
+                    }
+                    _ => return false,
+                }
+                if let Some(HexDigit!()) = self.peek() {
+                    self.advance();
+                    return true;
+                }
+
+                false
+            }
+            ('u', _) => {
+                let Some((_, '{')) = self.next() else { return false };
+
+                let mut is_empty = true;
+                let mut value = 0;
+
+                while let Some(char) = self.peek() {
+                    let sub = |x: char, y: char| x as u32 - y as u32;
+
+                    let plus = match char {
+                        '0'..='9' => sub(char, '0'),
+                        'a'..='f' => sub(char, 'a') + 10,
+                        'A'..='F' => sub(char, 'A') + 10,
+                        '_' if !is_empty => {
+                            self.advance();
+                            continue;
+                        }
+                        '}' => {
+                            self.advance();
+                            break;
+                        }
+                        _ => return false,
+                    };
+                    value *= 16;
+                    value += plus;
+
+                    is_empty = false;
+                    self.advance();
+                }
+
+                !is_empty && value <= 0x10FFFF
+            }
+            _ => false,
+        }
+    }
+
     fn span(&self, start: ByteIndex) -> Span {
         Span::new(start, self.index())
     }
@@ -613,9 +694,30 @@ impl std::ops::DerefMut for Lexer<'_, '_> {
     }
 }
 
-enum SkipBackslashes {
+#[derive(Clone, Copy)]
+enum LitKind {
+    Byte,
+    ByteStr,
+    CStr,
+    Char,
+    Str,
+}
+
+enum Raw {
     Yes,
     No,
+}
+
+#[rustfmt::skip]
+fn is_whitespace(char: char) -> bool {
+    // Whitespace according to Unicode Pattern_White_Space
+    // contrary to White_Space as used in the stdlib fn.
+
+    matches!(
+        char,
+        | '\t' | '\n' | '\x0B' | '\x0C' | '\r' | ' ' | '\u{85}'
+        | '\u{200E}' | '\u{200F}' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 fn is_ident_start(char: char) -> bool {
@@ -624,6 +726,10 @@ fn is_ident_start(char: char) -> bool {
 
 fn is_ident_middle(char: char) -> bool {
     char.is_xid_continue()
+}
+
+macro HexDigit() {
+    '0'..='9' | 'a'..='f' | 'A'..='F'
 }
 
 pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {

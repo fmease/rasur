@@ -69,4 +69,9 @@ pub enum Error {
     VisibilityOnInvalidItem,
     StrLitGuardTooLarge(Span),
     ReservedMultiHash(Span),
+    InvalidEscapeSequence(Span),
+    EmptyCharLit(Span),
+    MultiScalarCharLit(Span),
+    InvalidToken(char, Span),
+    InvalidStrLitDelim(Span),
 }

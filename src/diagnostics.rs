@@ -17,45 +17,42 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
             let span = actual.span;
             let actual = actual.to_diag_str(Some(cx.source));
             Diag::new(format!("found {actual} but expected {}", expected.to_diag_str(())))
-                .highlight(span, "unexpected token")
+                .labeled_highlight(span, "unexpected token")
         }
         Error::InvalidAssocItemKind(span) => {
-            Diag::new("invalid associated item kind").unlabeled_highlight(span)
+            Diag::new("invalid associated item kind").highlight(span)
         }
-        Error::MissingClosingDelimiters(span) => {
-            Diag::new("missing closing delimiter(s)").highlight(span, "missing delimiter(s)")
-        }
+        Error::MissingClosingDelimiters(span) => Diag::new("missing closing delimiter(s)")
+            .labeled_highlight(span, "missing delimiter(s)"),
         Error::UnexpectedClosingDelimiter(actual) => {
             let span = actual.span;
             let actual = actual.to_diag_str(Some(cx.source));
             Diag::new(format!("found unexpected closing delimiter {actual}"))
-                .highlight(span, "unexpected delimiter")
+                .labeled_highlight(span, "unexpected delimiter")
         }
-        Error::InvalidExternItemKind(span) => {
-            Diag::new("invalid extern item kind").unlabeled_highlight(span)
-        }
+        Error::InvalidExternItemKind(span) => Diag::new("invalid extern item kind").highlight(span),
         Error::ExpectedTraitFoundTy => Diag::new("found type expected trait"),
         Error::ModifiersOnInvalidBound => Diag::new("this bound kind may not have modifiers"),
         Error::HigherRankedBinderOnInvalidBound(span) => {
-            Diag::new("this bound kind may not have a binder").unlabeled_highlight(span)
+            Diag::new("this bound kind may not have a binder").highlight(span)
         }
         Error::MisplacedReceiver => Diag::new("misplaced receiver"),
         Error::OpCannotBeChained(op) => Diag::new(format!("operator `{op}` cannot be chained")),
         Error::TyRelMacroCall => Diag::new("type-relative macro call"),
-        Error::ReservedLabel(span) => Diag::new("reserved label").unlabeled_highlight(span),
-        Error::ReservedLifetime(span) => Diag::new("reserved lifetime").unlabeled_highlight(span),
-        Error::ReservedPrefix(span) => Diag::new("reserved prefix").unlabeled_highlight(span),
+        Error::ReservedLabel(span) => Diag::new("reserved label").highlight(span),
+        Error::ReservedLifetime(span) => Diag::new("reserved lifetime").highlight(span),
+        Error::ReservedPrefix(span) => Diag::new("reserved prefix").highlight(span),
         Error::GenericArgsOnFieldExpr(span) => {
-            Diag::new("generic args on field expression").unlabeled_highlight(span)
+            Diag::new("generic args on field expression").highlight(span)
         }
         Error::InvalidItemPrefix(span) => {
-            Diag::new(format!("invalid item modifiers")).unlabeled_highlight(span)
+            Diag::new(format!("invalid item modifiers")).highlight(span)
         }
         Error::InvalidTyPrefix(span) => {
-            Diag::new(format!("invalid type modifiers")).unlabeled_highlight(span)
+            Diag::new(format!("invalid type modifiers")).highlight(span)
         }
         Error::InvalidExprPrefix(span) => {
-            Diag::new(format!("invalid expression modifiers")).unlabeled_highlight(span)
+            Diag::new(format!("invalid expression modifiers")).highlight(span)
         }
         Error::TraitImplModifierInInherentImpl(modifier) => {
             Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
@@ -73,25 +70,26 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::InvalidLetChain => Diag::new("invalid let-chain"),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
         Error::InvalidRawTickedIdent(span) => {
-            Diag::new("invalid raw ticked identifier").unlabeled_highlight(span)
+            Diag::new("invalid raw ticked identifier").highlight(span)
         }
-        Error::InvalidRawIdent(span) => {
-            Diag::new("invalid raw identifier").unlabeled_highlight(span)
-        }
+        Error::InvalidRawIdent(span) => Diag::new("invalid raw identifier").highlight(span),
         Error::UnterminatedBlockComment(span) => {
-            Diag::new("unterminated block comment").unlabeled_highlight(span)
+            Diag::new("unterminated block comment").highlight(span)
         }
-        Error::UnterminatedCharLit(span) => {
-            Diag::new("unterminated char literal").unlabeled_highlight(span)
-        }
-        Error::UnterminatedStrLit(span) => {
-            Diag::new("unterminated string literal").unlabeled_highlight(span)
-        }
+        Error::UnterminatedCharLit(span) => Diag::new("unterminated char literal").highlight(span),
+        Error::UnterminatedStrLit(span) => Diag::new("unterminated string literal").highlight(span),
         Error::StrLitGuardTooLarge(span) => {
-            Diag::new("string literal guard too large").unlabeled_highlight(span)
+            Diag::new("string literal guard too large").highlight(span)
         }
-        Error::ReservedMultiHash(span) => {
-            Diag::new("reserved multi-hash").unlabeled_highlight(span)
+        Error::ReservedMultiHash(span) => Diag::new("reserved multi-hash").highlight(span),
+        Error::InvalidEscapeSequence(span) => Diag::new("invalid escape sequence").highlight(span),
+        Error::EmptyCharLit(span) => Diag::new("empty char literal").highlight(span),
+        Error::MultiScalarCharLit(span) => Diag::new("multi-scalar char literal").highlight(span),
+        Error::InvalidToken(char, span) => {
+            Diag::new(format!("invalid token U+{:04X}", char as u32)).highlight(span)
+        }
+        Error::InvalidStrLitDelim(span) => {
+            Diag::new("invalid string literal delimiter").highlight(span)
         }
     };
     eprintln!("{}", diag.render(cx));
@@ -107,7 +105,6 @@ impl ToDiagStr for Token {
     type Cx<'a> = Option<&'a str>;
 
     fn to_diag_str(&self, source: Option<&str>) -> Cow<'static, str> {
-        // FIXME: Say "`{source}` (U+NNNN)" on TokenKind::Error | invalid tokens.
         match (self.kind, source) {
             (TokenKind::CommonIdent, Some(source)) => {
                 let ident = &source[self.span.range()];
@@ -173,12 +170,12 @@ impl Diag {
         Self { title: title.into(), highlight: None }
     }
 
-    fn highlight(mut self, span: Span, label: impl Into<Cow<'static, str>>) -> Self {
+    fn labeled_highlight(mut self, span: Span, label: impl Into<Cow<'static, str>>) -> Self {
         self.highlight = Some((span, Some(label.into())));
         self
     }
 
-    fn unlabeled_highlight(mut self, span: Span) -> Self {
+    fn highlight(mut self, span: Span) -> Self {
         self.highlight = Some((span, None));
         self
     }
