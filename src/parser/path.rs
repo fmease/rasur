@@ -230,6 +230,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
+            TokenKind::Const => {
+                self.advance();
+                let block = self.parse_block_expr()?;
+                Ok(ast::ExprKind::SpecialBlock(ast::SpecialBlockKind::Const, Box::new(block))
+                    .into())
+            }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
                 Ok(ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into())
@@ -242,7 +248,8 @@ impl<'src> Parser<'_, '_, 'src> {
     fn begins_const_arg(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_const_arg`.
 
-        self.token.kind == TokenKind::OpenCurlyBracket || self.begins_negatable_lit()
+        matches!(self.token.kind, TokenKind::OpenCurlyBracket | TokenKind::Const)
+            || self.begins_negatable_lit()
     }
 
     pub(super) fn parse_path_tree(&mut self, mode: PathMode) -> Result<ast::PathTree<'src>> {
