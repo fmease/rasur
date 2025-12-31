@@ -83,7 +83,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     fn lex(&mut self) -> Token {
-        if let Some((start, char)) = self.next() {
+        if let Some((start, char)) = self.next_with_index() {
             let kind = self.fin_lex(char, start);
             Token::new(kind, Span::new(start, self.index()))
         } else {
@@ -153,7 +153,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         _ => TokenKind::Trivia,
                     };
 
-                    while let Some((_, char)) = self.next() {
+                    while let Some(char) = self.next() {
                         match (char, self.peek()) {
                             ('/', Some('*')) => {
                                 self.advance();
@@ -186,10 +186,47 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
             '0'..='9' => {
                 // FIXME: Float literals
-                // FIXME: Int literal validation if it has an explicit base
-                while let Some('0'..='9' | 'a'..='z' | 'A'..='Z' | '_') = self.peek() {
+
+                // FIXME: I feel like this can be written a lot nicer
+
+                let is_digit = match (char, self.peek()) {
+                    ('0', Some('b')) => Some(is_bin_digit as fn(_) -> _),
+                    ('0', Some('o')) => Some(is_oct_digit as _),
+                    ('0', Some('x')) => Some(is_hex_digit as _),
+                    _ => None,
+                };
+
+                let (is_digit, mut is_empty) = match is_digit {
+                    Some(is_digit) => {
+                        self.advance();
+                        (is_digit, true)
+                    }
+                    None => (is_dec_digit as _, false),
+                };
+
+                while let Some(char) = self.peek() {
+                    if char == '_' {
+                        self.advance();
+                        continue;
+                    }
+
+                    match char {
+                        _ if is_digit(char) => {}
+                        _ if is_dec_digit(char) => {
+                            self.error(Error::InvalidDigit(self.span(self.index())))
+                        }
+                        _ => break,
+                    }
+
+                    is_empty = false;
                     self.advance();
                 }
+
+                if is_empty {
+                    self.error(Error::EmptyNumLit(self.span(start)));
+                }
+
+                self.lex_lit_suffix();
 
                 TokenKind::NumLit
             }
@@ -417,7 +454,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         _ => self.error(Error::MultiScalarCharLit(self.span(start))),
                     }
 
-                    // FIXME: suffix
+                    self.lex_lit_suffix();
 
                     break TokenKind::CharLit;
                 }
@@ -438,7 +475,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut count = 0usize;
         let mut terminated = false;
 
-        while let Some((_, char)) = self.next() {
+        while let Some(char) = self.next() {
             match char {
                 '\\' => self.fin_lex_escape_seq(kind),
                 '\'' => {
@@ -463,7 +500,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
         }
 
-        // FIXME: Lex suffixes.
+        self.lex_lit_suffix();
 
         TokenKind::CharLit
     }
@@ -471,7 +508,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     fn fin_lex_str_lit(&mut self, raw: Raw, kind: LitKind, start: ByteIndex) -> TokenKind {
         let mut terminated = false;
 
-        while let Some((_, char)) = self.next() {
+        while let Some(char) = self.next() {
             match char {
                 '\\' if let Raw::No = raw => {
                     self.fin_lex_escape_seq(kind);
@@ -488,7 +525,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             self.error(Error::UnterminatedStrLit(self.span(start)));
         }
 
-        // FIXME: Suffixes
+        self.lex_lit_suffix();
 
         TokenKind::StrLit
     }
@@ -561,7 +598,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             open += 1;
         }
 
-        if let Some((index, char)) = self.next()
+        if let Some((index, char)) = self.next_with_index()
             && char != '"'
         {
             self.error(Error::InvalidStrLitDelim(self.span(index)));
@@ -569,7 +606,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         'outer: loop {
-            while self.next().is_some_and(|(_, char)| char != '"') {}
+            while self.next().is_some_and(|char| char != '"') {}
 
             let mut close = 0usize;
 
@@ -595,7 +632,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             self.error(Error::StrLitGuardTooLarge(self.span(start)));
         }
 
-        // FIXME: Lex suffixes.
+        self.lex_lit_suffix();
 
         TokenKind::StrLit
     }
@@ -607,9 +644,9 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    // FIXME: Emit slightly more precise diagnostics.
+    // FIXME: Emit slightly more precise diagnostics & better diagnostic spans.
     fn fin_lex_escape_seq_inner(&mut self, kind: LitKind) -> bool {
-        let Some((_, char)) = self.next() else { return false };
+        let Some(char) = self.next() else { return false };
 
         match (char, kind) {
             | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _)
@@ -617,22 +654,20 @@ impl<'a, 'src> Lexer<'a, 'src> {
             | ('\n', LitKind::Str | LitKind::ByteStr | LitKind::CStr) => true,
             ('x', _) => {
                 let Some(char) = self.peek() else { return false };
-                match (char, kind) {
-                    | ('0'..='7', LitKind::Char | LitKind::Str)
-                    | (HexDigit!(), LitKind::Byte | LitKind::ByteStr | LitKind::CStr) => {
-                        self.advance()
-                    }
+                match kind {
+                    LitKind::Char | LitKind::Str if is_oct_digit(char) => {}
+                    LitKind::Byte | LitKind::ByteStr | LitKind::CStr if is_hex_digit(char) => {}
                     _ => return false,
                 }
-                if let Some(HexDigit!()) = self.peek() {
-                    self.advance();
-                    return true;
+                self.advance();
+                if !self.peek().is_some_and(is_hex_digit) {
+                    return false;
                 }
-
-                false
+                self.advance();
+                true
             }
             ('u', _) => {
-                let Some((_, '{')) = self.next() else { return false };
+                let Some('{') = self.next() else { return false };
 
                 let mut is_empty = true;
                 let mut value = 0;
@@ -664,6 +699,24 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 !is_empty && value <= 0x10FFFF
             }
             _ => false,
+        }
+    }
+
+    fn lex_lit_suffix(&mut self) {
+        if let Some(char) = self.peek()
+            && is_ident_start(char)
+        {
+            let start = self.index();
+            self.advance();
+
+            while self.peek().is_some_and(is_ident_middle) {
+                self.advance();
+            }
+
+            let span = self.span(start);
+            if char == '_' && span.len() == 1 {
+                self.error(Error::InvalidLitSuffix(span));
+            }
         }
     }
 
@@ -728,8 +781,20 @@ fn is_ident_middle(char: char) -> bool {
     char.is_xid_continue()
 }
 
-macro HexDigit() {
-    '0'..='9' | 'a'..='f' | 'A'..='F'
+fn is_bin_digit(char: char) -> bool {
+    matches!(char, '0' | '1')
+}
+
+fn is_oct_digit(char: char) -> bool {
+    matches!(char, '0'..='7')
+}
+
+fn is_dec_digit(char: char) -> bool {
+    matches!(char, '0'..='9')
+}
+
+fn is_hex_digit(char: char) -> bool {
+    matches!(char, '0'..='9' | 'a'..='f' | 'A'..='F')
 }
 
 pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {
@@ -811,11 +876,15 @@ mod iter {
             self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
         }
 
-        pub(super) fn next(&mut self) -> Option<(ByteIndex, char)> {
+        pub(super) fn next_with_index(&mut self) -> Option<(ByteIndex, char)> {
             self.peeked
                 .take()
                 .unwrap_or_else(|| self.chars.next())
                 .map(|(index, char)| (ByteIndex::new(index + self.offset), char))
+        }
+
+        pub(super) fn next(&mut self) -> Option<char> {
+            self.next_with_index().map(|(_, char)| char)
         }
 
         pub(super) fn advance(&mut self) {

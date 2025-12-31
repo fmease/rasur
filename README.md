@@ -11,7 +11,7 @@ It has no stability guarantees whatsoever, anything may change without notice.
 
 This is a personal study.
 I aim to achieve and continuously maintain near 100% parity with `rustc`'s parser (incl. unstable and internal syntax).
-My main goal is to write a more principled parser and find bugs in `rustc` and/or the Rust Reference this way.
+My main goal is to write a more principled parser and find bugs in `rustc` and the Rust Reference this way.
 
 I might use this in various future projects (like a minimizer, an auto-formatter, a static syntax
 highlighter for the web emitting HTML+CSS) and I might experiment with better error recovery, CSTs,

@@ -74,4 +74,8 @@ pub enum Error {
     MultiScalarCharLit(Span),
     InvalidToken(char, Span),
     InvalidStrLitDelim(Span),
+    EmptyNumLit(Span),
+    InvalidDigit(Span),
+    InvalidAbiStr(Span),
+    InvalidLitSuffix(Span),
 }

@@ -37,6 +37,10 @@ impl Span {
     pub fn range(self) -> Range<usize> {
         self.start.0 as usize..self.end.0 as usize
     }
+
+    pub(crate) fn len(self) -> u32 {
+        self.end.0 - self.start.0
+    }
 }
 
 impl fmt::Debug for Span {

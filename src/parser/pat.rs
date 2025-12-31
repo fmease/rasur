@@ -246,6 +246,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         // NOTE: Shorthand numeric fields are syntactically permitted in
                         //       struct pats contrary to struct exprs.
+                        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
                         let (binder, _) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         let body = if let (ast::Mutability::Not, ast::ByRef::No) = (mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)

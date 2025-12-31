@@ -174,9 +174,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let qualifier = match self.token.kind {
             TokenKind::Extern => {
                 self.advance();
-                let span = self.token.span;
-                let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
-                return Some(Ok(Qualifier::Extern(abi)));
+                return Some(Ok(Qualifier::Extern(self.parse_abi_str())));
             }
             TokenKind::Fn => Qualifier::Fn,
             TokenKind::For => {

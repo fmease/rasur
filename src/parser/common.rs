@@ -222,6 +222,22 @@ impl<'src> Parser<'_, '_, 'src> {
             (ast::BorrowKind::Ref, self.parse_mutability())
         }
     }
+
+    pub(super) fn parse_abi_str(&mut self) -> Option<&'src str> {
+        let TokenKind::StrLit = self.token.kind else { return None };
+        let abi = self.source(self.token.span);
+
+        // FIXME: This is a bit awkward. Ideally the lexer would somehow encode this
+        //        in the token. NB: We want to keep `TokenKind` payload-less if possible.
+        //        Maybe add another field to `Token`?
+        if !abi.starts_with(['r', '"']) || !abi.ends_with(['"', '#']) {
+            // FIXME: Make the diagnostic more specific.
+            self.error(Error::InvalidAbiStr(self.token.span));
+        }
+
+        self.advance();
+        Some(abi)
+    }
 }
 
 pub(crate) enum FnParamMode {

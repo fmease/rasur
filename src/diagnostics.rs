@@ -91,6 +91,10 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::InvalidStrLitDelim(span) => {
             Diag::new("invalid string literal delimiter").highlight(span)
         }
+        Error::EmptyNumLit(span) => Diag::new("empty number literal").highlight(span),
+        Error::InvalidDigit(span) => Diag::new("invalid digit").highlight(span),
+        Error::InvalidAbiStr(span) => Diag::new("invalid ABI string").highlight(span),
+        Error::InvalidLitSuffix(span) => Diag::new("invalid literal suffix").highlight(span),
     };
     eprintln!("{}", diag.render(cx));
 }

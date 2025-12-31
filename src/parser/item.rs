@@ -266,9 +266,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Const => Qualifier::Const,
                 TokenKind::Extern => {
                     self.advance();
-                    let span = self.token.span;
-                    let abi = self.consume(TokenKind::StrLit).then(|| self.source(span));
-                    yield (Qualifier::Extern(abi), self.token.kind);
+                    yield (Qualifier::Extern(self.parse_abi_str()), self.token.kind);
                     continue;
                 }
                 TokenKind::Fn => Qualifier::Fn,

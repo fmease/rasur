@@ -22,7 +22,6 @@ impl fmt::Debug for Token {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub enum TokenKind {
     //
     // Ident

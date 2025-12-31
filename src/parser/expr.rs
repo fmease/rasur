@@ -333,6 +333,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         };
 
+        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
         let ident = self.source(self.token.span);
         self.advance();
 
@@ -571,7 +572,6 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::CharLit => {
                 let lit = self.source(self.token.span);
                 self.advance();
-                // FIXME: Validate that the char lit only contains one scalar.
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
@@ -752,6 +752,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
+                        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
