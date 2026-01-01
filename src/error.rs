@@ -78,4 +78,5 @@ pub enum Error {
     InvalidDigit(Span),
     InvalidAbiStr(Span),
     InvalidLitSuffix(Span),
+    InvalidScalarInLit(Span),
 }

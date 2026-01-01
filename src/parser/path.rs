@@ -109,23 +109,12 @@ impl<'src> Parser<'_, '_, 'src> {
             false
         };
 
-        // FIXME: What about the other `LessThan`s?
         if disambiguated || ambiguity == GenericArgsAmbiguity::No {
-            return Ok(match self.token.kind {
-                TokenKind::SingleLessThan => {
-                    self.advance();
-                    Some(self.fin_parse_angle_generic_args()?)
-                }
-                TokenKind::DoubleLessThan => {
-                    self.modify_in_place(TokenKind::SingleLessThan);
-                    Some(self.fin_parse_angle_generic_args()?)
-                }
-                TokenKind::OpenRoundBracket => {
-                    self.advance();
-                    Some(self.fin_parse_paren_generic_args()?)
-                }
-                _ => None,
-            });
+            if self.consume(TokenPrefix::LessThan) {
+                return self.fin_parse_angle_generic_args().map(Some);
+            } else if self.consume(TokenKind::OpenRoundBracket) {
+                return self.fin_parse_paren_generic_args().map(Some);
+            }
         }
 
         Ok(None)

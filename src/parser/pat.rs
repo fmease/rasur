@@ -8,7 +8,7 @@ impl<'src> Parser<'_, '_, 'src> {
     /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         if let OrPolicy::Allowed = o_policy {
-            self.consume(TokenKind::SinglePipe);
+            _ = self.consume(TokenKind::SinglePipe);
         }
 
         self.parse_pat_at_level(Level::Initial, o_policy)

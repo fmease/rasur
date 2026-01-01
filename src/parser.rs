@@ -180,6 +180,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         Err(BufferedError(()))
     }
 
+    #[must_use]
     fn consume(&mut self, category: impl TokenCategory) -> bool {
         category.consume(self)
     }
@@ -405,6 +406,7 @@ impl TokenPrefix {
             (Self::LessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
             (Self::LessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
             (Self::LessThan, TokenKind::DoubleLessThanEquals) => TokenKind::LessThanEquals,
+            (Self::LessThan, TokenKind::ThinBackArrow) => TokenKind::SingleHyphen,
             (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
             (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,

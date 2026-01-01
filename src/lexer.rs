@@ -187,21 +187,26 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '0'..='9' => {
                 // FIXME: Float literals
 
-                // FIXME: I feel like this can be written a lot nicer
+                #[derive(Clone, Copy)]
+                enum Base {
+                    Bin,
+                    Oct,
+                    Dec,
+                    Hex,
+                }
 
-                let is_digit = match (char, self.peek()) {
-                    ('0', Some('b')) => Some(is_bin_digit as fn(_) -> _),
-                    ('0', Some('o')) => Some(is_oct_digit as _),
-                    ('0', Some('x')) => Some(is_hex_digit as _),
-                    _ => None,
+                let base = match (char, self.peek()) {
+                    ('0', Some('b')) => Base::Bin,
+                    ('0', Some('o')) => Base::Oct,
+                    ('0', Some('x')) => Base::Hex,
+                    _ => Base::Dec,
                 };
-
-                let (is_digit, mut is_empty) = match is_digit {
-                    Some(is_digit) => {
+                let mut is_empty = match base {
+                    Base::Bin | Base::Oct | Base::Hex => {
                         self.advance();
-                        (is_digit, true)
+                        true
                     }
-                    None => (is_dec_digit as _, false),
+                    Base::Dec => false,
                 };
 
                 while let Some(char) = self.peek() {
@@ -209,15 +214,16 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         self.advance();
                         continue;
                     }
-
-                    match char {
-                        _ if is_digit(char) => {}
-                        _ if is_dec_digit(char) => {
-                            self.error(Error::InvalidDigit(self.span(self.index())))
+                    match base {
+                        Base::Dec if is_dec_digit(char) => {}
+                        Base::Bin if is_bin_digit(char) => {}
+                        Base::Oct if is_oct_digit(char) => {}
+                        Base::Hex if is_hex_digit(char) => {}
+                        Base::Bin | Base::Oct | Base::Hex if is_dec_digit(char) => {
+                            self.error(Error::InvalidDigit(self.span(self.index())));
                         }
                         _ => break,
                     }
-
                     is_empty = false;
                     self.advance();
                 }
@@ -389,6 +395,10 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     self.advance();
                     TokenKind::LessThanEquals
                 }
+                Some('-') => {
+                    self.advance();
+                    TokenKind::ThinBackArrow
+                }
                 _ => TokenKind::SingleLessThan,
             },
             '>' => match self.peek() {
@@ -417,7 +427,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
     // FIXME: Consolidate with fin_lex_char_lit smh
     fn fin_lex_ticked_ident_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
-        if !self.peek().is_some_and(is_ident_middle) {
+        if !self.peek().is_some_and(is_ident_start) {
             return self.fin_lex_char_lit(LitKind::Char, start);
         }
 
@@ -474,13 +484,18 @@ impl<'a, 'src> Lexer<'a, 'src> {
     fn fin_lex_char_lit(&mut self, kind: LitKind, start: ByteIndex) -> TokenKind {
         let mut count = 0usize;
         let mut terminated = false;
+        let mut has_invalid_escape_seqs = false;
+        let mut invalid_scalar = None;
 
-        while let Some(char) = self.next() {
+        while let Some((index, char)) = self.next_with_index() {
             match char {
-                '\\' => self.fin_lex_escape_seq(kind),
+                '\\' => has_invalid_escape_seqs |= !self.fin_lex_escape_seq(kind),
                 '\'' => {
                     terminated = true;
                     break;
+                }
+                '\n' | '\t' | '\r' => {
+                    invalid_scalar.get_or_insert(self.span(index));
                 }
                 _ => {}
             }
@@ -492,11 +507,17 @@ impl<'a, 'src> Lexer<'a, 'src> {
         if !terminated {
             self.error(Error::UnterminatedCharLit(span));
         } else {
-            match count {
-                0 => self.error(Error::EmptyCharLit(span)),
-                1 => {}
-                // FIXME: Suppress if there were any invalid escape sequences.
-                _ => self.error(Error::MultiScalarCharLit(span)),
+            if !has_invalid_escape_seqs {
+                match count {
+                    0 => self.error(Error::EmptyCharLit(span)),
+                    1 => {}
+                    _ => self.error(Error::MultiScalarCharLit(span)),
+                }
+            }
+            if let Some(span) = invalid_scalar
+                && count == 1
+            {
+                self.error(Error::InvalidScalarInLit(span));
             }
         }
 
@@ -507,8 +528,9 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
     fn fin_lex_str_lit(&mut self, raw: Raw, kind: LitKind, start: ByteIndex) -> TokenKind {
         let mut terminated = false;
+        let mut invalid_scalar = None;
 
-        while let Some(char) = self.next() {
+        while let Some((index, char)) = self.next_with_index() {
             match char {
                 '\\' if let Raw::No = raw => {
                     self.fin_lex_escape_seq(kind);
@@ -517,12 +539,17 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     terminated = true;
                     break;
                 }
+                '\r' => {
+                    invalid_scalar.get_or_insert(self.span(index));
+                }
                 _ => {}
             }
         }
 
         if !terminated {
             self.error(Error::UnterminatedStrLit(self.span(start)));
+        } else if let Some(span) = invalid_scalar {
+            self.error(Error::InvalidScalarInLit(span));
         }
 
         self.lex_lit_suffix();
@@ -637,11 +664,13 @@ impl<'a, 'src> Lexer<'a, 'src> {
         TokenKind::StrLit
     }
 
-    fn fin_lex_escape_seq(&mut self, kind: LitKind) {
+    fn fin_lex_escape_seq(&mut self, kind: LitKind) -> bool {
         let index = self.index();
         if !self.fin_lex_escape_seq_inner(kind) {
-            self.error(Error::InvalidEscapeSequence(self.span(index)))
+            self.error(Error::InvalidEscapeSequence(self.span(index)));
+            return false;
         }
+        true
     }
 
     // FIXME: Emit slightly more precise diagnostics & better diagnostic spans.
