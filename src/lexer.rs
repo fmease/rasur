@@ -185,8 +185,6 @@ impl<'a, 'src> Lexer<'a, 'src> {
             },
             _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
             '0'..='9' => {
-                // FIXME: Float literals
-
                 #[derive(Clone, Copy)]
                 enum Base {
                     Bin,
@@ -230,6 +228,25 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                 if is_empty {
                     self.error(Error::EmptyNumLit(self.span(start)));
+                }
+
+                // FIXME: don't use peek2, reuse already cloned iterator
+                if let Some('.') = self.peek()
+                    && !self.peek2().is_some_and(|char| char == '.' || is_ident_start(char))
+                {
+                    self.advance();
+                    while self.peek().is_some_and(|char| char == '_' || is_dec_digit(char)) {
+                        self.advance();
+                    }
+
+                    match base {
+                        Base::Dec => {}
+                        Base::Bin | Base::Oct | Base::Hex => {
+                            self.error(Error::NonDecFloatLit(self.span(start)));
+                        }
+                    }
+
+                    // FIXME: exponent
                 }
 
                 self.lex_lit_suffix();
@@ -886,48 +903,47 @@ pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {
 
 mod iter {
     use crate::span::ByteIndex;
-    use std::str::CharIndices;
+    use std::str::Chars;
 
-    // FIXME: Add explainer as to how this differs from Peekable<CharIndices<'src>>.
     pub(super) struct PeekableCharIndices<'src> {
-        chars: CharIndices<'src>,
-        peeked: Option<Option<(usize, char)>>,
-        // FIXME: Awkward!
-        offset: usize,
+        chars: Chars<'src>,
+        index: usize,
     }
 
     impl<'src> PeekableCharIndices<'src> {
         pub(super) fn new(source: &'src str, offset: usize) -> Self {
-            Self { chars: source[offset..].char_indices(), peeked: None, offset }
+            Self { chars: source[offset..].chars(), index: offset }
         }
 
         pub(super) fn peek(&mut self) -> Option<char> {
-            self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
+            let mut chars = self.chars.clone();
+            chars.next()
+        }
+
+        // FIXME: temporary name
+        // FIXME: remove this method again; peek(); peek2() would clone twice, ideally we'd just reuse the snapshot
+        pub(super) fn peek2(&mut self) -> Option<char> {
+            let mut chars = self.chars.clone();
+            chars.next();
+            chars.next()
         }
 
         pub(super) fn next_with_index(&mut self) -> Option<(ByteIndex, char)> {
-            self.peeked
-                .take()
-                .unwrap_or_else(|| self.chars.next())
-                .map(|(index, char)| (ByteIndex::new(index + self.offset), char))
+            let index = self.index();
+            self.next().map(|char| (index, char))
         }
 
         pub(super) fn next(&mut self) -> Option<char> {
-            self.next_with_index().map(|(_, char)| char)
+            self.chars.next().inspect(|char| self.index += char.len_utf8())
         }
 
+        // FIXME: remove?
         pub(super) fn advance(&mut self) {
-            if self.peeked.take().is_none() {
-                self.chars.next();
-            }
+            self.next();
         }
 
         pub(super) fn index(&self) -> ByteIndex {
-            let index = match self.peeked {
-                Some(Some((index, _))) => index,
-                _ => self.chars.offset(),
-            };
-            ByteIndex::new(index + self.offset)
+            ByteIndex::new(self.index)
         }
     }
 }

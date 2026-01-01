@@ -79,4 +79,5 @@ pub enum Error {
     InvalidAbiStr(Span),
     InvalidLitSuffix(Span),
     InvalidScalarInLit(Span),
+    NonDecFloatLit(Span),
 }

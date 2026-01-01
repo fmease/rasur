@@ -96,6 +96,7 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::InvalidAbiStr(span) => Diag::new("invalid ABI string").highlight(span),
         Error::InvalidLitSuffix(span) => Diag::new("invalid literal suffix").highlight(span),
         Error::InvalidScalarInLit(span) => Diag::new("invalid scalar in literal").highlight(span),
+        Error::NonDecFloatLit(span) => Diag::new("non-decimal float literal").highlight(span),
     };
     eprintln!("{}", diag.render(cx));
 }
