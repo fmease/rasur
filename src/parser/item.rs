@@ -54,17 +54,18 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
+        // FIXME: Find a better way to obtain the span
+        let span = start.to(self.prev_token().map(|token| token.span));
+
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
-            return self.fatal(Error::VisibilityOnInvalidItem);
+            self.error(Error::VisibilityOnInvalidItem(span));
         }
 
         if let ast::Defaultness::Default = defaultness
             && !kind.supports_defaultness()
         {
-            return self.fatal(Error::DefaultnessOnInvalidItem);
+            self.error(Error::DefaultnessOnInvalidItem(span));
         }
-
-        let span = start.to(self.prev_token().map(|token| token.span));
 
         Ok(ast::Item { attrs, vis, kind, span })
     }

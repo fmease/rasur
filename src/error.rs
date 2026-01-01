@@ -34,7 +34,7 @@ impl Buffer {
 #[cfg_attr(test, derive(Debug))]
 pub enum Error {
     AutoTraitAlias,
-    DefaultnessOnInvalidItem,
+    DefaultnessOnInvalidItem(Span),
     ExpectedTraitFoundTy,
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
@@ -66,7 +66,7 @@ pub enum Error {
     UnterminatedBlockComment(Span),
     UnterminatedCharLit(Span),
     UnterminatedStrLit(Span),
-    VisibilityOnInvalidItem,
+    VisibilityOnInvalidItem(Span),
     StrLitGuardTooLarge(Span),
     ReservedMultiHash(Span),
     InvalidEscapeSequence(Span),

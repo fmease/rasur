@@ -10,8 +10,8 @@ use std::{borrow::Cow, path::Path};
 pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
     let diag = match error {
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
-        Error::DefaultnessOnInvalidItem => {
-            Diag::new("this item kind may not be marked with `default`")
+        Error::DefaultnessOnInvalidItem(span) => {
+            Diag::new("this item kind may not be marked with `default`").highlight(span)
         }
         Error::UnexpectedToken(actual, expected) => {
             let span = actual.span;
@@ -59,8 +59,8 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         }
         Error::UnsafeTraitAlias => Diag::new("trait aliases cannot be marked `unsafe`"),
         Error::InvalidParenthesizedBound => Diag::new("this bound kind may not be parenthesized"),
-        Error::VisibilityOnInvalidItem => {
-            Diag::new("this item kind may not be marked with visibility")
+        Error::VisibilityOnInvalidItem(span) => {
+            Diag::new("this item kind may not be marked with visibility").highlight(span)
         }
         Error::ParametrizedWhereClause => {
             Diag::new("generic parameter lists on where-clauses are reserved")
