@@ -5,6 +5,7 @@ use super::{
 use crate::{
     ast,
     error::Error,
+    parser::weak::Weak,
     span::Span,
     token::{PathSegIdent, Token},
 };
@@ -31,7 +32,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                     _ => (Vec::new(), &*qualifiers),
                 };
-                (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
+                (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
                     return self.fatal(Error::InvalidTyPrefix(start.until(self.token.span)));
@@ -172,6 +173,10 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn parse_ty_qualifier(&mut self) -> Option<Result<Qualifier<'src>>> {
         let qualifier = match self.token.kind {
+            TokenKind::CommonIdent => match self.source(self.token.span) {
+                weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
+                _ => return None,
+            },
             TokenKind::Extern => {
                 self.advance();
                 return Some(Ok(Qualifier::Extern(self.parse_abi_str())));
@@ -635,13 +640,15 @@ enum Qualifier<'src> {
     Extern(Option<&'src str>),
     Fn,
     ForBinder(Vec<ast::GenericParam<'src>>),
+    Safe,
     Unsafe,
 }
 
 impl<'src> Qualifier<'src> {
-    fn strip_unsafe(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+    fn strip_safety(qualifiers: &[Self]) -> (ast::Safety<()>, &[Self]) {
         match qualifiers {
             [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe(()), qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }

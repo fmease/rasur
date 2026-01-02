@@ -33,7 +33,7 @@ pub(crate) struct FnPtrTy<'src> {
 
 #[derive(Default, Debug)]
 pub(crate) struct FnPtrTyModifiers<'src> {
-    pub(crate) safety: Safety,
+    pub(crate) safety: Safety<()>,
     pub(crate) externness: Externness<'src>,
 }
 
