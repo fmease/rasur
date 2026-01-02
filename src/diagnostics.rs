@@ -97,6 +97,9 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::InvalidLitSuffix(span) => Diag::new("invalid literal suffix").highlight(span),
         Error::InvalidScalarInLit(span) => Diag::new("invalid scalar in literal").highlight(span),
         Error::NonDecFloatLit(span) => Diag::new("non-decimal float literal").highlight(span),
+        Error::ParenthesizedGuardedPatInMatch => {
+            Diag::new("parenthesized guarded pattern in match expression")
+        }
     };
     eprintln!("{}", diag.render(cx));
 }

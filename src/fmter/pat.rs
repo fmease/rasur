@@ -27,6 +27,11 @@ impl Fmt for ast::Pat<'_> {
                 pat.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::Guarded(pat, guard) => {
+                pat.fmt(cx);
+                fmt!(cx, " if ");
+                guard.fmt(cx);
+            }
             Self::Path(path) => path.fmt(cx),
             Self::MacroCall(call) => call.fmt(cx),
             Self::TupleStruct(pat) => pat.fmt(cx),

@@ -80,4 +80,5 @@ pub enum Error {
     InvalidLitSuffix(Span),
     InvalidScalarInLit(Span),
     NonDecFloatLit(Span),
+    ParenthesizedGuardedPatInMatch,
 }

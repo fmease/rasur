@@ -7,14 +7,27 @@ impl<'src> Parser<'_, '_, 'src> {
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
+        self.parse_pat_where(o_policy, GuardPolicy::Forbidden)
+    }
+
+    fn parse_pat_where(
+        &mut self,
+        o_policy: OrPolicy,
+        g_policy: GuardPolicy,
+    ) -> Result<ast::Pat<'src>> {
         if let OrPolicy::Allowed = o_policy {
             _ = self.consume(TokenKind::SinglePipe);
         }
 
-        self.parse_pat_at_level(Level::Initial, o_policy)
+        self.parse_pat_at_level(Level::Initial, o_policy, g_policy)
     }
 
-    fn parse_pat_at_level(&mut self, level: Level, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
+    fn parse_pat_at_level(
+        &mut self,
+        level: Level,
+        o_policy: OrPolicy,
+        g_policy: GuardPolicy,
+    ) -> Result<ast::Pat<'src>> {
         // Negation and ranges aren't handled here since they don't operate on general patterns
         // but on literals and range bounds, respectively.
         let op = match self.token.kind {
@@ -24,13 +37,14 @@ impl<'src> Parser<'_, '_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            self.fin_parse_prefix_op_pat(op, o_policy)
+            self.fin_parse_prefix_op_pat(op, o_policy, g_policy)
         } else {
             self.parse_lower_pat()
         }?;
 
         loop {
             let op = match self.token.kind {
+                TokenKind::If if let GuardPolicy::Allowed = g_policy => Op::Guard,
                 TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
                 _ => break,
             };
@@ -44,21 +58,26 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             self.advance();
 
-            left = self.fin_parse_suffix_op_pat(op, left, o_policy)?;
+            left = self.fin_parse_suffix_op_pat(op, left, o_policy, g_policy)?;
         }
 
         Ok(left)
     }
 
-    fn fin_parse_prefix_op_pat(&mut self, op: Op, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
+    fn fin_parse_prefix_op_pat(
+        &mut self,
+        op: Op,
+        o_policy: OrPolicy,
+        g_policy: GuardPolicy,
+    ) -> Result<ast::Pat<'src>> {
         let right_level = op.right_level().unwrap();
 
         match op {
             Op::DoubleBorrow => {
-                let borrow = self.fin_parse_borrow_pat(right_level, o_policy)?;
+                let borrow = self.fin_parse_borrow_pat(right_level, o_policy, g_policy)?;
                 Ok(ast::Pat::Borrow(ast::BorrowKind::Ref, ast::Mutability::Not, Box::new(borrow)))
             }
-            Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy),
+            Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy, g_policy),
             _ => unreachable!(),
         }
     }
@@ -68,10 +87,16 @@ impl<'src> Parser<'_, '_, 'src> {
         op: Op,
         left: ast::Pat<'src>,
         o_policy: OrPolicy,
+        g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
         match op {
+            Op::Guard => {
+                let guard = self.parse_expr()?;
+                return Ok(ast::Pat::Guarded(Box::new(left), Box::new(guard)));
+            }
             Op::Or => {
-                let right = self.parse_pat_at_level(op.right_level().unwrap(), o_policy)?;
+                let right =
+                    self.parse_pat_at_level(op.right_level().unwrap(), o_policy, g_policy)?;
                 Ok(ast::Pat::Or(Box::new(left), Box::new(right)))
             }
             _ => unreachable!(),
@@ -82,9 +107,10 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         right_level: Level,
         o_policy: OrPolicy,
+        g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
-        let pat = self.parse_pat_at_level(right_level, o_policy)?;
+        let pat = self.parse_pat_at_level(right_level, o_policy, g_policy)?;
         Ok(ast::Pat::Borrow(kind, mut_, Box::new(pat)))
     }
 
@@ -94,7 +120,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Pat<'src>> {
         let right =
             self.begins_range_pat_bound().then(|| self.parse_range_pat_bound()).transpose()?;
-        Ok(ast::Pat::Range(left, right, ast::RangePatKind::Exclusive))
+        Ok(ast::Pat::Range(left.map(Box::new), right.map(Box::new), ast::RangePatKind::Exclusive))
     }
 
     fn fin_parse_range_inclusive_pat(
@@ -103,7 +129,11 @@ impl<'src> Parser<'_, '_, 'src> {
         left: Option<ast::RangePatBound<'src>>,
     ) -> Result<ast::Pat<'src>> {
         let right = self.parse_range_pat_bound()?;
-        Ok(ast::Pat::Range(left, Some(right), ast::RangePatKind::Inclusive(kind)))
+        Ok(ast::Pat::Range(
+            left.map(Box::new),
+            Some(Box::new(right)),
+            ast::RangePatKind::Inclusive(kind),
+        ))
     }
 
     fn parse_range_pat_bound(&mut self) -> Result<ast::RangePatBound<'src>> {
@@ -183,7 +213,7 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
-                    |this| this.parse_pat(OrPolicy::Allowed),
+                    |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
                     ast::Pat::Grouped,
                     ast::Pat::Tuple,
                 );
@@ -193,7 +223,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let elems = self.fin_parse_delim_seq(
                     TokenKind::CloseSquareBracket,
                     TokenKind::Comma,
-                    |this| this.parse_pat(OrPolicy::Allowed),
+                    |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
                 )?;
                 return Ok(ast::Pat::Slice(elems));
             }
@@ -251,7 +281,7 @@ impl<'src> Parser<'_, '_, 'src> {
                         let body = if let (ast::Mutability::Not, ast::ByRef::No) = (mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)
                         {
-                            Some(self.parse_pat(OrPolicy::Allowed)?)
+                            Some(self.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed)?)
                         } else {
                             None
                         };
@@ -271,7 +301,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
-                        |this| this.parse_pat(OrPolicy::Allowed),
+                        |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
                     )?;
                     return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
                         path,
@@ -343,9 +373,16 @@ pub(super) enum OrPolicy {
     Forbidden,
 }
 
+#[derive(Clone, Copy)]
+enum GuardPolicy {
+    Allowed,
+    Forbidden,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Initial,
+    Guard,
     OrLeft,
     OrRight,
     Prefix,
@@ -354,6 +391,7 @@ enum Level {
 #[derive(Clone, Copy, Debug)]
 enum Op {
     DoubleBorrow,
+    Guard,
     Or,
     SingleBorrow,
 }
@@ -361,6 +399,7 @@ enum Op {
 impl Op {
     fn left_level(self) -> Option<Level> {
         Some(match self {
+            Self::Guard => Level::Guard,
             Self::Or => Level::OrLeft,
             Self::SingleBorrow | Self::DoubleBorrow => return None,
         })
@@ -368,6 +407,7 @@ impl Op {
 
     fn right_level(self) -> Option<Level> {
         Some(match self {
+            Self::Guard => return None,
             Self::Or => Level::OrRight,
             Self::SingleBorrow | Self::DoubleBorrow => Level::Prefix,
         })

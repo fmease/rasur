@@ -1,5 +1,5 @@
 use super::{
-    Attr, BorrowKind, ExtPath, Ident, Lit, MacroCall, Mutability,
+    Attr, BorrowKind, Expr, ExtPath, Ident, Lit, MacroCall, Mutability,
     ObligatorilyDisambiguatedGenericArgs,
 };
 
@@ -9,12 +9,13 @@ pub(crate) enum Pat<'src> {
     Borrow(BorrowKind<!>, Mutability, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
     Grouped(Box<Pat<'src>>),
+    Guarded(Box<Pat<'src>>, Box<Expr<'src>>),
     Lit(Sign, Lit<'src>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
-    Range(Option<RangePatBound<'src>>, Option<RangePatBound<'src>>, RangePatKind),
+    Range(Option<Box<RangePatBound<'src>>>, Option<Box<RangePatBound<'src>>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
     Tuple(Vec<Pat<'src>>),

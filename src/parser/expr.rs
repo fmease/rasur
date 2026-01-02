@@ -995,16 +995,23 @@ impl<'src> Parser<'_, '_, 'src> {
         while !self.consume(DELIMITER) {
             let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
             let pat = self.parse_pat(OrPolicy::Allowed)?;
-            let guard = self
-                .consume(TokenKind::If)
-                .then(|| {
-                    self.parse_expr_where(
+
+            let (pat, guard) = match pat {
+                ast::Pat::Grouped(deref!(ast::Pat::Guarded(pat, guard))) => {
+                    self.error(Error::ParenthesizedGuardedPatInMatch);
+
+                    (*pat, Some(*guard))
+                }
+                _ if self.consume(TokenKind::If) => (
+                    pat,
+                    Some(self.parse_expr_where(
                         StructPolicy::Allowed,
                         LetPolicy::Allowed,
                         OpPolicy::Allowed,
-                    )
-                })
-                .transpose()?;
+                    )?),
+                ),
+                _ => (pat, None),
+            };
 
             let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
 
