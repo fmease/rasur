@@ -122,40 +122,22 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         Ok(tuple(nodes))
     }
 
-    fn fin_parse_delim_seq<T>(
+    fn fin_parse_delim_seq<T, C>(
         &mut self,
-        delimiter: TokenKind,
+        delimiter: C,
         separator: TokenKind,
         mut parse: impl FnMut(&mut Self) -> Result<T>,
-    ) -> Result<Vec<T>> {
+    ) -> Result<Vec<T>>
+    where
+        C: TokenCategory + MatchAgainstArbitraryToken,
+    {
         let mut nodes = Vec::new();
 
         while !self.consume(delimiter) {
             // FIXME: Add delimiter and separator to "the list of expected tokens".
             nodes.push(parse(self)?);
 
-            if self.token.kind != delimiter {
-                self.parse(separator)?;
-            }
-        }
-
-        Ok(nodes)
-    }
-
-    fn fin_parse_delim_seq_with<T>(
-        &mut self,
-        consume_delimiter: impl Fn(&mut Self) -> bool,
-        check_delimiter: impl Fn(&Self) -> bool,
-        separator: TokenKind,
-        mut parse: impl FnMut(&mut Self) -> Result<T>,
-    ) -> Result<Vec<T>> {
-        let mut nodes = Vec::new();
-
-        while !consume_delimiter(self) {
-            // FIXME: Add delimiter and separator to "the list of expected tokens".
-            nodes.push(parse(self)?);
-
-            if !check_delimiter(self) {
+            if !self.matches(delimiter, self.token) {
                 self.parse(separator)?;
             }
         }
@@ -295,9 +277,9 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         category.check(self)
     }
 
-    fn matches<T>(&self, category: T, token: Token) -> bool
+    fn matches<C>(&self, category: C, token: Token) -> bool
     where
-        T: TokenCategory + MatchAgainstArbitraryToken,
+        C: TokenCategory + MatchAgainstArbitraryToken,
     {
         category.matches(token, self)
     }
@@ -389,33 +371,38 @@ impl<W: weak::Weak> TokenCategory for W {
 
 #[derive(Clone, Copy)]
 enum TokenPrefix {
-    LessThan,
     GreaterThan,
+    LessThan,
+    Pipe,
     Plus,
 }
 
 impl TokenPrefix {
     fn single(self) -> TokenKind {
         match self {
-            Self::LessThan => TokenKind::SingleLessThan,
             Self::GreaterThan => TokenKind::SingleGreaterThan,
+            Self::LessThan => TokenKind::SingleLessThan,
+            Self::Pipe => TokenKind::SinglePipe,
             Self::Plus => TokenKind::SinglePlus,
         }
     }
 
     fn strip(self, token: TokenKind) -> Result<Option<TokenKind>, ()> {
         Ok(Some(match (self, token) {
-            (Self::LessThan, TokenKind::SingleLessThan) => return Ok(None),
-            (Self::LessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
-            (Self::LessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
-            (Self::LessThan, TokenKind::DoubleLessThanEquals) => TokenKind::LessThanEquals,
-            (Self::LessThan, TokenKind::ThinBackArrow) => TokenKind::SingleHyphen,
-            (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
-            (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
             (Self::GreaterThan, TokenKind::DoubleGreaterThanEquals) => TokenKind::GreaterThanEquals,
-            (Self::Plus, TokenKind::SinglePlus) => return Ok(None),
+            (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
+            (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
+            (Self::LessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
+            (Self::LessThan, TokenKind::DoubleLessThanEquals) => TokenKind::LessThanEquals,
+            (Self::LessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
+            (Self::LessThan, TokenKind::SingleLessThan) => return Ok(None),
+            (Self::LessThan, TokenKind::ThinBackArrow) => TokenKind::SingleHyphen,
+            (Self::Pipe, TokenKind::DoublePipe) => TokenKind::SinglePipe,
+            (Self::Pipe, TokenKind::PipeEquals) => TokenKind::SingleEquals,
+            (Self::Pipe, TokenKind::SinglePipe) => return Ok(None),
             (Self::Plus, TokenKind::PlusEquals) => TokenKind::SingleEquals,
+            (Self::Plus, TokenKind::SinglePlus) => return Ok(None),
             _ => return Err(()),
         }))
     }

@@ -268,62 +268,57 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         const SEPARATOR: TokenKind = TokenKind::Comma;
-        self.fin_parse_delim_seq_with(
-            |this| this.consume(TokenPrefix::GreaterThan),
-            |this| TokenPrefix::GreaterThan.matches(this.token.kind),
-            SEPARATOR,
-            |this| {
-                let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+        self.fin_parse_delim_seq(TokenPrefix::GreaterThan, SEPARATOR, |this| {
+            let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-                let (binder, kind) = if let Some(lifetime) = this.parse_lifetime()? {
-                    let bounds = if this.consume(TokenKind::SingleColon) {
-                        this.parse_outlives_bounds()?
-                    } else {
-                        Vec::new()
-                    };
-                    (lifetime, ast::GenericParamKind::Lifetime(bounds))
+            let (binder, kind) = if let Some(lifetime) = this.parse_lifetime()? {
+                let bounds = if this.consume(TokenKind::SingleColon) {
+                    this.parse_outlives_bounds()?
                 } else {
-                    match this.token.kind {
-                        TokenKind::Const => {
-                            this.advance();
-                            let binder = this.parse_common_ident()?;
-                            let ty = this.parse_ty_annotation()?;
-                            let default = this
-                                .consume(TokenKind::SingleEquals)
-                                .then(|| this.parse_const_arg())
-                                .transpose()?;
-                            (binder, ast::GenericParamKind::Const { ty, default })
-                        }
-                        TokenKind::CommonIdent => {
-                            let ident = this.ident(this.token.span);
-                            this.advance();
-                            let bounds = if this.consume(TokenKind::SingleColon) {
-                                this.parse_bounds()?
-                            } else {
-                                Vec::new()
-                            };
-                            let default = this
-                                .consume(TokenKind::SingleEquals)
-                                .then(|| this.parse_ty())
-                                .transpose()?;
-                            (ident, ast::GenericParamKind::Ty { bounds, default })
-                        }
-                        _ => {
-                            return this.fatal(Error::UnexpectedToken(
-                                this.token,
-                                one_of![
-                                    ExpectedFragment::GenericParam,
-                                    SEPARATOR,
-                                    TokenKind::SingleGreaterThan
-                                ],
-                            ));
-                        }
-                    }
+                    Vec::new()
                 };
+                (lifetime, ast::GenericParamKind::Lifetime(bounds))
+            } else {
+                match this.token.kind {
+                    TokenKind::Const => {
+                        this.advance();
+                        let binder = this.parse_common_ident()?;
+                        let ty = this.parse_ty_annotation()?;
+                        let default = this
+                            .consume(TokenKind::SingleEquals)
+                            .then(|| this.parse_const_arg())
+                            .transpose()?;
+                        (binder, ast::GenericParamKind::Const { ty, default })
+                    }
+                    TokenKind::CommonIdent => {
+                        let ident = this.ident(this.token.span);
+                        this.advance();
+                        let bounds = if this.consume(TokenKind::SingleColon) {
+                            this.parse_bounds()?
+                        } else {
+                            Vec::new()
+                        };
+                        let default = this
+                            .consume(TokenKind::SingleEquals)
+                            .then(|| this.parse_ty())
+                            .transpose()?;
+                        (ident, ast::GenericParamKind::Ty { bounds, default })
+                    }
+                    _ => {
+                        return this.fatal(Error::UnexpectedToken(
+                            this.token,
+                            one_of![
+                                ExpectedFragment::GenericParam,
+                                SEPARATOR,
+                                TokenKind::SingleGreaterThan
+                            ],
+                        ));
+                    }
+                }
+            };
 
-                Ok(ast::GenericParam { attrs, binder, kind })
-            },
-        )
+            Ok(ast::GenericParam { attrs, binder, kind })
+        })
     }
 
     /// Parse a where clause.
@@ -449,11 +444,8 @@ impl<'src> Parser<'_, '_, 'src> {
 
         if self.consume(TokenKind::Use) {
             self.parse(TokenKind::SingleLessThan)?;
-            let captures = self.fin_parse_delim_seq_with(
-                |this| this.consume(TokenPrefix::GreaterThan),
-                |this| TokenPrefix::GreaterThan.matches(this.token.kind),
-                TokenKind::Comma,
-                |this| {
+            let captures =
+                self.fin_parse_delim_seq(TokenPrefix::GreaterThan, TokenKind::Comma, |this| {
                     if let Some(lt) = this.parse_lifetime()? {
                         return Ok(lt);
                     }
@@ -468,8 +460,7 @@ impl<'src> Parser<'_, '_, 'src> {
                             ExpectedFragment::GenericParam,
                         )),
                     }
-                },
-            )?;
+                })?;
 
             self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
 

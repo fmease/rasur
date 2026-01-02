@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, one_of,
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, one_of,
     pat::OrPolicy,
     path::GenericArgsMode,
     weak::{self, Weak as _},
@@ -884,7 +884,7 @@ impl<'src> Parser<'_, '_, 'src> {
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::ClosureExprModifiers,
     ) -> Result<ast::ExprKind<'src>> {
-        let params = self.fin_parse_delim_seq(TokenKind::SinglePipe, TokenKind::Comma, |this| {
+        let params = self.fin_parse_delim_seq(TokenPrefix::Pipe, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let pat = this.parse_pat(OrPolicy::Forbidden)?;
             let ty = this.consume(TokenKind::SingleColon).then(|| this.parse_ty()).transpose()?;

@@ -124,9 +124,8 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_angle_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
 
-        Ok(ast::GenericArgs::Angle(self.fin_parse_delim_seq_with(
-            |this| this.consume(TokenPrefix::GreaterThan),
-            |this| TokenPrefix::GreaterThan.matches(this.token.kind),
+        Ok(ast::GenericArgs::Angle(self.fin_parse_delim_seq(
+            TokenPrefix::GreaterThan,
             SEPARATOR,
             |this: &mut Self| {
                 let mut arg = if this.begins_ty(this.token) {
