@@ -81,4 +81,5 @@ pub enum Error {
     InvalidScalarInLit(Span),
     NonDecFloatLit(Span),
     ParenthesizedGuardedPatInMatch,
+    EmptyExponent(Span),
 }

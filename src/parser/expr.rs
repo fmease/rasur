@@ -333,7 +333,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         };
 
-        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
+        // FIXME: Reject int literal suffixes & exponents w/ explicit sign (NB: different bases are ok apparently)
         // FIXME: Split float literals apart
         let ident = self.ident(self.token.span);
         self.advance();

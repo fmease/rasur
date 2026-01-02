@@ -100,6 +100,7 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::ParenthesizedGuardedPatInMatch => {
             Diag::new("parenthesized guarded pattern in match expression")
         }
+        Error::EmptyExponent(span) => Diag::new("empty exponent").highlight(span),
     };
     eprintln!("{}", diag.render(cx));
 }

@@ -245,8 +245,32 @@ impl<'a, 'src> Lexer<'a, 'src> {
                             self.error(Error::NonDecFloatLit(self.span(start)));
                         }
                     }
+                }
 
-                    // FIXME: exponent
+                if let Some('e' | 'E') = self.peek() {
+                    self.advance();
+
+                    if let Some('+' | '-') = self.peek() {
+                        self.advance();
+                    }
+
+                    let mut is_empty = true;
+
+                    while let Some(char) = self.peek() {
+                        if char == '_' {
+                            self.advance();
+                            continue;
+                        }
+                        if !is_dec_digit(char) {
+                            break;
+                        }
+                        is_empty = false;
+                        self.advance();
+                    }
+
+                    if is_empty {
+                        self.error(Error::EmptyExponent(self.span(start)));
+                    }
                 }
 
                 self.lex_lit_suffix();
