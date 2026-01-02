@@ -83,7 +83,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     fn lex(&mut self) -> Token {
-        if let Some((start, char)) = self.next_with_index() {
+        if let Some((start, char)) = self.next() {
             let kind = self.fin_lex(char, start);
             Token::new(kind, Span::new(start, self.index()))
         } else {
@@ -95,72 +95,57 @@ impl<'a, 'src> Lexer<'a, 'src> {
     fn fin_lex(&mut self, char: char, start: ByteIndex) -> TokenKind {
         match char {
             _ if is_whitespace(char) => {
-                while self.peek().is_some_and(is_whitespace) {
-                    self.advance();
-                }
-
+                self.next_while(is_whitespace);
                 TokenKind::Trivia
             }
             '/' => match self.peek() {
                 Some('/') => {
-                    self.advance();
+                    self.next();
 
-                    // FIXME: Using peek2 would lead to nicer code
-                    let kind = match self.peek() {
+                    let mut this = self.snapshot();
+                    let kind = match this.next() {
                         Some('!') => {
-                            self.advance();
+                            self.next();
                             TokenKind::InnerDocComment
                         }
-                        Some('/') => {
-                            self.advance();
-                            match self.peek() {
-                                Some('/') => TokenKind::Trivia,
-                                _ => TokenKind::OuterDocComment,
-                            }
+                        Some('/') if this.next().is_none_or(|char| char != '/') => {
+                            self.next();
+                            TokenKind::OuterDocComment
                         }
                         _ => TokenKind::Trivia,
                     };
 
-                    while self.peek().is_some_and(|char| char != '\n') {
-                        self.advance();
-                    }
+                    self.next_while(|char| char != '\n');
 
                     kind
                 }
                 Some('*') => {
-                    self.advance();
+                    self.next();
 
                     let mut depth = 0;
                     let mut terminated = false;
 
-                    let kind = match self.peek() {
+                    let mut this = self.snapshot();
+                    let kind = match this.next() {
                         Some('!') => {
-                            self.advance();
+                            self.next();
                             TokenKind::InnerDocComment
                         }
-                        // FIXME: Using peek2 would lead to nicer code
-                        Some('*') => {
-                            self.advance();
-                            match self.peek() {
-                                Some('*') => TokenKind::Trivia,
-                                Some('/') => {
-                                    self.advance();
-                                    return TokenKind::Trivia;
-                                }
-                                _ => TokenKind::OuterDocComment,
-                            }
+                        Some('*') if this.next().is_none_or(|char| char != '*' && char != '/') => {
+                            self.next();
+                            TokenKind::OuterDocComment
                         }
                         _ => TokenKind::Trivia,
                     };
 
-                    while let Some(char) = self.next() {
+                    while let Some((_, char)) = self.next() {
                         match (char, self.peek()) {
                             ('/', Some('*')) => {
-                                self.advance();
+                                self.next();
                                 depth += 1;
                             }
                             ('*', Some('/')) => {
-                                self.advance();
+                                self.next();
                                 if depth == 0 {
                                     terminated = true;
                                     break;
@@ -178,7 +163,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     kind
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::SlashEquals
                 }
                 _ => TokenKind::SingleSlash,
@@ -201,7 +186,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 };
                 let mut is_empty = match base {
                     Base::Bin | Base::Oct | Base::Hex => {
-                        self.advance();
+                        self.next();
                         true
                     }
                     Base::Dec => false,
@@ -209,7 +194,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                 while let Some(char) = self.peek() {
                     if char == '_' {
-                        self.advance();
+                        self.next();
                         continue;
                     }
                     match base {
@@ -223,21 +208,19 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         _ => break,
                     }
                     is_empty = false;
-                    self.advance();
+                    self.next();
                 }
 
                 if is_empty {
                     self.error(Error::EmptyNumLit(self.span(start)));
                 }
 
-                // FIXME: don't use peek2, reuse already cloned iterator
-                if let Some('.') = self.peek()
-                    && !self.peek2().is_some_and(|char| char == '.' || is_ident_start(char))
+                let mut this = self.snapshot();
+                if let Some('.') = this.next()
+                    && !this.next().is_some_and(|char| char == '.' || is_ident_start(char))
                 {
-                    self.advance();
-                    while self.peek().is_some_and(|char| char == '_' || is_dec_digit(char)) {
-                        self.advance();
-                    }
+                    self.next();
+                    self.next_while(|char| char == '_' || is_dec_digit(char));
 
                     match base {
                         Base::Dec => {}
@@ -248,24 +231,24 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
 
                 if let Some('e' | 'E') = self.peek() {
-                    self.advance();
+                    self.next();
 
                     if let Some('+' | '-') = self.peek() {
-                        self.advance();
+                        self.next();
                     }
 
                     let mut is_empty = true;
 
                     while let Some(char) = self.peek() {
                         if char == '_' {
-                            self.advance();
+                            self.next();
                             continue;
                         }
                         if !is_dec_digit(char) {
                             break;
                         }
                         is_empty = false;
-                        self.advance();
+                        self.next();
                     }
 
                     if is_empty {
@@ -283,14 +266,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
             ';' => TokenKind::Semicolon,
             '.' => {
                 if let Some('.') = self.peek() {
-                    self.advance();
+                    self.next();
                     match self.peek() {
                         Some('.') => {
-                            self.advance();
+                            self.next();
                             TokenKind::TripleDot
                         }
                         Some('=') => {
-                            self.advance();
+                            self.next();
                             TokenKind::DoubleDotEquals
                         }
                         _ => TokenKind::DoubleDot,
@@ -301,7 +284,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             ':' => {
                 if let Some(':') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::DoubleColon
                 } else {
                     TokenKind::SingleColon
@@ -309,7 +292,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '!' => {
                 if let Some('=') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::BangEquals
                 } else {
                     TokenKind::SingleBang
@@ -318,7 +301,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '?' => TokenKind::QuestionMark,
             '+' => {
                 if let Some('=') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::PlusEquals
                 } else {
                     TokenKind::SinglePlus
@@ -326,7 +309,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '*' => {
                 if let Some('=') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::AsteriskEquals
                 } else {
                     TokenKind::SingleAsterisk
@@ -334,22 +317,22 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '-' => match self.peek() {
                 Some('>') => {
-                    self.advance();
+                    self.next();
                     TokenKind::ThinArrow
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::HypenEquals
                 }
                 _ => TokenKind::SingleHyphen,
             },
             '=' => match self.peek() {
                 Some('>') => {
-                    self.advance();
+                    self.next();
                     TokenKind::WideArrow
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::DoubleEquals
                 }
                 _ => TokenKind::SingleEquals,
@@ -360,7 +343,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                     while self.peek().is_some_and(|char| char == '#') {
                         multi = true;
-                        self.advance();
+                        self.next();
                     }
 
                     if let Some('"') = self.peek() {
@@ -378,29 +361,29 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '&' => match self.peek() {
                 Some('&') => {
-                    self.advance();
+                    self.next();
                     TokenKind::DoubleAmpersand
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::AmpersandEquals
                 }
                 _ => TokenKind::SingleAmpersand,
             },
             '|' => match self.peek() {
                 Some('|') => {
-                    self.advance();
+                    self.next();
                     TokenKind::DoublePipe
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::PipeEquals
                 }
                 _ => TokenKind::SinglePipe,
             },
             '%' => {
                 if let Some('=') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::PercentEquals
                 } else {
                     TokenKind::SinglePercent
@@ -408,7 +391,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '^' => {
                 if let Some('=') = self.peek() {
-                    self.advance();
+                    self.next();
                     TokenKind::CaretEquals
                 } else {
                     TokenKind::SingleCaret
@@ -424,36 +407,36 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '}' => TokenKind::CloseCurlyBracket,
             '<' => match self.peek() {
                 Some('<') => {
-                    self.advance();
+                    self.next();
                     if let Some('=') = self.peek() {
-                        self.advance();
+                        self.next();
                         TokenKind::DoubleLessThanEquals
                     } else {
                         TokenKind::DoubleLessThan
                     }
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::LessThanEquals
                 }
                 Some('-') => {
-                    self.advance();
+                    self.next();
                     TokenKind::ThinBackArrow
                 }
                 _ => TokenKind::SingleLessThan,
             },
             '>' => match self.peek() {
                 Some('>') => {
-                    self.advance();
+                    self.next();
                     if let Some('=') = self.peek() {
-                        self.advance();
+                        self.next();
                         TokenKind::DoubleGreaterThanEquals
                     } else {
                         TokenKind::DoubleGreaterThan
                     }
                 }
                 Some('=') => {
-                    self.advance();
+                    self.next();
                     TokenKind::GreaterThanEquals
                 }
                 _ => TokenKind::SingleGreaterThan,
@@ -473,7 +456,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         let unticked = self.index();
-        self.advance();
+        self.next();
 
         let mut raw = None;
         let mut count = 1usize;
@@ -481,13 +464,13 @@ impl<'a, 'src> Lexer<'a, 'src> {
         loop {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => {
-                    self.advance();
+                    self.next();
                     count += 1;
                 }
                 Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
                     match self.source(unticked) {
                         "r" => {
-                            self.advance();
+                            self.next();
                             raw = Some(self.index());
                         }
                         _ => {
@@ -497,7 +480,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     }
                 }
                 Some('\'') => {
-                    self.advance();
+                    self.next();
 
                     match count {
                         0 => unreachable!(),
@@ -528,7 +511,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut has_invalid_escape_seqs = false;
         let mut invalid_scalar = None;
 
-        while let Some((index, char)) = self.next_with_index() {
+        while let Some((index, char)) = self.next() {
             match char {
                 '\\' => has_invalid_escape_seqs |= !self.fin_lex_escape_seq(kind),
                 '\'' => {
@@ -571,7 +554,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut terminated = false;
         let mut invalid_scalar = None;
 
-        while let Some((index, char)) = self.next_with_index() {
+        while let Some((index, char)) = self.next() {
             match char {
                 '\\' if let Raw::No = raw => {
                     self.fin_lex_escape_seq(kind);
@@ -599,9 +582,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     fn fin_lex_ident_or_str_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
-        while self.peek().is_some_and(is_ident_middle) {
-            self.advance();
-        }
+        self.next_while(is_ident_middle);
 
         let ident = self.source(start);
 
@@ -612,17 +593,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
             ("cr", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::Yes, LitKind::CStr),
             ("r", Some('"')) => (Raw::Yes, LitKind::Str),
             ("b", Some('\'')) => {
-                self.advance();
+                self.next();
                 return self.fin_lex_char_lit(LitKind::Byte, start);
             }
             ("r", Some('#')) => {
-                self.advance();
+                self.next();
 
                 let unprefixed = self.index();
                 if self.peek().is_some_and(is_ident_start) {
-                    while self.peek().is_some_and(is_ident_middle) {
-                        self.advance();
-                    }
+                    self.next_while(is_ident_middle);
 
                     if let PathSegKeyword!() | TokenKind::Underscore =
                         lex_ident(self.source(unprefixed), self.edition)
@@ -636,23 +615,23 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("br", Some('#')) => {
-                self.advance();
+                self.next();
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
-                self.advance();
+                self.next();
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
                 if let '#' = char {
-                    self.advance();
+                    self.next();
                 }
                 return TokenKind::Error;
             }
             _ => return lex_ident(ident, self.edition),
         };
-        self.advance();
+        self.next();
         self.fin_lex_str_lit(raw, kind, start)
     }
 
@@ -662,11 +641,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut open = 1usize;
 
         while let Some('#') = self.peek() {
-            self.advance();
+            self.next();
             open += 1;
         }
 
-        if let Some((index, char)) = self.next_with_index()
+        if let Some((index, char)) = self.next()
             && char != '"'
         {
             self.error(Error::InvalidStrLitDelim(self.span(index)));
@@ -674,14 +653,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         'outer: loop {
-            while self.next().is_some_and(|char| char != '"') {}
+            while self.next().is_some_and(|(_, char)| char != '"') {}
 
             let mut close = 0usize;
 
             loop {
                 match self.peek() {
                     Some('#') => {
-                        self.advance();
+                        self.next();
                         close += 1;
                         if open == close {
                             terminated = true;
@@ -716,7 +695,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
     // FIXME: Emit slightly more precise diagnostics & better diagnostic spans.
     fn fin_lex_escape_seq_inner(&mut self, kind: LitKind) -> bool {
-        let Some(char) = self.next() else { return false };
+        let Some((_, char)) = self.next() else { return false };
 
         match (char, kind) {
             | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _)
@@ -729,15 +708,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     LitKind::Byte | LitKind::ByteStr | LitKind::CStr if is_hex_digit(char) => {}
                     _ => return false,
                 }
-                self.advance();
+                self.next();
                 if !self.peek().is_some_and(is_hex_digit) {
                     return false;
                 }
-                self.advance();
+                self.next();
                 true
             }
             ('u', _) => {
-                let Some('{') = self.next() else { return false };
+                let Some((_, '{')) = self.next() else { return false };
 
                 let mut is_empty = true;
                 let mut value = 0;
@@ -750,11 +729,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         'a'..='f' => sub(char, 'a') + 10,
                         'A'..='F' => sub(char, 'A') + 10,
                         '_' if !is_empty => {
-                            self.advance();
+                            self.next();
                             continue;
                         }
                         '}' => {
-                            self.advance();
+                            self.next();
                             break;
                         }
                         _ => return false,
@@ -763,7 +742,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     value += plus;
 
                     is_empty = false;
-                    self.advance();
+                    self.next();
                 }
 
                 !is_empty && value <= 0x10FFFF
@@ -777,11 +756,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
             && is_ident_start(char)
         {
             let start = self.index();
-            self.advance();
-
-            while self.peek().is_some_and(is_ident_middle) {
-                self.advance();
-            }
+            self.next();
+            self.next_while(is_ident_middle);
 
             let span = self.span(start);
             if char == '_' && span.len() == 1 {
@@ -931,12 +907,24 @@ mod iter {
 
     pub(super) struct PeekableCharIndices<'src> {
         chars: Chars<'src>,
-        index: usize,
+        index: ByteIndex,
     }
 
     impl<'src> PeekableCharIndices<'src> {
         pub(super) fn new(source: &'src str, offset: usize) -> Self {
-            Self { chars: source[offset..].chars(), index: offset }
+            Self { chars: source[offset..].chars(), index: ByteIndex::new(offset) }
+        }
+
+        pub(super) fn next(&mut self) -> Option<(ByteIndex, char)> {
+            self.chars.next().map(|char| {
+                let index = self.index();
+                self.index += char.len_utf8() as _;
+                (index, char)
+            })
+        }
+
+        pub(super) fn snapshot(&self) -> impl Iterator<Item = char> + use<'src> {
+            self.chars.clone()
         }
 
         pub(super) fn peek(&mut self) -> Option<char> {
@@ -944,30 +932,16 @@ mod iter {
             chars.next()
         }
 
-        // FIXME: temporary name
-        // FIXME: remove this method again; peek(); peek2() would clone twice, ideally we'd just reuse the snapshot
-        pub(super) fn peek2(&mut self) -> Option<char> {
-            let mut chars = self.chars.clone();
-            chars.next();
-            chars.next()
-        }
-
-        pub(super) fn next_with_index(&mut self) -> Option<(ByteIndex, char)> {
-            let index = self.index();
-            self.next().map(|char| (index, char))
-        }
-
-        pub(super) fn next(&mut self) -> Option<char> {
-            self.chars.next().inspect(|char| self.index += char.len_utf8())
-        }
-
-        // FIXME: remove?
-        pub(super) fn advance(&mut self) {
-            self.next();
-        }
-
         pub(super) fn index(&self) -> ByteIndex {
-            ByteIndex::new(self.index)
+            self.index
+        }
+
+        pub(super) fn next_while(&mut self, predicate: impl Fn(char) -> bool) {
+            while let Some(char) = self.peek()
+                && predicate(char)
+            {
+                self.next();
+            }
         }
     }
 }
