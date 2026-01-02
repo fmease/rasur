@@ -73,12 +73,11 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         Ok(ast::File { attrs, items, span })
     }
 
-    fn parse_ticked_ident<T>(
+    fn parse_ticked_ident(
         &mut self,
         validate: fn(TokenKind) -> bool,
         error: fn(Span) -> Error,
-        make: fn(&'src str) -> T,
-    ) -> Result<Option<T>> {
+    ) -> Result<Option<ast::Ident<'src>>> {
         let TokenKind::TickedIdent = self.token.kind else { return Ok(None) };
         let span = self.token.span;
         let source = self.source(span);
@@ -90,7 +89,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         if !validate(ident) {
             self.error(error(span));
         }
-        Ok(Some(make(source)))
+        Ok(Some(ast::Ident::new(source, span)))
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(
@@ -233,6 +232,10 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         &self.source[span.range()]
     }
 
+    fn ident(&self, span: Span) -> ast::Ident<'src> {
+        ast::Ident::new(self.source(span), span)
+    }
+
     fn snapshot<'r>(&self, errors: &'r mut ErrorBuffer) -> Parser<'t, 'r, 'src> {
         Parser { errors, ..*self }
     }
@@ -267,7 +270,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
             ));
         };
 
-        let ident = self.source(self.token.span);
+        let ident = self.ident(self.token.span);
         self.advance();
         Ok((ident, exception))
     }
@@ -283,7 +286,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     // FIXME: Temporary API, replace with consume(CommonIdent)
     fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
         let TokenKind::CommonIdent = self.token.kind else { return None };
-        let ident = self.source(self.token.span);
+        let ident = self.ident(self.token.span);
         self.advance();
         Some(ident)
     }

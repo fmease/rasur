@@ -107,13 +107,6 @@ impl Fmt for ast::RefTy<'_> {
     }
 }
 
-impl Fmt for ast::Lifetime<'_> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(lt) = self;
-        fmt!(cx, "{lt}");
-    }
-}
-
 impl Fmt for ast::Generics<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { params, preds } = self;
@@ -163,7 +156,7 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Lifetime(bounds) => {
-                ast::Lifetime(binder).fmt(cx);
+                fmt!(cx, "{binder}");
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.interleave(" + ").fmt(cx);

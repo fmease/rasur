@@ -650,9 +650,11 @@ impl Fmt for TrailingSpace<ast::Visibility<'_>> {
             ast::Visibility::Inherited => {}
             ast::Visibility::Restricted(path) => {
                 fmt!(cx, "pub(");
-                match &*path.segs {
-                    [ast::PathSeg { ident: "crate" | "super" | "self", args: () }] => {}
-                    _ => fmt!(cx, "in "),
+                if let [ast::PathSeg { ident: ast::Ident!("crate" | "super" | "self"), args: () }] =
+                    &*path.segs
+                {
+                } else {
+                    fmt!(cx, "in ")
                 }
                 path.fmt(cx);
                 fmt!(cx, ") ");

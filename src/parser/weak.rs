@@ -53,6 +53,7 @@ weak! {
     MacroRules "macro_rules" |p|
         p.peek(1).kind == TokenKind::SingleBang
             && p.peek(2).kind == TokenKind::CommonIdent,
+    OffsetOf "offset_of",
     Pin "pin",
     Raw "raw",
     // NOTE: This check isn't precise enough. See upstream issue:

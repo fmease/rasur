@@ -61,7 +61,7 @@ pub enum Error {
     TyRelMacroCall,
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
-    UnknownBuiltInSyntax,
+    UnknownBuiltInSyntax(Span),
     UnsafeTraitAlias,
     UnterminatedBlockComment(Span),
     UnterminatedCharLit(Span),

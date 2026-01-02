@@ -228,7 +228,7 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::CommonIdent => match self.source(self.token.span) {
                 weak::Union::STR if weak::Union.qualifies(self) => {
                     self.advance();
-                    let binder = self.source(self.token.span);
+                    let binder = self.ident(self.token.span);
                     self.advance();
                     return self.fin_parse_union_item(binder);
                 }
@@ -868,7 +868,9 @@ impl<'src> Parser<'_, '_, 'src> {
         let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
         self.parse(TokenKind::SingleBang)?;
 
-        let binder = if let [ast::PathSeg { ident: weak::MacroRules::STR, args: () }] = *path.segs {
+        let binder = if let [ast::PathSeg { ident: ast::Ident!(weak::MacroRules::STR), args: () }] =
+            *path.segs
+        {
             self.consume_common_ident()
         } else {
             None
@@ -973,7 +975,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
             let path = match keyword {
                 VisKeyword::In => self.parse_path(PathMode::Normal)?,
-                VisKeyword::CrateSuperSelf(span) => ast::Path::ident(self.source(span)),
+                VisKeyword::CrateSuperSelf(span) => ast::Path::ident(self.ident(span)),
             };
             self.parse(TokenKind::CloseRoundBracket)?;
             return Ok(ast::Visibility::Restricted(path));

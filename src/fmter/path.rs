@@ -18,6 +18,14 @@ impl<M: GenericArgsMode> Fmt for ast::PathSeg<'_, M> {
     }
 }
 
+impl Fmt for ast::Ident<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { name, span: _ } = self;
+
+        fmt!(cx, "{name}");
+    }
+}
+
 impl<S: GenericArgsStyle> Fmt for ast::ExtPath<'_, S> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ext, path } = self;

@@ -56,20 +56,22 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<Option<ast::FnParam<'src>>> {
         enum ShorthandKind<'src> {
-            Ref(Result<Option<ast::Lifetime<'src>>>, ast::BorrowKind<!>),
+            Ref(Result<Option<ast::Ident<'src>>>, ast::BorrowKind<!>),
             Bare,
         }
 
-        if let Some((kind, mut_)) = self.probe(|this| {
-            let shorthand = if this.consume(TokenKind::SingleAmpersand) {
+        if let Some((kind, mut_, span)) = self.probe(|this| {
+            let (kind, mut_) = if this.consume(TokenKind::SingleAmpersand) {
                 let lt = this.parse_lifetime();
                 let (kind, mut_) = this.parse_borrow_kind_and_mutability();
                 (ShorthandKind::Ref(lt, kind), mut_)
             } else {
                 (ShorthandKind::Bare, this.parse_mutability())
             };
+            // FIXME: make `parse` ret the Span
+            let span = this.token.span;
             this.parse(TokenKind::SelfLower).ok()?;
-            Some(shorthand)
+            Some((kind, mut_, span))
         }) {
             let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
                 mut_: match kind {
@@ -77,12 +79,13 @@ impl<'src> Parser<'_, '_, 'src> {
                     ShorthandKind::Bare => mut_,
                 },
                 by_ref: ast::ByRef::No,
-                binder: "self",
+                binder: ast::Ident::new("self", span),
                 pat: None,
             }));
 
             // FIXME: Reintroduce a Ty::SelfTy, so we can losslessly reconstruct shorthands
-            let self_ty = || ast::Ty::Path(Box::new(ast::ExtPath::ident("Self")));
+            let self_ty =
+                || ast::Ty::Path(Box::new(ast::ExtPath::ident(ast::Ident::new("Self", span))));
 
             let ty = match kind {
                 ShorthandKind::Ref(lt, kind) => {

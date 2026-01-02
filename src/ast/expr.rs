@@ -41,6 +41,7 @@ pub(crate) enum ExprKind<'src> {
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Match(Box<MatchExpr<'src>>),
     MethodCall(Box<MethodCallExpr<'src>>),
+    OffsetOf(Box<Ty<'src>>, Vec<Ident<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Range(Option<Box<Expr<'src>>>, Option<Box<Expr<'src>>>, RangeExprKind),
     Repeat(Box<Expr<'src>>, Box<Expr<'src>>),
@@ -90,6 +91,7 @@ impl ExprKind<'_> {
             | Self::Lit(_)
             | Self::MacroCall(_)
             | Self::MethodCall(_)
+            | Self::OffsetOf(..)
             | Self::Path(_)
             | Self::Range(..)
             | Self::Repeat(..)

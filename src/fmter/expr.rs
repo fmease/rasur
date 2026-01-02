@@ -20,7 +20,7 @@ impl Fmt for ast::Expr<'_> {
 }
 
 // FIXME: Don't render unnecessary parentheses!
-impl Fmt for (ast::ExprKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         // FIXME: Assert inner attrs for most expr kinds.
         let (expr, attrs) = self;
@@ -109,6 +109,13 @@ impl Fmt for (ast::ExprKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
                 body.fmt(cx);
             }
             ast::ExprKind::Match(expr) => (*expr, attrs).fmt(cx),
+            ast::ExprKind::OffsetOf(ty, fields) => {
+                fmt!(cx, "builtin # offset(");
+                ty.fmt(cx);
+                fmt!(cx, ", ");
+                fields.interleave(".").fmt(cx);
+                fmt!(cx, ")");
+            }
             ast::ExprKind::WhileLoop(expr) => expr.fmt(cx),
             ast::ExprKind::Let(expr) => expr.fmt(cx),
             ast::ExprKind::Lit(lit) => lit.fmt(cx),

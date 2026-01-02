@@ -39,14 +39,11 @@ pub(crate) struct FnPtrTyModifiers<'src> {
 
 #[derive(Debug)]
 pub(crate) struct RefTy<'src> {
-    pub(crate) lt: Option<Lifetime<'src>>,
+    pub(crate) lt: Option<Ident<'src>>,
     pub(crate) kind: BorrowKind<!>,
     pub(crate) mut_: Mutability,
     pub(crate) pointee: Ty<'src>,
 }
-
-#[derive(Debug)]
-pub(crate) struct Lifetime<'src>(pub(crate) Ident<'src>);
 
 #[derive(Debug)]
 pub(crate) struct Generics<'src> {
@@ -65,7 +62,7 @@ pub(crate) struct GenericParam<'src> {
 pub(crate) enum GenericParamKind<'src> {
     Ty { bounds: Vec<Bound<'src>>, default: Option<Ty<'src>> },
     Const { ty: Ty<'src>, default: Option<Expr<'src>> },
-    Lifetime(Vec<Lifetime<'src>>),
+    Lifetime(Vec<Ident<'src>>),
 }
 
 #[derive(Debug)]
@@ -90,14 +87,14 @@ pub(crate) struct TraitPredicate<'src> {
 
 #[derive(Debug)]
 pub(crate) struct OutlivesPredicate<'src> {
-    pub(crate) lt: Lifetime<'src>,
-    pub(crate) bounds: Vec<Lifetime<'src>>,
+    pub(crate) lt: Ident<'src>,
+    pub(crate) bounds: Vec<Ident<'src>>,
 }
 
 #[derive(Debug)]
 pub(crate) enum Bound<'src> {
-    Outlives(Lifetime<'src>),
-    Use(Vec<&'src str>),
+    Outlives(Ident<'src>),
+    Use(Vec<Ident<'src>>),
     Trait {
         // FIXME: Make this more type-safe: binders are
         //        incompatible with non-normal polarity

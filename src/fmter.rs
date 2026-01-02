@@ -75,8 +75,10 @@ impl<'src> Cx<'src> {
             let ast::AttrKind::Normal(attr) = &attr.kind else { return false };
             let ast::AttrArgs::Unit = attr.args else { return false };
 
-            let &[ast::PathSeg { ident: tool, args: () }, ast::PathSeg { ident: "skip", args: () }] =
-                attr.path.segs.as_slice()
+            let &[
+                ast::PathSeg { ident: ast::Ident!(tool), args: () },
+                ast::PathSeg { ident: ast::Ident!("skip"), args: () },
+            ] = attr.path.segs.as_slice()
             else {
                 return false;
             };
@@ -248,6 +250,7 @@ impl Fmt for &'static str {
 struct TrailingSpace<T>(T);
 
 trait TrailingSpaceExt: Sized {
+    #[must_use]
     fn trailing_space(self) -> TrailingSpace<Self> {
         TrailingSpace(self)
     }
@@ -280,6 +283,7 @@ where
 }
 
 trait InterleaveExt: Sized {
+    #[must_use]
     fn interleave<Sep>(self, sep: Sep) -> Interleave<Self, Sep> {
         Interleave { nodes: self, sep }
     }

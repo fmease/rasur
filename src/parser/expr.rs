@@ -335,7 +335,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
         // FIXME: Split float literals apart
-        let ident = self.source(self.token.span);
+        let ident = self.ident(self.token.span);
         self.advance();
 
         if !numeric {
@@ -580,16 +580,31 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 let ident = self.parse_common_ident()?;
                 self.parse(TokenKind::OpenRoundBracket)?;
-                let expr = match ident {
+                let expr = match ident.name {
+                    weak::OffsetOf::STR => {
+                        let ty = self.parse_ty()?;
+                        self.parse(TokenKind::Comma)?;
+                        // FIXME: split float lits
+                        let fields = self.fin_parse_delim_seq(
+                            TokenKind::CloseRoundBracket,
+                            TokenKind::SingleDot,
+                            |this| {
+                                // FIXME: reject suffixes
+                                let (ident, _) = this.parse_common_ident_or(TokenKind::NumLit)?;
+                                Ok(ident)
+                            },
+                        )?;
+                        ast::ExprKind::OffsetOf(Box::new(ty), fields)
+                    }
                     weak::TypeAscribe::STR => {
                         let expr = self.parse_expr()?;
                         self.parse(TokenKind::Comma)?;
                         let ty = self.parse_ty()?;
+                        self.parse(TokenKind::CloseRoundBracket)?;
                         ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
                     }
-                    _ => return self.fatal(Error::UnknownBuiltInSyntax),
+                    _ => return self.fatal(Error::UnknownBuiltInSyntax(ident.span)),
                 };
-                self.parse(TokenKind::CloseRoundBracket)?;
                 return Ok(expr);
             }
             TokenKind::Continue => {
@@ -1081,11 +1096,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     /// Optionally parse a label.
     fn parse_label(&mut self) -> Result<Option<ast::Ident<'src>>> {
-        self.parse_ticked_ident(
-            |kind| matches!(kind, TokenKind::CommonIdent),
-            Error::ReservedLabel,
-            std::convert::identity,
-        )
+        self.parse_ticked_ident(|kind| matches!(kind, TokenKind::CommonIdent), Error::ReservedLabel)
     }
 }
 

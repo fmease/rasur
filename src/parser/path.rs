@@ -40,8 +40,9 @@ impl<'src> Parser<'_, '_, 'src> {
 
         match mode {
             PathMode::Normal => {
+                let span = self.token.span;
                 if self.consume(TokenKind::DoubleColon) {
-                    path.segs.push(ast::PathSeg::ident(""))
+                    path.segs.push(ast::PathSeg::ident(ast::Ident::new("", span.start())))
                 }
             }
             PathMode::Suffix => self.parse(TokenKind::DoubleColon)?,
@@ -86,7 +87,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_path_seg<M: GenericArgsMode>(&mut self) -> Result<ast::PathSeg<'src, M>> {
         match self.token.kind {
             PathSegIdent!() => {
-                let ident = self.source(self.token.span);
+                let ident = self.ident(self.token.span);
                 self.advance();
                 Ok(ast::PathSeg { ident, args: M::parse(self)? })
             }
@@ -215,7 +216,7 @@ impl<'src> Parser<'_, '_, 'src> {
             // NB: Only reachable when parsing terms. FIXME: We should make this a
             //     policy param for clarity.
             TokenKind::CommonIdent => {
-                let ident = self.source(self.token.span);
+                let ident = self.ident(self.token.span);
                 self.advance();
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
@@ -277,7 +278,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 ast::PathTreeKind::Global
             }
             PathSegIdent!() => {
-                path.segs.push(ast::PathSeg::ident(self.source(self.token.span)));
+                path.segs.push(ast::PathSeg::ident(self.ident(self.token.span)));
                 self.advance();
                 let binder = if self.consume(TokenKind::As) {
                     let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;

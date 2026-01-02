@@ -1,4 +1,5 @@
-use super::{Bound, Expr, Lifetime, Ty};
+use super::{Bound, Expr, Ty};
+use crate::span::Span;
 use std::fmt;
 
 pub(crate) struct Path<'src, M: GenericArgsMode> {
@@ -39,8 +40,33 @@ impl<'src, M: GenericArgsMode> fmt::Debug for PathSeg<'src, M> {
     }
 }
 
-// FIXME: Create newtype for idents!
-pub(crate) type Ident<'src> = &'src str;
+#[derive(Clone, Copy)]
+pub(crate) struct Ident<'src> {
+    pub(crate) name: &'src str,
+    pub(crate) span: Span,
+}
+
+impl<'src> Ident<'src> {
+    pub(crate) fn new(name: &'src str, span: Span) -> Self {
+        Self { name, span }
+    }
+}
+
+impl fmt::Display for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name)
+    }
+}
+
+impl fmt::Debug for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}@{:?}", self.name, self.span)
+    }
+}
+
+pub(crate) macro Ident($pat:pat) {
+    Ident { name: $pat, .. }
+}
 
 pub(crate) struct ExtPath<'src, S: GenericArgsStyle> {
     pub(crate) ext: Option<PathExt<'src>>,
@@ -99,7 +125,7 @@ pub(crate) enum AngleGenericArg<'src> {
 pub(crate) enum GenericArg<'src> {
     Ty(Ty<'src>),
     Const(Expr<'src>),
-    Lifetime(Lifetime<'src>),
+    Lifetime(Ident<'src>),
 }
 
 #[derive(Debug)]

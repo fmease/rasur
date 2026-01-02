@@ -66,7 +66,7 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
             Diag::new("generic parameter lists on where-clauses are reserved")
         }
         Error::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
-        Error::UnknownBuiltInSyntax => Diag::new("unknown built-in syntax"),
+        Error::UnknownBuiltInSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
         Error::InvalidLetChain => Diag::new("invalid let-chain"),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
         Error::InvalidRawTickedIdent(span) => {

@@ -141,7 +141,7 @@ fn pat_mut_ref_mut() {
         Ok(ast::Pat::Binding(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
-            binder: "x",
+            binder: ast::Ident!("x"),
             pat: None,
         }))
     );
@@ -185,14 +185,14 @@ fn expr_angle_gen_args() {
                         ext: None,
                         path: ast::Path {
                             segs: deref!([ast::PathSeg {
-                                ident: "f",
+                                ident: ast::Ident!("f"),
                                 args: Some(ast::GenericArgs::Angle(deref!([
                                     ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
                                         ast::Ty::Path(ast::ExtPath {
                                             ext: None,
                                             path: ast::Path {
                                                 segs: deref!([ast::PathSeg {
-                                                    ident: "i32",
+                                                    ident: ast::Ident!("i32"),
                                                     args: None
                                                 }])
                                             },
@@ -220,13 +220,16 @@ fn pat_angle_gen_args() {
                 ext: None,
                 path: ast::Path {
                     segs: deref!([ast::PathSeg {
-                        ident: "Some",
+                        ident: ast::Ident!("Some"),
                         args: Some(ast::GenericArgs::Angle(deref!([
                             ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Path(
                                 ast::ExtPath {
                                     ext: None,
                                     path: ast::Path {
-                                        segs: deref!([ast::PathSeg { ident: "i32", args: None }]),
+                                        segs: deref!([ast::PathSeg {
+                                            ident: ast::Ident!("i32"),
+                                            args: None
+                                        }]),
                                     }
                                 }
                             )))
@@ -247,9 +250,9 @@ fn ty_angle_gen_args() {
             ext: None,
             path: ast::Path {
                 segs: deref!([ast::PathSeg {
-                    ident: "Ty",
+                    ident: ast::Ident!("Ty"),
                     args: Some(ast::GenericArgs::Angle(deref!([
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Lifetime(
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Ident!(
                             "'a"
                         ))),
                         ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(
@@ -282,7 +285,7 @@ fn expr_angle_args_in_path_ext() {
                     self_ty: ast::Ty::Tuple(deref!([])),
                     trait_ref: Some(ast::Path {
                         segs: deref!([ast::PathSeg {
-                            ident: "TraitRef",
+                            ident: ast::Ident!("TraitRef"),
                             args: Some(ast::GenericArgs::Angle(deref!([
                                 ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
                                     ast::Ty::Tuple(deref!([]))
@@ -291,7 +294,9 @@ fn expr_angle_args_in_path_ext() {
                         },])
                     })
                 }),
-                path: ast::Path { segs: deref!([ast::PathSeg { ident: "assoc", args: None }]) }
+                path: ast::Path {
+                    segs: deref!([ast::PathSeg { ident: ast::Ident!("assoc"), args: None }])
+                }
             }),
             ..
         })
@@ -310,7 +315,7 @@ fn expr_pat_paren_gen_args_arrow() {
                 ext: None,
                 path: ast::Path {
                     segs: deref!([ast::PathSeg {
-                        ident: "x",
+                        ident: ast::Ident!("x"),
                         args: Some(ast::GenericArgs::Paren {
                             inputs: deref!([]),
                             output: Some(ast::Ty::Tuple(deref!([]))),
@@ -329,13 +334,13 @@ fn expr_pat_paren_gen_args_arrow() {
             path: ast::Path {
                 segs: deref!([
                     ast::PathSeg {
-                        ident: "x",
+                        ident: ast::Ident!("x"),
                         args: Some(ast::GenericArgs::Paren {
                             inputs: deref!([]),
                             output: Some(ast::Ty::Never),
                         })
                     },
-                    ast::PathSeg { ident: "X", args: None }
+                    ast::PathSeg { ident: ast::Ident!("X"), args: None }
                 ])
             }
         })))
@@ -370,13 +375,13 @@ fn stmt_macro_call_gen_args() {
                 kind: ast::ExprKind::MacroCall(deref!(ast::MacroCall {
                     path: ast::Path {
                         segs: deref!([
-                            ast::PathSeg { ident: "path", args: None },
+                            ast::PathSeg { ident: ast::Ident!("path"), args: None },
                             ast::PathSeg {
-                                ident: "to",
+                                ident: ast::Ident!("to"),
                                 args: Some(ast::GenericArgs::Angle(deref!([])))
                             },
                             ast::PathSeg {
-                                ident: "call",
+                                ident: ast::Ident!("call"),
                                 args: Some(ast::GenericArgs::Angle(deref!([])))
                             },
                         ])
@@ -427,7 +432,7 @@ fn stmts_const_item_const_block() {
                                     constness: ast::Constness::Const,
                                     ..
                                 },
-                                binder: "f",
+                                binder: ast::Ident!("f"),
                                 ..
                             }),
                             span: _
@@ -532,15 +537,24 @@ fn expr_qualified_struct_pat_in_for_loop() {
                             self_ty: ast::Ty::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
-                                    segs: deref!([ast::PathSeg { ident: "Ty", args: None }])
+                                    segs: deref!([ast::PathSeg {
+                                        ident: ast::Ident!("Ty"),
+                                        args: None
+                                    }])
                                 },
                             }),
                             trait_ref: Some(ast::Path {
-                                segs: deref!([ast::PathSeg { ident: "Trait", args: None }])
+                                segs: deref!([ast::PathSeg {
+                                    ident: ast::Ident!("Trait"),
+                                    args: None
+                                }])
                             })
                         }),
                         path: ast::Path {
-                            segs: deref!([ast::PathSeg { ident: "AssocTy", args: None }])
+                            segs: deref!([ast::PathSeg {
+                                ident: ast::Ident!("AssocTy"),
+                                args: None
+                            }])
                         }
                     },
                     fields: deref!([]),

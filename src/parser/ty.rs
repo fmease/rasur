@@ -270,7 +270,7 @@ impl<'src> Parser<'_, '_, 'src> {
             |this| {
                 let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-                let (binder, kind) = if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
+                let (binder, kind) = if let Some(lifetime) = this.parse_lifetime()? {
                     let bounds = if this.consume(TokenKind::SingleColon) {
                         this.parse_outlives_bounds()?
                     } else {
@@ -290,7 +290,7 @@ impl<'src> Parser<'_, '_, 'src> {
                             (binder, ast::GenericParamKind::Const { ty, default })
                         }
                         TokenKind::CommonIdent => {
-                            let ident = this.source(this.token.span);
+                            let ident = this.ident(this.token.span);
                             this.advance();
                             let bounds = if this.consume(TokenKind::SingleColon) {
                                 this.parse_bounds()?
@@ -449,12 +449,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 |this| TokenPrefix::GreaterThan.matches(this.token.kind),
                 TokenKind::Comma,
                 |this| {
-                    if let Some(ast::Lifetime(lifetime)) = this.parse_lifetime()? {
-                        return Ok(lifetime);
+                    if let Some(lt) = this.parse_lifetime()? {
+                        return Ok(lt);
                     }
                     match this.token.kind {
                         TokenKind::CommonIdent | TokenKind::SelfUpper => {
-                            let ident = this.source(this.token.span);
+                            let ident = this.ident(this.token.span);
                             this.advance();
                             Ok(ident)
                         }
@@ -593,7 +593,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Lifetime<'src>>> {
+    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Ident<'src>>> {
         let mut bounds = Vec::new();
 
         while let Some(lt) = self.parse_lifetime()? {
@@ -621,13 +621,12 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a lifetime.
-    pub(super) fn parse_lifetime(&mut self) -> Result<Option<ast::Lifetime<'src>>> {
+    pub(super) fn parse_lifetime(&mut self) -> Result<Option<ast::Ident<'src>>> {
         self.parse_ticked_ident(
             |kind| {
                 matches!(kind, TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static)
             },
             Error::ReservedLifetime,
-            ast::Lifetime,
         )
     }
 }
