@@ -68,10 +68,10 @@ features! {
     frontmatter,
     // <https://github.com/rust-lang/rust/issues/117078>.
     gen_blocks,
-    // <https://github.com/rust-lang/rust/issues/129967>.
-    guard_patterns,
     // <https://github.com/rust-lang/rust/issues/113521>.
     generic_const_items,
+    // <https://github.com/rust-lang/rust/issues/129967>.
+    guard_patterns,
     // <https://github.com/rust-lang/rust/issues/105077>.
     impl_restriction,
     // <https://github.com/rust-lang/rust/issues/132980>.
@@ -82,6 +82,7 @@ features! {
     more_qualified_paths,
     // <https://github.com/rust-lang/rust/issues/123076>.
     mut_ref,
+    // (internal)
     negative_bounds,
     // <https://github.com/rust-lang/rust/issues/68318>.
     negative_impls,
