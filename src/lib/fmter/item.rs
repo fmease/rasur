@@ -415,9 +415,6 @@ impl Fmt for ast::Contract<'_> {
         if let Some(requires) = requires {
             fmt!(cx, " contract_requires ");
             requires.fmt(cx);
-            if ensures.is_some() {
-                fmt!(cx, " ");
-            }
         }
         if let Some(ensures) = ensures {
             fmt!(cx, " contract_ensures ");
