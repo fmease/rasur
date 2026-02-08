@@ -110,6 +110,9 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::UnterminatedFrontmatter(span) => {
             Diag::new("unterminated frontmatter").highlight(span)
         }
+        Error::FrontmatterClosingTrailer(span) => {
+            Diag::new("extra characters after frontmatter closing").highlight(span)
+        }
     };
     eprintln!("{}", diag.render(cx));
 }

@@ -39,6 +39,7 @@ pub enum Error {
     EmptyExponent(Span),
     EmptyNumLit(Span),
     ExpectedTraitFoundTy,
+    FrontmatterClosingTrailer(Span),
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
@@ -82,7 +83,7 @@ pub enum Error {
     UnsafeTraitAlias,
     UnterminatedBlockComment(Span),
     UnterminatedCharLit(Span),
+    UnterminatedFrontmatter(Span),
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem(Span),
-    UnterminatedFrontmatter(Span),
 }

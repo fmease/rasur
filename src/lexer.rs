@@ -4,6 +4,7 @@ use crate::{
     span::{ByteIndex, Span},
     token::{PathSegKeyword, Token, TokenKind},
 };
+use iter::IndexedChars;
 use unicode_xid::UnicodeXID;
 
 // FIXME: Unicode BOM removal
@@ -61,22 +62,19 @@ impl StripShebang {
         let mut lexer = Lexer::new(suffix, *offset, edition, &mut errors);
 
         loop {
-            let token = lexer.lex();
-
-            if let TokenKind::Trivia = token.kind {
-                continue;
+            match lexer.lex().kind {
+                TokenKind::Trivia => continue,
+                TokenKind::OpenSquareBracket => return None,
+                _ => break,
             }
-
-            if let TokenKind::OpenSquareBracket = token.kind {
-                return None;
-            }
-
-            let len = ByteIndex::from(source.lines().next().unwrap_or_default().len());
-            let span = Span::new(*offset, *offset + len);
-
-            *offset = span.end;
-            return Some(span);
         }
+
+        let mut chars = IndexedChars::new(source, *offset);
+        let start = chars.index();
+        chars.next_while(|char| char != '\n');
+
+        *offset = chars.index();
+        Some(chars.span(start))
     }
 }
 
@@ -89,7 +87,7 @@ pub enum StripFrontmatter {
 impl StripFrontmatter {
     fn apply(self, source: &str, offset: &mut ByteIndex, errors: &mut ErrorBuffer) -> Option<Span> {
         let Self::Yes = self else { return None };
-        let mut chars = iter::IndexedChars::new(source, *offset);
+        let mut chars = IndexedChars::new(source, *offset);
 
         let mut start = *offset;
         let mut line_start = true;
@@ -161,8 +159,6 @@ impl StripFrontmatter {
                     terminated = true;
                     break;
                 }
-                line_start = false;
-                continue;
             }
 
             line_start = char == '\n';
@@ -172,12 +168,36 @@ impl StripFrontmatter {
         }
 
         let span = chars.span(start);
-        *offset = span.end;
+
+        // The trailer.
+        {
+            chars.next_while(|char| char != '\n' && is_whitespace(char));
+            let start = chars.index();
+
+            let valid = chars.peek().is_none_or(|char| char == '\n');
+            let mut end = chars.index();
+
+            while let Some(char) = chars.peek() {
+                if char == '\n' {
+                    break;
+                }
+                chars.next();
+                if !is_whitespace(char) {
+                    end = chars.index();
+                }
+            }
+
+            if !valid {
+                // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
+                errors.add(Error::FrontmatterClosingTrailer(Span::new(start, end)));
+            }
+        }
 
         if !terminated {
             errors.add(Error::UnterminatedFrontmatter(span));
         }
 
+        *offset = chars.index();
         Some(span)
     }
 }
@@ -185,7 +205,7 @@ impl StripFrontmatter {
 struct Lexer<'a, 'src> {
     source: &'src str,
     edition: Edition,
-    chars: iter::IndexedChars<'src>,
+    chars: IndexedChars<'src>,
     errors: &'a mut ErrorBuffer,
 }
 
@@ -196,7 +216,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         edition: Edition,
         errors: &'a mut ErrorBuffer,
     ) -> Self {
-        Self { source, edition, chars: iter::IndexedChars::new(source, offset), errors }
+        Self { source, edition, chars: IndexedChars::new(source, offset), errors }
     }
 
     fn lex(&mut self) -> Token {
@@ -893,7 +913,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 }
 
 impl<'src> std::ops::Deref for Lexer<'_, 'src> {
-    type Target = iter::IndexedChars<'src>;
+    type Target = IndexedChars<'src>;
 
     fn deref(&self) -> &Self::Target {
         &self.chars
