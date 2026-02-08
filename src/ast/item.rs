@@ -17,6 +17,7 @@ pub(crate) struct Item<'src> {
 #[derive(Debug)]
 pub(crate) enum ItemKind<'src> {
     Const(Box<ConstItem<'src>>),
+    ConstBlock(Box<ConstBlockItem<'src>>),
     Delegation(Box<DelegationItem<'src>>),
     Enum(Box<EnumItem<'src>>),
     ExternBlock(Box<ExternBlockItem<'src>>),
@@ -42,6 +43,11 @@ pub(crate) struct ConstItem<'src> {
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ConstBlockItem<'src> {
+    pub(crate) body: BlockExpr<'src>,
 }
 
 #[derive(Debug)]

@@ -70,10 +70,18 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::Item { attrs, vis, kind, span })
     }
 
+    /// Indicates whether the current token begins a restricted item.
+    ///
+    /// Restricted items exclude
+    ///
+    /// 1. items marked with modifier `default`,
+    /// 2. macro call items and
+    /// 3. const block items.
+    //
     // FIXME: Experiment with doing the stmt(item<->expr) disambiguation in begins_expr instead.
     // FIXME: Experiment with replacing this with an parse_item_prefix that rets Option<ItemPrefix>
     //        to be then used for fin_parse_item(prefix)
-    pub(super) fn begins_final_non_macro_call_item(&self) -> bool {
+    pub(super) fn begins_restricted_item(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
         match self.token.kind {
@@ -137,7 +145,14 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_slice() {
             [] => {}
-            [Qualifier::Const] => return self.fin_parse_const_item(defaultness),
+            [Qualifier::Const] => {
+                return if self.consume(TokenKind::OpenCurlyBracket) {
+                    // FEATURE: `const_block_items` <https://github.com/rust-lang/rust/issues/149226>
+                    self.fin_parse_const_block_item()
+                } else {
+                    self.fin_parse_const_item(defaultness)
+                };
+            }
             // `crate` can't be a qualifier itself because it may also begin paths & it's not worth the look-ahead.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
@@ -347,6 +362,13 @@ impl<'src> Parser<'_, '_, 'src> {
             generics: ast::Generics { params, preds },
             ty,
             body,
+        })))
+    }
+
+    /// Finish parsing a const block item assuming the leading `const {` has been parsed already.
+    fn fin_parse_const_block_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        Ok(ast::ItemKind::ConstBlock(Box::new(ast::ConstBlockItem {
+            body: self.fin_parse_block_expr()?,
         })))
     }
 
@@ -1009,7 +1031,12 @@ impl ast::ItemKind<'_> {
             | Self::TyAlias(_)
             | Self::Union(_)
             | Self::Use(_) => true,
-            Self::MacroCall(_) => false,
+            // NOTE: rustc actually accepts `pub const {}` unless it's in a body (`fn f() { pub const {} }`).
+            //       I don't want to further parametrize fn `parse_item` or this function. So I'll just ban it outright.
+            //       I'm going to open an issue or PR upstream soon-ish.
+            //       The first part *is* mentioned in the tracking issue but only under *Unresolved Questions*.
+            //       And they've actually added test marked with a fixme: `tests/ui/parser/const-block-items/pub.rs`.
+            Self::ConstBlock(_) | Self::MacroCall(_) => false,
             Self::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::New),
         }
     }
@@ -1018,6 +1045,7 @@ impl ast::ItemKind<'_> {
         match self {
             Self::Const(_) | Self::Fn(_) | Self::TyAlias(_) => true,
             Self::Impl(item) => item.trait_ref.is_some(),
+            | Self::ConstBlock(_)
             | Self::Delegation(_)
             | Self::Enum(_)
             | Self::ExternBlock(_)

@@ -14,19 +14,23 @@ impl<'src> Parser<'_, '_, 'src> {
     /// <!-- FIXME: Add an EBNF section back in -->
     // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
     //       "macro expr stmts". I think the difference only matters if we were to perform
-    //       macro expansion.
+    //       macro expansion. Update: However, I'm relatively sure you can deduce it from the
+    //       AST alone anyway.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-        // We only want to consider "final" items (i.e., ones w/o `default`) to mimic rustc which
-        // doesn't accept `fn f() { default fn f() {} }`. Consequently, this precludes us from
-        // rejecting `default as $ty` here which is good.
+        // We only consider "restricted" items to prevent ambiguities.
         //
-        // We exclude macro call items because macro call exprs should take precedence. The latter
-        // permit generic args in their path. We check for items before exprs since it's easier to
-        // detect expr prefixes when checking item prefixes than the other way around (in cases
-        // where they share a prefix).
-        if self.begins_final_non_macro_call_item() {
+        // 1. We don't want to recognize `default` as an item modifier.
+        //    * This mimics rustc which doesn't accept code like `fn f() { default fn f() {} }`
+        //    * It precludes us from rejecting expr `default as $ty`
+        // 2. We exclude macro call items because macro call exprs should take precedence.
+        //    * The latter permit generic args in their path.
+        //    * We check for items before exprs since it's easier to detect expr prefixes when
+        //      checking item prefixes than the other way around (in cases where they share a
+        //      prefix).
+        // 3. We exclude const block items since const block exprs should take precedence.
+        if self.begins_restricted_item() {
             let mut item = self.parse_item(ItemCx::Boring)?;
             debug_assert!(item.attrs.is_empty());
             item.attrs = attrs;

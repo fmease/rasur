@@ -31,6 +31,7 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
 
         match item {
             ast::ItemKind::Const(item) => item.fmt(cx),
+            ast::ItemKind::ConstBlock(item) => item.fmt(cx),
             ast::ItemKind::Delegation(item) => item.fmt(cx),
             ast::ItemKind::Enum(item) => item.fmt(cx),
             ast::ItemKind::ExternBlock(item) => (*item, attrs).fmt(cx),
@@ -74,6 +75,15 @@ impl Fmt for ast::ConstItem<'_> {
         }
         generics.preds.fmt(cx);
         fmt!(cx, ";");
+    }
+}
+
+impl Fmt for ast::ConstBlockItem<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { body } = self;
+
+        fmt!(cx, "const ");
+        body.fmt(cx);
     }
 }
 
