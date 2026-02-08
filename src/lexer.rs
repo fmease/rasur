@@ -120,7 +120,7 @@ impl StripFrontmatter {
 
         // The infostring.
         {
-            chars.next_while(|char| char != '\n' && is_whitespace(char));
+            chars.next_while(is_horizontal_whitespace);
             let start = chars.index();
 
             if chars.peek().is_some_and(is_ident_start) {
@@ -128,7 +128,7 @@ impl StripFrontmatter {
                 chars.next_while(|char| char == '-' || char == '.' || is_ident_middle(char));
             }
 
-            chars.next_while(|char| char != '\n' && is_whitespace(char));
+            chars.next_while(is_horizontal_whitespace);
 
             let valid = chars.peek().is_none_or(|char| char == '\n');
             let mut end = chars.index();
@@ -138,7 +138,7 @@ impl StripFrontmatter {
                     break;
                 }
                 chars.next();
-                if !is_whitespace(char) {
+                if !is_horizontal_whitespace(char) {
                     end = chars.index();
                 }
             }
@@ -171,7 +171,7 @@ impl StripFrontmatter {
 
         // The trailer.
         {
-            chars.next_while(|char| char != '\n' && is_whitespace(char));
+            chars.next_while(is_horizontal_whitespace);
             let start = chars.index();
 
             let valid = chars.peek().is_none_or(|char| char == '\n');
@@ -182,7 +182,7 @@ impl StripFrontmatter {
                     break;
                 }
                 chars.next();
-                if !is_whitespace(char) {
+                if !is_horizontal_whitespace(char) {
                     end = chars.index();
                 }
             }
@@ -950,6 +950,10 @@ fn is_whitespace(char: char) -> bool {
         | '\t' | '\n' | '\x0B' | '\x0C' | '\r' | ' ' | '\u{85}'
         | '\u{200E}' | '\u{200F}' | '\u{2028}' | '\u{2029}'
     )
+}
+
+fn is_horizontal_whitespace(char: char) -> bool {
+    matches!(char, '\t' | ' ')
 }
 
 fn is_ident_start(char: char) -> bool {
