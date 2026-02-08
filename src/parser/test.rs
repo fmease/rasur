@@ -13,8 +13,8 @@ type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
 fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>, ()> {
     let mut errors = ErrorBuffer::Void;
-    let tokens = lex(source, edition, StripShebang::Yes, &mut errors);
-    let file = super::parse(&tokens, source, edition, &mut errors);
+    let file = lex(source, edition, StripShebang::Yes, &mut errors);
+    let file = super::parse(file, source, edition, &mut errors);
     file.map_err(drop)
 }
 
@@ -25,8 +25,8 @@ fn parse_via<'src, T>(
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
     let mut errors = ErrorBuffer::Hold(Vec::new());
-    let tokens = lex(source, edition, StripShebang::No, &mut errors);
-    let mut p = super::Parser::new(&tokens, source, edition, &mut errors);
+    let file = lex(source, edition, StripShebang::No, &mut errors);
+    let mut p = super::Parser::new(&file.tokens, source, edition, &mut errors);
     parse(&mut p)
         .and_then(|r| {
             p.parse(TokenKind::EndOfInput)?;
@@ -62,7 +62,7 @@ fn parse_pat(source: &str, edition: Edition) -> Result<ast::Pat<'_>> {
 fn file_empty() {
     assert_matches!(
         parse_file("", Rust2015),
-        Ok(ast::File { attrs: deref!([]), items: deref!([]), span: _ })
+        Ok(ast::File { shebang: None, attrs: deref!([]), items: deref!([]), span: _ })
     );
 }
 

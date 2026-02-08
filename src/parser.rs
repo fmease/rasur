@@ -24,12 +24,12 @@ type Result<T, E = BufferedError> = std::result::Result<T, E>;
 struct BufferedError(());
 
 pub fn parse<'src>(
-    tokens: &[Token],
+    file: crate::lexer::File,
     source: &'src str,
     edition: Edition,
     errors: &mut ErrorBuffer,
 ) -> Result<ast::File<'src>, ()> {
-    Parser::new(tokens, source, edition, errors).parse_file().map_err(drop)
+    Parser::new(&file.tokens, source, edition, errors).parse_file(file.shebang).map_err(drop)
 }
 
 struct Parser<'t, 'e, 'src> {
@@ -62,7 +62,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     /// ```grammar
     /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
     /// ```
-    fn parse_file(&mut self) -> Result<ast::File<'src>> {
+    fn parse_file(&mut self, shebang: Option<Span>) -> Result<ast::File<'src>> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
@@ -70,7 +70,9 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
-        Ok(ast::File { attrs, items, span })
+        let shebang = shebang.map(|shebang| self.source(shebang));
+
+        Ok(ast::File { shebang, attrs, items, span })
     }
 
     fn parse_ticked_ident(

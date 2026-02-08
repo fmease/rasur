@@ -95,7 +95,12 @@ impl<'src> Cx<'src> {
 
 impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, items, span } = self;
+        let Self { shebang, attrs, items, span } = self;
+
+        if let Some(shebang) = shebang {
+            fmt!(cx, "{shebang}");
+            LineBreak.fmt(cx);
+        }
 
         if cx.skip(&attrs) {
             fmt!(cx, "{}", cx.source(span));

@@ -14,7 +14,7 @@ pub fn lex(
     edition: Edition,
     strip_shebang: StripShebang,
     errors: &mut ErrorBuffer,
-) -> Vec<Token> {
+) -> File {
     let offset = strip_shebang.apply(source, edition);
     let mut chars = Lexer::new(source, offset, edition, errors);
     let mut tokens = Vec::new();
@@ -33,7 +33,17 @@ pub fn lex(
         }
     }
 
-    tokens
+    let shebang = match offset {
+        0 => None,
+        _ => Some(Span::new(ByteIndex::new(0), ByteIndex::new(offset))),
+    };
+
+    File { shebang, tokens }
+}
+
+pub struct File {
+    pub shebang: Option<Span>,
+    pub tokens: Vec<Token>,
 }
 
 #[derive(Clone, Copy)]

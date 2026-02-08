@@ -35,12 +35,12 @@ fn try_main() -> Result<(), ()> {
 
     let mut errors = rasur::error::Buffer::Hold(Vec::new());
 
-    let tokens = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes, &mut errors);
+    let file = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes, &mut errors);
 
     if opts.emit_tokens {
         let mut stderr = std::io::stderr().lock();
 
-        for token in &tokens {
+        for token in &file.tokens {
             use std::io::Write as _;
             writeln!(stderr, "{token:?} {:?}", &source[token.span.range()]).unwrap();
         }
@@ -55,7 +55,7 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = rasur::parser::parse(&tokens, &source, edition, &mut errors);
+    let file = rasur::parser::parse(file, &source, edition, &mut errors);
 
     if let Ok(file) = &file
         && opts.emit_ast
