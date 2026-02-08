@@ -2,7 +2,7 @@ use crate::{
     Edition::{self, *},
     ast,
     error::{Buffer as ErrorBuffer, Error},
-    lexer::{StripShebang, lex},
+    lexer::{StripFrontmatter, StripShebang, lex},
     token::{Token, TokenKind},
 };
 use std::assert_matches::assert_matches;
@@ -13,7 +13,7 @@ type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
 fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>, ()> {
     let mut errors = ErrorBuffer::Void;
-    let file = lex(source, edition, StripShebang::Yes, &mut errors);
+    let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
     let file = super::parse(file, source, edition, &mut errors);
     file.map_err(drop)
 }
@@ -25,7 +25,7 @@ fn parse_via<'src, T>(
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
     let mut errors = ErrorBuffer::Hold(Vec::new());
-    let file = lex(source, edition, StripShebang::No, &mut errors);
+    let file = lex(source, edition, StripShebang::No, StripFrontmatter::No, &mut errors);
     let mut p = super::Parser::new(&file.tokens, source, edition, &mut errors);
     parse(&mut p)
         .and_then(|r| {
@@ -62,7 +62,13 @@ fn parse_pat(source: &str, edition: Edition) -> Result<ast::Pat<'_>> {
 fn file_empty() {
     assert_matches!(
         parse_file("", Rust2015),
-        Ok(ast::File { shebang: None, attrs: deref!([]), items: deref!([]), span: _ })
+        Ok(ast::File {
+            shebang: None,
+            frontmatter: None,
+            attrs: deref!([]),
+            items: deref!([]),
+            span: _
+        })
     );
 }
 

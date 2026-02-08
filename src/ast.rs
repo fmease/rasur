@@ -20,6 +20,7 @@ mod ty;
 #[derive(Debug)]
 pub struct File<'src> {
     pub(crate) shebang: Option<&'src str>,
+    pub(crate) frontmatter: Option<&'src str>,
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) items: Vec<Item<'src>>,
     pub(crate) span: Span,

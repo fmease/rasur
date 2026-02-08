@@ -2,7 +2,7 @@ use crate::{
     Edition, ast,
     error::{Buffer as ErrorBuffer, Error},
     lexer::lex_ident,
-    span::Span,
+    span::{ByteIndex, Span},
     token::{Token, TokenKind},
 };
 
@@ -29,7 +29,11 @@ pub fn parse<'src>(
     edition: Edition,
     errors: &mut ErrorBuffer,
 ) -> Result<ast::File<'src>, ()> {
-    Parser::new(&file.tokens, source, edition, errors).parse_file(file.shebang).map_err(drop)
+    let mut this = Parser::new(&file.tokens, source, edition, errors);
+    let shebang = file.shebang.map(|shebang| this.source(shebang));
+    let frontmatter = file.frontmatter.map(|frontmatter| this.source(frontmatter));
+
+    this.parse_file(shebang, frontmatter).map_err(drop)
 }
 
 struct Parser<'t, 'e, 'src> {
@@ -62,7 +66,11 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     /// ```grammar
     /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
     /// ```
-    fn parse_file(&mut self, shebang: Option<Span>) -> Result<ast::File<'src>> {
+    fn parse_file(
+        &mut self,
+        shebang: Option<&'src str>,
+        frontmatter: Option<&'src str>,
+    ) -> Result<ast::File<'src>> {
         let start = self.token.span;
 
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
@@ -70,9 +78,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
 
         let span = start.to(self.prev_token().map(|token| token.span));
 
-        let shebang = shebang.map(|shebang| self.source(shebang));
-
-        Ok(ast::File { shebang, attrs, items, span })
+        Ok(ast::File { shebang, frontmatter, attrs, items, span })
     }
 
     fn parse_ticked_ident(
@@ -192,7 +198,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     // FIXME: Temporary API and bad name.
     fn modify_in_place(&mut self, token: TokenKind) {
         self.token.kind = token;
-        self.token.span.start += 1;
+        self.token.span.start += const { ByteIndex::from(1) };
     }
 
     fn peek(&self, amount: usize) -> Token {

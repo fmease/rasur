@@ -95,10 +95,15 @@ impl<'src> Cx<'src> {
 
 impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { shebang, attrs, items, span } = self;
+        let Self { shebang, frontmatter, attrs, items, span } = self;
 
         if let Some(shebang) = shebang {
             fmt!(cx, "{shebang}");
+            LineBreak.fmt(cx);
+        }
+
+        if let Some(frontmatter) = frontmatter {
+            fmt!(cx, "{frontmatter}");
             LineBreak.fmt(cx);
         }
 

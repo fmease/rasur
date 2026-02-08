@@ -13,9 +13,14 @@ pub fn lex(
     source: &str,
     edition: Edition,
     strip_shebang: StripShebang,
+    strip_frontmatter: StripFrontmatter,
     errors: &mut ErrorBuffer,
 ) -> File {
-    let offset = strip_shebang.apply(source, edition);
+    let mut offset = ByteIndex::default();
+
+    let shebang = strip_shebang.apply(source, edition, &mut offset);
+    let frontmatter = strip_frontmatter.apply(source, &mut offset, errors);
+
     let mut chars = Lexer::new(source, offset, edition, errors);
     let mut tokens = Vec::new();
 
@@ -33,16 +38,12 @@ pub fn lex(
         }
     }
 
-    let shebang = match offset {
-        0 => None,
-        _ => Some(Span::new(ByteIndex::new(0), ByteIndex::new(offset))),
-    };
-
-    File { shebang, tokens }
+    File { shebang, frontmatter, tokens }
 }
 
 pub struct File {
     pub shebang: Option<Span>,
+    pub frontmatter: Option<Span>,
     pub tokens: Vec<Token>,
 }
 
@@ -53,11 +54,11 @@ pub enum StripShebang {
 }
 
 impl StripShebang {
-    fn apply(self, source: &str, edition: Edition) -> usize {
-        let Self::Yes = self else { return 0 };
-        let Some(suffix) = source.strip_prefix("#!") else { return 0 };
+    fn apply(self, source: &str, edition: Edition, offset: &mut ByteIndex) -> Option<Span> {
+        let Self::Yes = self else { return None };
+        let Some(suffix) = source.strip_prefix("#!") else { return None };
         let mut errors = ErrorBuffer::Void;
-        let mut lexer = Lexer::new(suffix, 0, edition, &mut errors);
+        let mut lexer = Lexer::new(suffix, *offset, edition, &mut errors);
 
         loop {
             let token = lexer.lex();
@@ -67,29 +68,135 @@ impl StripShebang {
             }
 
             if let TokenKind::OpenSquareBracket = token.kind {
-                return 0;
+                return None;
             }
 
-            return source.lines().next().unwrap_or_default().len();
+            let len = ByteIndex::from(source.lines().next().unwrap_or_default().len());
+            let span = Span::new(*offset, *offset + len);
+
+            *offset = span.end;
+            return Some(span);
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum StripFrontmatter {
+    Yes,
+    No,
+}
+
+impl StripFrontmatter {
+    fn apply(self, source: &str, offset: &mut ByteIndex, errors: &mut ErrorBuffer) -> Option<Span> {
+        let Self::Yes = self else { return None };
+        let mut chars = iter::IndexedChars::new(source, *offset);
+
+        let mut start = *offset;
+        let mut line_start = true;
+        let mut leading_dashes = 0;
+
+        while let Some((index, char)) = chars.next() {
+            if char == '-' && line_start {
+                leading_dashes += 1;
+                start = index;
+                break;
+            }
+            if !is_whitespace(char) {
+                return None;
+            }
+            line_start = char == '\n';
+        }
+
+        while let Some('-') = chars.peek() {
+            leading_dashes += 1;
+            chars.next();
+        }
+
+        if leading_dashes < 3 {
+            return None;
+        }
+
+        if leading_dashes > 255 {
+            errors.add(Error::FrontmatterOpeningTooLarge(chars.span(start)));
+        }
+
+        // The infostring.
+        {
+            chars.next_while(|char| char != '\n' && is_whitespace(char));
+            let start = chars.index();
+
+            if chars.peek().is_some_and(is_ident_start) {
+                chars.next();
+                chars.next_while(|char| char == '-' || char == '.' || is_ident_middle(char));
+            }
+
+            chars.next_while(|char| char != '\n' && is_whitespace(char));
+
+            let valid = chars.peek().is_none_or(|char| char == '\n');
+            let mut end = chars.index();
+
+            while let Some(char) = chars.peek() {
+                if char == '\n' {
+                    break;
+                }
+                chars.next();
+                if !is_whitespace(char) {
+                    end = chars.index();
+                }
+            }
+
+            if !valid {
+                errors.add(Error::InvalidFrontmatterInfostring(Span::new(start, end)));
+            }
+        }
+
+        let mut line_start = true;
+        let mut trailing_dashes = 0;
+        let mut terminated = false;
+
+        while let Some((_, char)) = chars.next() {
+            if char == '-' && (line_start || trailing_dashes > 0) {
+                trailing_dashes += 1;
+                if trailing_dashes == leading_dashes {
+                    terminated = true;
+                    break;
+                }
+                line_start = false;
+                continue;
+            }
+
+            line_start = char == '\n';
+            if line_start {
+                trailing_dashes = 0;
+            }
+        }
+
+        let span = chars.span(start);
+        *offset = span.end;
+
+        if !terminated {
+            errors.add(Error::UnterminatedFrontmatter(span));
+        }
+
+        Some(span)
     }
 }
 
 struct Lexer<'a, 'src> {
     source: &'src str,
     edition: Edition,
-    chars: iter::PeekableCharIndices<'src>,
+    chars: iter::IndexedChars<'src>,
     errors: &'a mut ErrorBuffer,
 }
 
 impl<'a, 'src> Lexer<'a, 'src> {
     fn new(
         source: &'src str,
-        offset: usize,
+        offset: ByteIndex,
         edition: Edition,
         errors: &'a mut ErrorBuffer,
     ) -> Self {
-        Self { source, edition, chars: iter::PeekableCharIndices::new(source, offset), errors }
+        Self { source, edition, chars: iter::IndexedChars::new(source, offset), errors }
     }
 
     fn lex(&mut self) -> Token {
@@ -634,7 +741,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
-                if let '#' = char {
+                if char == '#' {
                     self.next();
                 }
                 return TokenKind::Error;
@@ -776,10 +883,6 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    fn span(&self, start: ByteIndex) -> Span {
-        Span::new(start, self.index())
-    }
-
     fn source(&self, start: ByteIndex) -> &'src str {
         &self.source[self.span(start).range()]
     }
@@ -790,7 +893,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 }
 
 impl<'src> std::ops::Deref for Lexer<'_, 'src> {
-    type Target = iter::PeekableCharIndices<'src>;
+    type Target = iter::IndexedChars<'src>;
 
     fn deref(&self) -> &Self::Target {
         &self.chars
@@ -912,25 +1015,33 @@ pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {
 }
 
 mod iter {
-    use crate::span::ByteIndex;
+    use crate::span::{ByteIndex, Span};
     use std::str::Chars;
 
-    pub(super) struct PeekableCharIndices<'src> {
+    pub(super) struct IndexedChars<'src> {
         chars: Chars<'src>,
         index: ByteIndex,
     }
 
-    impl<'src> PeekableCharIndices<'src> {
-        pub(super) fn new(source: &'src str, offset: usize) -> Self {
-            Self { chars: source[offset..].chars(), index: ByteIndex::new(offset) }
+    impl<'src> IndexedChars<'src> {
+        pub(super) fn new(source: &'src str, offset: ByteIndex) -> Self {
+            Self { chars: source[offset.into()..].chars(), index: offset }
         }
 
         pub(super) fn next(&mut self) -> Option<(ByteIndex, char)> {
             self.chars.next().map(|char| {
                 let index = self.index();
-                self.index += char.len_utf8() as _;
+                self.index += ByteIndex::from(char.len_utf8());
                 (index, char)
             })
+        }
+
+        pub(super) fn next_while(&mut self, predicate: impl Fn(char) -> bool) {
+            while let Some(char) = self.peek()
+                && predicate(char)
+            {
+                self.next();
+            }
         }
 
         pub(super) fn snapshot(&self) -> impl Iterator<Item = char> + use<'src> {
@@ -946,12 +1057,8 @@ mod iter {
             self.index
         }
 
-        pub(super) fn next_while(&mut self, predicate: impl Fn(char) -> bool) {
-            while let Some(char) = self.peek()
-                && predicate(char)
-            {
-                self.next();
-            }
+        pub(super) fn span(&self, start: ByteIndex) -> Span {
+            Span::new(start, self.index())
         }
     }
 }

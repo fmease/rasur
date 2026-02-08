@@ -35,7 +35,13 @@ fn try_main() -> Result<(), ()> {
 
     let mut errors = rasur::error::Buffer::Hold(Vec::new());
 
-    let file = rasur::lexer::lex(&source, edition, rasur::lexer::StripShebang::Yes, &mut errors);
+    let file = rasur::lexer::lex(
+        &source,
+        edition,
+        rasur::lexer::StripShebang::Yes,
+        rasur::lexer::StripFrontmatter::Yes,
+        &mut errors,
+    );
 
     if opts.emit_tokens {
         let mut stderr = std::io::stderr().lock();

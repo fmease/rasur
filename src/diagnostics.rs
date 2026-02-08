@@ -101,6 +101,15 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
             Diag::new("parenthesized guarded pattern in match expression")
         }
         Error::EmptyExponent(span) => Diag::new("empty exponent").highlight(span),
+        Error::InvalidFrontmatterInfostring(span) => {
+            Diag::new("invalid frontmatter infostring").highlight(span)
+        }
+        Error::FrontmatterOpeningTooLarge(span) => {
+            Diag::new("frontmatter opening too large").highlight(span)
+        }
+        Error::UnterminatedFrontmatter(span) => {
+            Diag::new("unterminated frontmatter").highlight(span)
+        }
     };
     eprintln!("{}", diag.render(cx));
 }
