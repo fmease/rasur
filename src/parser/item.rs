@@ -90,7 +90,6 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::Macro
             | TokenKind::Struct
             | TokenKind::Trait
-            | TokenKind::Type
             | TokenKind::Use => return true,
             TokenKind::CommonIdent => match self.source(self.token.span) {
                 weak::Union::STR => return weak::Union.qualifies(self),
@@ -146,13 +145,22 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_slice() {
             [] => {}
-            [Qualifier::Const] => {
-                return if self.consume(TokenKind::OpenCurlyBracket) {
-                    // FEATURE: `const_block_items` <https://github.com/rust-lang/rust/issues/149226>
-                    self.fin_parse_const_block_item()
-                } else {
-                    self.fin_parse_const_item(defaultness)
+            [Qualifier::Type] => return self.fin_parse_ty_alias_item(defaultness),
+            // FEATURE: `const_block_items` <https://github.com/rust-lang/rust/issues/149226>
+            [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
+                return self.fin_parse_const_block_item();
+            }
+            [qualifiers @ .., Qualifier::Const] => {
+                // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
+                let (tyness, qualifiers) = match qualifiers {
+                    [Qualifier::Type, qualifiers @ ..] => (ast::Tyness::Ty, qualifiers),
+                    _ => (ast::Tyness::Not, qualifiers),
                 };
+                if !qualifiers.is_empty() {
+                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                }
+
+                return self.fin_parse_const_item(defaultness, tyness);
             }
             // `crate` can't be a qualifier itself because it may also begin paths & it's not worth the look-ahead.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
@@ -265,10 +273,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_struct_item();
             }
-            TokenKind::Type => {
-                self.advance();
-                return self.fin_parse_ty_alias_item(defaultness);
-            }
             TokenKind::Use => {
                 self.advance();
                 return self.fin_parse_use_item();
@@ -333,6 +337,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Mod => Qualifier::Mod,
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
+                TokenKind::Type => Qualifier::Type,
                 TokenKind::Unsafe if self.peek(1).kind != TokenKind::OpenCurlyBracket => {
                     Qualifier::Unsafe
                 }
@@ -359,6 +364,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_const_item(
         &mut self,
         defaultness: ast::Defaultness,
+        tyness: ast::Tyness,
     ) -> Result<ast::ItemKind<'src>> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
         // FEATURE: `generic_const_items` <https://github.com/rust-lang/rust/issues/113521>
@@ -371,6 +377,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
             defaultness,
+            tyness,
             binder,
             generics: ast::Generics { params, preds },
             ty,
@@ -1101,6 +1108,7 @@ enum Qualifier<'src> {
     Safe,
     Static,
     Trait,
+    Type,
     Unsafe,
 }
 
