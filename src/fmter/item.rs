@@ -60,9 +60,13 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { defaultness, binder, generics, ty, body } = self;
+        let Self { defaultness, tyness, binder, generics, ty, body } = self;
 
         defaultness.trailing_space().fmt(cx);
+        match tyness {
+            ast::Tyness::Ty => fmt!(cx, "type "),
+            ast::Tyness::Not => {}
+        }
         fmt!(cx, "const {binder}");
         if !generics.params.is_empty() {
             generics.params.fmt(cx);

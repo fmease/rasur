@@ -219,6 +219,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
+            // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
             TokenKind::Const => {
                 self.advance();
                 let block = self.parse_block_expr()?;
@@ -237,6 +238,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn begins_const_arg(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_const_arg`.
 
+        // Re. `const`, FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
         matches!(self.token.kind, TokenKind::OpenCurlyBracket | TokenKind::Const)
             || self.begins_negatable_lit()
     }

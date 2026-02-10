@@ -39,10 +39,18 @@ pub(crate) enum ItemKind<'src> {
 #[derive(Debug)]
 pub(crate) struct ConstItem<'src> {
     pub(crate) defaultness: Defaultness,
+    pub(crate) tyness: Tyness,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) ty: Ty<'src>,
     pub(crate) body: Option<Expr<'src>>,
+}
+
+// FIXME: horrible name
+#[derive(Debug)]
+pub(crate) enum Tyness {
+    Ty,
+    Not,
 }
 
 #[derive(Debug)]
