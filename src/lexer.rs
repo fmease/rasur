@@ -238,66 +238,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '/' => match self.peek() {
                 Some('/') => {
                     self.next();
-
-                    let mut this = self.snapshot();
-                    let kind = match this.next() {
-                        Some('!') => {
-                            self.next();
-                            TokenKind::InnerDocComment
-                        }
-                        Some('/') if this.next().is_none_or(|char| char != '/') => {
-                            self.next();
-                            TokenKind::OuterDocComment
-                        }
-                        _ => TokenKind::Trivia,
-                    };
-
-                    self.next_while(|char| char != '\n');
-
-                    kind
+                    self.fin_lex_line_comment()
                 }
                 Some('*') => {
                     self.next();
-
-                    let mut depth = 0;
-                    let mut terminated = false;
-
-                    let mut this = self.snapshot();
-                    let kind = match this.next() {
-                        Some('!') => {
-                            self.next();
-                            TokenKind::InnerDocComment
-                        }
-                        Some('*') if this.next().is_none_or(|char| char != '*' && char != '/') => {
-                            self.next();
-                            TokenKind::OuterDocComment
-                        }
-                        _ => TokenKind::Trivia,
-                    };
-
-                    while let Some((_, char)) = self.next() {
-                        match (char, self.peek()) {
-                            ('/', Some('*')) => {
-                                self.next();
-                                depth += 1;
-                            }
-                            ('*', Some('/')) => {
-                                self.next();
-                                if depth == 0 {
-                                    terminated = true;
-                                    break;
-                                }
-                                depth -= 1;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if !terminated {
-                        self.error(Error::UnterminatedBlockComment(self.span(start)));
-                    }
-
-                    kind
+                    self.fin_lex_block_comment(start)
                 }
                 Some('=') => {
                     self.next();
@@ -305,98 +250,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 _ => TokenKind::SingleSlash,
             },
+            '0'..='9' => self.fin_lex_num_lit(char, start),
             _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
-            '0'..='9' => {
-                #[derive(Clone, Copy)]
-                enum Base {
-                    Bin,
-                    Oct,
-                    Dec,
-                    Hex,
-                }
-
-                let base = match (char, self.peek()) {
-                    ('0', Some('b')) => Base::Bin,
-                    ('0', Some('o')) => Base::Oct,
-                    ('0', Some('x')) => Base::Hex,
-                    _ => Base::Dec,
-                };
-                let mut is_empty = match base {
-                    Base::Bin | Base::Oct | Base::Hex => {
-                        self.next();
-                        true
-                    }
-                    Base::Dec => false,
-                };
-
-                while let Some(char) = self.peek() {
-                    if char == '_' {
-                        self.next();
-                        continue;
-                    }
-                    match base {
-                        Base::Dec if is_dec_digit(char) => {}
-                        Base::Bin if is_bin_digit(char) => {}
-                        Base::Oct if is_oct_digit(char) => {}
-                        Base::Hex if is_hex_digit(char) => {}
-                        Base::Bin | Base::Oct | Base::Hex if is_dec_digit(char) => {
-                            self.error(Error::InvalidDigit(self.span(self.index())));
-                        }
-                        _ => break,
-                    }
-                    is_empty = false;
-                    self.next();
-                }
-
-                if is_empty {
-                    self.error(Error::EmptyNumLit(self.span(start)));
-                }
-
-                let mut this = self.snapshot();
-                if let Some('.') = this.next()
-                    && !this.next().is_some_and(|char| char == '.' || is_ident_start(char))
-                {
-                    self.next();
-                    self.next_while(|char| char == '_' || is_dec_digit(char));
-
-                    match base {
-                        Base::Dec => {}
-                        Base::Bin | Base::Oct | Base::Hex => {
-                            self.error(Error::NonDecFloatLit(self.span(start)));
-                        }
-                    }
-                }
-
-                if let Some('e' | 'E') = self.peek() {
-                    self.next();
-
-                    if let Some('+' | '-') = self.peek() {
-                        self.next();
-                    }
-
-                    let mut is_empty = true;
-
-                    while let Some(char) = self.peek() {
-                        if char == '_' {
-                            self.next();
-                            continue;
-                        }
-                        if !is_dec_digit(char) {
-                            break;
-                        }
-                        is_empty = false;
-                        self.next();
-                    }
-
-                    if is_empty {
-                        self.error(Error::EmptyExponent(self.span(start)));
-                    }
-                }
-
-                self.lex_lit_suffix();
-
-                TokenKind::NumLit
-            }
             '"' => self.fin_lex_str_lit(Raw::No, LitKind::Str, start),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
@@ -584,6 +439,159 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 TokenKind::Error
             }
         }
+    }
+
+    fn fin_lex_line_comment(&mut self) -> TokenKind {
+        let mut this = self.snapshot();
+        let kind = match this.next() {
+            Some('!') => {
+                self.next();
+                TokenKind::InnerDocComment
+            }
+            Some('/') if this.next().is_none_or(|char| char != '/') => {
+                self.next();
+                TokenKind::OuterDocComment
+            }
+            _ => TokenKind::Trivia,
+        };
+
+        self.next_while(|char| char != '\n');
+
+        kind
+    }
+
+    fn fin_lex_block_comment(&mut self, start: ByteIndex) -> TokenKind {
+        let mut depth = 0;
+        let mut terminated = false;
+
+        let mut this = self.snapshot();
+        let kind = match this.next() {
+            Some('!') => {
+                self.next();
+                TokenKind::InnerDocComment
+            }
+            Some('*') if this.next().is_none_or(|char| char != '*' && char != '/') => {
+                self.next();
+                TokenKind::OuterDocComment
+            }
+            _ => TokenKind::Trivia,
+        };
+
+        while let Some((_, char)) = self.next() {
+            match (char, self.peek()) {
+                ('/', Some('*')) => {
+                    self.next();
+                    depth += 1;
+                }
+                ('*', Some('/')) => {
+                    self.next();
+                    if depth == 0 {
+                        terminated = true;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+
+        if !terminated {
+            self.error(Error::UnterminatedBlockComment(self.span(start)));
+        }
+
+        kind
+    }
+
+    fn fin_lex_num_lit(&mut self, char: char, start: ByteIndex) -> TokenKind {
+        #[derive(Clone, Copy)]
+        enum Base {
+            Bin,
+            Oct,
+            Dec,
+            Hex,
+        }
+
+        let base = match (char, self.peek()) {
+            ('0', Some('b')) => Base::Bin,
+            ('0', Some('o')) => Base::Oct,
+            ('0', Some('x')) => Base::Hex,
+            _ => Base::Dec,
+        };
+        let mut is_empty = match base {
+            Base::Bin | Base::Oct | Base::Hex => {
+                self.next();
+                true
+            }
+            Base::Dec => false,
+        };
+
+        while let Some(char) = self.peek() {
+            if char == '_' {
+                self.next();
+                continue;
+            }
+            match base {
+                Base::Dec if is_dec_digit(char) => {}
+                Base::Bin if is_bin_digit(char) => {}
+                Base::Oct if is_oct_digit(char) => {}
+                Base::Hex if is_hex_digit(char) => {}
+                Base::Bin | Base::Oct | Base::Hex if is_dec_digit(char) => {
+                    self.error(Error::InvalidDigit(self.span(self.index())));
+                }
+                _ => break,
+            }
+            is_empty = false;
+            self.next();
+        }
+
+        if is_empty {
+            self.error(Error::EmptyNumLit(self.span(start)));
+        }
+
+        let mut this = self.snapshot();
+        if let Some('.') = this.next()
+            && !this.next().is_some_and(|char| char == '.' || is_ident_start(char))
+        {
+            self.next();
+            self.next_while(|char| char == '_' || is_dec_digit(char));
+
+            match base {
+                Base::Dec => {}
+                Base::Bin | Base::Oct | Base::Hex => {
+                    self.error(Error::NonDecFloatLit(self.span(start)));
+                }
+            }
+        }
+
+        if let Some('e' | 'E') = self.peek() {
+            self.next();
+
+            if let Some('+' | '-') = self.peek() {
+                self.next();
+            }
+
+            let mut is_empty = true;
+
+            while let Some(char) = self.peek() {
+                if char == '_' {
+                    self.next();
+                    continue;
+                }
+                if !is_dec_digit(char) {
+                    break;
+                }
+                is_empty = false;
+                self.next();
+            }
+
+            if is_empty {
+                self.error(Error::EmptyExponent(self.span(start)));
+            }
+        }
+
+        self.lex_lit_suffix();
+
+        TokenKind::NumLit
     }
 
     // FIXME: Consolidate with fin_lex_char_lit smh
@@ -887,7 +895,6 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ => false,
         }
     }
-
     fn lex_lit_suffix(&mut self) {
         if let Some(char) = self.peek()
             && is_ident_start(char)
