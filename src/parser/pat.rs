@@ -44,6 +44,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         loop {
             let op = match self.token.kind {
+                // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
                 TokenKind::If if let GuardPolicy::Allowed = g_policy => Op::Guard,
                 TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
                 _ => break,
@@ -206,6 +207,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
+            // FEATURE: `box_patterns` <https://github.com/rust-lang/rust/issues/29641>
             TokenKind::Box => {
                 self.advance();
                 return Ok(ast::Pat::Box(Box::new(self.parse_pat(OrPolicy::Forbidden)?)));
@@ -227,6 +229,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 )?;
                 return Ok(ast::Pat::Slice(elems));
             }
+            // FEATURE: `never_patterns` <https://github.com/rust-lang/rust/issues/118155>
             TokenKind::SingleBang => {
                 self.advance();
                 return Ok(ast::Pat::Never);
@@ -254,6 +257,8 @@ impl<'src> Parser<'_, '_, 'src> {
                         Some(ast::RangePatBound::Path(path)),
                     );
                 }
+                // If the path is extended, then it's
+                // FEATURE: `more_qualified_paths` <https://github.com/rust-lang/rust/issues/86935>
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
 
@@ -271,6 +276,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
+                        // FEATURE: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>
                         let mut_ = self.parse_mutability();
                         let by_ref = self.parse_by_ref();
 

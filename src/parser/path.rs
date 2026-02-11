@@ -174,6 +174,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
+        // FEATURE: `return_type_notation` <https://github.com/rust-lang/rust/issues/109417>
         if self.consume(TokenKind::DoubleDot) {
             self.parse(TokenKind::CloseRoundBracket)?;
 
@@ -193,7 +194,9 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_term(&mut self) -> Result<ast::Term<'src>> {
         if self.begins_ty(self.token) {
             Ok(ast::Term::Ty(self.parse_ty()?))
-        } else if self.begins_const_arg() {
+        }
+        // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
+        else if self.begins_const_arg() {
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
             self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Term))

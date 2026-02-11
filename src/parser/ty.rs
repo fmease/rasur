@@ -118,6 +118,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::Ty::Inferred);
             }
+            // FEATURE: `unsafe_binders` <https://github.com/rust-lang/rust/issues/130516>
             TokenKind::Unsafe => {
                 self.advance();
                 let bound_vars = self.parse_generic_param_list()?;
@@ -357,6 +358,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
+        // FEATURE: `where_clause_attrs` <https://github.com/rust-lang/rust/issues/115590>
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let bound_vars = self.parse_for_binder()?;
 
@@ -404,6 +406,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For)
             || self.begins_ty(self.token)
+            // FEATURE: `where_clause_attrs` <https://github.com/rust-lang/rust/issues/115590>
             || self.begins_outer_attr()
     }
 
@@ -530,6 +533,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
+        // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
         let constness = match self.token.kind {
             TokenKind::Const => {
                 self.advance();
@@ -544,6 +548,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => ast::BoundConstness::Never,
         };
 
+        // FEATURE: `async_trait_bounds` <https://github.com/rust-lang/rust/issues/62290>
         let asyncness = if self.consume(TokenKind::Async) {
             ast::BoundAsyncness::Always
         } else {
@@ -556,6 +561,7 @@ impl<'src> Parser<'_, '_, 'src> {
             && asyncness == ast::BoundAsyncness::Never
         {
             match self.token.kind {
+                // FEATURE: `negative_bounds`
                 TokenKind::SingleBang => {
                     self.advance();
                     ast::BoundPolarity::Negative
@@ -577,10 +583,14 @@ impl<'src> Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.token.kind {
+            // FEATURE: `async_trait_bounds` <https://github.com/rust-lang/rust/issues/62290>
             | TokenKind::Async
+            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             | TokenKind::Const
             | TokenKind::QuestionMark
+            // FEATURE: `negative_bounds`
             | TokenKind::SingleBang => true,
+            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             TokenKind::OpenSquareBracket => {
                 self.peek(1).kind == TokenKind::Const
                     && self.peek(2).kind == TokenKind::CloseSquareBracket
