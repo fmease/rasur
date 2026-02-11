@@ -252,7 +252,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
             },
             '0'..='9' => self.fin_lex_num_lit(char, start),
             _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
-            '"' => self.fin_lex_str_lit(Raw::No, LitKind::Str, start),
+            '"' => self.fin_lex_str_lit(Raw::No, TextLitFlavor::Utf8, start),
+            '\'' => self.fin_lex_ticked_ident_or_char_lit(start),
             '@' => TokenKind::At,
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
@@ -433,7 +434,6 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 }
                 _ => TokenKind::SingleGreaterThan,
             },
-            '\'' => self.fin_lex_ticked_ident_or_char_lit(start),
             _ => {
                 self.error(Error::InvalidToken(char, self.span(start)));
                 TokenKind::Error
@@ -597,7 +597,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     // FIXME: Consolidate with fin_lex_char_lit smh
     fn fin_lex_ticked_ident_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
         if !self.peek().is_some_and(is_ident_start) {
-            return self.fin_lex_char_lit(LitKind::Char, start);
+            return self.fin_lex_char_lit(TextLitFlavor::Utf8, start);
         }
 
         let unticked = self.index();
@@ -650,7 +650,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
     }
 
-    fn fin_lex_char_lit(&mut self, kind: LitKind, start: ByteIndex) -> TokenKind {
+    fn fin_lex_char_lit(&mut self, flavor: TextLitFlavor, start: ByteIndex) -> TokenKind {
         let mut count = 0usize;
         let mut terminated = false;
         let mut has_invalid_escape_seqs = false;
@@ -658,12 +658,19 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         while let Some((index, char)) = self.next() {
             match char {
-                '\\' => has_invalid_escape_seqs |= !self.fin_lex_escape_seq(kind),
+                '\\' => {
+                    has_invalid_escape_seqs |= !self.fin_lex_escape_seq(TextLitKind::Char, flavor)
+                }
                 '\'' => {
                     terminated = true;
                     break;
                 }
                 '\n' | '\t' | '\r' => {
+                    invalid_scalar.get_or_insert(self.span(index));
+                }
+                _ if let TextLitFlavor::Ascii = flavor
+                    && !char.is_ascii() =>
+                {
                     invalid_scalar.get_or_insert(self.span(index));
                 }
                 _ => {}
@@ -695,20 +702,25 @@ impl<'a, 'src> Lexer<'a, 'src> {
         TokenKind::CharLit
     }
 
-    fn fin_lex_str_lit(&mut self, raw: Raw, kind: LitKind, start: ByteIndex) -> TokenKind {
+    fn fin_lex_str_lit(&mut self, raw: Raw, flavor: TextLitFlavor, start: ByteIndex) -> TokenKind {
         let mut terminated = false;
         let mut invalid_scalar = None;
 
         while let Some((index, char)) = self.next() {
             match char {
                 '\\' if let Raw::No = raw => {
-                    self.fin_lex_escape_seq(kind);
+                    self.fin_lex_escape_seq(TextLitKind::Str, flavor);
                 }
                 '"' => {
                     terminated = true;
                     break;
                 }
                 '\r' => {
+                    invalid_scalar.get_or_insert(self.span(index));
+                }
+                _ if let TextLitFlavor::Ascii = flavor
+                    && !char.is_ascii() =>
+                {
                     invalid_scalar.get_or_insert(self.span(index));
                 }
                 _ => {}
@@ -731,15 +743,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         let ident = self.source(start);
 
-        let (raw, kind) = match (ident, self.peek()) {
-            ("b", Some('"')) => (Raw::No, LitKind::ByteStr),
-            ("br", Some('"')) => (Raw::Yes, LitKind::ByteStr),
-            ("c", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::No, LitKind::CStr),
-            ("cr", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::Yes, LitKind::CStr),
-            ("r", Some('"')) => (Raw::Yes, LitKind::Str),
+        let (raw, flavor) = match (ident, self.peek()) {
+            ("b", Some('"')) => (Raw::No, TextLitFlavor::Ascii),
+            ("br", Some('"')) => (Raw::Yes, TextLitFlavor::Ascii),
+            ("c", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::No, TextLitFlavor::C),
+            ("cr", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::Yes, TextLitFlavor::C),
+            ("r", Some('"')) => (Raw::Yes, TextLitFlavor::Utf8),
             ("b", Some('\'')) => {
                 self.next();
-                return self.fin_lex_char_lit(LitKind::Byte, start);
+                return self.fin_lex_char_lit(TextLitFlavor::Ascii, start);
             }
             ("r", Some('#')) => {
                 self.next();
@@ -777,7 +789,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ => return lex_ident(ident, self.edition),
         };
         self.next();
-        self.fin_lex_str_lit(raw, kind, start)
+        self.fin_lex_str_lit(raw, flavor, start)
     }
 
     // FIXME: Consolidate with `fin_lex_str_lit` smh
@@ -829,9 +841,9 @@ impl<'a, 'src> Lexer<'a, 'src> {
         TokenKind::StrLit
     }
 
-    fn fin_lex_escape_seq(&mut self, kind: LitKind) -> bool {
+    fn fin_lex_escape_seq(&mut self, kind: TextLitKind, flavor: TextLitFlavor) -> bool {
         let index = self.index();
-        if !self.fin_lex_escape_seq_inner(kind) {
+        if !self.fin_lex_escape_seq_inner(kind, flavor) {
             self.error(Error::InvalidEscapeSequence(self.span(index)));
             return false;
         }
@@ -839,18 +851,18 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     // FIXME: Emit slightly more precise diagnostics & better diagnostic spans.
-    fn fin_lex_escape_seq_inner(&mut self, kind: LitKind) -> bool {
+    fn fin_lex_escape_seq_inner(&mut self, kind: TextLitKind, flavor: TextLitFlavor) -> bool {
         let Some((_, char)) = self.next() else { return false };
 
-        match (char, kind) {
-            | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _)
-            | ('0', LitKind::Char | LitKind::Byte | LitKind::Str | LitKind::ByteStr)
-            | ('\n', LitKind::Str | LitKind::ByteStr | LitKind::CStr) => true,
-            ('x', _) => {
+        match (char, kind, flavor) {
+            | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _, _)
+            | ('0', _, TextLitFlavor::Utf8 | TextLitFlavor::Ascii)
+            | ('\n', TextLitKind::Str, _) => true,
+            ('x', _, _) => {
                 let Some(char) = self.peek() else { return false };
-                match kind {
-                    LitKind::Char | LitKind::Str if is_oct_digit(char) => {}
-                    LitKind::Byte | LitKind::ByteStr | LitKind::CStr if is_hex_digit(char) => {}
+                match flavor {
+                    TextLitFlavor::Utf8 if is_oct_digit(char) => {}
+                    TextLitFlavor::Ascii | TextLitFlavor::C if is_hex_digit(char) => {}
                     _ => return false,
                 }
                 self.next();
@@ -860,7 +872,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 self.next();
                 true
             }
-            ('u', _) => {
+            ('u', _, _) => {
                 let Some((_, '{')) = self.next() else { return false };
 
                 let mut is_empty = true;
@@ -934,12 +946,16 @@ impl std::ops::DerefMut for Lexer<'_, '_> {
 }
 
 #[derive(Clone, Copy)]
-enum LitKind {
-    Byte,
-    ByteStr,
-    CStr,
-    Char,
+enum TextLitKind {
     Str,
+    Char,
+}
+
+#[derive(Clone, Copy)]
+enum TextLitFlavor {
+    Utf8,
+    Ascii,
+    C,
 }
 
 enum Raw {
