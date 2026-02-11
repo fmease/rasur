@@ -9,15 +9,15 @@ pub(crate) fn opts() -> Result<Opts, Error> {
     let mut fmt = false;
     let mut skip_marker = None;
     let mut short = false;
+    let mut strip_shebang = true;
+    let mut strip_frontmatter = true;
 
     let mut args = std::env::args_os().skip(1);
 
     while let Some(arg) = args.next() {
         if let Some(opt) = arg.as_encoded_bytes().strip_prefix(b"-") {
             match opt {
-                b"-tok" => emit_tokens = true,
                 b"-ast" => emit_ast = true,
-                b"-lex-only" => lex_only = true,
                 b"e" | b"-edition" => {
                     if edition.is_some() {
                         return Err(Error::DuplicateOpt("--edition"));
@@ -29,6 +29,10 @@ pub(crate) fn opts() -> Result<Opts, Error> {
                     );
                 }
                 b"-fmt" => fmt = true,
+                b"-lex-only" => lex_only = true,
+                b"-no-strip-frontmatter" => strip_frontmatter = false,
+                b"-no-strip-shebang" => strip_shebang = false,
+                b"-short" => short = true,
                 b"-skip-marker" => {
                     if skip_marker.is_some() {
                         return Err(Error::DuplicateOpt("--skip-marker"));
@@ -55,7 +59,7 @@ pub(crate) fn opts() -> Result<Opts, Error> {
                         source_.into_string().map_err(|_| Error::InvalidArg("SOURCE"))?,
                     ))
                 }
-                b"-short" => short = true,
+                b"-tokens" => emit_tokens = true,
                 _ => return Err(Error::UnknownOpt(arg.to_owned())),
             }
         } else {
@@ -77,12 +81,25 @@ pub(crate) fn opts() -> Result<Opts, Error> {
 
     let skip_marker = skip_marker.unwrap_or_default();
 
-    Ok(Opts { source, edition, emit_tokens, emit_ast, lex_only, fmt, skip_marker, short })
+    Ok(Opts {
+        source,
+        edition,
+        strip_shebang,
+        strip_frontmatter,
+        emit_tokens,
+        emit_ast,
+        lex_only,
+        fmt,
+        skip_marker,
+        short,
+    })
 }
 
 pub(crate) struct Opts {
     pub(crate) source: Source,
     pub(crate) edition: Option<rasur::Edition>,
+    pub(crate) strip_shebang: bool,
+    pub(crate) strip_frontmatter: bool,
     pub(crate) emit_tokens: bool,
     pub(crate) emit_ast: bool,
     pub(crate) lex_only: bool,
