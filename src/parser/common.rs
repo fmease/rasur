@@ -213,6 +213,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Const => Some(ast::Mutability::Not),
                 _ => None,
             }
+            // FEATURE: `pin_ergonomics` <https://github.com/rust-lang/rust/issues/130494>
             && let Some(kind) = match self.source(self.token.span) {
                 weak::Pin::STR => Some(ast::BorrowKind::Pin),
                 source => X::parse(source),

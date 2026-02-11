@@ -37,11 +37,13 @@ impl<'src> Parser<'_, '_, 'src> {
         // `TokenKind::Let` isn't included here because let-exprs are but an impl detail.
         match self.token.kind {
             | TokenKind::Async
+            // FEATURE: `explicit_tail_calls` <https://github.com/rust-lang/rust/issues/112788>
             | TokenKind::Become
             | TokenKind::Break
             | TokenKind::CharLit
             | TokenKind::Const
             | TokenKind::Continue
+            // FEATURE: `yeet_expr` <https://github.com/rust-lang/rust/issues/96373>
             | TokenKind::Do
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
@@ -49,6 +51,7 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::DoublePipe
             | TokenKind::False
             | TokenKind::For
+            // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
             | TokenKind::Gen
             | TokenKind::If
             | TokenKind::Loop
@@ -64,14 +67,17 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::SingleBang
             | TokenKind::SingleHyphen
             | TokenKind::SinglePipe
+            // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Static
             | TokenKind::StrLit
             | TokenKind::TickedIdent
             | TokenKind::True
+            // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
             | TokenKind::Try
             | TokenKind::Underscore
             | TokenKind::Unsafe
             | TokenKind::While
+            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Yield => true,
             _ => self.begins_ext_path(self.token),
         }
@@ -301,6 +307,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Await(Box::new(left)).into());
             }
             TokenKind::CommonIdent => false,
+            // FEATURE: `postfix_match` <https://github.com/rust-lang/rust/issues/121618>
             TokenKind::Match => {
                 self.advance();
                 // FIXME: Don't send inner attrs down the drain! Requires patching up
@@ -310,10 +317,12 @@ impl<'src> Parser<'_, '_, 'src> {
                     .map(Into::into);
             }
             TokenKind::NumLit => true,
+            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             TokenKind::Use => {
                 self.advance();
                 return Ok(ast::ExprKind::Use(Box::new(left)).into());
             }
+            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
                 self.advance();
                 return Ok(ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left))).into());
@@ -491,6 +500,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 // FIXME: Parse `async use` closures etc.
                 if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
+                    // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                     let (mode, qualifiers) = Qualifier::strip_move(qualifiers);
                     if !qualifiers.is_empty() {
@@ -509,6 +519,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let kind = match qualifiers {
                     [] => None,
                     [Qualifier::Const] => Some(ast::SpecialBlockKind::Const),
+                    // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
                     [Qualifier::Try(ty)] => Some(ast::SpecialBlockKind::Try(mem::take(ty))),
                     [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
                     _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
@@ -522,17 +533,20 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Pipe] => {
                 let mut modifiers = ast::ClosureExprModifiers::default();
 
+                // FEATURE: `closure_lifetime_binder` <https://github.com/rust-lang/rust/issues/97362>
                 let (bound_vars, mut qualifiers) = match qualifiers {
                     [Qualifier::ForBinder(bound_vars), qualifiers @ ..] => {
                         (mem::take(bound_vars), &*qualifiers)
                     }
                     _ => (Vec::new(), &*qualifiers),
                 };
+                // FEATURE: `const_closures` <https://github.com/rust-lang/rust/issues/106003>
                 (modifiers.constness, qualifiers) = match qualifiers {
                     [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
                     _ => (ast::Constness::Not, qualifiers),
                 };
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
+                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                 // FIXME: Parse "useness" here. *However*, staticness and mode may *not* follow! Tricky
                 (modifiers.staticness, qualifiers) = match qualifiers {
@@ -550,6 +564,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
+            // FEATURE: `explicit_tail_calls` <https://github.com/rust-lang/rust/issues/112788>
             TokenKind::Become => {
                 self.advance();
                 return Ok(ast::ExprKind::Become(Box::new(self.parse_expr()?)));
@@ -575,6 +590,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
             }
+            // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
                 self.advance();
@@ -611,6 +627,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()?));
             }
+            // FEATURE: `yeet_expr` <https://github.com/rust-lang/rust/issues/96373>
             TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
                 self.advance();
                 self.advance();
@@ -720,6 +737,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_while_loop_expr(None);
             }
+            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
                 self.advance();
                 let expr =
@@ -747,6 +765,8 @@ impl<'src> Parser<'_, '_, 'src> {
                         stream,
                     })));
                 }
+                // If the path is extended, then it's
+                // FEATURE: `more_qualified_paths` <https://github.com/rust-lang/rust/issues/86935>
                 TokenKind::OpenCurlyBracket if let StructPolicy::Allowed = s_policy => {
                     self.advance();
 
@@ -817,6 +837,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::ForBinder(self.parse_generic_param_list()?));
                     continue;
                 }
+                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::Move => Qualifier::Move,
                 TokenKind::OpenCurlyBracket => {
@@ -829,7 +850,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
+                // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
                 TokenKind::Static => Qualifier::Static,
+                // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
                 TokenKind::Try => {
                     self.advance();
                     let ty = self
@@ -912,6 +935,7 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         label: Option<ast::Ident<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
+        // FEATURE: `async_for_loop` <https://github.com/rust-lang/rust/issues/118898>
         let awaitness = if self.consume(TokenKind::Await) {
             ast::Awaitness::Await
         } else {
