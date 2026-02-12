@@ -21,6 +21,7 @@ use std::{
     time::Instant,
 };
 
+const FALLBACK_JOBS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 const DEFAULT_CHUNK_SIZE: NonZeroUsize = NonZeroUsize::new(10).unwrap(); // idk
 
 fn main() -> ExitCode {
@@ -94,7 +95,8 @@ fn try_main() -> Result<(), ()> {
         PathBuf::from(String::from_utf8(output.stdout).unwrap())
     };
 
-    let jobs = jobs.unwrap_or_else(|| std::thread::available_parallelism().unwrap_or(1));
+    let jobs =
+        jobs.unwrap_or_else(|| std::thread::available_parallelism().unwrap_or(FALLBACK_JOBS));
     let chunk_size = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
 
     let entries = paths.into_iter().flat_map(walkdir::WalkDir::new);

@@ -580,16 +580,21 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_contract(&mut self) -> Result<ast::Contract<'src>> {
-        // FIXME: Reject inner attrs inside of the block.
-        let requires = self
-            .consume(weak::ContractRequires)
-            .then(|| self.parse_block_expr().map(Box::new))
-            .transpose()?;
-        let ensures = self
-            .consume(weak::ContractEnsures)
-            .then(|| self.parse_expr().map(Box::new))
-            .transpose()?;
-        Ok(ast::Contract { requires, ensures })
+        let mut contract = ast::Contract { requires: None, ensures: None };
+
+        if self.consume(weak::ContractRequires) {
+            let block = self.parse_block_expr()?;
+            if !block.attrs.is_empty() {
+                self.error(Error::ForbiddenInnerAttrs);
+            }
+            contract.requires = Some(Box::new(block));
+        }
+
+        if self.consume(weak::ContractEnsures) {
+            contract.ensures = Some(Box::new(self.parse_expr()?));
+        }
+
+        Ok(contract)
     }
 
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
@@ -992,8 +997,11 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn parse_delegation_body(&mut self) -> Result<Option<ast::BlockExpr<'src>>> {
         if self.consume(TokenKind::OpenCurlyBracket) {
-            // FIXME: Reject inner attrs. For some reason, they're syntactically forbidden.
-            self.fin_parse_block_expr().map(Some)
+            let block = self.fin_parse_block_expr()?;
+            if !block.attrs.is_empty() {
+                self.error(Error::ForbiddenInnerAttrs);
+            }
+            Ok(Some(block))
         } else {
             self.parse(TokenKind::Semicolon)?;
             Ok(None)

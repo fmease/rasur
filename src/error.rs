@@ -39,6 +39,7 @@ pub enum Error {
     EmptyExponent(Span),
     EmptyNumLit(Span),
     ExpectedTraitFoundTy(Span),
+    ForbiddenInnerAttrs,
     FrontmatterClosingTrailer(Span),
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),

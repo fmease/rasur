@@ -121,6 +121,7 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::FrontmatterClosingTrailer(span) => {
             Diag::new("extra characters after frontmatter closing").highlight(span)
         }
+        Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
     };
     eprintln!("{}", diag.render(cx));
 }
