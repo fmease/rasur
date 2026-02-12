@@ -1,111 +1,104 @@
-use std::{ffi::OsString, path::PathBuf};
+use clap::{Arg, ArgAction::SetTrue, Command};
+use std::path::PathBuf;
 
-pub(crate) fn opts() -> Result<Opts, Error> {
-    let mut source = None;
-    let mut edition = None;
-    let mut emit_tokens = false;
-    let mut emit_ast = false;
-    let mut lex_only = false;
-    let mut fmt = false;
-    let mut skip_marker = None;
-    let mut short = false;
-    let mut strip_shebang = true;
-    let mut strip_frontmatter = true;
+// FIXME: Ideally, we would be using something more lightweight than `clap`.
 
-    let mut args = std::env::args_os().skip(1);
+pub(crate) fn opts() -> Opts {
+    let mut matches = Command::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .arg(
+            Arg::new(id::PATH)
+                .value_parser(clap::builder::ValueParser::path_buf())
+                .required_unless_present(id::SOURCE)
+                .help("Path to the source file"),
+        )
+        .arg(
+            Arg::new(id::SOURCE)
+                .short(':')
+                .long("source")
+                .conflicts_with(id::PATH)
+                .help("Provide the source code"),
+        )
+        .arg(
+            Arg::new(id::EDITION)
+                .short('e')
+                .long("edition")
+                .value_parser(parse_edition)
+                .help("Set the edition of the crate"),
+        )
+        .arg(
+            Arg::new(id::FMT)
+                .long("fmt")
+                .action(SetTrue)
+                .help("Render the source code as derived from the AST"),
+        )
+        .arg(Arg::new(id::AST).long("ast").action(SetTrue).help("Emit the abstract syntax tree"))
+        .arg(Arg::new(id::TOKENS).long("tokens").action(SetTrue).help("Emit the tokens"))
+        .arg(
+            Arg::new(id::LEX_ONLY)
+                .long("lex-only")
+                .action(SetTrue)
+                .help("Halt after lexing the source file"),
+        )
+        .arg(
+            Arg::new(id::NO_STRIP_FRONTMATTER)
+                .long("no-strip-frontmatter")
+                .action(SetTrue)
+                .help("Don't strip frontmatter"),
+        )
+        .arg(
+            Arg::new(id::NO_STRIP_SHEBANG)
+                .long("no-strip-shebang")
+                .action(SetTrue)
+                .help("Don't strip shebang"),
+        )
+        .arg(
+            Arg::new(id::SKIP_MARKER)
+                .long("skip-marker")
+                .requires(id::FMT)
+                .value_parser(parse_skip_marker)
+                .value_name("MARKER")
+                .help("Set the skip markers the pretty-printer should look out for"),
+        )
+        .arg(
+            Arg::new(id::SHORT)
+                .long("short")
+                .action(SetTrue)
+                .help("Use a terser format for diagnostics"),
+        )
+        .get_matches();
 
-    while let Some(arg) = args.next() {
-        if let Some(opt) = arg.as_encoded_bytes().strip_prefix(b"-") {
-            match opt {
-                b"-ast" => emit_ast = true,
-                b"e" | b"-edition" => {
-                    if edition.is_some() {
-                        return Err(Error::DuplicateOpt("--edition"));
-                    }
-                    let edition_ = args.next().ok_or(Error::MissingArgToOpt("--edition"))?;
-                    edition = Some(
-                        parse_edition(edition_.as_encoded_bytes())
-                            .map_err(|()| Error::InvalidArg("EDITION"))?,
-                    );
-                }
-                b"-fmt" => fmt = true,
-                b"-lex-only" => lex_only = true,
-                b"-no-strip-frontmatter" => strip_frontmatter = false,
-                b"-no-strip-shebang" => strip_shebang = false,
-                b"-short" => short = true,
-                b"-skip-marker" => {
-                    if skip_marker.is_some() {
-                        return Err(Error::DuplicateOpt("--skip-marker"));
-                    }
-                    let skip_marker_ =
-                        args.next().ok_or(Error::MissingArgToOpt("--skip-marker"))?;
-                    skip_marker = Some(
-                        parse_skip_marker(skip_marker_.as_encoded_bytes())
-                            .map_err(|()| Error::InvalidArg("MARKER"))?,
-                    );
-                }
-                b":" | b"-source" => {
-                    match source {
-                        Some(Source::String(_)) => {
-                            return Err(Error::DuplicateOpt("--source"));
-                        }
-                        Some(Source::Path(_)) => {
-                            return Err(Error::IncompatibleArgs("--source", "PATH"));
-                        }
-                        None => {}
-                    }
-                    let source_ = args.next().ok_or(Error::MissingArgToOpt("--source"))?;
-                    source = Some(Source::String(
-                        source_.into_string().map_err(|_| Error::InvalidArg("SOURCE"))?,
-                    ))
-                }
-                b"-tokens" => emit_tokens = true,
-                _ => return Err(Error::UnknownOpt(arg.to_owned())),
-            }
-        } else {
-            match source {
-                Some(Source::Path(_)) => return Err(Error::UnknownArg(arg.to_owned())),
-                // FIXME: Incompatible(Opt("--source"), Arg("PATH"))
-                Some(Source::String(_)) => return Err(Error::IncompatibleArgs("SOURCE", "PATH")),
-                None => source = Some(Source::Path(PathBuf::from(arg))),
-            }
-        }
-    }
+    let source = matches
+        .remove_one(id::SOURCE)
+        .map(Source::String)
+        .xor(matches.remove_one(id::PATH).map(Source::Path))
+        .unwrap();
 
-    if !fmt && skip_marker.is_some() {
-        return Err(Error::MissingOpt { opt: "--fmt", due_to: "--skip-marker" });
-    }
-
-    // FIXME: Missing(Arg("PATH"), Opt("--source"))
-    let source = source.ok_or(Error::MissingArgs { any: &["PATH", "SOURCE"] })?;
-
-    let skip_marker = skip_marker.unwrap_or_default();
-
-    Ok(Opts {
+    Opts {
         source,
-        edition,
-        strip_shebang,
-        strip_frontmatter,
-        emit_tokens,
-        emit_ast,
-        lex_only,
-        fmt,
-        skip_marker,
-        short,
-    })
+        edition: matches.remove_one(id::EDITION),
+        emit_ast: matches.remove_one(id::AST).unwrap_or_default(),
+        emit_tokens: matches.remove_one(id::TOKENS).unwrap_or_default(),
+        fmt: matches.remove_one(id::FMT).unwrap_or_default(),
+        lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
+        short: matches.remove_one(id::SHORT).unwrap_or_default(),
+        skip_marker: rasur::fmter::SkipMarker::None, // FIXME
+        strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
+        strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
+    }
 }
 
 pub(crate) struct Opts {
     pub(crate) source: Source,
     pub(crate) edition: Option<rasur::Edition>,
-    pub(crate) strip_shebang: bool,
-    pub(crate) strip_frontmatter: bool,
-    pub(crate) emit_tokens: bool,
     pub(crate) emit_ast: bool,
-    pub(crate) lex_only: bool,
+    pub(crate) emit_tokens: bool,
     pub(crate) fmt: bool,
-    pub(crate) skip_marker: rasur::fmter::SkipMarker,
+    pub(crate) lex_only: bool,
     pub(crate) short: bool,
+    pub(crate) skip_marker: rasur::fmter::SkipMarker,
+    pub(crate) strip_frontmatter: bool,
+    pub(crate) strip_shebang: bool,
 }
 
 pub(crate) enum Source {
@@ -113,71 +106,47 @@ pub(crate) enum Source {
     Path(PathBuf),
 }
 
-pub(crate) enum Error {
-    DuplicateOpt(&'static str),
-    // FIXME: Refine it to Incompatible(Opt(…), Arg(…))
-    IncompatibleArgs(&'static str, &'static str),
-    InvalidArg(&'static str),
-    // FIXME: Refine it to Missing([Opt(…), Arg(…), …]),
-    MissingArgs { any: &'static [&'static str] }, // invariant: non-empty
-    MissingArgToOpt(&'static str),
-    MissingOpt { opt: &'static str, due_to: &'static str },
-    UnknownArg(OsString),
-    UnknownOpt(OsString),
+macro_rules! parse {
+    ($( $key:literal => $value:expr ),+ $(,)?)  => { |source| Ok(match source {
+        $( $key => $value, )+
+        _ => return Err(format!("possible values: {}", [$(concat!("`", $key, "`")),+].join(", "))),
+    })}
 }
 
-// FIXME: These diagnostics could be heavily improved, they're just stand-ins.
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DuplicateOpt(opt) => write!(f, "option `{opt}` can't be passed multiple times"),
-            Self::IncompatibleArgs(fst, snd) => {
-                write!(f, "arguments `{fst}` and `{snd}` are incompatible")
-            }
-            Self::InvalidArg(arg) => write!(f, "argument `{arg}` is invalid"),
-            Self::MissingArgs { any: args } => {
-                write!(f, "missing required arguments: ")?;
-                let mut args = args.iter().peekable();
-                if let Some(arg) = args.next() {
-                    write!(f, "`{arg}`")?;
-                }
-                while let Some(arg) = args.next() {
-                    let prefix = if args.peek().is_some() { ", " } else { " or " };
-                    write!(f, "{prefix}`{arg}`")?;
-                }
-                Ok(())
-            }
-            Self::MissingArgToOpt(opt) => write!(f, "missing argument to option `{opt}`"),
-            Self::MissingOpt { opt, due_to } => {
-                write!(f, "option `{due_to}` requires option `{opt}` to be set")
-            }
-            Self::UnknownArg(arg) => write!(f, "unexpected argument `{}`", arg.display()),
-            Self::UnknownOpt(opt) => write!(f, "unknown option `{}`", opt.display()),
-        }
-    }
-}
-
-fn parse_edition(source: &[u8]) -> Result<rasur::Edition, ()> {
+fn parse_edition(source: &str) -> Result<rasur::Edition, String> {
     use rasur::Edition::*;
 
-    Ok(match source {
-        b"2015" => Rust2015,
-        b"2018" => Rust2018,
-        b"2021" => Rust2021,
-        b"2024" => Rust2024,
-        b"future" => Future,
-        _ => return Err(()),
-    })
+    parse!(
+        "2015" => Rust2015,
+        "2018" => Rust2018,
+        "2021" => Rust2021,
+        "2024" => Rust2024,
+        "future" => Future,
+    )(source)
 }
 
-fn parse_skip_marker(source: &[u8]) -> Result<rasur::fmter::SkipMarker, ()> {
+fn parse_skip_marker(source: &str) -> Result<rasur::fmter::SkipMarker, String> {
     use rasur::fmter::SkipMarker::*;
 
-    Ok(match source {
-        b"none" => None,
-        b"all" => All,
-        b"rustfmt" => Rustfmt,
-        b"rasur" => Rasur,
-        _ => return Err(()),
-    })
+    parse!(
+        "none" => None,
+        "all" => All,
+        "rustfmt" => Rustfmt,
+        "rasur" => Rasur,
+    )(source)
+}
+
+macro_rules! ids {
+    ($($name:ident),+ $(,)?) => {
+        mod id {
+            $( pub(super) const $name: &str = stringify!($name); )+
+        }
+    };
+}
+
+#[rustfmt::skip]
+ids! {
+    AST, EDITION, FMT, LEX_ONLY,
+    NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
+    PATH, SHORT, SKIP_MARKER, SOURCE, TOKENS,
 }

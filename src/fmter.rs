@@ -24,7 +24,7 @@ impl Default for Cfg {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub enum SkipMarker {
     None,
     All,
