@@ -21,6 +21,12 @@ fn main() -> ExitCode {
 fn try_main() -> Result<(), ()> {
     let opts = interface::opts();
 
+    match opts.color {
+        clap::ColorChoice::Always => anstream::ColorChoice::Always.write_global(),
+        clap::ColorChoice::Never => anstream::ColorChoice::Never.write_global(),
+        clap::ColorChoice::Auto => {}
+    }
+
     let (source, path) = match opts.source {
         interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&path).map_err(|error| {
@@ -49,7 +55,7 @@ fn try_main() -> Result<(), ()> {
 
     if opts.lex_only {
         if let Some(errors) = errors.non_empty() {
-            errors.into_iter().for_each(|error| diagnostics::eprint(error, cx));
+            diagnostics::render(errors, cx);
             return Err(());
         }
 
@@ -65,7 +71,7 @@ fn try_main() -> Result<(), ()> {
     }
 
     let result = if let Some(errors) = errors.non_empty() {
-        errors.into_iter().for_each(|error| diagnostics::eprint(error, cx));
+        diagnostics::render(errors, cx);
         Err(())
     } else {
         Ok(())
@@ -86,50 +92,109 @@ fn try_main() -> Result<(), ()> {
 }
 
 fn emit_tokens(file: &rasur::lexer::File, source: &str) -> std::io::Result<()> {
-    use anstyle::{AnsiColor, Style};
+    use anstyle::AnsiColor;
     use std::io::Write;
 
-    let mut stderr: Stderr = std::io::BufWriter::new(std::io::stderr().lock());
-    type Stderr = impl Write;
+    let stderr = std::io::stderr();
+    let colorize = anstream::AutoStream::choice(&stderr) != anstream::ColorChoice::Never;
+    let stderr = std::io::BufWriter::new(stderr);
+    let mut p = Painter::new(stderr, colorize);
 
-    let render = |stderr: &mut Stderr, span: rasur::span::Span| {
-        fn color(color: anstyle::AnsiColor) -> Style {
-            anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(color)))
-        }
-
-        paint(stderr, color(AnsiColor::BrightBlack), |stderr| write!(stderr, "{span:?} "))?;
-        paint(stderr, color(AnsiColor::Yellow), |stderr| {
-            write!(stderr, "{:?}", &source[span.range()])
-        })
+    let render = |p: &mut Painter<_>, span: rasur::span::Span| {
+        p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
+        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source[span.range()]))
     };
 
     if let Some(shebang) = file.shebang {
-        paint(&mut stderr, Style::new().italic(), |stderr| write!(stderr, "Shebang "))?;
-        render(&mut stderr, shebang)?;
-        writeln!(stderr)?;
+        p.with(anstyle::Effects::ITALIC, |p| write!(p, "Shebang "))?;
+        render(&mut p, shebang)?;
+        writeln!(p)?;
     }
 
     if let Some(frontmatter) = file.frontmatter {
-        paint(&mut stderr, Style::new().italic(), |stderr| write!(stderr, "Frontmatter "))?;
-        render(&mut stderr, frontmatter)?;
-        writeln!(stderr)?;
+        p.with(anstyle::Effects::ITALIC, |p| write!(p, "Frontmatter "))?;
+        render(&mut p, frontmatter)?;
+        writeln!(p)?;
     }
 
     for token in &file.tokens {
-        write!(stderr, "{:?} ", token.kind)?;
-        render(&mut stderr, token.span)?;
-        writeln!(stderr)?;
-    }
-
-    fn paint(
-        stderr: &mut Stderr,
-        style: Style,
-        write: impl FnOnce(&mut Stderr) -> std::io::Result<()>,
-    ) -> std::io::Result<()> {
-        style.write_to(stderr)?;
-        write(stderr)?;
-        style.write_reset_to(stderr)
+        write!(p, "{:?} ", token.kind)?;
+        render(&mut p, token.span)?;
+        writeln!(p)?;
     }
 
     Ok(())
+}
+
+struct Painter<W: std::io::Write> {
+    writer: W,
+    colorize: bool,
+    style: anstyle::Style,
+}
+
+impl<W: std::io::Write> Painter<W> {
+    pub(crate) fn new(writer: W, colorize: bool) -> Self {
+        Self { writer, colorize, style: anstyle::Style::new() }
+    }
+}
+
+impl<W: std::io::Write> Painter<W> {
+    pub(crate) fn set(&mut self, style: impl IntoStyle) -> std::io::Result<()> {
+        if !self.colorize {
+            return Ok(());
+        }
+
+        self.style = style.into_style();
+        self.style.write_to(&mut self.writer)
+    }
+
+    fn unset(&mut self) -> std::io::Result<()> {
+        if !self.colorize {
+            return Ok(());
+        }
+
+        std::mem::take(&mut self.style).write_reset_to(&mut self.writer)
+    }
+
+    fn with(
+        &mut self,
+        style: impl IntoStyle,
+        inner: impl FnOnce(&mut Self) -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        self.set(style)?;
+        inner(self)?;
+        self.unset()
+    }
+}
+
+impl<W: std::io::Write> std::io::Write for Painter<W> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.writer.write(buffer)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
+}
+
+trait IntoStyle {
+    fn into_style(self) -> anstyle::Style;
+}
+
+impl IntoStyle for anstyle::Style {
+    fn into_style(self) -> anstyle::Style {
+        self
+    }
+}
+
+impl IntoStyle for anstyle::AnsiColor {
+    fn into_style(self) -> anstyle::Style {
+        self.on_default()
+    }
+}
+
+impl IntoStyle for anstyle::Effects {
+    fn into_style(self) -> anstyle::Style {
+        anstyle::Style::new().effects(self)
+    }
 }

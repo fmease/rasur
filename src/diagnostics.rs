@@ -5,10 +5,19 @@ use rasur::{
     span::Span,
     token::{Repr, Token, TokenKind},
 };
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, io::Write as _, path::Path};
 
-pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
-    let diag = match error {
+pub(crate) fn render(errors: Vec<Error>, cx: RenderCx<'_>) {
+    let mut stderr = std::io::stderr();
+    let colorize = anstream::AutoStream::choice(&stderr) != anstream::ColorChoice::Never;
+
+    for error in errors {
+        writeln!(stderr, "{}", convert(error, cx).render(colorize, cx)).unwrap();
+    }
+}
+
+fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
+    match error {
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
         Error::DefaultnessOnInvalidItem(span) => {
             Diag::new("this item kind may not be marked with `default`").highlight(span)
@@ -122,8 +131,7 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
             Diag::new("extra characters after frontmatter closing").highlight(span)
         }
         Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
-    };
-    eprintln!("{}", diag.render(cx));
+    }
 }
 
 trait ToDiagStr {
@@ -211,7 +219,7 @@ impl Diag {
         self
     }
 
-    fn render(self, cx: RenderCx<'_>) -> String {
+    fn render(self, colorize: bool, cx: RenderCx<'_>) -> String {
         let group = ann::Group::with_title(ann::Level::ERROR.title(self.title));
         let group = match self.highlight {
             Some((span, label)) => {
@@ -226,7 +234,8 @@ impl Diag {
             }
             None => group,
         };
-        ann::Renderer::styled().short_message(cx.short).render(&[group])
+        let renderer = if colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
+        renderer.short_message(cx.short).render(&[group])
     }
 }
 

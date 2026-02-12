@@ -1,4 +1,4 @@
-use clap::{Arg, ArgAction::SetTrue, Command};
+use clap::{Arg, ArgAction::SetTrue, Command, builder::EnumValueParser};
 use std::path::PathBuf;
 
 // FIXME: Ideally, we would be using something more lightweight than `clap`.
@@ -66,6 +66,14 @@ pub(crate) fn opts() -> Opts {
                 .action(SetTrue)
                 .help("Use a terser format for diagnostics"),
         )
+        .arg(
+            Arg::new(id::COLOR)
+                .long("color")
+                .value_name("WHEN")
+                .default_value("auto")
+                .value_parser(EnumValueParser::<clap::ColorChoice>::new())
+                .help("Control when to use color"),
+        )
         .get_matches();
 
     let source = matches
@@ -81,10 +89,11 @@ pub(crate) fn opts() -> Opts {
         emit_tokens: matches.remove_one(id::TOKENS).unwrap_or_default(),
         fmt: matches.remove_one(id::FMT).unwrap_or_default(),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
-        short: matches.remove_one(id::SHORT).unwrap_or_default(),
         skip_marker: rasur::fmter::SkipMarker::None, // FIXME
         strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
         strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
+        short: matches.remove_one(id::SHORT).unwrap_or_default(),
+        color: matches.remove_one(id::COLOR).unwrap(),
     }
 }
 
@@ -95,10 +104,11 @@ pub(crate) struct Opts {
     pub(crate) emit_tokens: bool,
     pub(crate) fmt: bool,
     pub(crate) lex_only: bool,
-    pub(crate) short: bool,
     pub(crate) skip_marker: rasur::fmter::SkipMarker,
     pub(crate) strip_frontmatter: bool,
     pub(crate) strip_shebang: bool,
+    pub(crate) short: bool,
+    pub(crate) color: clap::ColorChoice,
 }
 
 pub(crate) enum Source {
@@ -146,7 +156,7 @@ macro_rules! ids {
 
 #[rustfmt::skip]
 ids! {
-    AST, EDITION, FMT, LEX_ONLY,
+    AST, COLOR, EDITION, FMT, LEX_ONLY,
     NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
     PATH, SHORT, SKIP_MARKER, SOURCE, TOKENS,
 }
