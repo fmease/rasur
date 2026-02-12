@@ -393,9 +393,12 @@ impl<'src> Parser<'_, '_, 'src> {
 
     /// Finish parsing a const block item assuming the leading `const {` has been parsed already.
     fn fin_parse_const_block_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        Ok(ast::ItemKind::ConstBlock(Box::new(ast::ConstBlockItem {
-            body: self.fin_parse_block_expr()?,
-        })))
+        let body = self.fin_parse_block_expr()?;
+        if !body.attrs.is_empty() {
+            self.error(Error::ForbiddenInnerAttrs);
+        }
+
+        Ok(ast::ItemKind::ConstBlock(Box::new(ast::ConstBlockItem { body })))
     }
 
     /// Finish parsing an enumeration item assuming the leading `enum` has been parsed already.
