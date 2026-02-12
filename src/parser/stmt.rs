@@ -123,7 +123,8 @@ impl ast::ExprKind<'_> {
             | Self::Tuple(_)
             | Self::Use(_)
             | Self::Wildcard
-            | Self::Yield(ast::YieldExpr::Postfix(_)) => true,
+            | Self::Yield(ast::YieldExpr::Postfix(_))
+            | Self::Error(_) => true,
             | Self::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
             | Self::Block(..)
             | Self::ForLoop(_)

@@ -94,7 +94,7 @@ fn try_main() -> Result<(), ()> {
         PathBuf::from(String::from_utf8(output.stdout).unwrap())
     };
 
-    let jobs = jobs.unwrap_or_else(|| std::thread::available_parallelism().unwrap());
+    let jobs = jobs.unwrap_or_else(|| std::thread::available_parallelism().unwrap_or(1));
     let chunk_size = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
 
     let entries = paths.into_iter().flat_map(walkdir::WalkDir::new);

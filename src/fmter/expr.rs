@@ -213,6 +213,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
                 expr.fmt(cx);
                 fmt!(cx, ").yield");
             }
+            ast::ExprKind::Error(span) => fmt!(cx, "{}", cx.source(span)),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     Edition::{self, *},
     ast,
-    error::{Buffer as ErrorBuffer, Error},
+    error::{Buffer as ErrorBuffer, Error, UnchainableExprOp},
     lexer::{StripFrontmatter, StripShebang, lex},
     token::{Token, TokenKind},
 };
@@ -27,15 +27,14 @@ fn parse_via<'src, T>(
     let mut errors = ErrorBuffer::Hold(Vec::new());
     let file = lex(source, edition, StripShebang::No, StripFrontmatter::No, &mut errors);
     let mut p = super::Parser::new(&file.tokens, source, edition, &mut errors);
-    parse(&mut p)
-        .and_then(|r| {
-            p.parse(TokenKind::EndOfInput)?;
-            Ok(r)
-        })
-        .map_err(|_| match errors {
-            ErrorBuffer::Void => unreachable!(),
-            ErrorBuffer::Hold(errors) => errors,
-        })
+    let result = parse(&mut p).and_then(|r| {
+        p.parse(TokenKind::EndOfInput)?;
+        Ok(r)
+    });
+    match errors.non_empty() {
+        Some(errors) => Err(errors),
+        None => Ok(result.unwrap_or_else(|_| unreachable!())),
+    }
 }
 
 fn parse_item(source: &str, edition: Edition) -> Result<ast::Item<'_>> {
@@ -157,15 +156,15 @@ fn pat_mut_ref_mut() {
 fn expr_false_angle_gen_args() {
     assert_matches!(
         parse_expr("f<i32>()", Rust2015),
-        // FIXME: We should report sth. like OpCannotBeChained(Level::Compare) instead
-        //        since we have {`<`, `>`} here, not {`>`, `>`}.
-        Err(deref!([Error::OpCannotBeChained(deref!("Gt"))])),
+        Err(deref!([Error::UnchainableExprOp(UnchainableExprOp::Compare, _)])),
     );
 
     assert_matches!(
         parse_expr("f<i32>", Rust2015),
-        // FIXME: Same here.
-        Err(deref!([Error::OpCannotBeChained(deref!("Gt"))])),
+        Err(deref!([
+            Error::UnchainableExprOp(UnchainableExprOp::Compare, _),
+            Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
+        ])),
     );
 }
 
@@ -616,6 +615,7 @@ fn item_modifiers() {
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
+    // FIXME: Add `type const`, `const impl`, `reuse impl`
     assert_matches!(
         parse_file(
             r#"

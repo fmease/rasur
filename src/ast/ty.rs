@@ -2,13 +2,15 @@ use super::{
     Attr, BorrowKind, Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path,
     Safety, UnambiguousGenericArgs,
 };
+use crate::span::Span;
 
 #[derive(Debug)]
 pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     CVariadics,
     DynTrait(Vec<Bound<'src>>),
-    Error,
+    // FIXME: Get rid of this payload once `Ty` carries a `Span`
+    Error(Span),
     FnPtr(Box<FnPtrTy<'src>>),
     Grouped(Box<Ty<'src>>),
     ImplTrait(Vec<Bound<'src>>),

@@ -132,11 +132,11 @@ impl<'src> Parser<'_, '_, 'src> {
             let path = self.parse_ext_path::<ast::UnambiguousGenericArgs>()?;
 
             if self.consume(TokenKind::SingleBang) {
-                let ast::ExtPath { ext: None, path } = path else {
-                    return self.fatal(Error::TyRelMacroCall);
+                if path.ext.is_some() {
+                    self.error(Error::TyRelMacroCall(start.until(self.token.span)));
                 };
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
-                return Ok(ast::Ty::MacroCall(ast::MacroCall { path, bracket, stream }));
+                return Ok(ast::Ty::MacroCall(ast::MacroCall { path: path.path, bracket, stream }));
             }
 
             return Ok(ast::Ty::Path(Box::new(path)));
@@ -341,7 +341,9 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         if self.pick_generic_param_list_over_ext_path(0) {
-            return self.fatal(Error::ParametrizedWhereClause);
+            let start = self.token.span;
+            let _bound_vars = self.parse_generic_param_list()?;
+            self.error(Error::ParametrizedWhereClause(start.until(self.token.span)));
         }
 
         while self.begins_predicate() {
@@ -495,17 +497,17 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<()> {
         if grouped {
             self.parse(TokenKind::CloseRoundBracket)?;
-            // FIXME: Span
-            return self.fatal(Error::InvalidParenthesizedBound);
+            // FIXME: (Multi)Span
+            self.error(Error::InvalidParenthesizedBound);
         }
 
         if let Some((_, span)) = bound_vars {
-            return self.fatal(Error::HigherRankedBinderOnInvalidBound(span));
+            self.error(Error::HigherRankedBinderOnInvalidBound(span));
         }
 
         if modifiers != ast::TraitBoundModifiers::NONE {
             // FIXME: Span
-            return self.fatal(Error::ModifiersOnInvalidBound);
+            self.error(Error::ModifiersOnInvalidBound);
         }
 
         Ok(())

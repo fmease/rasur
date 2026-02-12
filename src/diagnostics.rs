@@ -1,6 +1,6 @@
 use annotate_snippets as ann;
 use rasur::{
-    error::Error,
+    error::{Error, UnchainableExprOp},
     parser::ExpectedFragment,
     span::Span,
     token::{Repr, Token, TokenKind},
@@ -31,14 +31,20 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
                 .labeled_highlight(span, "unexpected delimiter")
         }
         Error::InvalidExternItemKind(span) => Diag::new("invalid extern item kind").highlight(span),
-        Error::ExpectedTraitFoundTy => Diag::new("found type expected trait"),
+        Error::ExpectedTraitFoundTy(span) => Diag::new("found type expected trait").highlight(span),
         Error::ModifiersOnInvalidBound => Diag::new("this bound kind may not have modifiers"),
         Error::HigherRankedBinderOnInvalidBound(span) => {
             Diag::new("this bound kind may not have a binder").highlight(span)
         }
-        Error::MisplacedReceiver => Diag::new("misplaced receiver"),
-        Error::OpCannotBeChained(op) => Diag::new(format!("operator `{op}` cannot be chained")),
-        Error::TyRelMacroCall => Diag::new("type-relative macro call"),
+        Error::MisplacedReceiver(span) => Diag::new("misplaced receiver").highlight(span),
+        Error::UnchainableExprOp(op, span) => {
+            let kind = match op {
+                UnchainableExprOp::Compare => "comparison",
+                UnchainableExprOp::Range => "range",
+            };
+            Diag::new(format!("{kind} operators cannot be chained")).highlight(span)
+        }
+        Error::TyRelMacroCall(span) => Diag::new("type-relative macro call").highlight(span),
         Error::ReservedLabel(span) => Diag::new("reserved label").highlight(span),
         Error::ReservedLifetime(span) => Diag::new("reserved lifetime").highlight(span),
         Error::ReservedPrefix(span) => Diag::new("reserved prefix").highlight(span),
@@ -62,10 +68,12 @@ pub(crate) fn eprint(error: Error, cx: RenderCx<'_>) {
         Error::VisibilityOnInvalidItem(span) => {
             Diag::new("this item kind may not be marked with visibility").highlight(span)
         }
-        Error::ParametrizedWhereClause => {
-            Diag::new("generic parameter lists on where-clauses are reserved")
+        Error::ParametrizedWhereClause(span) => {
+            Diag::new("generic parameter lists on where-clauses are reserved").highlight(span)
         }
-        Error::InvalidOpAfterCast => Diag::new("invalid operator following a cast"),
+        Error::InvalidOpAfterCast(span) => {
+            Diag::new("invalid operator following a cast").highlight(span)
+        }
         Error::UnknownBuiltInSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
         Error::InvalidLetChain => Diag::new("invalid let-chain"),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),

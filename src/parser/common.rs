@@ -22,9 +22,12 @@ impl<'src> Parser<'_, '_, 'src> {
 
             let mut attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-            if let Some(param) = this.parse_self_param(&mut attrs)? {
+            #[expect(irrefutable_let_patterns)]
+            if let start = this.token.span
+                && let Some(param) = this.parse_self_param(&mut attrs)?
+            {
                 if !first {
-                    return this.fatal(Error::MisplacedReceiver);
+                    this.error(Error::MisplacedReceiver(start.until(this.token.span)));
                 }
                 return Ok(param);
             }

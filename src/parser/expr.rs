@@ -4,7 +4,10 @@ use super::{
     path::GenericArgsMode,
     weak::{self, Weak as _},
 };
-use crate::{Edition, ast, error::Error};
+use crate::{
+    Edition, ast,
+    error::{Error, UnchainableExprOp},
+};
 use std::{cmp::Ordering, mem};
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -158,14 +161,13 @@ impl<'src> Parser<'_, '_, 'src> {
             let left_level = op.left_level().unwrap();
             match left_level.cmp(&level) {
                 Ordering::Less => break,
-                // FIXME: Don't use Debug repr of op, use surface-language symbol.
-                Ordering::Equal => return self.fatal(Error::OpCannotBeChained(format!("{op:?}"))),
+                Ordering::Equal => self.reject_unchainable_op_expr(level),
                 Ordering::Greater => {}
             }
             if let ast::ExprKind::Cast(..) = left.kind
                 && let Op::Call | Op::Index | Op::Project | Op::Try = op
             {
-                return self.fatal(Error::InvalidOpAfterCast);
+                self.error(Error::InvalidOpAfterCast(self.token.span));
             }
             self.advance();
 
@@ -173,6 +175,15 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         Ok(left)
+    }
+
+    fn reject_unchainable_op_expr(&mut self, level: Level) {
+        let op = match level {
+            Level::Range => UnchainableExprOp::Range,
+            Level::Compare => UnchainableExprOp::Compare,
+            _ => unreachable!(),
+        };
+        self.error(Error::UnchainableExprOp(op, self.token.span));
     }
 
     fn fin_parse_prefix_op_expr(
@@ -360,8 +371,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 }))
                 .into());
             } else if gen_args.is_some() {
-                return self
-                    .fatal(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
+                self.error(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
             }
         }
 
@@ -458,6 +468,8 @@ impl<'src> Parser<'_, '_, 'src> {
         l_policy: LetPolicy,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
+        let start = self.token.span;
+
         if let label @ Some(_) = self.parse_label()? {
             self.parse(TokenKind::SingleColon)?;
 
@@ -490,8 +502,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 )),
             };
         }
-
-        let start = self.token.span;
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match self.parse_expr_qualifiers()?.as_mut_slice() {
@@ -619,7 +629,11 @@ impl<'src> Parser<'_, '_, 'src> {
                         self.parse(TokenKind::CloseRoundBracket)?;
                         ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
                     }
-                    _ => return self.fatal(Error::UnknownBuiltInSyntax(ident.span)),
+                    _ => {
+                        self.error(Error::UnknownBuiltInSyntax(ident.span));
+                        let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
+                        ast::ExprKind::Error(start.to(self.token.span))
+                    }
                 };
                 return Ok(expr);
             }
@@ -752,15 +766,15 @@ impl<'src> Parser<'_, '_, 'src> {
 
             match self.token.kind {
                 TokenKind::SingleBang => {
-                    let ast::ExtPath { ext: None, path } = path else {
-                        return self.fatal(Error::TyRelMacroCall);
+                    if path.ext.is_some() {
+                        self.error(Error::TyRelMacroCall(start.until(self.token.span)));
                     };
 
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 
                     return Ok(ast::ExprKind::MacroCall(Box::new(ast::MacroCall {
-                        path,
+                        path: path.path,
                         bracket,
                         stream,
                     })));

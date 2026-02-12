@@ -64,14 +64,16 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    if let Some(errors) = errors.non_empty() {
+    let result = if let Some(errors) = errors.non_empty() {
         errors.into_iter().for_each(|error| diagnostics::eprint(error, cx));
-        return Err(());
-    }
+        Err(())
+    } else {
+        Ok(())
+    };
 
-    let file = file.unwrap();
-
-    if opts.fmt {
+    if opts.fmt
+        && let Ok(file) = file
+    {
         let result = rasur::fmter::fmt(
             file,
             &source,
@@ -80,7 +82,7 @@ fn try_main() -> Result<(), ()> {
         println!("{result}");
     }
 
-    Ok(())
+    result
 }
 
 fn emit_tokens(file: &rasur::lexer::File, source: &str) -> std::io::Result<()> {

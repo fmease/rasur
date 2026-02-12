@@ -45,6 +45,7 @@ impl<'src> Parser<'_, '_, 'src> {
         loop {
             let op = match self.token.kind {
                 // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
+                // FIXME: `if` isn't really an operator; we currently wrongly permit `(_ if _ if _)`
                 TokenKind::If if let GuardPolicy::Allowed = g_policy => Op::Guard,
                 TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
                 _ => break,
@@ -53,8 +54,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let left_level = op.left_level().unwrap();
             match left_level.cmp(&level) {
                 Ordering::Less => break,
-                // FIXME: Don't use Debug repr of op, use surface-language symbol.
-                Ordering::Equal => return self.fatal(Error::OpCannotBeChained(format!("{op:?}"))),
+                Ordering::Equal => unreachable!(),
                 Ordering::Greater => {}
             }
             self.advance();
@@ -160,6 +160,8 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
+        let start = self.token.span;
+
         // `TripleDot` isn't included here as the corresponding range has to be bounded on the left.
         match self.token.kind {
             TokenKind::DoubleDot => {
@@ -315,15 +317,15 @@ impl<'src> Parser<'_, '_, 'src> {
                     })));
                 }
                 TokenKind::SingleBang => {
-                    let ast::ExtPath { ext: None, path } = path else {
-                        return self.fatal(Error::TyRelMacroCall);
+                    if path.ext.is_some() {
+                        self.error(Error::TyRelMacroCall(start.until(self.token.span)));
                     };
 
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 
                     return Ok(ast::Pat::MacroCall(Box::new(ast::MacroCall {
-                        path,
+                        path: path.path,
                         bracket,
                         stream,
                     })));

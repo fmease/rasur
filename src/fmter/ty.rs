@@ -51,7 +51,7 @@ impl Fmt for ast::Ty<'_> {
                 fmt!(cx, ")");
             }
             Self::MacroCall(ty) => ty.fmt(cx),
-            Self::Error => fmt!(cx, "/*error*/"),
+            Self::Error(span) => fmt!(cx, "{}", cx.source(span)),
             Self::UnsafeBinder(bound_vars, ty) => {
                 fmt!(cx, "unsafe");
                 bound_vars.fmt(cx);

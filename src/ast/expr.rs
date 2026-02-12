@@ -2,6 +2,7 @@ use super::{
     Asyncness, Attr, BorrowKind, Bracket, Constness, ExtPath, GenericParam, Genness, Ident, Lit,
     MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
+use crate::span::Span;
 
 #[derive(Debug)]
 pub(crate) struct Expr<'src> {
@@ -56,6 +57,8 @@ pub(crate) enum ExprKind<'src> {
     Wildcard,
     Yeet(Option<Box<Expr<'src>>>),
     Yield(YieldExpr<'src>),
+    // FIXME: Obviously, `Expr` should carry a span. Once it does, remove this payload.
+    Error(Span),
 }
 
 impl ExprKind<'_> {
@@ -67,7 +70,9 @@ impl ExprKind<'_> {
             | Self::Loop(..)
             | Self::Match(_)
             | Self::WhileLoop(_)
-            | Self::ForLoop(_) => true,
+            | Self::ForLoop(_)
+            // NOTE: Not so sure about this one. What is better for recovery?
+            | Self::Error(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
                 CurlyBracketedMacroCallIsBoundary::Yes => true,
                 CurlyBracketedMacroCallIsBoundary::No => false,

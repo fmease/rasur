@@ -38,7 +38,7 @@ pub enum Error {
     EmptyCharLit(Span),
     EmptyExponent(Span),
     EmptyNumLit(Span),
-    ExpectedTraitFoundTy,
+    ExpectedTraitFoundTy(Span),
     FrontmatterClosingTrailer(Span),
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),
@@ -53,7 +53,7 @@ pub enum Error {
     InvalidItemPrefix(Span),
     InvalidLetChain,
     InvalidLitSuffix(Span),
-    InvalidOpAfterCast,
+    InvalidOpAfterCast(Span),
     InvalidParenthesizedBound,
     InvalidRawIdent(Span),
     InvalidRawTickedIdent(Span),
@@ -61,13 +61,12 @@ pub enum Error {
     InvalidStrLitDelim(Span),
     InvalidToken(char, Span),
     InvalidTyPrefix(Span),
-    MisplacedReceiver,
+    MisplacedReceiver(Span),
     MissingClosingDelimiters(Span),
     ModifiersOnInvalidBound,
     MultiScalarCharLit(Span),
     NonDecFloatLit(Span),
-    OpCannotBeChained(String),
-    ParametrizedWhereClause,
+    ParametrizedWhereClause(Span),
     ParenthesizedGuardedPatInMatch,
     ReservedLabel(Span),
     ReservedLifetime(Span),
@@ -76,7 +75,8 @@ pub enum Error {
     ReuseInherentImpl,
     StrLitGuardTooLarge(Span),
     TraitImplModifierInInherentImpl(&'static str),
-    TyRelMacroCall,
+    TyRelMacroCall(Span),
+    UnchainableExprOp(UnchainableExprOp, Span),
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
     UnknownBuiltInSyntax(Span),
@@ -86,4 +86,11 @@ pub enum Error {
     UnterminatedFrontmatter(Span),
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem(Span),
+}
+
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug))]
+pub enum UnchainableExprOp {
+    Compare,
+    Range,
 }

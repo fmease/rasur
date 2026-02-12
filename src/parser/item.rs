@@ -628,19 +628,26 @@ impl<'src> Parser<'_, '_, 'src> {
             ast::ImplPolarity::Positive
         };
 
+        // FIXME: HACK: `Ty` should just carry a span.
+        let ty_start = self.token.span;
         let ty = self.parse_ty()?;
+        let ty_span = ty_start.until(self.token.span);
 
         let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
+            let start = self.token.span;
             let self_ty = match self.consume(TokenKind::DoubleDot) {
                 // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
-                // FIXME: Introduce custom type, so we can pretty-print it faithfully
-                true => ast::Ty::Error,
+                true => ast::Ty::Error(start.until(self.token.span)),
                 false => self.parse_ty()?,
             };
-            let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty else {
-                return self.fatal(Error::ExpectedTraitFoundTy);
-            };
-            (Some(trait_ref), self_ty)
+            let trait_ref =
+                if let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty {
+                    Some(trait_ref)
+                } else {
+                    self.error(Error::ExpectedTraitFoundTy(ty_span));
+                    None
+                };
+            (trait_ref, self_ty)
         } else {
             (None, ty)
         };
