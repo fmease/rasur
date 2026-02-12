@@ -396,14 +396,17 @@ impl TokenPrefix {
     }
 
     fn strip(self, token: TokenKind) -> Result<Option<TokenKind>, ()> {
+        // See also <https://github.com/rust-lang/rust/issues/152398>.
+
         Ok(Some(match (self, token) {
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
+            // FIXME: Likely not a valid split.
             (Self::GreaterThan, TokenKind::DoubleGreaterThanEquals) => TokenKind::GreaterThanEquals,
+            // FIXME: Likely not a valid split.
             (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
             (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
+            // NB: `LessThanEquals` and `DoubleLessThanEquals` are indeed *not* eligible!
             (Self::LessThan, TokenKind::DoubleLessThan) => TokenKind::SingleLessThan,
-            (Self::LessThan, TokenKind::DoubleLessThanEquals) => TokenKind::LessThanEquals,
-            (Self::LessThan, TokenKind::LessThanEquals) => TokenKind::SingleEquals,
             (Self::LessThan, TokenKind::SingleLessThan) => return Ok(None),
             (Self::LessThan, TokenKind::ThinBackArrow) => TokenKind::SingleHyphen,
             (Self::Pipe, TokenKind::DoublePipe) => TokenKind::SinglePipe,

@@ -572,6 +572,36 @@ fn expr_qualified_struct_pat_in_for_loop() {
     );
 }
 
+// It's never legal to reinterpret the token `<=` as `<` followed by `=`.
+// Similarly for `<<=` which should never be viewed as `<` followed by `<` or `<<`.
+// issue: <https://github.com/fmease/rasur/issues/11>
+#[test]
+fn dont_split_less_than_equals_for_angle_bracketed_lists() {
+    assert_matches!(
+        parse_expr("0 as u64 <= 1", Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Le,
+                deref!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                _
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr("x as T <<= y", Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
+                deref!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                _
+            ),
+            ..
+        })
+    );
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.
