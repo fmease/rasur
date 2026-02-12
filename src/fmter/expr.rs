@@ -413,6 +413,7 @@ impl Fmt for TrailingSpace<ast::CaptureMode> {
         match mode {
             ast::CaptureMode::Ref => {}
             ast::CaptureMode::Move => fmt!(cx, "move "),
+            ast::CaptureMode::Use => fmt!(cx, "use "),
         }
     }
 }

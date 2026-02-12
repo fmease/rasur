@@ -631,8 +631,8 @@ async unsafe fn f() {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
-const async gen safe fn f() {}
 const async gen safe extern "C" fn f() {}
+const async gen safe fn f() {}
 const async safe extern fn f() {}
 const async safe fn f() {}
 const async unsafe extern fn f() {}
@@ -642,12 +642,16 @@ const auto: () = (); // [!]
 const extern "C" fn f() {}
 const extern fn f() {}
 const gen fn f() {}
+const impl !Trait for () {}
+const impl () {}
+const impl Trait for () {}
 const safe extern fn f() {} // [***]
 const safe fn f() {} // [***]
 const safe: () = (); // [!]
 const trait Trait {}
 const unsafe auto trait Trait {} // [***]
 const unsafe extern "C" fn f() {}
+const unsafe impl () {} // [***]
 const unsafe impl Trait for () {} // [***]
 const unsafe trait Trait {} // [***]
 extern "C" fn f() {}
@@ -657,8 +661,8 @@ extern fn f() {}
 extern {}
 fn f() {}
 fn wrap() { safe fn f() {} } // [***]
-gen fn f() {}
 gen extern fn f() {}
+gen fn f() {}
 gen unsafe fn f() {}
 impl !Trait for () {}
 impl Trait for () {}
@@ -668,6 +672,11 @@ pub const fn f() {}
 pub const unsafe extern "C" fn f() {}
 pub const unsafe fn f() {}
 pub fn f() {}
+reuse const impl Trait for () {}
+reuse const unsafe impl !Trait for () {} // [***]
+reuse f;
+reuse impl Trait for () {}
+reuse unsafe impl Trait for () {}
 safe extern "C" fn f() {}
 safe extern fn f() {}
 safe fn f() {}
@@ -679,12 +688,14 @@ unsafe extern "C" fn f() {}
 unsafe extern "C" {}
 unsafe extern {}
 unsafe fn f() {}
-unsafe mod m;
 unsafe impl Trait for () {}
 unsafe impl const !Trait for () {}
 unsafe impl const Trait for () {}
+unsafe mod m;
 unsafe static X: ();
 unsafe trait Trait {}
+use f;
+use {self::*, self::{}};
 "#,
             Rust2024 // for `async` and `gen`
         ),
@@ -711,9 +722,10 @@ for<T> unsafe extern fn(),
     );
 }
 
-// FIXME: Add `static` once we support that.
+// Distinguishing between items and exprs (in stmt ctxts) is quite involved since
+// they share quite a number of prefixes / modifier combinations.
 #[test]
-fn expr_modifiers() {
+fn expr_modifiers_in_stmt_ctxt() {
     // NOTE: Test cases marked `[***]` actually get rejected by rustc
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
@@ -724,18 +736,28 @@ fn expr_modifiers() {
 || {};
 |_| {};
 | | {};
+{};
+use || {};
+unsafe {};
 static || {};
 static |_| {};
+static use || {};
 static move || {};
 static move | | {};
 move || {};
 move |_| {};
 gen || {}; // [***]
 gen |_| {}; // [***]
+gen {};
+gen use || {}; // [***]
+gen use {};
+gen static use |_| {}; // [***]
 gen move || {}; // [***]
 gen move |_| {}; // [***]
 for<> || {};
 for<> |_| {};
+for<> use || {};
+for<> use |_| {};
 for<> move || {};
 for<> move |_| {};
 for<> gen || {};
@@ -754,11 +776,12 @@ for<> const async || {}; // [***]
 for<> const async |_| {}; // [***]
 for<> const async gen || {}; // [***]
 for<> const async gen |_| {}; // [***]
+for<> const async gen static move | | {}; // [***]
 for<> const async gen move || {}; // [***]
 for<> const async gen move |_| {}; // [***]
-for<> const async gen static move | | {}; // [***]
 for<> async || {};
 for<> async |_| {};
+for<> async use | | {};
 for<> async move || {};
 for<> async move |_| {};
 for<> async gen || {};
@@ -767,6 +790,8 @@ for<> async gen move || {};
 for<> async gen move |_| {};
 const || {};
 const |_| {};
+const {};
+const use || {};
 const static || {};
 const static move | | {};
 const move || {};
@@ -779,16 +804,134 @@ const async || {}; // [***]
 const async |_| {}; // [***]
 const async gen || {}; // [***]
 const async gen |_| {}; // [***]
+const async gen static use | | {}; // [***]
 const async gen move || {}; // [***]
 const async gen move |_| {}; // [***]
 async || {};
 async |_| {};
+async {};
+async use || {};
+async use {};
+async static use | | {}; // [***]
 async move || {};
 async move |_| {};
+async move {};
 async gen || {}; // [***]
 async gen |_| {}; // [***]
+async gen {};
+async gen use || {}; // [***]
+async gen use {};
 async gen move || {}; // [***]
 async gen move |_| {}; // [***]
+async gen move {};
+}"#,
+            Rust2024 // for `async` and `gen`
+        ),
+        Ok(_) // just a smoke test
+    );
+}
+
+// rustc accepts a tiny amount more of these expr modifiers if not in a stmt ctxt.
+#[test]
+fn expr_modifiers_in_expr_ctxt() {
+    // NOTE: Test cases marked `[+++]` actually get rejected by rustc
+    //       but they should compile in my opinion.
+    //       See also <https://github.com/rust-lang/rust/issues/146122>.
+
+    assert_matches!(
+        parse_expr(
+            r#"{
+(|| {});
+(|_| {});
+(| | {});
+({});
+(use || {});
+(unsafe {});
+(static || {});
+(static |_| {});
+(static use || {});
+(static move || {});
+(static move | | {});
+(move || {});
+(move |_| {});
+(gen || {}); // [+++]
+(gen |_| {}); // [+++]
+(gen {}); // [+++]
+(gen use || {}); // [+++]
+(gen use {}); // [+++]
+(gen static use |_| {}); // [+++]
+(gen move || {}); // [+++]
+(gen move |_| {}); // [+++]
+(for<> || {});
+(for<> |_| {});
+(for<> use || {});
+(for<> use |_| {});
+(for<> move || {});
+(for<> move |_| {});
+(for<> gen || {});
+(for<> gen |_| {});
+(for<> gen move || {});
+(for<> gen move |_| {});
+(for<> const || {});
+(for<> const |_| {});
+(for<> const move || {});
+(for<> const move |_| {});
+(for<> const gen || {}); // [+++]
+(for<> const gen |_| {}); // [+++]
+(for<> const gen move || {}); // [+++]
+(for<> const gen move |_| {}); // [+++]
+(for<> const async || {}); // [+++]
+(for<> const async |_| {}); // [+++]
+(for<> const async gen || {}); // [+++]
+(for<> const async gen |_| {}); // [+++]
+(for<> const async gen static move | | {}); // [+++]
+(for<> const async gen move || {}); // [+++]
+(for<> const async gen move |_| {}); // [+++]
+(for<> async || {});
+(for<> async |_| {});
+(for<> async use | | {});
+(for<> async move || {});
+(for<> async move |_| {});
+(for<> async gen || {});
+(for<> async gen |_| {});
+(for<> async gen move || {});
+(for<> async gen move |_| {});
+(const || {});
+(const |_| {});
+(const {});
+(const use || {});
+(const static || {});
+(const static move | | {});
+(const move || {});
+(const move |_| {});
+(const gen || {}); // [+++]
+(const gen |_| {}); // [+++]
+(const gen move || {}); // [+++]
+(const gen move |_| {}); // [+++]
+(const async || {}); // [+++]
+(const async |_| {}); // [+++]
+(const async gen || {}); // [+++]
+(const async gen |_| {}); // [+++]
+(const async gen static use | | {}); // [+++]
+(const async gen move || {}); // [+++]
+(const async gen move |_| {}); // [+++]
+(async || {});
+(async |_| {});
+(async {});
+(async use || {});
+(async use {});
+(async static use | | {}); // [+++]
+(async move || {});
+(async move |_| {});
+(async move {});
+(async gen || {});
+(async gen |_| {});
+(async gen {});
+(async gen use || {});
+(async gen use {});
+(async gen move || {});
+(async gen move |_| {});
+(async gen move {});
 }"#,
             Rust2024 // for `async` and `gen`
         ),

@@ -285,8 +285,6 @@ pub(crate) struct MethodCallExpr<'src> {
     pub(crate) args: Vec<Expr<'src>>,
 }
 
-// FIXME: "staticness"/movability for `#[coroutine]`s.
-// FIXME: "useness"/CaptureMode::Use for feat `ergonomic_clones`.
 #[derive(Debug)]
 pub(crate) struct ClosureExpr<'src> {
     pub(crate) bound_vars: Vec<GenericParam<'src>>,
@@ -318,6 +316,7 @@ pub(crate) enum CaptureMode {
     #[default]
     Ref,
     Move,
+    Use,
 }
 
 #[derive(Debug)]

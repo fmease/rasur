@@ -78,6 +78,8 @@ impl<'src> Parser<'_, '_, 'src> {
             // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
             | TokenKind::Try
             | TokenKind::Underscore
+            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
+            | TokenKind::Use
             | TokenKind::Unsafe
             | TokenKind::While
             // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
@@ -512,7 +514,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                     // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
-                    let (mode, qualifiers) = Qualifier::strip_move(qualifiers);
+                    let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                     if !qualifiers.is_empty() {
                         return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
@@ -558,12 +560,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                 // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
-                // FIXME: Parse "useness" here. *However*, staticness and mode may *not* follow! Tricky
+                // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
                 (modifiers.staticness, qualifiers) = match qualifiers {
                     [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
                     _ => (ast::Staticness::Not, qualifiers),
                 };
-                (modifiers.mode, qualifiers) = Qualifier::strip_move(qualifiers);
+                (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                 if !qualifiers.is_empty() {
                     return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
@@ -869,6 +871,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
                 TokenKind::Try => {
                     self.advance();
+                    // FEATURE: `try_blocks_heterogeneous` <https://github.com/rust-lang/rust/issues/149488>
                     let ty = self
                         .consume(weak::Bikeshed)
                         .then(|| self.parse_ty().map(Box::new))
@@ -877,6 +880,8 @@ impl<'src> Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Unsafe => Qualifier::Unsafe,
+                // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
+                TokenKind::Use => Qualifier::Use,
                 _ => break,
             };
             self.advance();
@@ -1320,6 +1325,7 @@ enum Qualifier<'src> {
     Static,
     Try(Option<Box<ast::Ty<'src>>>),
     Unsafe,
+    Use,
 }
 
 impl Qualifier<'_> {
@@ -1337,9 +1343,11 @@ impl Qualifier<'_> {
         }
     }
 
-    fn strip_move(qualifiers: &[Self]) -> (ast::CaptureMode, &[Self]) {
+    fn strip_capture_mode(qualifiers: &[Self]) -> (ast::CaptureMode, &[Self]) {
         match qualifiers {
             [Self::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
+            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
+            [Self::Use, qualifiers @ ..] => (ast::CaptureMode::Use, qualifiers),
             _ => (ast::CaptureMode::Ref, qualifiers),
         }
     }

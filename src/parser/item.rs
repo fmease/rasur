@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
     common::FnParamMode,
     path::PathMode,
     weak::{self, Weak as _},
@@ -86,11 +86,15 @@ impl<'src> Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
         match self.token.kind {
-            | TokenKind::Enum
-            | TokenKind::Macro
-            | TokenKind::Struct
-            | TokenKind::Trait
-            | TokenKind::Use => return true,
+            | TokenKind::Enum | TokenKind::Macro | TokenKind::Struct | TokenKind::Trait => {
+                return true;
+            }
+            // NOTE: We need to disqualify `use |…` which denotes a closure under
+            //       FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>.
+            //       We didn't turn `Use` into an `ItemQualifier` that could be discarded below
+            //       since the rules are slightly more complex, so it's not worth it.
+            //       E.g., while `async use {}` is an expr, `use {}` is an item.
+            TokenKind::Use => return !self.matches(TokenPrefix::Pipe, self.peek(1)),
             TokenKind::CommonIdent => match self.source(self.token.span) {
                 weak::Union::STR => return weak::Union.qualifies(self),
                 _ => {}
@@ -118,7 +122,9 @@ impl<'src> Parser<'_, '_, 'src> {
             if let TokenKind::OpenCurlyBracket
             | TokenKind::SinglePipe
             | TokenKind::DoublePipe
-            | TokenKind::Move = token
+            | TokenKind::Move
+            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
+            | TokenKind::Use = token
             {
                 return false;
             }
