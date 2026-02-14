@@ -383,7 +383,7 @@ fn ty_angle_gen_args() {
         }))
     );
 
-    assert_matches!(parse_ty("Ty::<'a, (), 0>", Rust2015), Ok(_));
+    assert_matches!(parse_ty("Ty::<'a, (), 0>", Rust2015), Ok(_)); // just a smoke test
 }
 
 // While typically angle generic args have to be introduced with `::<` instead of `<`
@@ -510,7 +510,7 @@ fn stmt_macro_call_gen_args() {
         ))
     );
 
-    assert_matches!(parse_stmt("path::to::<>::call::()!();", Rust2015), Ok(_));
+    assert_matches!(parse_stmt("path::to::<>::call::()!();", Rust2015), Ok(_)); // just a smoke test
 }
 
 #[test]
@@ -745,7 +745,7 @@ fn main() {
 ",
             Rust2015
         ),
-        Ok(_)
+        Ok(_) // just a smoke test
     );
 }
 
@@ -849,12 +849,15 @@ fn ty_modifiers() {
         parse_ty(
             r##"(
 fn(),
+for<'a> unsafe fn(),
 for<> fn(),
-unsafe fn(),
+for<> safe fn(),
+for<T> unsafe extern fn(),
+safe extern fn(),
+safe fn(),
 unsafe extern fn(),
 unsafe extern r#"raw"# fn(),
-for<'a> unsafe fn(),
-for<T> unsafe extern fn(),
+unsafe fn(),
 )"##,
             Rust2015
         ),
@@ -1077,4 +1080,53 @@ fn expr_modifiers_in_expr_ctxt() {
         ),
         Ok(_) // just a smoke test
     );
+}
+
+#[test]
+fn trait_bounds() {
+    assert_matches!(
+        parse_ty(
+            "(
+impl !Trait,
+impl (Trait),
+impl (for<> Trait),
+impl (for<> const async Trait),
+impl ?Trait,
+impl Trait,
+impl [const] Trait,
+impl [const] async Trait,
+impl async Trait,
+impl const Trait,
+impl for<> Trait,
+impl for<> const async Trait,
+impl ~const Trait,
+impl ~const async Trait,
+)",
+            Rust2018 // for `async`
+        ),
+        Ok(_)
+    ); // just a smoke test
+
+    assert_matches!(
+        parse_file(
+            "
+fn f<T: !Trait>();
+fn f<T: (Trait)>();
+fn f<T: (for<> Trait)>();
+fn f<T: (for<> const async Trait)>();
+fn f<T: ?Trait>();
+fn f<T: Trait>();
+fn f<T: [const] Trait>();
+fn f<T: [const] async Trait>();
+fn f<T: async Trait>();
+fn f<T: const Trait>();
+fn f<T: for<> Trait>();
+fn f<T: for<> const async Trait>();
+fn f<T: ~const Trait>();
+fn f<T: ~const async Trait>();
+",
+            Rust2018 // for `async`
+        ),
+        Ok(_)
+    ); // just a smoke test
 }

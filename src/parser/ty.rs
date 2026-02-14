@@ -547,6 +547,11 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.parse(TokenKind::CloseSquareBracket)?;
                 ast::BoundConstness::Maybe
             }
+            TokenKind::Tilde => {
+                self.advance();
+                self.parse(TokenKind::Const)?;
+                ast::BoundConstness::Maybe
+            }
             _ => ast::BoundConstness::Never,
         };
 
@@ -591,7 +596,9 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::Const
             | TokenKind::QuestionMark
             // FEATURE: `negative_bounds`
-            | TokenKind::SingleBang => true,
+            | TokenKind::SingleBang
+            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
+            | TokenKind::Tilde => true,
             // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             TokenKind::OpenSquareBracket => {
                 self.peek(1).kind == TokenKind::Const
