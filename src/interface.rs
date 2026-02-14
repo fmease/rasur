@@ -24,7 +24,7 @@ pub(crate) fn opts() -> Opts {
                 .short('e')
                 .long("edition")
                 .value_parser(parse_edition)
-                .help("Set the edition of the crate"),
+                .help("Set the edition of the source file"),
         )
         .arg(
             Arg::new(id::FMT)

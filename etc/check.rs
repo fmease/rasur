@@ -4,6 +4,7 @@
 edition = "2024"
 
 [dependencies]
+clap = "4.5.58"
 walkdir = "2.5.0"
 ---
 #![feature(exit_status_error)]
@@ -13,16 +14,11 @@ compile_error!("non-Unix platforms not supported");
 
 use std::{
     env,
-    ffi::OsString,
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::{Command, ExitCode, ExitStatus, Stdio},
     sync::{Arc, Mutex},
     time::Instant,
 };
-
-const FALLBACK_JOBS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-const DEFAULT_CHUNK_SIZE: NonZeroUsize = NonZeroUsize::new(10).unwrap(); // idk
 
 fn main() -> ExitCode {
     match try_main() {
@@ -32,63 +28,12 @@ fn main() -> ExitCode {
 }
 
 fn try_main() -> Result<(), ()> {
-    let mut args = env::args_os().skip(1);
-
-    let mut opts = Opts::default();
-    let mut paths = Vec::new();
-    let mut jobs = None::<NonZeroUsize>;
-    let mut chunk_size = None::<NonZeroUsize>;
-
-    let mut parse_opts = true;
-
-    while let Some(arg) = args.next() {
-        if parse_opts && let Some(opt) = arg.as_encoded_bytes().strip_prefix(b"-") {
-            match opt {
-                b"-" => parse_opts = false,
-                b"c" | b"-chunk" => {
-                    chunk_size = Some(
-                        args.next()
-                            .ok_or_else(|| eprintln!("error: missing required argument `SIZE`"))?
-                            .to_str()
-                            .and_then(|chunk| chunk.parse().ok())
-                            .ok_or_else(|| eprintln!("error: argument `SIZE` is invalid"))?,
-                    )
-                }
-                b"e" | b"-edition" => {
-                    opts.edition =
-                        Some(args.next().ok_or_else(|| {
-                            eprintln!("error: missing required argument `EDITION`")
-                        })?);
-                }
-                b"I" | b"-invert" => opts.invert = true,
-                b"j" | b"-jobs" => {
-                    jobs = Some(
-                        args.next()
-                            .ok_or_else(|| {
-                                eprintln!("error: missing required argument `JOBS`");
-                            })?
-                            .to_str()
-                            .and_then(|jobs| jobs.parse().ok())
-                            .ok_or_else(|| {
-                                eprintln!("error: argument `JOBS` is invalid");
-                            })?,
-                    );
-                }
-                b"-skip-true-ill" => opts.skip_true_ill = true,
-                b"v" | b"-verbose" => opts.verbose = true,
-                _ => {
-                    eprintln!("error: unknown flag `{}`", arg.display());
-                    return Err(());
-                }
-            }
-        } else {
-            paths.push(PathBuf::from(arg));
-        }
-    }
+    let opts = interface::opts();
 
     let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur"))
         .with_extension(env::consts::EXE_EXTENSION);
     let rustc_path = {
+        // FIXME: Allow customization of rustc toolchain
         let mut output =
             Command::new("rustup").args(["+nightly", "which", "rustc"]).output().unwrap();
         output.status.exit_ok().unwrap();
@@ -96,32 +41,30 @@ fn try_main() -> Result<(), ()> {
         PathBuf::from(String::from_utf8(output.stdout).unwrap())
     };
 
-    let jobs =
-        jobs.unwrap_or_else(|| std::thread::available_parallelism().unwrap_or(FALLBACK_JOBS));
-    let chunk_size = chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-
-    let entries = paths.into_iter().flat_map(walkdir::WalkDir::new);
+    let entries = opts.paths.iter().flat_map(walkdir::WalkDir::new);
     let entries = Arc::new(Mutex::new(entries));
 
     let time = Instant::now();
 
     let stats = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..jobs.get())
+        let handles: Vec<_> = (0..opts.jobs.get())
             .map(|_| {
                 let entries = entries.clone();
                 let rasur_path = &rasur_path;
                 let rustc_path = &rustc_path;
-                let opts = &opts;
+                let test_opts = &opts.test;
 
                 scope.spawn(move || {
-                    let mut local_entries = Vec::with_capacity(chunk_size.get());
+                    let chunk_size = opts.chunk_size.get();
+
+                    let mut local_entries = Vec::with_capacity(chunk_size);
                     let mut stats = Stats::default();
 
                     loop {
                         {
                             let mut entries = entries.lock().unwrap();
 
-                            for _ in 0..chunk_size.get() {
+                            for _ in 0..chunk_size {
                                 local_entries.push(match entries.next() {
                                     Some(entry) => entry,
                                     None => break,
@@ -134,7 +77,7 @@ fn try_main() -> Result<(), ()> {
                         }
 
                         for entry in local_entries.drain(..) {
-                            check(entry, rasur_path, rustc_path, opts, &mut stats);
+                            check(entry, rasur_path, rustc_path, test_opts, &mut stats);
                         }
                     }
 
@@ -161,14 +104,6 @@ fn try_main() -> Result<(), ()> {
 }
 
 #[derive(Default)]
-struct Opts {
-    invert: bool,
-    skip_true_ill: bool,
-    edition: Option<OsString>,
-    verbose: bool,
-}
-
-#[derive(Default)]
 struct Stats {
     failed: Vec<(PathBuf, ExitStatus, ExitStatus)>,
     total: usize,
@@ -183,7 +118,7 @@ impl Stats {
         self
     }
 
-    fn render(&self, opts: &Opts) {
+    fn render(&self, opts: &interface::Opts) {
         let Self { ref failed, total, ignored } = *self;
 
         if !failed.is_empty() {
@@ -227,9 +162,10 @@ fn check(
     entry: Result<walkdir::DirEntry, walkdir::Error>,
     rasur_path: &Path,
     rustc_path: &Path,
-    opts: &Opts,
+    opts: &interface::TestOpts,
     stats: &mut Stats,
 ) {
+    // FIXME: Mark file as invalid instead!
     let entry = entry.expect("failed to read dir entry");
 
     if entry.file_type().is_file()
@@ -254,7 +190,7 @@ fn compare(
     path: &Path,
     rasur_path: &Path,
     rustc_path: &Path,
-    opts: &Opts,
+    opts: &interface::TestOpts,
 ) -> Option<Result<(), (ExitStatus, ExitStatus)>> {
     let mut rustc_call = Command::new(rustc_path);
     rustc_call
@@ -269,10 +205,6 @@ fn compare(
 
     let rustc_exit_status = rustc_call.status().expect("failed to execute `rustc`");
 
-    if opts.skip_true_ill && !rustc_exit_status.success() {
-        return None;
-    }
-
     let mut rasur_call = Command::new(rasur_path);
     rasur_call.stdout(Stdio::null()).stderr(Stdio::null()).arg(&path);
     if let Some(edition) = &opts.edition {
@@ -286,4 +218,90 @@ fn compare(
     }
 
     Some(Ok(()))
+}
+
+mod interface {
+    use clap::{Arg, ArgAction, Command, value_parser as P};
+    use std::ffi::OsString;
+    use std::num::NonZeroUsize;
+    use std::path::PathBuf;
+
+    const DEFAULT_CHUNK_SIZE: &str = "10"; // idk
+
+    pub(super) fn opts() -> Opts {
+        let jobs = Arg::new(id::JOBS).short('j').long("jobs").value_parser(P!(NonZeroUsize));
+        let jobs = match std::thread::available_parallelism() {
+            // FIXME: unfortunately, clap requires the &str to live for the static lifetime.
+            Ok(value) => jobs.default_value(&*value.to_string().leak()),
+            Err(_) => jobs.required(true),
+        };
+
+        let mut matches = Command::new(env!("CARGO_PKG_NAME"))
+            // FIXME: is specifying this value parser necessary? ig ig
+            .arg(
+                Arg::new(id::PATHS)
+                    .action(ArgAction::Append)
+                    .value_parser(P!(PathBuf))
+                    .help("Paths to the source files"),
+            )
+            .arg(
+                Arg::new(id::EDITION)
+                    .short('e')
+                    .long("edition")
+                    .value_parser(P!(OsString))
+                    .help("Set the edition of the source files"),
+            )
+            .arg(Arg::new(id::INVERT).short('I').long("invert").action(ArgAction::SetTrue))
+            .arg(jobs)
+            .arg(
+                Arg::new(id::CHUNK_SIZE)
+                    .short('c')
+                    .long("chunk")
+                    .value_parser(P!(NonZeroUsize))
+                    .default_value(DEFAULT_CHUNK_SIZE),
+            )
+            .arg(Arg::new(id::VERBOSE).short('v').long("verbose").action(ArgAction::SetTrue))
+            .get_matches();
+
+        Opts {
+            paths: matches.remove_many(id::PATHS).map(Iterator::collect).unwrap_or_default(),
+            jobs: matches.remove_one(id::JOBS).unwrap(),
+            chunk_size: matches.remove_one(id::CHUNK_SIZE).unwrap(),
+            test: TestOpts {
+                edition: matches.remove_one(id::EDITION),
+                invert: matches.remove_one(id::INVERT).unwrap_or_default(),
+            },
+            verbose: matches.remove_one(id::VERBOSE).unwrap_or_default(),
+        }
+    }
+
+    pub(super) struct Opts {
+        pub(super) paths: Vec<PathBuf>,
+        pub(super) jobs: NonZeroUsize,
+        pub(super) chunk_size: NonZeroUsize,
+        pub(super) test: TestOpts,
+        pub(super) verbose: bool,
+    }
+
+    pub(super) struct TestOpts {
+        pub(super) edition: Option<OsString>,
+        pub(super) invert: bool,
+    }
+
+    macro_rules! ids {
+        ($( $id:ident ),+ $(,)?) => {
+            mod id {
+                $( pub(super) const $id: &str = stringify!($id); )+
+            }
+        }
+    }
+
+    ids! {
+        CHUNK_SIZE,
+        EDITION,
+        INVERT,
+        JOBS,
+        PATHS,
+        VERBOSE,
+    }
 }
