@@ -20,6 +20,8 @@ use std::{
     time::Instant,
 };
 
+const TMP_DIR_PATH: &str = "/tmp/rasurck";
+
 fn main() -> ExitCode {
     match try_main() {
         Ok(()) => ExitCode::SUCCESS,
@@ -96,11 +98,13 @@ fn try_main() -> Result<(), ()> {
     stats.render(&opts);
     println!("    {duration:?}");
 
-    if !stats.failed.is_empty() {
-        return Err(());
+    if let Measure::CfgFalse = opts.test.measure
+        && stats.total > 0
+    {
+        _ = std::fs::remove_dir_all(TMP_DIR_PATH);
     }
 
-    Ok(())
+    if stats.failed.is_empty() { Ok(()) } else { Err(()) }
 }
 
 #[derive(Default)]
@@ -162,7 +166,7 @@ fn check(
     entry: Result<walkdir::DirEntry, walkdir::Error>,
     rasur_path: &Path,
     rustc_path: &Path,
-    opts: &interface::TestOpts,
+    opts: &TestOpts,
     stats: &mut Stats,
 ) {
     // FIXME: Mark file as invalid instead!
@@ -190,14 +194,20 @@ fn compare(
     path: &Path,
     rasur_path: &Path,
     rustc_path: &Path,
-    opts: &interface::TestOpts,
+    opts: &TestOpts,
 ) -> Option<Result<(), (ExitStatus, ExitStatus)>> {
     let mut rustc_call = Command::new(rustc_path);
-    rustc_call
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .arg(&path)
-        .arg("-Zparse-crate-root-only");
+    rustc_call.stdout(Stdio::null()).stderr(Stdio::null()).arg(&path);
+    match opts.measure {
+        Measure::ParseOnly => rustc_call.arg("-Zparse-crate-root-only"),
+        Measure::CfgFalse => rustc_call.args([
+            "-Zcrate-attr=cfg(false)",
+            "--crate-type=lib",
+            "--emit=metadata",
+            "--out-dir",
+            TMP_DIR_PATH,
+        ]),
+    };
     if let Some(edition) = &opts.edition {
         rustc_call.arg("--edition");
         rustc_call.arg(edition);
@@ -220,13 +230,25 @@ fn compare(
     Some(Ok(()))
 }
 
-mod interface {
-    use clap::{Arg, ArgAction, Command, value_parser as P};
-    use std::ffi::OsString;
-    use std::num::NonZeroUsize;
-    use std::path::PathBuf;
+struct TestOpts {
+    edition: Option<std::ffi::OsString>,
+    measure: Measure,
+    invert: bool,
+}
 
-    const DEFAULT_CHUNK_SIZE: &str = "10"; // idk
+#[derive(Clone, Copy)]
+enum Measure {
+    ParseOnly,
+    CfgFalse,
+}
+
+mod interface {
+    use super::{Measure, TestOpts};
+    use clap::{Arg, ArgAction, Command, value_parser as P};
+    use std::{num::NonZeroUsize, path::PathBuf};
+
+    const DEFAULT_CHUNK_SIZE: &str = "10";
+    const DEFAULT_MEASURE: &str = "parse-only";
 
     pub(super) fn opts() -> Opts {
         let jobs = Arg::new(id::JOBS).short('j').long("jobs").value_parser(P!(NonZeroUsize));
@@ -248,8 +270,15 @@ mod interface {
                 Arg::new(id::EDITION)
                     .short('e')
                     .long("edition")
-                    .value_parser(P!(OsString))
+                    .value_parser(P!(std::ffi::OsString))
                     .help("Set the edition of the source files"),
+            )
+            .arg(
+                Arg::new(id::MEASURE)
+                    .short('m')
+                    .long("measure")
+                    .value_parser(parse_measure)
+                    .default_value(DEFAULT_MEASURE),
             )
             .arg(Arg::new(id::INVERT).short('I').long("invert").action(ArgAction::SetTrue))
             .arg(jobs)
@@ -269,6 +298,7 @@ mod interface {
             chunk_size: matches.remove_one(id::CHUNK_SIZE).unwrap(),
             test: TestOpts {
                 edition: matches.remove_one(id::EDITION),
+                measure: matches.remove_one(id::MEASURE).unwrap(),
                 invert: matches.remove_one(id::INVERT).unwrap_or_default(),
             },
             verbose: matches.remove_one(id::VERBOSE).unwrap_or_default(),
@@ -283,9 +313,20 @@ mod interface {
         pub(super) verbose: bool,
     }
 
-    pub(super) struct TestOpts {
-        pub(super) edition: Option<OsString>,
-        pub(super) invert: bool,
+    macro_rules! parse {
+        ($( $key:literal => $value:expr ),+ $(,)?)  => {
+            |source| Ok(match source {
+                $( $key => $value, )+
+                _ => return Err(format!("possible values: {}", [$(concat!("`", $key, "`")),+].join(", "))),
+            })
+        }
+    }
+
+    fn parse_measure(source: &str) -> Result<Measure, String> {
+        parse!(
+            "parse-only" => Measure::ParseOnly,
+            "cfg-false" => Measure::CfgFalse,
+        )(source)
     }
 
     macro_rules! ids {
@@ -301,6 +342,7 @@ mod interface {
         EDITION,
         INVERT,
         JOBS,
+        MEASURE,
         PATHS,
         VERBOSE,
     }
