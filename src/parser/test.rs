@@ -1,44 +1,20 @@
-use super::ExpectedFragment;
+use super::{ExpectedFragment, Parser};
 use crate::{
     Edition::{self, *},
     ast,
     error::{Buffer as ErrorBuffer, Error, UnchainableExprOp},
     lexer::{StripFrontmatter, StripShebang, lex},
+    normalizer::{Normalized, normalize},
     token::{Token, TokenKind},
 };
-use normalization::{Normalized, normalize as n};
 use std::assert_matches::assert_matches;
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
-mod normalization {
-    use std::borrow::Cow;
-
-    pub(super) struct Normalized<T>(T);
-
-    pub(super) macro normalize($source:expr) {
-        normalize($source).as_ref()
-    }
-
-    pub(super) fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
-        Normalized(crate::normalize(source))
-    }
-
-    impl Normalized<Cow<'_, str>> {
-        pub(super) fn as_ref(&self) -> Normalized<&str> {
-            Normalized(&self.0)
-        }
-    }
-
-    impl<T> Normalized<T> {
-        pub(super) fn into_inner(self) -> T {
-            self.0
-        }
-    }
+macro n($source:expr) {
+    normalize($source).as_ref()
 }
-
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
-    let source = source.into_inner();
     let mut errors = ErrorBuffer::Hold(Vec::new());
     let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
     let file = super::parse(file, source, edition, &mut errors);
@@ -53,10 +29,9 @@ fn parse_via<'src, T>(
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
-    let source = source.into_inner();
     let mut errors = ErrorBuffer::Hold(Vec::new());
     let file = lex(source, edition, StripShebang::No, StripFrontmatter::No, &mut errors);
-    let mut p = super::Parser::new(&file.tokens, source, edition, &mut errors);
+    let mut p = Parser::new(&file.tokens, source, edition, &mut errors);
     let result = parse(&mut p).and_then(|r| {
         p.parse(TokenKind::EndOfInput)?;
         Ok(r)

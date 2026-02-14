@@ -1,22 +1,21 @@
 use crate::{
     Edition,
     error::{Buffer as ErrorBuffer, Error},
+    normalizer::Normalized,
     span::{ByteIndex, Span},
     token::{PathSegKeyword, Token, TokenKind},
 };
 use iter::IndexedChars;
 use unicode_xid::UnicodeXID;
 
-// FIXME: Unicode BOM removal
-// FIXME: CRLF→LF normalization
-
 pub fn lex(
-    source: &str,
+    source: Normalized<&str>,
     edition: Edition,
     strip_shebang: StripShebang,
     strip_frontmatter: StripFrontmatter,
     errors: &mut ErrorBuffer,
 ) -> File {
+    let source = source.into_inner();
     let mut offset = ByteIndex::default();
 
     let shebang = strip_shebang.apply(source, edition, &mut offset);

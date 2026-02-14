@@ -2,6 +2,7 @@ use crate::{
     Edition, ast,
     error::{Buffer as ErrorBuffer, Error},
     lexer::lex_ident,
+    normalizer::Normalized,
     span::{ByteIndex, Span},
     token::{Token, TokenKind},
 };
@@ -25,7 +26,7 @@ struct BufferedError(());
 
 pub fn parse<'src>(
     file: crate::lexer::File,
-    source: &'src str,
+    source: Normalized<&'src str>,
     edition: Edition,
     errors: &mut ErrorBuffer,
 ) -> Result<ast::File<'src>, ()> {
@@ -50,13 +51,13 @@ struct Parser<'t, 'e, 'src> {
 impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     fn new(
         tokens: &'t [Token],
-        source: &'src str,
+        source: Normalized<&'src str>,
         edition: Edition,
         errors: &'e mut ErrorBuffer,
     ) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, errors, token, index, source, edition }
+        Self { tokens, errors, token, index, source: source.into_inner(), edition }
     }
 
     /// Parse a source file.

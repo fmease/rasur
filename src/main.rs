@@ -5,7 +5,10 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use Default::default;
-use rasur::lexer::{StripFrontmatter, StripShebang};
+use rasur::{
+    lexer::{StripFrontmatter, StripShebang},
+    normalizer::Normalized,
+};
 use std::process::ExitCode;
 
 mod diagnostics;
@@ -38,11 +41,11 @@ fn try_main() -> Result<(), ()> {
         interface::Source::String(string) => (string, "<anon>".into()),
     };
 
-    let source = rasur::normalize(&source);
+    let source = rasur::normalizer::normalize(&source);
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();
-    let cx = diagnostics::RenderCx { source, path: &path, short: opts.short };
+    let cx = diagnostics::RenderCx::new(source, &path, opts.short);
 
     let mut errors = rasur::error::Buffer::Hold(Vec::new());
 
@@ -94,7 +97,7 @@ fn try_main() -> Result<(), ()> {
     result
 }
 
-fn emit_tokens(file: &rasur::lexer::File, source: &str) -> std::io::Result<()> {
+fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::Result<()> {
     use anstyle::AnsiColor;
     use std::io::Write;
 
@@ -105,7 +108,7 @@ fn emit_tokens(file: &rasur::lexer::File, source: &str) -> std::io::Result<()> {
 
     let render = |p: &mut Painter<_>, span: rasur::span::Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
-        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source[span.range()]))
+        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source.into_inner()[span.range()]))
     };
 
     if let Some(shebang) = file.shebang {

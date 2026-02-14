@@ -1,3 +1,4 @@
+use crate::normalizer::Normalized;
 use crate::token;
 use crate::{ast, span::Span};
 use std::fmt::Write as _;
@@ -37,7 +38,8 @@ macro fmt($cx:ident, $($arg:tt)*) {
     _ = $cx.output.write_fmt(format_args!($($arg)*))
 }
 
-pub fn fmt(file: ast::File<'_>, source: &str, cfg: Cfg) -> String {
+pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, cfg: Cfg) -> String {
+    let source = source.into_inner();
     let mut cx = Cx { cfg, source, indent: 0, output: String::with_capacity(source.len()) };
     file.fmt(&mut cx);
     cx.output

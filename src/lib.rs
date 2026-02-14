@@ -22,8 +22,6 @@
 #![allow(clippy::match_bool)]
 #![allow(clippy::option_option)]
 
-use std::borrow::Cow;
-
 pub mod ast;
 pub mod error;
 pub mod fmter;
@@ -42,8 +40,31 @@ pub enum Edition {
     Future,
 }
 
-pub fn normalize(source: &str) -> Cow<'_, str> {
-    const BOM: char = '\u{FEFF}';
-    let source = source.strip_prefix(BOM).unwrap_or(&source);
-    if source.contains('\r') { source.replace("\r\n", "\n").into() } else { source.into() }
+pub mod normalizer {
+    use std::borrow::Cow;
+
+    pub fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
+        const BOM: char = '\u{FEFF}';
+        let source = source.strip_prefix(BOM).unwrap_or(source);
+        let source =
+            if source.contains('\r') { source.replace("\r\n", "\n").into() } else { source.into() };
+        Normalized { raw: source }
+    }
+
+    #[derive(Clone, Copy)]
+    pub struct Normalized<T> {
+        raw: T,
+    }
+
+    impl<T> Normalized<T> {
+        pub fn into_inner(self) -> T {
+            self.raw
+        }
+    }
+
+    impl Normalized<Cow<'_, str>> {
+        pub fn as_ref(&self) -> Normalized<&str> {
+            Normalized { raw: &self.raw }
+        }
+    }
 }

@@ -1,6 +1,7 @@
 use annotate_snippets as ann;
 use rasur::{
     error::{Error, UnchainableExprOp},
+    normalizer::Normalized,
     parser::ExpectedFragment,
     span::Span,
     token::{Repr, Token, TokenKind},
@@ -244,7 +245,13 @@ impl Diag {
 
 #[derive(Clone, Copy)]
 pub(crate) struct RenderCx<'a> {
-    pub(crate) source: &'a str,
-    pub(crate) path: &'a Path,
-    pub(crate) short: bool,
+    source: &'a str,
+    path: &'a Path,
+    short: bool,
+}
+
+impl<'a> RenderCx<'a> {
+    pub(crate) fn new(source: Normalized<&'a str>, path: &'a Path, short: bool) -> Self {
+        Self { source: source.into_inner(), path, short }
+    }
 }
