@@ -152,13 +152,17 @@ impl StripFrontmatter {
         let mut trailing_dashes = 0;
         let mut terminated = false;
 
-        while let Some((_, char)) = chars.next() {
+        while let Some((index, char)) = chars.next() {
             if char == '-' && (line_start || trailing_dashes > 0) {
                 trailing_dashes += 1;
                 if trailing_dashes == leading_dashes {
                     terminated = true;
                     break;
                 }
+            }
+
+            if char == '\r' {
+                errors.add(Error::InvalidScalarInFrontmatterBody(chars.span(index)));
             }
 
             line_start = char == '\n';
@@ -189,7 +193,7 @@ impl StripFrontmatter {
 
             if !valid {
                 // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
-                errors.add(Error::FrontmatterClosingTrailer(Span::new(start, end)));
+                errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
             }
         }
 

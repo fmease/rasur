@@ -22,6 +22,8 @@
 #![allow(clippy::match_bool)]
 #![allow(clippy::option_option)]
 
+use std::borrow::Cow;
+
 pub mod ast;
 pub mod error;
 pub mod fmter;
@@ -38,4 +40,10 @@ pub enum Edition {
     Rust2021,
     Rust2024,
     Future,
+}
+
+pub fn normalize(source: &str) -> Cow<'_, str> {
+    const BOM: char = '\u{FEFF}';
+    let source = source.strip_prefix(BOM).unwrap_or(&source);
+    if source.contains('\r') { source.replace("\r\n", "\n").into() } else { source.into() }
 }

@@ -89,7 +89,8 @@ fn try_main() -> Result<(), ()> {
     let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur"))
         .with_extension(env::consts::EXE_EXTENSION);
     let rustc_path = {
-        let mut output = Command::new("rustup").args(["which", "rustc"]).output().unwrap();
+        let mut output =
+            Command::new("rustup").args(["+nightly", "which", "rustc"]).output().unwrap();
         output.status.exit_ok().unwrap();
         output.stdout.pop(); // \n
         PathBuf::from(String::from_utf8(output.stdout).unwrap())

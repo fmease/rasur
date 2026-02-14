@@ -38,8 +38,11 @@ fn try_main() -> Result<(), ()> {
         interface::Source::String(string) => (string, "<anon>".into()),
     };
 
+    let source = rasur::normalize(&source);
+    let source = source.as_ref();
+
     let edition = opts.edition.unwrap_or_default();
-    let cx = diagnostics::RenderCx { source: &source, path: &path, short: opts.short };
+    let cx = diagnostics::RenderCx { source, path: &path, short: opts.short };
 
     let mut errors = rasur::error::Buffer::Hold(Vec::new());
 
@@ -47,10 +50,10 @@ fn try_main() -> Result<(), ()> {
     let strip_frontmatter =
         if opts.strip_frontmatter { StripFrontmatter::Yes } else { StripFrontmatter::No };
 
-    let file = rasur::lexer::lex(&source, edition, strip_shebang, strip_frontmatter, &mut errors);
+    let file = rasur::lexer::lex(source, edition, strip_shebang, strip_frontmatter, &mut errors);
 
     if opts.emit_tokens {
-        emit_tokens(&file, &source).unwrap();
+        emit_tokens(&file, source).unwrap();
     }
 
     if opts.lex_only {
@@ -62,7 +65,7 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = rasur::parser::parse(file, &source, edition, &mut errors);
+    let file = rasur::parser::parse(file, source, edition, &mut errors);
 
     if let Ok(file) = &file
         && opts.emit_ast
@@ -82,7 +85,7 @@ fn try_main() -> Result<(), ()> {
     {
         let result = rasur::fmter::fmt(
             file,
-            &source,
+            source,
             rasur::fmter::Cfg { skip_marker: opts.skip_marker, ..default() },
         );
         println!("{result}");

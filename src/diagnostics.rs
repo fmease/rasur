@@ -127,8 +127,11 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         Error::UnterminatedFrontmatter(span) => {
             Diag::new("unterminated frontmatter").highlight(span)
         }
-        Error::FrontmatterClosingTrailer(span) => {
+        Error::InvalidFrontmatterTrailer(span) => {
             Diag::new("extra characters after frontmatter closing").highlight(span)
+        }
+        Error::InvalidScalarInFrontmatterBody(span) => {
+            Diag::new("invalid scalar in frontmatter body").highlight(span)
         }
         Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
     }

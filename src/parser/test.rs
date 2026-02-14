@@ -6,25 +6,54 @@ use crate::{
     lexer::{StripFrontmatter, StripShebang, lex},
     token::{Token, TokenKind},
 };
+use normalization::{Normalized, normalize as n};
 use std::assert_matches::assert_matches;
-
-// FIXME: Replace these tests with golden tests of ~debug fmt'ed nodes (custom fmt, derived, compact)
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
-fn parse_file(source: &str, edition: Edition) -> Result<ast::File<'_>, ()> {
-    let mut errors = ErrorBuffer::Void;
-    let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
-    let file = super::parse(file, source, edition, &mut errors);
-    file.map_err(drop)
+mod normalization {
+    use std::borrow::Cow;
+
+    pub(super) struct Normalized<T>(T);
+
+    pub(super) macro normalize($source:expr) {
+        normalize($source).as_ref()
+    }
+
+    pub(super) fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
+        Normalized(crate::normalize(source))
+    }
+
+    impl Normalized<Cow<'_, str>> {
+        pub(super) fn as_ref(&self) -> Normalized<&str> {
+            Normalized(&self.0)
+        }
+    }
+
+    impl<T> Normalized<T> {
+        pub(super) fn into_inner(self) -> T {
+            self.0
+        }
+    }
 }
 
-// FIXME: make the impl nicer
+fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
+    let source = source.into_inner();
+    let mut errors = ErrorBuffer::Hold(Vec::new());
+    let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
+    let file = super::parse(file, source, edition, &mut errors);
+    match errors.non_empty() {
+        Some(errors) => Err(errors),
+        None => Ok(file.unwrap()),
+    }
+}
+
 fn parse_via<'src, T>(
-    source: &'src str,
+    source: Normalized<&'src str>,
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
+    let source = source.into_inner();
     let mut errors = ErrorBuffer::Hold(Vec::new());
     let file = lex(source, edition, StripShebang::No, StripFrontmatter::No, &mut errors);
     let mut p = super::Parser::new(&file.tokens, source, edition, &mut errors);
@@ -34,34 +63,34 @@ fn parse_via<'src, T>(
     });
     match errors.non_empty() {
         Some(errors) => Err(errors),
-        None => Ok(result.unwrap_or_else(|_| unreachable!())),
+        None => Ok(result.map_err(drop).unwrap()),
     }
 }
 
-fn parse_item(source: &str, edition: Edition) -> Result<ast::Item<'_>> {
+fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
     parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
 }
 
-fn parse_ty(source: &str, edition: Edition) -> Result<ast::Ty<'_>> {
+fn parse_ty(source: Normalized<&str>, edition: Edition) -> Result<ast::Ty<'_>> {
     parse_via(source, edition, |this| this.parse_ty())
 }
 
-fn parse_stmt(source: &str, edition: Edition) -> Result<ast::Stmt<'_>> {
+fn parse_stmt(source: Normalized<&str>, edition: Edition) -> Result<ast::Stmt<'_>> {
     parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
 }
 
-fn parse_expr(source: &str, edition: Edition) -> Result<ast::Expr<'_>> {
+fn parse_expr(source: Normalized<&str>, edition: Edition) -> Result<ast::Expr<'_>> {
     parse_via(source, edition, |this| this.parse_expr())
 }
 
-fn parse_pat(source: &str, edition: Edition) -> Result<ast::Pat<'_>> {
+fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>> {
     parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Allowed))
 }
 
 #[test]
 fn file_empty() {
     assert_matches!(
-        parse_file("", Rust2015),
+        parse_file(n!(""), Rust2015),
         Ok(ast::File {
             shebang: None,
             frontmatter: None,
@@ -72,10 +101,43 @@ fn file_empty() {
     );
 }
 
+// We only permit ASCII spaces and tabs in (the padding of) frontmatter infostrings & trailers.
+// However, due to CRLF→LF normalization, we automatically also permit CR before the line break.
+#[test]
+fn frontmatter_crlf() {
+    // See also <https://github.com/fmease/rasur/issues/15>.
+
+    assert_matches!(
+        parse_file(n!("---\t\r\n---\t\r\n"), Rust2015),
+        Ok(ast::File { shebang: None, frontmatter: Some("---\t\n---"), .. })
+    );
+}
+
+#[test]
+fn frontmatter_cr() {
+    // CR isn't "horizontal whitespace" and therefore forbidden inside infostrings.
+    assert_matches!(
+        parse_file(n!("--- \r \n---"), Rust2015),
+        Err(deref!([Error::InvalidFrontmatterInfostring(_)])),
+    );
+
+    // CR isn't "horizontal whitespace" and therefore forbidden inside trailers.
+    assert_matches!(
+        parse_file(n!("---\n--- \r "), Rust2015),
+        Err(deref!([Error::InvalidFrontmatterTrailer(_)]))
+    );
+
+    // "Stray" CRs inside the frontmatter body are explicitly forbidden.
+    assert_matches!(
+        parse_file(n!("---\n(\r)\n---"), Rust2015),
+        Err(deref!([Error::InvalidScalarInFrontmatterBody(_)]))
+    );
+}
+
 #[test]
 fn tuple_struct_field_visibility() {
     assert_matches!(
-        parse_item("struct T(pub([i32; 2]));", Rust2015),
+        parse_item(n!("struct T(pub([i32; 2]));"), Rust2015),
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(deref!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
@@ -90,7 +152,7 @@ fn tuple_struct_field_visibility() {
     );
 
     assert_matches!(
-        parse_item("struct T(pub(crate)[i32]);", Rust2015),
+        parse_item(n!("struct T(pub(crate)[i32]);"), Rust2015),
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(deref!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
@@ -107,7 +169,7 @@ fn tuple_struct_field_visibility() {
     );
 
     assert_matches!(
-        parse_item("struct T(pub(self)&());", Rust2015),
+        parse_item(n!("struct T(pub(self)&());"), Rust2015),
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(deref!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
@@ -125,7 +187,7 @@ fn tuple_struct_field_visibility() {
 
     // issue: <https://github.com/fmease/rasur/issues/21>
     assert_matches!(
-        parse_item("struct T(pub(super::U));", Rust2015),
+        parse_item(n!("struct T(pub(super::U));"), Rust2015),
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(deref!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
@@ -148,12 +210,12 @@ fn tuple_struct_field_visibility() {
     );
 
     assert_matches!(
-        parse_item("struct T(pub(super::U)impl);", Rust2015),
+        parse_item(n!("struct T(pub(super::U)impl);"), Rust2015),
         Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
     );
 
     assert_matches!(
-        parse_item("struct T(pub(in super::U)!);", Rust2015),
+        parse_item(n!("struct T(pub(in super::U)!);"), Rust2015),
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(deref!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
@@ -173,7 +235,7 @@ fn tuple_struct_field_visibility() {
     );
 
     assert_matches!(
-        parse_item("struct T(pub);", Rust2015),
+        parse_item(n!("struct T(pub);"), Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseRoundBracket, .. },
             ExpectedFragment::Ty
@@ -184,7 +246,7 @@ fn tuple_struct_field_visibility() {
 #[test]
 fn expr_double_borrow_and_double_borrow() {
     assert_matches!(
-        parse_expr("&&0&&&&1", Rust2015),
+        parse_expr(n!("&&0&&&&1"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::And,
@@ -227,7 +289,7 @@ fn expr_double_borrow_and_double_borrow() {
 #[test]
 fn expr_or_nullary_closure() {
     assert_matches!(
-        parse_expr("()||||()", Rust2015),
+        parse_expr(n!("()||||()"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Or,
@@ -252,7 +314,7 @@ fn expr_or_nullary_closure() {
 #[test]
 fn pat_mut_ref_mut() {
     assert_matches!(
-        parse_pat("mut ref mut x", Rust2015),
+        parse_pat(n!("mut ref mut x"), Rust2015),
         Ok(ast::Pat::Binding(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
@@ -265,12 +327,12 @@ fn pat_mut_ref_mut() {
 #[test]
 fn expr_false_angle_gen_args() {
     assert_matches!(
-        parse_expr("f<i32>()", Rust2015),
+        parse_expr(n!("f<i32>()"), Rust2015),
         Err(deref!([Error::UnchainableExprOp(UnchainableExprOp::Compare, _)])),
     );
 
     assert_matches!(
-        parse_expr("f<i32>", Rust2015),
+        parse_expr(n!("f<i32>"), Rust2015),
         Err(deref!([
             Error::UnchainableExprOp(UnchainableExprOp::Compare, _),
             Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
@@ -281,7 +343,7 @@ fn expr_false_angle_gen_args() {
 #[test]
 fn pat_false_angle_gen_args() {
     assert_matches!(
-        parse_pat("Some<i32>(0)", Rust2015),
+        parse_pat(n!("Some<i32>(0)"), Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleLessThan, span: _ },
             _
@@ -292,7 +354,7 @@ fn pat_false_angle_gen_args() {
 #[test]
 fn expr_angle_gen_args() {
     assert_matches!(
-        parse_expr("f::<i32>()", Rust2015),
+        parse_expr(n!("f::<i32>()"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Call(
                 deref!(ast::Expr {
@@ -329,7 +391,7 @@ fn expr_angle_gen_args() {
 #[test]
 fn pat_angle_gen_args() {
     assert_matches!(
-        parse_pat("Some::<i32>(0)", Rust2015),
+        parse_pat(n!("Some::<i32>(0)"), Rust2015),
         Ok(ast::Pat::TupleStruct(deref!(ast::TupleStructPat {
             path: ast::ExtPath {
                 ext: None,
@@ -360,7 +422,7 @@ fn pat_angle_gen_args() {
 #[test]
 fn ty_angle_gen_args() {
     assert_matches!(
-        parse_ty("Ty<'a, (), 0>", Rust2015),
+        parse_ty(n!("Ty<'a, (), 0>"), Rust2015),
         Ok(ast::Ty::Path(ast::ExtPath {
             ext: None,
             path: ast::Path {
@@ -383,7 +445,7 @@ fn ty_angle_gen_args() {
         }))
     );
 
-    assert_matches!(parse_ty("Ty::<'a, (), 0>", Rust2015), Ok(_)); // just a smoke test
+    assert_matches!(parse_ty(n!("Ty::<'a, (), 0>"), Rust2015), Ok(_)); // just a smoke test
 }
 
 // While typically angle generic args have to be introduced with `::<` instead of `<`
@@ -393,7 +455,7 @@ fn ty_angle_gen_args() {
 #[test]
 fn expr_angle_args_in_path_ext() {
     assert_matches!(
-        parse_expr("<() as TraitRef<()>>::assoc", Rust2015),
+        parse_expr(n!("<() as TraitRef<()>>::assoc"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Path(ast::ExtPath {
                 ext: Some(ast::PathExt {
@@ -424,7 +486,7 @@ fn expr_angle_args_in_path_ext() {
 #[test]
 fn expr_pat_paren_gen_args_arrow() {
     assert_matches!(
-        parse_expr("x::()->()", Rust2015),
+        parse_expr(n!("x::()->()"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Path(deref!(ast::ExtPath {
                 ext: None,
@@ -443,7 +505,7 @@ fn expr_pat_paren_gen_args_arrow() {
     );
 
     assert_matches!(
-        parse_pat("x::()->!::X", Rust2015),
+        parse_pat(n!("x::()->!::X"), Rust2015),
         Ok(ast::Pat::Path(deref!(ast::ExtPath {
             ext: None,
             path: ast::Path {
@@ -465,7 +527,7 @@ fn expr_pat_paren_gen_args_arrow() {
 #[test]
 fn item_macro_call_gen_args() {
     assert_matches!(
-        parse_item("path::to::<>::call!();", Rust2015),
+        parse_item(n!("path::to::<>::call!();"), Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleLessThan, span: _ },
             _
@@ -473,7 +535,7 @@ fn item_macro_call_gen_args() {
     );
 
     assert_matches!(
-        parse_item("path::to::call<()>!();", Rust2015),
+        parse_item(n!("path::to::call<()>!();"), Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleLessThan, span: _ },
             _
@@ -484,7 +546,7 @@ fn item_macro_call_gen_args() {
 #[test]
 fn stmt_macro_call_gen_args() {
     assert_matches!(
-        parse_stmt("path::to::<>::call::<>!();", Rust2015),
+        parse_stmt(n!("path::to::<>::call::<>!();"), Rust2015),
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 kind: ast::ExprKind::MacroCall(deref!(ast::MacroCall {
@@ -510,17 +572,17 @@ fn stmt_macro_call_gen_args() {
         ))
     );
 
-    assert_matches!(parse_stmt("path::to::<>::call::()!();", Rust2015), Ok(_)); // just a smoke test
+    assert_matches!(parse_stmt(n!("path::to::<>::call::()!();"), Rust2015), Ok(_)); // just a smoke test
 }
 
 #[test]
 fn stmts_const_item_const_block() {
     assert_matches!(
         parse_expr(
-            "{
+            n!("{
     const { }
     const fn f() {}
-}",
+}"),
             Rust2015
         ),
         Ok(ast::Expr {
@@ -563,14 +625,14 @@ fn stmts_const_item_const_block() {
 #[test]
 fn expr_control_flow_ops_block() {
     assert_matches!(
-        parse_expr("if return {}", Rust2015),
+        parse_expr(n!("if return {}"), Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
             ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
         )]))
     );
     assert_matches!(
-        parse_expr("if return {} {}", Rust2015),
+        parse_expr(n!("if return {} {}"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::If(deref!(ast::IfExpr {
                 condition: ast::Expr {
@@ -592,7 +654,7 @@ fn expr_control_flow_ops_block() {
 
     // FIXME: Explainer, once I have one.
     assert_matches!(
-        parse_expr("if break {}", Rust2015),
+        parse_expr(n!("if break {}"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::If(deref!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
@@ -604,7 +666,7 @@ fn expr_control_flow_ops_block() {
     );
 
     assert_matches!(
-        parse_expr("break {}", Rust2015),
+        parse_expr(n!("break {}"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Break(
                 None,
@@ -621,7 +683,7 @@ fn expr_control_flow_ops_block() {
     );
 
     assert_matches!(
-        parse_expr("if continue {}", Rust2015),
+        parse_expr(n!("if continue {}"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::If(deref!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Continue(None), .. },
@@ -643,7 +705,7 @@ fn expr_control_flow_ops_block() {
 #[test]
 fn expr_qualified_struct_pat_in_for_loop() {
     assert_matches!(
-        parse_expr("for<Ty as Trait>::AssocTy {} in () {}", Rust2015),
+        parse_expr(n!("for<Ty as Trait>::AssocTy {} in () {}"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::ForLoop(deref!(ast::ForLoopExpr {
                 pat: ast::Pat::Struct(ast::StructPat {
@@ -688,7 +750,7 @@ fn expr_qualified_struct_pat_in_for_loop() {
 #[test]
 fn dont_split_less_than_equals_for_angle_bracketed_lists() {
     assert_matches!(
-        parse_expr("0 as u64 <= 1", Rust2015),
+        parse_expr(n!("0 as u64 <= 1"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Le,
@@ -700,7 +762,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
     );
 
     assert_matches!(
-        parse_expr("x as T <<= y", Rust2015),
+        parse_expr(n!("x as T <<= y"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
@@ -725,7 +787,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
 fn binding_modes() {
     assert_matches!(
         parse_file(
-            "
+            n!("
 fn main() {
     let x = ();
     let mut x = ();
@@ -742,7 +804,7 @@ fn main() {
     let &mut ref mut x = ();
     let &mut mut ref mut x = ();
 }
-",
+"),
             Rust2015
         ),
         Ok(_) // just a smoke test
@@ -758,7 +820,7 @@ fn item_modifiers() {
     // FIXME: Add `type const`, `const impl`, `reuse impl`
     assert_matches!(
         parse_file(
-            r#"
+            n!(r#"
 async extern fn f() {}
 async fn f() {}
 async gen fn f() {}
@@ -791,7 +853,6 @@ const safe: () = (); // [!]
 const trait Trait {}
 const unsafe auto trait Trait {} // [***]
 const unsafe extern "C" fn f() {}
-const unsafe impl () {} // [***]
 const unsafe impl Trait for () {} // [***]
 const unsafe trait Trait {} // [***]
 extern "C" fn f() {}
@@ -836,7 +897,7 @@ unsafe static X: ();
 unsafe trait Trait {}
 use f;
 use {self::*, self::{}};
-"#,
+"#),
             Rust2024 // for `async` and `gen`
         ),
         Ok(_) // just a smoke test
@@ -847,7 +908,7 @@ use {self::*, self::{}};
 fn ty_modifiers() {
     assert_matches!(
         parse_ty(
-            r##"(
+            n!(r##"(
 fn(),
 for<'a> unsafe fn(),
 for<> fn(),
@@ -858,7 +919,7 @@ safe fn(),
 unsafe extern fn(),
 unsafe extern r#"raw"# fn(),
 unsafe fn(),
-)"##,
+)"##),
             Rust2015
         ),
         Ok(_) // just a smoke test
@@ -875,7 +936,7 @@ fn expr_modifiers_in_stmt_ctxt() {
 
     assert_matches!(
         parse_expr(
-            r#"{
+            n!(r#"{
 || {};
 |_| {};
 | | {};
@@ -967,7 +1028,7 @@ async gen use {};
 async gen move || {}; // [***]
 async gen move |_| {}; // [***]
 async gen move {};
-}"#,
+}"#),
             Rust2024 // for `async` and `gen`
         ),
         Ok(_) // just a smoke test
@@ -983,7 +1044,7 @@ fn expr_modifiers_in_expr_ctxt() {
 
     assert_matches!(
         parse_expr(
-            r#"{
+            n!(r#"{
 (|| {});
 (|_| {});
 (| | {});
@@ -1075,7 +1136,7 @@ fn expr_modifiers_in_expr_ctxt() {
 (async gen move || {});
 (async gen move |_| {});
 (async gen move {});
-}"#,
+}"#),
             Rust2024 // for `async` and `gen`
         ),
         Ok(_) // just a smoke test
@@ -1084,9 +1145,11 @@ fn expr_modifiers_in_expr_ctxt() {
 
 #[test]
 fn trait_bounds() {
+    // See also <https://github.com/fmease/rasur/issues/16>.
+
     assert_matches!(
         parse_ty(
-            "(
+            n!("(
 impl !Trait,
 impl (Trait),
 impl (for<> Trait),
@@ -1101,7 +1164,7 @@ impl for<> Trait,
 impl for<> const async Trait,
 impl ~const Trait,
 impl ~const async Trait,
-)",
+)"),
             Rust2018 // for `async`
         ),
         Ok(_)
@@ -1109,7 +1172,7 @@ impl ~const async Trait,
 
     assert_matches!(
         parse_file(
-            "
+            n!("
 fn f<T: !Trait>();
 fn f<T: (Trait)>();
 fn f<T: (for<> Trait)>();
@@ -1124,7 +1187,7 @@ fn f<T: for<> Trait>();
 fn f<T: for<> const async Trait>();
 fn f<T: ~const Trait>();
 fn f<T: ~const async Trait>();
-",
+"),
             Rust2018 // for `async`
         ),
         Ok(_)
