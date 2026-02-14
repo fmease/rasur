@@ -1,3 +1,4 @@
+use super::ExpectedFragment;
 use crate::{
     Edition::{self, *},
     ast,
@@ -68,6 +69,115 @@ fn file_empty() {
             items: deref!([]),
             span: _
         })
+    );
+}
+
+#[test]
+fn tuple_struct_field_visibility() {
+    assert_matches!(
+        parse_item("struct T(pub([i32; 2]));", Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+                    vis: ast::Visibility::Public,
+                    ty: ast::Ty::Grouped(deref!(ast::Ty::Array(..))),
+                    ..
+                }])),
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_item("struct T(pub(crate)[i32]);", Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+                    vis: ast::Visibility::Restricted(ast::Path {
+                        segs: deref!([ast::PathSeg { ident: ast::Ident!("crate"), .. }])
+                    }),
+                    ty: ast::Ty::Slice(_),
+                    ..
+                }])),
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_item("struct T(pub(self)&());", Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+                    vis: ast::Visibility::Restricted(ast::Path {
+                        segs: deref!([ast::PathSeg { ident: ast::Ident!("self"), .. }])
+                    }),
+                    ty: ast::Ty::Ref(_),
+                    ..
+                }])),
+                ..
+            })),
+            ..
+        })
+    );
+
+    // issue: <https://github.com/fmease/rasur/issues/21>
+    assert_matches!(
+        parse_item("struct T(pub(super::U));", Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+                    vis: ast::Visibility::Public,
+                    ty: ast::Ty::Grouped(deref!(ast::Ty::Path(ast::ExtPath {
+                        ext: None,
+                        path: ast::Path {
+                            segs: deref!([
+                                ast::PathSeg { ident: ast::Ident!("super"), .. },
+                                ast::PathSeg { ident: ast::Ident!("U"), .. },
+                            ])
+                        }
+                    }))),
+                    ..
+                }])),
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_item("struct T(pub(super::U)impl);", Rust2015),
+        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
+    );
+
+    assert_matches!(
+        parse_item("struct T(pub(in super::U)!);", Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+                    vis: ast::Visibility::Restricted(ast::Path {
+                        segs: deref!([
+                            ast::PathSeg { ident: ast::Ident!("super"), .. },
+                            ast::PathSeg { ident: ast::Ident!("U"), .. },
+                        ])
+                    }),
+                    ty: ast::Ty::Never,
+                    ..
+                }])),
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_item("struct T(pub);", Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::CloseRoundBracket, .. },
+            ExpectedFragment::Ty
+        )]))
     );
 }
 
@@ -456,7 +566,7 @@ fn expr_control_flow_ops_block() {
         parse_expr("if return {}", Rust2015),
         Err(deref!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
-            super::ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
+            ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
         )]))
     );
     assert_matches!(

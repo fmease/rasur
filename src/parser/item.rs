@@ -1034,7 +1034,9 @@ impl<'src> Parser<'_, '_, 'src> {
         if self.token.kind == TokenKind::OpenRoundBracket
             && let token = self.peek(1)
             && let Some(keyword) = match token.kind {
-                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
+                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower
+                    if let TokenKind::CloseRoundBracket = self.peek(2).kind =>
+                {
                     Some(VisKeyword::CrateSuperSelf(token.span))
                 }
                 TokenKind::In => Some(VisKeyword::In),
