@@ -74,7 +74,14 @@ impl<'src> Parser<'_, '_, 'src> {
             // FIXME: make `parse` ret the Span
             let span = this.token.span;
             this.parse(TokenKind::SelfLower).ok()?;
-            Some((kind, mut_, span))
+            // FIXME: HACK
+            if let TokenKind::SingleColon | TokenKind::Comma | TokenKind::CloseRoundBracket =
+                this.token.kind
+            {
+                Some((kind, mut_, span))
+            } else {
+                None
+            }
         }) {
             let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
                 mut_: match kind {

@@ -749,6 +749,23 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
     );
 }
 
+// FIXME: More extensively test receivers & fn params! Below are just temporary smoke tests.
+#[test]
+fn method_receivers() {
+    assert_matches!(parse_item(n!("fn f(&self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&mut self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(mut self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&'a self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&'a mut self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&'a pin mut self);"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&pin const self);"), Rust2015), Ok(_));
+
+    // issue: <https://github.com/fmease/rasur/issues/18>
+    assert_matches!(parse_item(n!("fn f(self::T: ());"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&self::T: ());"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("fn f(&mut self::T: ());"), Rust2015), Ok(_));
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.
