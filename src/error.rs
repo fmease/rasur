@@ -34,13 +34,13 @@ impl Buffer {
 #[cfg_attr(test, derive(Debug))]
 pub enum Error {
     AutoTraitAlias,
-    DefaultnessOnInvalidItem(Span),
+    DefaultOnInvalidItem(Span),
     EmptyCharLit(Span),
     EmptyExponent(Span),
     EmptyNumLit(Span),
     ExpectedTraitFoundTy(Span),
+    FinalOnInvalidItem(Span),
     ForbiddenInnerAttrs,
-    InvalidFrontmatterTrailer(Span),
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
@@ -51,6 +51,7 @@ pub enum Error {
     InvalidExprPrefix(Span),
     InvalidExternItemKind(Span),
     InvalidFrontmatterInfostring(Span),
+    InvalidFrontmatterTrailer(Span),
     InvalidItemPrefix(Span),
     InvalidLetChain,
     InvalidLitSuffix(Span),

@@ -45,13 +45,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let vis = self.parse_visibility()?;
-
-        // FEATURE: `specialization` / `min_specialization` (ungated) <https://github.com/rust-lang/rust/issues/31844>
-        let defaultness = if self.consume(weak::Default) {
-            ast::Defaultness::Default
-        } else {
-            ast::Defaultness::Final
-        };
+        let defaultness = self.parse_defaultness();
 
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
@@ -62,10 +56,12 @@ impl<'src> Parser<'_, '_, 'src> {
             self.error(Error::VisibilityOnInvalidItem(span));
         }
 
-        if let ast::Defaultness::Default = defaultness
-            && !kind.supports_defaultness()
-        {
-            self.error(Error::DefaultnessOnInvalidItem(span));
+        if !kind.supports_defaultness() {
+            match defaultness {
+                ast::Defaultness::Default => self.error(Error::DefaultOnInvalidItem(span)),
+                ast::Defaultness::Final => self.error(Error::FinalOnInvalidItem(span)),
+                ast::Defaultness::Not => {}
+            }
         }
 
         Ok(ast::Item { attrs, vis, kind, span })
@@ -133,6 +129,19 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         qualified
+    }
+
+    fn parse_defaultness(&mut self) -> ast::Defaultness {
+        // FEATURE: `specialization` / `min_specialization` (ungated) <https://github.com/rust-lang/rust/issues/31844>
+        if self.consume(weak::Default) {
+            ast::Defaultness::Default
+        }
+        // FEATURE: `final_associated_functions` <https://github.com/rust-lang/rust/issues/131179>
+        else if self.consume(TokenKind::Final) {
+            ast::Defaultness::Final
+        } else {
+            ast::Defaultness::Not
+        }
     }
 
     fn parse_item_kind(

@@ -350,8 +350,10 @@ pub(crate) enum Visibility<'src> {
     Public,
 }
 
+// FIXME: Find a better name for the type and its variants!
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Defaultness {
     Default,
     Final,
+    Not,
 }

@@ -749,7 +749,8 @@ impl Fmt for TrailingSpace<ast::Defaultness> {
         let Self(defaultness) = self;
         match defaultness {
             ast::Defaultness::Default => fmt!(cx, "default "),
-            ast::Defaultness::Final => {}
+            ast::Defaultness::Final => fmt!(cx, "final "),
+            ast::Defaultness::Not => {}
         }
     }
 }

@@ -12,6 +12,11 @@ do case "$1" in
   [[ -z $EDITION ]] && die 'missing argument `EDITION` for option `--edition`'
   shift
   ;;
+  -T | --toolchain)
+  TOOLCHAIN="$2"
+  [[ -z "$TOOLCHAIN" ]] && die 'missing argument `TOOLCHAIN` for option `--toolchain`'
+  shift
+  ;;
   -v | --verbose) VERBOSE=1
   ;;
   -f | --file) FILE=1
@@ -40,7 +45,8 @@ fi
 print
 
 print -P '%S-- RUSTC --------------------------------%s'
-printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc +nightly \
+printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc \
+  +$([[ -n "$TOOLCHAIN" ]] && echo "$TOOLCHAIN" || echo nightly) \
   $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
   -Zparse-crate-root-only \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \

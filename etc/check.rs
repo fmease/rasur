@@ -35,9 +35,11 @@ fn try_main() -> Result<(), ()> {
     let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur"))
         .with_extension(env::consts::EXE_EXTENSION);
     let rustc_path = {
-        // FIXME: Allow customization of rustc toolchain
-        let mut output =
-            Command::new("rustup").args(["+nightly", "which", "rustc"]).output().unwrap();
+        let mut output = Command::new("rustup")
+            .arg(format!("+{}", opts.toolchain))
+            .args(["which", "rustc"])
+            .output()
+            .unwrap();
         output.status.exit_ok().unwrap();
         output.stdout.pop(); // \n
         PathBuf::from(String::from_utf8(output.stdout).unwrap())
@@ -274,6 +276,13 @@ mod interface {
                     .help("Set the edition of the source files"),
             )
             .arg(
+                Arg::new(id::TOOLCHAIN)
+                    .short('T')
+                    .long("toolchain")
+                    .default_value("nightly")
+                    .help("Override the rustup toolchain"),
+            )
+            .arg(
                 Arg::new(id::MEASURE)
                     .short('m')
                     .long("measure")
@@ -293,6 +302,7 @@ mod interface {
             .get_matches();
 
         Opts {
+            toolchain: matches.remove_one(id::TOOLCHAIN).unwrap(),
             paths: matches.remove_many(id::PATHS).map(Iterator::collect).unwrap_or_default(),
             jobs: matches.remove_one(id::JOBS).unwrap(),
             chunk_size: matches.remove_one(id::CHUNK_SIZE).unwrap(),
@@ -306,6 +316,7 @@ mod interface {
     }
 
     pub(super) struct Opts {
+        pub(super) toolchain: String,
         pub(super) paths: Vec<PathBuf>,
         pub(super) jobs: NonZeroUsize,
         pub(super) chunk_size: NonZeroUsize,
@@ -344,6 +355,7 @@ mod interface {
         JOBS,
         MEASURE,
         PATHS,
+        TOOLCHAIN,
         VERBOSE,
     }
 }

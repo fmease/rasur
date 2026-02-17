@@ -20,8 +20,11 @@ pub(crate) fn render(errors: Vec<Error>, cx: RenderCx<'_>) {
 fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
     match error {
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
-        Error::DefaultnessOnInvalidItem(span) => {
+        Error::DefaultOnInvalidItem(span) => {
             Diag::new("this item kind may not be marked with `default`").highlight(span)
+        }
+        Error::FinalOnInvalidItem(span) => {
+            Diag::new("this item kind may not be marked with `final`").highlight(span)
         }
         Error::UnexpectedToken(actual, expected) => {
             let span = actual.span;
