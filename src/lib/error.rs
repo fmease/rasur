@@ -36,6 +36,7 @@ impl Buffer {
 pub enum Error {
     AmbiguousPlus(Span),
     AutoTraitAlias,
+    ChainedComparison(Span),
     DefaultOnInvalidItem(Span),
     EmptyCharLit(Span),
     EmptyExponent(Span),
@@ -62,10 +63,8 @@ pub enum Error {
     InvalidParenthesizedBound,
     InvalidRawIdent(Span),
     InvalidRawTickedIdent(Span),
-    InvalidScalarInFrontmatterBody(Span),
-    InvalidScalarInLit(Span),
+    InvalidScalar(char, InvalidScalarPlace, Span),
     InvalidStrLitDelim(Span),
-    InvalidToken(char, Span),
     InvalidTyPrefix(Span),
     LifetimeObjectTyWithoutPlus(Span),
     MisplacedReceiver(Span),
@@ -83,7 +82,6 @@ pub enum Error {
     StrLitGuardTooLarge(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall(Span),
-    ChainedComparison(Span),
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
     UnknownBuiltinSyntax(Span),
@@ -93,4 +91,12 @@ pub enum Error {
     UnterminatedFrontmatter(Span),
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem(Span),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum InvalidScalarPlace {
+    DocComment,
+    File,
+    FrontmatterBody,
+    Lit,
 }

@@ -1,6 +1,6 @@
 use crate::{
     Edition,
-    error::{Buffer as ErrorBuffer, Error},
+    error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     normalizer::Normalized,
     span::{ByteIndex, Span},
     token::{PathSegKeyword, Token, TokenKind},
@@ -161,7 +161,11 @@ impl StripFrontmatter {
             }
 
             if char == '\r' {
-                errors.add(Error::InvalidScalarInFrontmatterBody(chars.span(index)));
+                errors.add(Error::InvalidScalar(
+                    char,
+                    InvalidScalarPlace::FrontmatterBody,
+                    chars.span(index),
+                ));
             }
 
             line_start = char == '\n';
@@ -438,7 +442,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 _ => TokenKind::SingleGreaterThan,
             },
             _ => {
-                self.error(Error::InvalidToken(char, self.span(start)));
+                self.error(Error::InvalidScalar(char, InvalidScalarPlace::File, self.span(start)));
                 TokenKind::Error
             }
         }
@@ -458,7 +462,22 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ => TokenKind::Trivia,
         };
 
-        self.next_while(|char| char != '\n');
+        while let Some(char) = self.peek() {
+            if let '\n' = char {
+                break;
+            }
+            let start = self.index();
+            self.next();
+            if let TokenKind::InnerDocComment | TokenKind::OuterDocComment = kind
+                && let '\r' = char
+            {
+                self.error(Error::InvalidScalar(
+                    char,
+                    InvalidScalarPlace::DocComment,
+                    self.span(start),
+                ));
+            }
+        }
 
         kind
     }
@@ -480,7 +499,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ => TokenKind::Trivia,
         };
 
-        while let Some((_, char)) = self.next() {
+        while let Some((index, char)) = self.next() {
             match (char, self.peek()) {
                 ('/', Some('*')) => {
                     self.next();
@@ -493,6 +512,13 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         break;
                     }
                     depth -= 1;
+                }
+                ('\r', _) if let TokenKind::InnerDocComment | TokenKind::OuterDocComment = kind => {
+                    self.error(Error::InvalidScalar(
+                        char,
+                        InvalidScalarPlace::DocComment,
+                        self.span(index),
+                    ))
                 }
                 _ => {}
             }
@@ -666,12 +692,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     break;
                 }
                 '\n' | '\t' | '\r' => {
-                    invalid_scalar.get_or_insert(self.span(index));
+                    invalid_scalar.get_or_insert((char, self.span(index)));
                 }
                 _ if let TextLitFlavor::Ascii = flavor
                     && !char.is_ascii() =>
                 {
-                    invalid_scalar.get_or_insert(self.span(index));
+                    invalid_scalar.get_or_insert((char, self.span(index)));
                 }
                 _ => {}
             }
@@ -690,10 +716,10 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     _ => self.error(Error::MultiScalarCharLit(span)),
                 }
             }
-            if let Some(span) = invalid_scalar
+            if let Some((char, span)) = invalid_scalar
                 && count == 1
             {
-                self.error(Error::InvalidScalarInLit(span));
+                self.error(Error::InvalidScalar(char, InvalidScalarPlace::Lit, span));
             }
         }
 
@@ -716,12 +742,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     break;
                 }
                 '\r' => {
-                    invalid_scalar.get_or_insert(self.span(index));
+                    invalid_scalar.get_or_insert((char, self.span(index)));
                 }
                 _ if let TextLitFlavor::Ascii = flavor
                     && !char.is_ascii() =>
                 {
-                    invalid_scalar.get_or_insert(self.span(index));
+                    invalid_scalar.get_or_insert((char, self.span(index)));
                 }
                 _ => {}
             }
@@ -729,8 +755,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         if !terminated {
             self.error(Error::UnterminatedStrLit(self.span(start)));
-        } else if let Some(span) = invalid_scalar {
-            self.error(Error::InvalidScalarInLit(span));
+        } else if let Some((char, span)) = invalid_scalar {
+            self.error(Error::InvalidScalar(char, InvalidScalarPlace::Lit, span));
         }
 
         self.lex_lit_suffix();

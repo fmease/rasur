@@ -2,7 +2,7 @@ use super::{ExpectedFragment, Parser};
 use crate::{
     Edition::{self, *},
     ast,
-    error::{Buffer as ErrorBuffer, Error},
+    error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     lexer::{StripFrontmatter, StripShebang, lex},
     normalizer::{Normalized, normalize},
     token::{Token, TokenKind},
@@ -104,7 +104,7 @@ fn frontmatter_cr() {
     // "Stray" CRs inside the frontmatter body are explicitly forbidden.
     assert_matches!(
         parse_file(n!("---\n(\r)\n---"), Rust2015),
-        Err(r!([Error::InvalidScalarInFrontmatterBody(_)]))
+        Err(r!([Error::InvalidScalar('\r', InvalidScalarPlace::FrontmatterBody, _)]))
     );
 }
 

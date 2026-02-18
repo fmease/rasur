@@ -1,6 +1,6 @@
 use annotate_snippets as ann;
 use rasur::{
-    error::Error,
+    error::{Error, InvalidScalarPlace},
     normalizer::Normalized,
     parser::ExpectedFragment,
     span::Span,
@@ -100,8 +100,14 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         Error::InvalidEscapeSequence(span) => Diag::new("invalid escape sequence").highlight(span),
         Error::EmptyCharLit(span) => Diag::new("empty char literal").highlight(span),
         Error::MultiScalarCharLit(span) => Diag::new("multi-scalar char literal").highlight(span),
-        Error::InvalidToken(char, span) => {
-            Diag::new(format!("invalid token U+{:04X}", char as u32)).highlight(span)
+        Error::InvalidScalar(char, place, span) => {
+            let place = match place {
+                InvalidScalarPlace::File => "",
+                InvalidScalarPlace::FrontmatterBody => " in frontmatter body",
+                InvalidScalarPlace::DocComment => " in doc comment",
+                InvalidScalarPlace::Lit => " in literal",
+            };
+            Diag::new(format!("invalid scalar U+{:04X}{place}", char as u32)).highlight(span)
         }
         Error::InvalidStrLitDelim(span) => {
             Diag::new("invalid string literal delimiter").highlight(span)
@@ -110,7 +116,6 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         Error::InvalidDigit(span) => Diag::new("invalid digit").highlight(span),
         Error::InvalidAbiStr(span) => Diag::new("invalid ABI string").highlight(span),
         Error::InvalidLitSuffix(span) => Diag::new("invalid literal suffix").highlight(span),
-        Error::InvalidScalarInLit(span) => Diag::new("invalid scalar in literal").highlight(span),
         Error::NonDecFloatLit(span) => Diag::new("non-decimal float literal").highlight(span),
         Error::ParenthesizedGuardedPatInMatch => {
             Diag::new("parenthesized guarded pattern in match expression")
@@ -127,9 +132,6 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         }
         Error::InvalidFrontmatterTrailer(span) => {
             Diag::new("extra characters after frontmatter closing").highlight(span)
-        }
-        Error::InvalidScalarInFrontmatterBody(span) => {
-            Diag::new("invalid scalar in frontmatter body").highlight(span)
         }
         Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
         Error::ForbiddenOuterAttrs => Diag::new("outer attributes are forbidden in this context"),
