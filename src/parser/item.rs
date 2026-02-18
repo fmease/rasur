@@ -82,27 +82,28 @@ impl<'src> Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_item`.
 
         match self.token.kind {
-            | TokenKind::Enum | TokenKind::Macro | TokenKind::Struct | TokenKind::Trait => {
-                return true;
-            }
+            | TokenKind::Enum
+            | TokenKind::Final
+            | TokenKind::Macro
+            | TokenKind::Struct
+            | TokenKind::Trait => return true,
+            _ => {}
+        }
+
+        if let TokenKind::Use = self.token.kind {
             // NOTE: We need to disqualify `use |…` which denotes a closure under
             //       FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>.
             //       We didn't turn `Use` into an `ItemQualifier` that could be discarded below
             //       since the rules are slightly more complex, so it's not worth it.
             //       E.g., while `async use {}` is an expr, `use {}` is an item.
-            TokenKind::Use => return !self.matches(TokenPrefix::Pipe, self.peek(1)),
-            TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Union::STR => return weak::Union.qualifies(self),
-                _ => {}
-            },
-            _ => {}
+            return !self.matches(TokenPrefix::Pipe, self.peek(1));
         }
 
         if self.begins_outer_attr() || self.begins_visibility() {
             return true;
         }
 
-        if self.check(weak::MacroRules) {
+        if self.check(weak::MacroRules) || self.check(weak::Union) {
             return true;
         }
 

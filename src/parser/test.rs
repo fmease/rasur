@@ -1287,7 +1287,7 @@ fn main() {
 }
 
 #[test]
-fn item_modifiers() {
+fn item_modifiers_in_item_ctxt() {
     // NOTE: Test cases marked `[***]` actually get rejected by rustc
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
@@ -1329,11 +1329,16 @@ const unsafe auto trait Trait {} // [***]
 const unsafe extern "C" fn f() {}
 const unsafe impl Trait for () {} // [***]
 const unsafe trait Trait {} // [***]
+default const F: ();
+default fn f();
+default type T;
 extern "C" fn f() {}
 extern "C" {}
 extern crate krate;
 extern fn f() {}
 extern {}
+final fn f();
+final type T;
 fn f() {}
 fn wrap() { safe fn f() {} } // [***]
 gen extern fn f() {}
@@ -1346,6 +1351,8 @@ pub const extern "C" fn f() {}
 pub const fn f() {}
 pub const unsafe extern "C" fn f() {}
 pub const unsafe fn f() {}
+pub default const async gen unsafe extern "C" fn f();
+pub final const async gen unsafe extern "C" fn f();
 pub fn f() {}
 reuse const impl Trait for () {}
 reuse const unsafe impl !Trait for () {} // [***]
@@ -1374,6 +1381,112 @@ unsafe trait Trait {}
 use f;
 use {self::*, self::{}};
 "#),
+            Rust2024 // for `async` and `gen`
+        ),
+        Ok(_) // just a smoke test
+    );
+}
+
+#[test]
+fn item_modifiers_in_stmt_ctxt() {
+    // FIXME: Re-audit:
+    // NOTE: Test cases marked `[***]` actually get rejected by rustc
+    //       but they should compile in my opinion.
+    //       See also <https://github.com/rust-lang/rust/issues/146122>.
+
+    // NOTE: Commented-out "test cases" marked `[???]` don't get accepted
+    //       by either rustc or rasur but I feel like they should be
+    //       supported "logically" or for consistency.
+
+    assert_matches!(
+        parse_expr(
+            n!(r#"{
+async extern fn f() {}
+async fn f() {}
+async gen fn f() {}
+async gen safe fn f() {}
+async gen unsafe fn f() {}
+async safe extern fn f() {}
+async safe fn f() {}
+async unsafe extern fn f() {}
+async unsafe fn f() {}
+auto trait Trait {}
+const F: () = ();
+const async fn f() {}
+const async gen safe extern "C" fn f() {}
+const async gen safe fn f() {}
+const async safe extern fn f() {}
+const async safe fn f() {}
+const async unsafe extern fn f() {}
+const async unsafe fn f() {}
+const auto trait Trait {}
+const auto: () = (); // [!]
+const extern "C" fn f() {}
+const extern fn f() {}
+const gen fn f() {}
+const impl !Trait for () {}
+const impl () {}
+const impl Trait for () {}
+const safe extern fn f() {} // [***]
+const safe fn f() {} // [***]
+const safe: () = (); // [!]
+const trait Trait {}
+const unsafe auto trait Trait {} // [***]
+const unsafe extern "C" fn f() {}
+const unsafe impl Trait for () {} // [***]
+const unsafe trait Trait {} // [***]
+// default const F: (); // [???]
+// default fn f(); // [???]
+// default type T; // [???]
+extern "C" fn f() {}
+extern "C" {}
+extern crate krate;
+extern fn f() {}
+extern {}
+final fn f(); // issue: <https://github.com/fmease/rasur/issues/26>
+final type T;
+fn f() {}
+fn wrap() { safe fn f() {} } // [***]
+gen extern fn f() {}
+gen fn f() {}
+gen unsafe fn f() {}
+impl !Trait for () {}
+impl Trait for () {}
+impl const Trait for () {}
+pub const extern "C" fn f() {}
+pub const fn f() {}
+pub const unsafe extern "C" fn f() {}
+pub const unsafe fn f() {}
+// pub default const async gen unsafe extern "C" fn f(); // [???]
+pub final const async gen unsafe extern "C" fn f();
+pub fn f() {}
+reuse const impl Trait for () {}
+reuse const unsafe impl !Trait for () {} // [***]
+reuse f;
+reuse impl Trait for () {}
+reuse unsafe impl Trait for () {}
+safe extern "C" fn f() {}
+safe extern fn f() {}
+safe fn f() {}
+safe static X: ();
+static safe: ();
+trait Trait {}
+type const F: ();
+type const safe: (); // [!]
+unsafe auto trait Trait {}
+unsafe extern "C" fn f() {}
+unsafe extern "C" {}
+unsafe extern {}
+unsafe fn f() {}
+unsafe impl Trait for () {}
+unsafe impl const !Trait for () {}
+unsafe impl const Trait for () {}
+unsafe mod m;
+unsafe static X: ();
+unsafe trait Trait {}
+use f;
+use {self::*, self::{}};
+}"#),
             Rust2024 // for `async` and `gen`
         ),
         Ok(_) // just a smoke test
