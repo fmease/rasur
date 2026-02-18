@@ -24,8 +24,10 @@ type Result<T, E = BufferedError> = std::result::Result<T, E>;
 
 struct BufferedError(());
 
+#[expect(clippy::missing_errors_doc)] // FIXME: TODO
+#[expect(clippy::result_unit_err)] // handled via an out-parameter
 pub fn parse<'src>(
-    file: crate::lexer::File,
+    file: &crate::lexer::File,
     source: Normalized<&'src str>,
     edition: Edition,
     errors: &mut ErrorBuffer,
@@ -86,8 +88,8 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         &mut self,
         validate: fn(TokenKind) -> bool,
         error: fn(Span) -> Error,
-    ) -> Result<Option<ast::Ident<'src>>> {
-        let TokenKind::TickedIdent = self.token.kind else { return Ok(None) };
+    ) -> Option<ast::Ident<'src>> {
+        let TokenKind::TickedIdent = self.token.kind else { return None };
         let span = self.token.span;
         let source = self.source(span);
         self.advance();
@@ -98,7 +100,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         if !validate(ident) {
             self.error(error(span));
         }
-        Ok(Some(ast::Ident::new(source, span)))
+        Some(ast::Ident::new(source, span))
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(
@@ -188,7 +190,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     fn consume_or_parse(&mut self, kind: TokenKind, condition: bool) -> Result<bool> {
         match condition {
             true => Ok(self.consume(kind)),
-            false => self.parse(kind).map(|_| true),
+            false => self.parse(kind).map(|()| true),
         }
     }
 
@@ -402,6 +404,7 @@ impl TokenPrefix {
     fn strip(self, token: TokenKind) -> Result<Option<TokenKind>, ()> {
         // See also <https://github.com/rust-lang/rust/issues/152398>.
 
+        #[expect(clippy::match_same_arms)] // leads to more legible code
         Ok(Some(match (self, token) {
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
             // FIXME: Likely not a valid split.

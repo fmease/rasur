@@ -337,12 +337,11 @@ impl Fmt for ast::FnParam<'_> {
             fmt!(cx, " ");
         }
 
-        match pat {
-            ast::Pat::Wildcard(ast::WildcardKind::Empty) => {}
-            _ => {
-                pat.fmt(cx);
-                fmt!(cx, ": ");
-            }
+        if let ast::Pat::Wildcard(ast::WildcardKind::Empty) = pat {
+            // do nothing
+        } else {
+            pat.fmt(cx);
+            fmt!(cx, ": ");
         }
 
         ty.fmt(cx);
@@ -442,7 +441,7 @@ impl Fmt for (ast::ModItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
             fmt!(cx, " ");
             Cluster { attrs, nodes: items }.fmt(cx);
         } else {
-            fmt!(cx, ";")
+            fmt!(cx, ";");
         }
     }
 }
@@ -668,7 +667,7 @@ impl Fmt for TrailingSpace<ast::Visibility<'_>> {
                     &*path.segs
                 {
                 } else {
-                    fmt!(cx, "in ")
+                    fmt!(cx, "in ");
                 }
                 path.fmt(cx);
                 fmt!(cx, ") ");

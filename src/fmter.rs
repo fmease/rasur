@@ -38,6 +38,7 @@ macro fmt($cx:ident, $($arg:tt)*) {
     _ = $cx.output.write_fmt(format_args!($($arg)*))
 }
 
+#[must_use]
 pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, cfg: Cfg) -> String {
     let source = source.into_inner();
     let mut cx = Cx { cfg, source, indent: 0, output: String::with_capacity(source.len()) };
@@ -127,8 +128,7 @@ impl Fmt for ast::Lit<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Bool(lit) => fmt!(cx, "{lit}"),
-            Self::Char(lit) => fmt!(cx, "{lit}"),
-            Self::Num(lit) | Self::Str(lit) => fmt!(cx, "{lit}"),
+            Self::Num(lit) | Self::Str(lit) | Self::Char(lit) => fmt!(cx, "{lit}"),
         }
     }
 }

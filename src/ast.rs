@@ -32,7 +32,7 @@ pub(crate) struct MacroCall<'src, M: GenericArgsMode> {
     pub(crate) stream: TokenStream,
 }
 
-impl<'src, M: GenericArgsMode> fmt::Debug for MacroCall<'src, M> {
+impl<M: GenericArgsMode> fmt::Debug for MacroCall<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { path, bracket, stream } = self;
 

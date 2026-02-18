@@ -525,7 +525,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                 },
                 span: item.span,
-            })
+            });
         }
 
         Ok(ast::ItemKind::ExternBlock(Box::new(ast::ExternBlockItem { safety, abi, body: items })))
@@ -678,25 +678,24 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let preds = self.parse_where_clause()?;
 
-        let trait_ref = match trait_ref {
-            Some(path) => Some(ast::ImplTraitRef { defaultness, safety, polarity, path }),
-            None => {
-                match polarity {
-                    ast::ImplPolarity::Positive => {}
-                    ast::ImplPolarity::Negative => {
-                        self.error(Error::TraitImplModifierInInherentImpl("!"))
-                    }
+        let trait_ref = if let Some(path) = trait_ref {
+            Some(ast::ImplTraitRef { defaultness, safety, polarity, path })
+        } else {
+            match polarity {
+                ast::ImplPolarity::Positive => {}
+                ast::ImplPolarity::Negative => {
+                    self.error(Error::TraitImplModifierInInherentImpl("!"));
                 }
-
-                match safety {
-                    ast::Safety::Inherited => {}
-                    ast::Safety::Unsafe => {
-                        self.error(Error::TraitImplModifierInInherentImpl("unsafe"))
-                    }
-                }
-
-                None
             }
+
+            match safety {
+                ast::Safety::Inherited => {}
+                ast::Safety::Unsafe => {
+                    self.error(Error::TraitImplModifierInInherentImpl("unsafe"));
+                }
+            }
+
+            None
         };
 
         let body = match kind {
@@ -1179,6 +1178,7 @@ impl<'src> Qualifier<'src> {
     }
 }
 
+#[derive(Clone, Copy)]
 enum ImplKind {
     Normal,
     Delegation,

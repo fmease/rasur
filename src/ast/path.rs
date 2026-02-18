@@ -13,7 +13,7 @@ impl<'src, M: GenericArgsMode> Path<'src, M> {
     }
 }
 
-impl<'src, M: GenericArgsMode> fmt::Debug for Path<'src, M> {
+impl<M: GenericArgsMode> fmt::Debug for Path<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { segs } = self;
 
@@ -32,7 +32,7 @@ impl<'src, M: GenericArgsMode> PathSeg<'src, M> {
     }
 }
 
-impl<'src, M: GenericArgsMode> fmt::Debug for PathSeg<'src, M> {
+impl<M: GenericArgsMode> fmt::Debug for PathSeg<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { ident, args } = self;
 
@@ -79,7 +79,7 @@ impl<'src, S: GenericArgsStyle> ExtPath<'src, S> {
     }
 }
 
-impl<'src, S: GenericArgsStyle> fmt::Debug for ExtPath<'src, S> {
+impl<S: GenericArgsStyle> fmt::Debug for ExtPath<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { ext, path } = self;
 

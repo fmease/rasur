@@ -68,7 +68,7 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = rasur::parser::parse(file, source, edition, &mut errors);
+    let file = rasur::parser::parse(&file, source, edition, &mut errors);
 
     if let Ok(file) = &file
         && opts.emit_ast

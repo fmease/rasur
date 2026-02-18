@@ -7,17 +7,18 @@ use crate::{
     normalizer::{Normalized, normalize},
     token::{Token, TokenKind},
 };
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
 macro n($source:expr) {
     normalize($source).as_ref()
 }
+
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
     let mut errors = ErrorBuffer::Hold(Vec::new());
     let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
-    let file = super::parse(file, source, edition, &mut errors);
+    let file = super::parse(&file, source, edition, &mut errors);
     match errors.non_empty() {
         Some(errors) => Err(errors),
         None => Ok(file.unwrap()),

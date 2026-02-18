@@ -190,7 +190,7 @@ impl<'src> Parser<'_, '_, 'src> {
             if self.consume(TokenKind::SingleBang) {
                 if path.ext.is_some() {
                     self.error(Error::TyRelMacroCall(start.until(self.token.span)));
-                };
+                }
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
                 return Ok(ast::Ty::MacroCall(ast::MacroCall { path: path.path, bracket, stream }));
             }
@@ -332,17 +332,11 @@ impl<'src> Parser<'_, '_, 'src> {
             .consume(TokenKind::ThinArrow)
             .then(|| self.parse_ty_where(PlusPolicy::Yield))
             .transpose()?;
-
-        return Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy {
-            bound_vars,
-            modifiers,
-            inputs,
-            output,
-        })));
+        Ok(ast::Ty::FnPtr(Box::new(ast::FnPtrTy { bound_vars, modifiers, inputs, output })))
     }
 
     fn fin_parse_ref_ty(&mut self) -> Result<ast::Ty<'src>> {
-        let lt = self.parse_lifetime()?;
+        let lt = self.parse_lifetime();
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let pointee = self.parse_ty_where(PlusPolicy::Yield)?;
         Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee })))
@@ -386,9 +380,9 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenPrefix::GreaterThan, SEPARATOR, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-            let (binder, kind) = if let Some(lifetime) = this.parse_lifetime()? {
+            let (binder, kind) = if let Some(lifetime) = this.parse_lifetime() {
                 let bounds = if this.consume(TokenKind::SingleColon) {
-                    this.parse_outlives_bounds()?
+                    this.parse_outlives_bounds()
                 } else {
                     Vec::new()
                 };
@@ -506,9 +500,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     ));
                 }
             }
-        } else if let Some(lt) = self.parse_lifetime()? {
+        } else if let Some(lt) = self.parse_lifetime() {
             self.parse(TokenKind::SingleColon)?;
-            let bounds = self.parse_outlives_bounds()?;
+            let bounds = self.parse_outlives_bounds();
             ast::PredicateKind::Outlives(ast::OutlivesPredicate { lt, bounds })
         } else {
             return self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Predicate));
@@ -572,7 +566,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let bound_vars = self.parse_for_binder()?;
         let modifiers = self.parse_trait_bound_modifiers(bound_vars.as_ref())?;
 
-        if let Some(lt) = self.parse_lifetime()? {
+        if let Some(lt) = self.parse_lifetime() {
             self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
             return Ok(ast::Bound::Outlives(lt));
         }
@@ -581,7 +575,7 @@ impl<'src> Parser<'_, '_, 'src> {
             self.parse(TokenKind::SingleLessThan)?;
             let captures =
                 self.fin_parse_delim_seq(TokenPrefix::GreaterThan, TokenKind::Comma, |this| {
-                    if let Some(lt) = this.parse_lifetime()? {
+                    if let Some(lt) = this.parse_lifetime() {
                         return Ok(lt);
                     }
                     match this.token.kind {
@@ -619,6 +613,7 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Bound))
     }
 
+    #[allow(clippy::needless_pass_by_value)] // the callers want to dispose of the bad binder
     fn reject_trait_bound_frontmatter(
         &mut self,
         grouped: bool,
@@ -655,6 +650,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
+    #[expect(clippy::unused_self)] // keeping `begins_bound` & this fn as siblings for better discoverability
     pub(super) fn begins_2015_dyn_bound(&self, token: Token) -> bool {
         matches!(
             token.kind,
@@ -745,10 +741,10 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    fn parse_outlives_bounds(&mut self) -> Result<Vec<ast::Ident<'src>>> {
+    fn parse_outlives_bounds(&mut self) -> Vec<ast::Ident<'src>> {
         let mut bounds = Vec::new();
 
-        while let Some(lt) = self.parse_lifetime()? {
+        while let Some(lt) = self.parse_lifetime() {
             bounds.push(lt);
 
             if !self.consume(TokenKind::SinglePlus) {
@@ -756,7 +752,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         }
 
-        Ok(bounds)
+        bounds
     }
 
     fn parse_for_binder(&mut self) -> Result<Option<(Vec<ast::GenericParam<'src>>, Span)>> {
@@ -773,7 +769,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a lifetime.
-    pub(super) fn parse_lifetime(&mut self) -> Result<Option<ast::Ident<'src>>> {
+    pub(super) fn parse_lifetime(&mut self) -> Option<ast::Ident<'src>> {
         self.parse_ticked_ident(
             |kind| {
                 matches!(kind, TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static)

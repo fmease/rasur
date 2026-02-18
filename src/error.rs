@@ -6,6 +6,7 @@ pub enum Buffer {
 }
 
 impl Buffer {
+    #[must_use]
     pub fn non_empty(self) -> Option<Vec<Error>> {
         match self {
             Self::Void => None,

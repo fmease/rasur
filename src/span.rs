@@ -10,6 +10,7 @@ pub(crate) struct ByteIndex {
 impl ByteIndex {
     pub(crate) const fn from(index: usize) -> Self {
         debug_assert!(index as u64 <= RawByteIndex::MAX as u64);
+        #[expect(clippy::cast_possible_truncation)]
         Self { raw: index as _ }
     }
 
@@ -57,6 +58,7 @@ impl Span {
         Self { end: other.start, ..self }
     }
 
+    #[must_use]
     pub fn range(self) -> Range<usize> {
         self.start.raw as usize..self.end.raw as usize
     }

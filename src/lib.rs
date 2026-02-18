@@ -1,5 +1,4 @@
 // Features
-#![feature(assert_matches)]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
 #![feature(decl_macro)]
@@ -19,9 +18,14 @@
 #![expect(incomplete_features, reason = "deref_patterns")]
 #![deny(unused_must_use, rust_2018_idioms)]
 #![deny(clippy::all, clippy::pedantic)]
-#![allow(clippy::items_after_statements)]
-#![allow(clippy::match_bool)]
-#![allow(clippy::option_option)]
+#![allow(clippy::default_trait_access)] // too opinionated
+#![allow(clippy::empty_enums)] // type-level programming
+#![allow(clippy::if_not_else)] // too opinionated
+#![allow(clippy::items_after_statements)] // too opinionated
+#![allow(clippy::match_bool)] // too opinionated
+#![allow(clippy::option_option)] // too opinionated
+#![allow(clippy::too_many_lines)] // too opinionated
+#![allow(clippy::unnested_or_patterns)] // <https://github.com/rust-lang/rust-clippy/issues/9899>
 
 pub mod ast;
 pub mod error;
@@ -44,6 +48,7 @@ pub enum Edition {
 pub mod normalizer {
     use std::borrow::Cow;
 
+    #[must_use]
     pub fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
         const BOM: char = '\u{FEFF}';
         let source = source.strip_prefix(BOM).unwrap_or(source);
@@ -64,6 +69,7 @@ pub mod normalizer {
     }
 
     impl Normalized<Cow<'_, str>> {
+        #[must_use]
         pub fn as_ref(&self) -> Normalized<&str> {
             Normalized { raw: &self.raw }
         }

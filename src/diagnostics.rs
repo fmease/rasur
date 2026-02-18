@@ -68,15 +68,9 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         Error::GenericArgsOnFieldExpr(span) => {
             Diag::new("generic args on field expression").highlight(span)
         }
-        Error::InvalidItemPrefix(span) => {
-            Diag::new(format!("invalid item modifiers")).highlight(span)
-        }
-        Error::InvalidTyPrefix(span) => {
-            Diag::new(format!("invalid type modifiers")).highlight(span)
-        }
-        Error::InvalidExprPrefix(span) => {
-            Diag::new(format!("invalid expression modifiers")).highlight(span)
-        }
+        Error::InvalidItemPrefix(span) => Diag::new("invalid item modifiers").highlight(span),
+        Error::InvalidTyPrefix(span) => Diag::new("invalid type modifiers").highlight(span),
+        Error::InvalidExprPrefix(span) => Diag::new("invalid expression modifiers").highlight(span),
         Error::TraitImplModifierInInherentImpl(modifier) => {
             Diag::new(format!("trait impl modifier `{modifier}` in inherent impl"))
         }

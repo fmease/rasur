@@ -14,7 +14,7 @@ impl Fmt for ast::Pat<'_> {
             Self::Wildcard(_) => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {
                 sign.fmt(cx);
-                lit.fmt(cx)
+                lit.fmt(cx);
             }
             Self::Borrow(kind, mut_, pat) => {
                 fmt!(cx, "&");

@@ -473,7 +473,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::ExprKind<'src>> {
         let start = self.token.span;
 
-        if let label @ Some(_) = self.parse_label()? {
+        if let label @ Some(_) = self.parse_label() {
             self.parse(TokenKind::SingleColon)?;
 
             return match self.token.kind {
@@ -584,7 +584,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::Break => {
                 self.advance();
-                let label = self.parse_label()?;
+                let label = self.parse_label();
                 let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
                     || s_policy == StructPolicy::Allowed)
                     && self.begins_expr()
@@ -642,7 +642,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::Continue => {
                 self.advance();
-                return Ok(ast::ExprKind::Continue(self.parse_label()?));
+                return Ok(ast::ExprKind::Continue(self.parse_label()));
             }
             // FEATURE: `yeet_expr` <https://github.com/rust-lang/rust/issues/96373>
             TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
@@ -771,7 +771,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::SingleBang => {
                     if path.ext.is_some() {
                         self.error(Error::TyRelMacroCall(start.until(self.token.span)));
-                    };
+                    }
 
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
@@ -969,13 +969,8 @@ impl<'src> Parser<'_, '_, 'src> {
             OpPolicy::Allowed,
         )?;
         let body = self.parse_block_expr()?;
-        return Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr {
-            label,
-            awaitness,
-            pat,
-            head,
-            body,
-        })));
+
+        Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, awaitness, pat, head, body })))
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
@@ -1146,7 +1141,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a label.
-    fn parse_label(&mut self) -> Result<Option<ast::Ident<'src>>> {
+    fn parse_label(&mut self) -> Option<ast::Ident<'src>> {
         self.parse_ticked_ident(|kind| matches!(kind, TokenKind::CommonIdent), Error::ReservedLabel)
     }
 }

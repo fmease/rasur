@@ -153,6 +153,7 @@ impl TokenKind {
         Self::Abstract as u8 <= self as u8 && self as u8 <= Self::Yield as u8
     }
 
+    #[must_use]
     pub fn repr(self) -> Repr {
         match self {
             Self::Abstract => Repr::Src("abstract"),

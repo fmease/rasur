@@ -93,7 +93,7 @@ impl<'src> Parser<'_, '_, 'src> {
         match op {
             Op::Guard => {
                 let guard = self.parse_expr()?;
-                return Ok(ast::Pat::Guarded(Box::new(left), Box::new(guard)));
+                Ok(ast::Pat::Guarded(Box::new(left), Box::new(guard)))
             }
             Op::Or => {
                 let right =
@@ -319,7 +319,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::SingleBang => {
                     if path.ext.is_some() {
                         self.error(Error::TyRelMacroCall(start.until(self.token.span)));
-                    };
+                    }
 
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;

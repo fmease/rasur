@@ -1,7 +1,7 @@
 use super::{Error, Parser, Result, TokenKind, one_of};
 use crate::ast;
 
-impl<'src> Parser<'_, '_, 'src> {
+impl Parser<'_, '_, '_> {
     pub(super) fn parse_delimited_token_stream(
         &mut self,
     ) -> Result<(ast::Bracket, ast::TokenStream)> {

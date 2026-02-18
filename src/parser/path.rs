@@ -42,7 +42,7 @@ impl<'src> Parser<'_, '_, 'src> {
             PathMode::Normal => {
                 let span = self.token.span;
                 if self.consume(TokenKind::DoubleColon) {
-                    path.segs.push(ast::PathSeg::ident(ast::Ident::new("", span.start())))
+                    path.segs.push(ast::PathSeg::ident(ast::Ident::new("", span.start())));
                 }
             }
             PathMode::Suffix => self.parse(TokenKind::DoubleColon)?,
@@ -131,7 +131,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let mut arg = if this.begins_ty(0) {
                     let ty = this.parse_ty()?;
                     ast::GenericArg::Ty(ty)
-                } else if let Some(lt) = this.parse_lifetime()? {
+                } else if let Some(lt) = this.parse_lifetime() {
                     ast::GenericArg::Lifetime(lt)
                 } else if this.begins_const_arg() {
                     let expr = this.parse_const_arg()?;
@@ -311,6 +311,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) enum PathMode {
     Normal,
     Suffix,

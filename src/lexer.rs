@@ -56,7 +56,7 @@ pub enum StripShebang {
 impl StripShebang {
     fn apply(self, source: &str, edition: Edition, offset: &mut ByteIndex) -> Option<Span> {
         let Self::Yes = self else { return None };
-        let Some(suffix) = source.strip_prefix("#!") else { return None };
+        let suffix = source.strip_prefix("#!")?;
         let mut errors = ErrorBuffer::Void;
         let mut lexer = Lexer::new(suffix, *offset, edition, &mut errors);
 
@@ -616,15 +616,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     count += 1;
                 }
                 Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
-                    match self.source(unticked) {
-                        "r" => {
-                            self.next();
-                            raw = Some(self.index());
-                        }
-                        _ => {
-                            self.error(Error::ReservedPrefix(self.span(unticked)));
-                            break TokenKind::Error;
-                        }
+                    if let "r" = self.source(unticked) {
+                        self.next();
+                        raw = Some(self.index());
+                    } else {
+                        self.error(Error::ReservedPrefix(self.span(unticked)));
+                        break TokenKind::Error;
                     }
                 }
                 Some('\'') => {
@@ -662,7 +659,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         while let Some((index, char)) = self.next() {
             match char {
                 '\\' => {
-                    has_invalid_escape_seqs |= !self.fin_lex_escape_seq(TextLitKind::Char, flavor)
+                    has_invalid_escape_seqs |= !self.fin_lex_escape_seq(TextLitKind::Char, flavor);
                 }
                 '\'' => {
                     terminated = true;
@@ -905,7 +902,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     self.next();
                 }
 
-                !is_empty && value <= 0x10FFFF
+                !is_empty && value <= 0x10_FFFF
             }
             _ => false,
         }
@@ -961,6 +958,7 @@ enum TextLitFlavor {
     C,
 }
 
+#[derive(Clone, Copy)]
 enum Raw {
     Yes,
     No,
@@ -998,10 +996,12 @@ fn is_oct_digit(char: char) -> bool {
     matches!(char, '0'..='7')
 }
 
+#[expect(clippy::manual_is_ascii_check)] // this one is by value
 fn is_dec_digit(char: char) -> bool {
     matches!(char, '0'..='9')
 }
 
+#[expect(clippy::manual_is_ascii_check)] // this one is by value
 fn is_hex_digit(char: char) -> bool {
     matches!(char, '0'..='9' | 'a'..='f' | 'A'..='F')
 }

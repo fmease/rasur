@@ -59,7 +59,7 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<Option<ast::FnParam<'src>>> {
         enum ShorthandKind<'src> {
-            Ref(Result<Option<ast::Ident<'src>>>, ast::BorrowKind<!>),
+            Ref(Option<ast::Ident<'src>>, ast::BorrowKind<!>),
             Bare,
         }
 
@@ -99,7 +99,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
             let ty = match kind {
                 ShorthandKind::Ref(lt, kind) => {
-                    ast::Ty::Ref(Box::new(ast::RefTy { lt: lt?, kind, mut_, pointee: self_ty() }))
+                    ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee: self_ty() }))
                 }
                 ShorthandKind::Bare => match self.consume(TokenKind::SingleColon) {
                     // Indeed, C-variadics are not permitted here.
@@ -203,6 +203,7 @@ impl<'src> Parser<'_, '_, 'src> {
     pub(crate) fn begins_negatable_lit(&self) -> bool {
         // NOTE: To be kept in sync with `Self::opt_parse_negatable_lit`.
 
+        #[expect(clippy::match_like_matches_macro)] // a match looks better here
         match self.token.kind {
             | TokenKind::CharLit
             | TokenKind::False
@@ -254,6 +255,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum FnParamMode {
     Required,
     Optional,

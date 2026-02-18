@@ -29,7 +29,7 @@ impl<'src> Attr<'src, Any> {
     }
 }
 
-impl<'src, M: AttrMode> fmt::Debug for Attr<'src, M> {
+impl<M: AttrMode> fmt::Debug for Attr<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { style, kind } = self;
 
