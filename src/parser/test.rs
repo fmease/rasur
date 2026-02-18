@@ -1092,6 +1092,63 @@ fn bare_trait_object_tys() {
             },]),
         ))
     );
+
+    // issue: <https://github.com/fmease/rasur/issues/23>
+    assert_matches!(
+        parse_expr(n!("0 as A + 1 as B"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Add,
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Cast(
+                        deref!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        deref!(ast::Ty::Path(..))
+                    ),
+                    ..
+                }),
+                deref!(ast::Expr {
+                    kind: ast::ExprKind::Cast(
+                        deref!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        deref!(ast::Ty::Path(..))
+                    ),
+                    ..
+                }),
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("0 as for<> A+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )]))
+    );
+
+    assert_matches!(
+        parse_expr(n!("0 as 'a+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )]))
+    );
+
+    assert_matches!(
+        parse_expr(n!("0 as const A+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )]))
+    );
+
+    assert_matches!(
+        parse_expr(n!("0 as use<>+"), Rust2015),
+        Err(deref!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )]))
+    );
 }
 
 #[test]

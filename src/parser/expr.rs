@@ -2,6 +2,7 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, one_of,
     pat::OrPolicy,
     path::GenericArgsMode,
+    ty::PlusPolicy,
     weak::{self, Weak as _},
 };
 use crate::{
@@ -258,7 +259,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Call(Box::new(left), args).into());
             }
             Op::Cast => {
-                let ty = self.parse_ty()?;
+                let ty = self.parse_ty_where(PlusPolicy::Yield)?;
                 return Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into());
             }
             Op::Div => ast::BinOp::Div,
