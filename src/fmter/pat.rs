@@ -1,4 +1,6 @@
-use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
+use super::{
+    BuiltinSyntax, Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
+};
 use crate::ast;
 
 // FIXME: Don't print unnecessary parens & properly respect precedence.
@@ -10,6 +12,8 @@ impl Fmt for ast::Pat<'_> {
                 fmt!(cx, "box ");
                 pat.fmt(cx);
             }
+            Self::Deref(pat) => BuiltinSyntax("deref", |cx| pat.fmt(cx)).fmt(cx),
+            Self::Error(span) => fmt!(cx, "{}", cx.source(span)),
             // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.
             Self::Wildcard(_) => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {

@@ -1,5 +1,5 @@
 use crate::normalizer::Normalized;
-use crate::token;
+use crate::{Edition, token};
 use crate::{ast, span::Span};
 use std::fmt::Write as _;
 
@@ -39,9 +39,10 @@ macro fmt($cx:ident, $($arg:tt)*) {
 }
 
 #[must_use]
-pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, cfg: Cfg) -> String {
+pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, edition: Edition, cfg: Cfg) -> String {
     let source = source.into_inner();
-    let mut cx = Cx { cfg, source, indent: 0, output: String::with_capacity(source.len()) };
+    let output = String::with_capacity(source.len()); // FIXME: better heuristic
+    let mut cx = Cx { cfg, source, edition, indent: 0, output };
     file.fmt(&mut cx);
     cx.output
 }
@@ -49,6 +50,7 @@ pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, cfg: Cfg) -> String {
 struct Cx<'src> {
     cfg: Cfg,
     source: &'src str,
+    edition: Edition,
     indent: usize,
     output: String,
 }
@@ -327,6 +329,27 @@ impl<T: Fmt> Fmt for Tup<T> {
                 node.fmt(cx);
             }
         }
+        fmt!(cx, ")");
+    }
+}
+
+struct BuiltinSyntax<F: FnOnce(&mut Cx<'_>)>(&'static str, F);
+
+impl<F: FnOnce(&mut Cx<'_>)> Fmt for BuiltinSyntax<F> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(name, content) = self;
+
+        fmt!(cx, "builtin");
+        if cx.edition >= Edition::Rust2021 {
+            fmt!(cx, " ");
+        }
+        fmt!(cx, "#");
+        if cx.edition >= Edition::Rust2021 {
+            fmt!(cx, " ");
+        }
+        name.fmt(cx);
+        fmt!(cx, "(");
+        content(cx);
         fmt!(cx, ")");
     }
 }

@@ -52,6 +52,7 @@ pub(crate) enum ExprKind<'src> {
     Try(Box<Expr<'src>>),
     Tuple(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
+    UnsafeBinderCast(UnsafeBinderCastKind, Box<Expr<'src>>),
     Use(Box<Expr<'src>>),
     WhileLoop(Box<WhileLoopExpr<'src>>),
     Wildcard,
@@ -105,6 +106,7 @@ impl ExprKind<'_> {
             | Self::Try(_)
             | Self::Tuple(_)
             | Self::UnOp(..)
+            | Self::UnsafeBinderCast(..)
             | Self::Use(_)
             | Self::Wildcard
             | Self::Yeet(_)
@@ -357,4 +359,10 @@ pub(crate) enum YieldExpr<'src> {
 pub(crate) enum RangeExprKind {
     Inclusive,
     Exclusive,
+}
+
+#[derive(Debug)]
+pub(crate) enum UnsafeBinderCastKind {
+    Wrap,
+    Unwrap,
 }

@@ -8,6 +8,7 @@ use super::{
 use crate::{
     Edition, ast,
     error::{Error, UnchainableExprOp},
+    span::Span,
 };
 use std::{cmp::Ordering, mem};
 
@@ -632,39 +633,7 @@ impl<'src> Parser<'_, '_, 'src> {
             // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
-                self.advance();
-                let ident = self.parse_common_ident()?;
-                self.parse(TokenKind::OpenRoundBracket)?;
-                let expr = match ident.name {
-                    weak::OffsetOf::STR => {
-                        let ty = self.parse_ty()?;
-                        self.parse(TokenKind::Comma)?;
-                        // FIXME: split float lits
-                        let fields = self.fin_parse_delim_seq(
-                            TokenKind::CloseRoundBracket,
-                            TokenKind::SingleDot,
-                            |this| {
-                                // FIXME: reject suffixes
-                                let (ident, _) = this.parse_common_ident_or(TokenKind::NumLit)?;
-                                Ok(ident)
-                            },
-                        )?;
-                        ast::ExprKind::OffsetOf(Box::new(ty), fields)
-                    }
-                    weak::TypeAscribe::STR => {
-                        let expr = self.parse_expr()?;
-                        self.parse(TokenKind::Comma)?;
-                        let ty = self.parse_ty()?;
-                        self.parse(TokenKind::CloseRoundBracket)?;
-                        ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
-                    }
-                    _ => {
-                        self.error(Error::UnknownBuiltInSyntax(ident.span));
-                        let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                        ast::ExprKind::Error(start.to(self.token.span))
-                    }
-                };
-                return Ok(expr);
+                return self.fin_parse_builtin_expr(start);
             }
             TokenKind::Continue => {
                 self.advance();
@@ -1132,6 +1101,53 @@ impl<'src> Parser<'_, '_, 'src> {
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
+    }
+
+    fn fin_parse_builtin_expr(&mut self, start: Span) -> Result<ast::ExprKind<'src>> {
+        self.parse(TokenKind::Hash)?;
+
+        let ident = self.parse_common_ident()?;
+        self.parse(TokenKind::OpenRoundBracket)?;
+
+        Ok(match ident.name {
+            weak::OffsetOf::STR => {
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::Comma)?;
+                // FIXME: split float lits
+                let fields = self.fin_parse_delim_seq(
+                    TokenKind::CloseRoundBracket,
+                    TokenKind::SingleDot,
+                    |this| {
+                        // FIXME: reject suffixes
+                        let (ident, _) = this.parse_common_ident_or(TokenKind::NumLit)?;
+                        Ok(ident)
+                    },
+                )?;
+                ast::ExprKind::OffsetOf(Box::new(ty), fields)
+            }
+            weak::TypeAscribe::STR => {
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::Comma)?;
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                ast::ExprKind::Ascription(Box::new(expr), Box::new(ty))
+            }
+            weak::UnwrapBinder::STR => {
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                ast::ExprKind::UnsafeBinderCast(ast::UnsafeBinderCastKind::Unwrap, Box::new(expr))
+            }
+            weak::WrapBinder::STR => {
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                ast::ExprKind::UnsafeBinderCast(ast::UnsafeBinderCastKind::Wrap, Box::new(expr))
+            }
+            _ => {
+                self.error(Error::UnknownBuiltinSyntax(ident.span));
+                let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
+                ast::ExprKind::Error(start.until(self.token.span))
+            }
+        })
     }
 
     fn validate_let_chain(&mut self, expr: &ast::Expr<'src>, l_policy: LetPolicy) -> Result<()> {

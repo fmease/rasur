@@ -121,6 +121,7 @@ impl ast::ExprKind<'_> {
             | Self::Repeat(..)
             | Self::Try(_)
             | Self::Tuple(_)
+            | Self::UnsafeBinderCast(..)
             | Self::Use(_)
             | Self::Wildcard
             | Self::Yield(ast::YieldExpr::Postfix(_))

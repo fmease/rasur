@@ -40,7 +40,7 @@ fn parse_via<'src, T>(
     });
     match errors.non_empty() {
         Some(errors) => Err(errors),
-        None => Ok(result.map_err(drop).unwrap()),
+        None => Ok(result.unwrap()),
     }
 }
 
@@ -2039,4 +2039,77 @@ fn f<T: ~const async Trait>();
         ),
         Ok(_)
     ); // just a smoke test
+}
+
+#[test]
+fn builtin_syntax() {
+    assert_matches!(
+        parse_expr(n!("builtin#unknown(1 + 2 @)"), Rust2015),
+        Err(r!([Error::UnknownBuiltinSyntax(_)])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin#unknown(1 + 2 @)"), Rust2021),
+        Err(r!([
+            Error::ReservedPrefix(_),
+            Error::UnexpectedToken(Token { kind: TokenKind::At, .. }, _)
+        ])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin # unknown(1 + 2 @)"), Rust2021),
+        Err(r!([Error::UnknownBuiltinSyntax(_)])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin # type_ascribe(0,i32)"), Rust2021),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Ascription(
+                r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                r!(ast::Ty::Path(_))
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin # offset_of(X,0.x.y.1)"), Rust2021),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::OffsetOf(
+                r!(ast::Ty::Path(ast::ExtPath {
+                    ext: None,
+                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("X"), .. }]) }
+                })),
+                r!([ast::Ident!("0"), ast::Ident!("x"), ast::Ident!("y"), ast::Ident!("1"),]),
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin # wrap_binder(&0)"), Rust2021),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::UnsafeBinderCast(
+                ast::UnsafeBinderCastKind::Wrap,
+                r!(ast::Expr { .. }),
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin # unwrap_binder(x)"), Rust2021),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::UnsafeBinderCast(
+                ast::UnsafeBinderCastKind::Unwrap,
+                r!(ast::Expr { .. }),
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_pat(n!("builtin # deref(0)"), Rust2021),
+        Ok(ast::Pat::Deref(r!(ast::Pat::Lit(..))))
+    );
 }

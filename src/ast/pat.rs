@@ -2,12 +2,15 @@ use super::{
     Attr, BorrowKind, Expr, ExtPath, Ident, Lit, MacroCall, Mutability,
     ObligatorilyDisambiguatedGenericArgs,
 };
+use crate::span::Span;
 
 #[derive(Debug)]
 pub(crate) enum Pat<'src> {
     Binding(Box<BindingPat<'src>>),
     Borrow(BorrowKind<!>, Mutability, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
+    Deref(Box<Pat<'src>>),
+    Error(Span),
     Grouped(Box<Pat<'src>>),
     Guarded(Box<Pat<'src>>, Box<Expr<'src>>),
     Lit(Sign, Lit<'src>),

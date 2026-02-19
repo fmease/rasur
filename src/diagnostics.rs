@@ -85,7 +85,7 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         Error::InvalidOpAfterCast(span) => {
             Diag::new("invalid operator following a cast").highlight(span)
         }
-        Error::UnknownBuiltInSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
+        Error::UnknownBuiltinSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
         Error::InvalidLetChain => Diag::new("invalid let-chain"),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
         Error::InvalidRawTickedIdent(span) => {

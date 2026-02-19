@@ -1,5 +1,6 @@
 use super::{
-    Cluster, Cx, Fmt, InterleaveExt as _, LineBreak, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
+    BuiltinSyntax, Cluster, Cx, Fmt, InterleaveExt as _, LineBreak, TrailingSpace,
+    TrailingSpaceExt as _, Tup, fmt,
 };
 use crate::ast::{self, AttrsExt as _};
 
@@ -27,11 +28,12 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
 
         match expr {
             ast::ExprKind::Ascription(expr, ty) => {
-                fmt!(cx, "builtin # type_ascribe(");
-                expr.fmt(cx);
-                fmt!(cx, ", ");
-                ty.fmt(cx);
-                fmt!(cx, ")");
+                BuiltinSyntax("type_ascribe", |cx| {
+                    expr.fmt(cx);
+                    fmt!(cx, ", ");
+                    ty.fmt(cx);
+                })
+                .fmt(cx);
             }
             ast::ExprKind::Await(expr) => {
                 fmt!(cx, "(");
@@ -110,11 +112,12 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
             }
             ast::ExprKind::Match(expr) => (*expr, attrs).fmt(cx),
             ast::ExprKind::OffsetOf(ty, fields) => {
-                fmt!(cx, "builtin # offset(");
-                ty.fmt(cx);
-                fmt!(cx, ", ");
-                fields.interleave(".").fmt(cx);
-                fmt!(cx, ")");
+                BuiltinSyntax("offset_of", |cx| {
+                    ty.fmt(cx);
+                    fmt!(cx, ", ");
+                    fields.interleave(".").fmt(cx);
+                })
+                .fmt(cx);
             }
             ast::ExprKind::WhileLoop(expr) => (*expr, attrs).fmt(cx),
             ast::ExprKind::Let(expr) => expr.fmt(cx),
@@ -189,6 +192,13 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
             ast::ExprKind::Path(path) => path.fmt(cx),
             ast::ExprKind::MacroCall(call) => call.fmt(cx),
             ast::ExprKind::Struct(expr) => expr.fmt(cx),
+            ast::ExprKind::UnsafeBinderCast(kind, expr) => {
+                let name = match kind {
+                    ast::UnsafeBinderCastKind::Wrap => "wrap_binder",
+                    ast::UnsafeBinderCastKind::Unwrap => "unwrap_binder",
+                };
+                BuiltinSyntax(name, |cx| expr.fmt(cx)).fmt(cx);
+            }
             ast::ExprKind::Use(expr) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);

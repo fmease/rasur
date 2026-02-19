@@ -89,6 +89,7 @@ fn try_main() -> Result<(), ()> {
         let result = rasur::fmter::fmt(
             file,
             source,
+            edition,
             rasur::fmter::Cfg { skip_marker: opts.skip_marker, ..default() },
         );
         println!("{result}");

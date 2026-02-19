@@ -36,6 +36,7 @@ macro_rules! weak {
                     }
                 )?
             }
+
             impl $( ${ignore($qualifies)} ! )? MatchAgainstArbitraryToken for $ty {}
         )+
     };
@@ -49,6 +50,7 @@ weak! {
     ContractEnsures "contract_ensures",
     ContractRequires "contract_requires",
     Default "default" |p| p.peek(1).kind.is_ident(),
+    Deref "deref",
     Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.begins_2015_dyn_bound(p.peek(1)),
     MacroRules "macro_rules" |p|
         p.peek(1).kind == TokenKind::SingleBang
@@ -68,5 +70,7 @@ weak! {
     Safe "safe" |p| matches!(p.peek(1).kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static),
     TypeAscribe "type_ascribe",
     Union "union" |p| p.peek(1).kind == TokenKind::CommonIdent,
+    UnwrapBinder "unwrap_binder",
+    WrapBinder "wrap_binder",
     Yeet "yeet",
 }

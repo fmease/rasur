@@ -310,7 +310,8 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => return Ok(None),
         };
 
-        self.parse(TokenPrefix::Plus)?;
+        // FIXME: self.parse_unchecked(TokenPrefix::Plus);
+        self.parse(TokenPrefix::Plus).unwrap();
 
         let mut bounds = vec![bound];
         self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;

@@ -22,6 +22,7 @@ mod weak;
 
 type Result<T, E = BufferedError> = std::result::Result<T, E>;
 
+#[derive(Debug)]
 struct BufferedError(());
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
@@ -291,6 +292,9 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         category.check(self)
     }
 
+    // FIXME: If we provided a matches API that took an offset into the parser's tokens,
+    //        any token category should be able to be used here allowing us to retire
+    //        trait `MatchAgainstArbitraryToken`.
     fn matches<C>(&self, category: C, token: Token) -> bool
     where
         C: TokenCategory + MatchAgainstArbitraryToken,

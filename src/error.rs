@@ -86,7 +86,7 @@ pub enum Error {
     UnchainableExprOp(UnchainableExprOp, Span),
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
-    UnknownBuiltInSyntax(Span),
+    UnknownBuiltinSyntax(Span),
     UnsafeTraitAlias,
     UnterminatedBlockComment(Span),
     UnterminatedCharLit(Span),
