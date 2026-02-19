@@ -505,20 +505,20 @@ impl<'src> Parser<'_, '_, 'src> {
             return match self.token.kind {
                 TokenKind::For => {
                     self.advance();
-                    self.fin_parse_for_loop_expr(label)
+                    self.fin_parse_for_loop_expr(label, attrs)
                 }
                 TokenKind::Loop => {
                     self.advance();
-                    self.fin_parse_loop_expr(label)
+                    self.fin_parse_loop_expr(label, attrs)
                 }
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
-                    let block = self.fin_parse_block_expr()?;
+                    let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                     return Ok(ast::ExprKind::Block(label, Box::new(block)));
                 }
                 TokenKind::While => {
                     self.advance();
-                    self.fin_parse_while_loop_expr(label)
+                    self.fin_parse_while_loop_expr(label, attrs)
                 }
                 _ => self.fatal(Error::UnexpectedToken(
                     self.token,
@@ -545,7 +545,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     if !qualifiers.is_empty() {
                         return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
-                    let block = self.fin_parse_block_expr()?;
+                    let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                     let kind = match (asyncness, genness) {
                         (ast::Asyncness::Async, ast::Genness::Gen) => ast::GenBlockKind::AsyncGen,
                         (ast::Asyncness::Async, ast::Genness::Not) => ast::GenBlockKind::Async,
@@ -563,7 +563,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
                     _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
                 };
-                let block = self.fin_parse_block_expr()?;
+                let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                 return Ok(match kind {
                     None => ast::ExprKind::Block(None, Box::new(block)),
                     Some(kind) => ast::ExprKind::SpecialBlock(kind, Box::new(block)),
@@ -684,7 +684,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::For => {
                 self.advance();
-                return self.fin_parse_for_loop_expr(None);
+                return self.fin_parse_for_loop_expr(None, attrs);
             }
             TokenKind::If => {
                 self.advance();
@@ -706,7 +706,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::Loop => {
                 self.advance();
-                return self.fin_parse_loop_expr(None);
+                return self.fin_parse_loop_expr(None, attrs);
             }
             TokenKind::Match => {
                 self.advance();
@@ -778,7 +778,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::While => {
                 self.advance();
-                return self.fin_parse_while_loop_expr(None);
+                return self.fin_parse_while_loop_expr(None, attrs);
             }
             // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
@@ -918,9 +918,12 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(qualifiers)
     }
 
-    pub(super) fn parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
+    pub(super) fn parse_block_expr(
+        &mut self,
+        a_policy: AttrPolicy<'_, 'src>,
+    ) -> Result<ast::BlockExpr<'src>> {
         self.parse(TokenKind::OpenCurlyBracket)?;
-        self.fin_parse_block_expr()
+        self.fin_parse_block_expr(a_policy)
     }
 
     /// Finish parsing a block expression assuming the leading `{` has already been parsed.
@@ -930,14 +933,19 @@ impl<'src> Parser<'_, '_, 'src> {
     /// ```grammar
     /// Block_Expr ::= "{" Attrs⟨Inner⟩* Stmt* "}"
     /// ```
-    pub(super) fn fin_parse_block_expr(&mut self) -> Result<ast::BlockExpr<'src>> {
-        // FIXME: Instead of tracking attrs inside the `BlockExpr`, they should be merged with the
-        //        outer attrs of the parent expr (created by the caller).
-        let attrs = self
-            .parse_attrs(ast::AttrStyle::Inner)?
-            .into_iter()
-            .map(|attr| attr.downcast().unwrap())
-            .collect();
+    pub(super) fn fin_parse_block_expr(
+        &mut self,
+        a_policy: AttrPolicy<'_, 'src>,
+    ) -> Result<ast::BlockExpr<'src>> {
+        let (attrs, reject) = match a_policy {
+            AttrPolicy::Parse(attrs) => (attrs, false),
+            AttrPolicy::Reject => (&mut Vec::new(), true),
+        };
+        self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
+        if reject && !attrs.is_empty() {
+            self.error(Error::ForbiddenInnerAttrs);
+        }
+
         let mut stmts = Vec::new();
 
         const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
@@ -945,7 +953,7 @@ impl<'src> Parser<'_, '_, 'src> {
             stmts.push(self.parse_stmt(DELIMITER)?);
         }
 
-        Ok(ast::BlockExpr { attrs, stmts })
+        Ok(ast::BlockExpr { stmts })
     }
 
     fn fin_parse_closure_expr(
@@ -963,7 +971,9 @@ impl<'src> Parser<'_, '_, 'src> {
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
 
         let body = if ret_ty.is_some() {
-            ast::ExprKind::Block(None, Box::new(self.parse_block_expr()?)).into()
+            let mut attrs = Vec::new();
+            let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
+            ast::Expr { attrs, kind: ast::ExprKind::Block(None, Box::new(block)) }
         } else {
             self.parse_expr()?
         };
@@ -980,6 +990,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_for_loop_expr(
         &mut self,
         label: Option<ast::Ident<'src>>,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         // FEATURE: `async_for_loop` <https://github.com/rust-lang/rust/issues/118898>
         let awaitness = if self.consume(TokenKind::Await) {
@@ -994,7 +1005,7 @@ impl<'src> Parser<'_, '_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        let body = self.parse_block_expr()?;
+        let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, awaitness, pat, head, body })))
     }
@@ -1008,7 +1019,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let condition =
             self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
-        let consequent = self.parse_block_expr()?;
+        let consequent = self.parse_block_expr(AttrPolicy::Reject)?;
 
         let alternate = if self.consume(TokenKind::Else) {
             Some(ast::Expr {
@@ -1016,7 +1027,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 kind: match self.token.kind {
                     TokenKind::OpenCurlyBracket => {
                         self.advance();
-                        ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?))
+                        let block = self.fin_parse_block_expr(AttrPolicy::Reject)?;
+                        ast::ExprKind::Block(None, Box::new(block))
                     }
                     TokenKind::If => {
                         self.advance();
@@ -1040,8 +1052,9 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_loop_expr(
         &mut self,
         label: Option<ast::Ident<'src>>,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        Ok(ast::ExprKind::Loop(label, Box::new(self.parse_block_expr()?)))
+        Ok(ast::ExprKind::Loop(label, Box::new(self.parse_block_expr(AttrPolicy::Parse(attrs))?)))
     }
 
     fn fin_parse_match_expr(
@@ -1106,6 +1119,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_while_loop_expr(
         &mut self,
         label: Option<ast::Ident<'src>>,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         let l_policy = if self.edition >= Edition::Rust2024 {
             LetPolicy::Allowed
@@ -1115,7 +1129,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let condition =
             self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
-        let body = self.parse_block_expr()?;
+        let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
     }
@@ -1190,6 +1204,11 @@ pub(crate) enum LetPolicy {
 pub(crate) enum OpPolicy {
     Allowed,
     Restricted(ast::CurlyBracketedMacroCallIsBoundary),
+}
+
+pub(crate) enum AttrPolicy<'a, 'src> {
+    Parse(&'a mut Vec<ast::Attr<'src>>),
+    Reject,
 }
 
 #[derive(Clone, Copy, Debug)]

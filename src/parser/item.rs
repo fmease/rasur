@@ -1,6 +1,7 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
     common::FnParamMode,
+    expr::AttrPolicy,
     path::PathMode,
     weak::{self, Weak as _},
 };
@@ -219,7 +220,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_fn_item(modifiers, cx);
+                return self.fin_parse_fn_item(modifiers, cx, attrs);
             }
             &[mut ref qualifiers @ .., Qualifier::Trait] => {
                 let mut modifiers = ast::TraitItemModifiers::default();
@@ -403,10 +404,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     /// Finish parsing a const block item assuming the leading `const {` has been parsed already.
     fn fin_parse_const_block_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let body = self.fin_parse_block_expr()?;
-        if !body.attrs.is_empty() {
-            self.error(Error::ForbiddenInnerAttrs);
-        }
+        let body = self.fin_parse_block_expr(AttrPolicy::Reject)?;
 
         Ok(ast::ItemKind::ConstBlock(Box::new(ast::ConstBlockItem { body })))
     }
@@ -568,6 +566,7 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         modifiers: ast::FnItemModifiers<'src>,
         cx: ItemCx,
+        attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_param_list()?;
@@ -581,7 +580,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let preds = self.parse_where_clause()?;
 
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
-            Some(self.fin_parse_block_expr()?)
+            Some(self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?)
         } else {
             self.parse(TokenKind::Semicolon)?;
             None
@@ -602,10 +601,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let mut contract = ast::Contract { requires: None, ensures: None };
 
         if self.consume(weak::ContractRequires) {
-            let block = self.parse_block_expr()?;
-            if !block.attrs.is_empty() {
-                self.error(Error::ForbiddenInnerAttrs);
-            }
+            let block = self.parse_block_expr(AttrPolicy::Reject)?;
             contract.requires = Some(Box::new(block));
         }
 
@@ -1015,11 +1011,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn parse_delegation_body(&mut self) -> Result<Option<ast::BlockExpr<'src>>> {
         if self.consume(TokenKind::OpenCurlyBracket) {
-            let block = self.fin_parse_block_expr()?;
-            if !block.attrs.is_empty() {
-                self.error(Error::ForbiddenInnerAttrs);
-            }
-            Ok(Some(block))
+            Ok(Some(self.fin_parse_block_expr(AttrPolicy::Reject)?))
         } else {
             self.parse(TokenKind::Semicolon)?;
             Ok(None)

@@ -106,7 +106,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
                     fmt!(cx, "{label}: ");
                 }
                 fmt!(cx, "loop ");
-                body.fmt(cx);
+                (*body, attrs).fmt(cx);
             }
             ast::ExprKind::Match(expr) => (*expr, attrs).fmt(cx),
             ast::ExprKind::OffsetOf(ty, fields) => {
@@ -116,7 +116,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
                 fields.interleave(".").fmt(cx);
                 fmt!(cx, ")");
             }
-            ast::ExprKind::WhileLoop(expr) => expr.fmt(cx),
+            ast::ExprKind::WhileLoop(expr) => (*expr, attrs).fmt(cx),
             ast::ExprKind::Let(expr) => expr.fmt(cx),
             ast::ExprKind::Lit(lit) => lit.fmt(cx),
             ast::ExprKind::Borrow(kind, mut_, expr) => {
@@ -155,19 +155,19 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>)
                 if let Some(label) = label {
                     fmt!(cx, "{label}: ");
                 }
-                block.fmt(cx);
+                (*block, attrs).fmt(cx);
             }
             ast::ExprKind::GenBlock(kind, mode, block) => {
                 kind.trailing_space().fmt(cx);
                 mode.trailing_space().fmt(cx);
-                block.fmt(cx);
+                (*block, attrs).fmt(cx);
             }
             ast::ExprKind::SpecialBlock(kind, block) => {
                 kind.trailing_space().fmt(cx);
-                block.fmt(cx);
+                (*block, attrs).fmt(cx);
             }
             ast::ExprKind::Closure(expr) => expr.fmt(cx),
-            ast::ExprKind::ForLoop(expr) => expr.fmt(cx),
+            ast::ExprKind::ForLoop(expr) => (*expr, attrs).fmt(cx),
             ast::ExprKind::Tuple(exprs) => Tup(exprs).fmt(cx),
             ast::ExprKind::Array(elems) => {
                 fmt!(cx, "[");
@@ -291,9 +291,10 @@ impl Fmt for ast::MatchArm<'_> {
     }
 }
 
-impl Fmt for ast::WhileLoopExpr<'_> {
+impl Fmt for (ast::WhileLoopExpr<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { label, condition, body } = self;
+        let (expr, attrs) = self;
+        let ast::WhileLoopExpr { label, condition, body } = expr;
 
         if let Some(label) = label {
             fmt!(cx, "{label}: ");
@@ -302,7 +303,7 @@ impl Fmt for ast::WhileLoopExpr<'_> {
         fmt!(cx, "while ");
         condition.fmt(cx);
         fmt!(cx, " ");
-        body.fmt(cx);
+        (body, attrs).fmt(cx);
     }
 }
 
@@ -435,9 +436,10 @@ impl Fmt for ast::ClosureParam<'_> {
     }
 }
 
-impl Fmt for ast::ForLoopExpr<'_> {
+impl Fmt for (ast::ForLoopExpr<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { label, awaitness, pat, head, body } = self;
+        let (expr, attrs) = self;
+        let ast::ForLoopExpr { label, awaitness, pat, head, body } = expr;
 
         if let Some(label) = label {
             fmt!(cx, "{label}: ");
@@ -453,7 +455,7 @@ impl Fmt for ast::ForLoopExpr<'_> {
         fmt!(cx, " in ");
         head.fmt(cx);
         fmt!(cx, " ");
-        body.fmt(cx);
+        (body, attrs).fmt(cx);
     }
 }
 
@@ -489,7 +491,13 @@ impl Fmt for TrailingSpace<ast::GenBlockKind> {
 
 impl Fmt for ast::BlockExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, stmts } = self;
+        (self, Vec::new()).fmt(cx);
+    }
+}
+
+impl Fmt for (ast::BlockExpr<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let (ast::BlockExpr { stmts }, attrs) = self;
 
         // FIXME: Skip Stmt::Empty here
         Cluster { attrs, nodes: stmts }.fmt(cx);

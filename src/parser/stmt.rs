@@ -1,6 +1,6 @@
 use super::{
     ExpectedFragment, Parser, Result, TokenKind,
-    expr::{LetPolicy, OpPolicy, StructPolicy},
+    expr::{AttrPolicy, LetPolicy, OpPolicy, StructPolicy},
     item::ItemCx,
     pat::OrPolicy,
 };
@@ -55,7 +55,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     && consequent.kind.else_may_follow()
                 {
                     self.advance();
-                    Some(self.parse_block_expr()?)
+                    Some(self.parse_block_expr(AttrPolicy::Reject)?)
                 } else {
                     None
                 };

@@ -19,16 +19,6 @@ impl<'src> Attr<'src, Inner> {
     }
 }
 
-impl<'src> Attr<'src, Any> {
-    // FIXME: Temporary API (until BlockExpr no longer stores inner attrs).
-    pub(crate) fn downcast(self) -> Option<Attr<'src, Inner>> {
-        match self.style {
-            AttrStyle::Inner => Some(Attr { style: (), ..self }),
-            AttrStyle::Outer => None,
-        }
-    }
-}
-
 impl<M: AttrMode> fmt::Debug for Attr<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { style, kind } = self;

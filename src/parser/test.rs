@@ -812,13 +812,12 @@ fn const_block_const_item_modifier() {
             kind: ast::ExprKind::Block(
                 None,
                 r!(ast::BlockExpr {
-                    attrs: r!([]),
                     stmts: r!([
                         ast::Stmt::Expr(
                             ast::Expr {
                                 kind: ast::ExprKind::SpecialBlock(
                                     ast::SpecialBlockKind::Const,
-                                    r!(ast::BlockExpr { attrs: r!([]), stmts: r!([]) })
+                                    r!(ast::BlockExpr { stmts: r!([]) })
                                 ),
                                 ..
                             },
@@ -856,7 +855,7 @@ fn const_block_const_item_modifier() {
             items: r!([
                 ast::Item {
                     kind: ast::ItemKind::ConstBlock(r!(ast::ConstBlockItem {
-                        body: ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
+                        body: ast::BlockExpr { stmts: r!([]) }
                     })),
                     ..
                 },
@@ -891,15 +890,12 @@ fn control_flow_ops_block_expr() {
             kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr {
                     kind: ast::ExprKind::Return(Some(r!(ast::Expr {
-                        kind: ast::ExprKind::Block(
-                            None,
-                            ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
-                        ),
+                        kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: r!([]) }),
                         ..
                     }))),
                     ..
                 },
-                consequent: ast::BlockExpr { attrs: r!([]), stmts: r!([]) },
+                consequent: ast::BlockExpr { stmts: r!([]) },
                 alternate: None
             })),
             ..
@@ -912,7 +908,7 @@ fn control_flow_ops_block_expr() {
         Ok(ast::Expr {
             kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
-                consequent: ast::BlockExpr { attrs: r!([]), stmts: r!([]) },
+                consequent: ast::BlockExpr { stmts: r!([]) },
                 alternate: None
             })),
             ..
@@ -925,10 +921,7 @@ fn control_flow_ops_block_expr() {
             kind: ast::ExprKind::Break(
                 None,
                 Some(ast::Expr {
-                    kind: ast::ExprKind::Block(
-                        None,
-                        ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
-                    ),
+                    kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: r!([]) }),
                     ..
                 })
             ),

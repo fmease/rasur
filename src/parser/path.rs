@@ -1,4 +1,7 @@
-use super::{ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, one_of, ty::PlusPolicy};
+use super::{
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, one_of,
+    ty::PlusPolicy,
+};
 use crate::{ast, error::Error, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -229,13 +232,18 @@ impl<'src> Parser<'_, '_, 'src> {
             // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
             TokenKind::Const => {
                 self.advance();
-                let block = self.parse_block_expr()?;
-                Ok(ast::ExprKind::SpecialBlock(ast::SpecialBlockKind::Const, Box::new(block))
-                    .into())
+                let mut attrs = Vec::new();
+                let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
+                let kind =
+                    ast::ExprKind::SpecialBlock(ast::SpecialBlockKind::Const, Box::new(block));
+                Ok(ast::Expr { attrs, kind })
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
-                Ok(ast::ExprKind::Block(None, Box::new(self.fin_parse_block_expr()?)).into())
+                let mut attrs = Vec::new();
+                let block = self.fin_parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
+                let kind = ast::ExprKind::Block(None, Box::new(block));
+                Ok(ast::Expr { attrs, kind })
             }
             _ => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::ConstArg)),
         }

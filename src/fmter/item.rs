@@ -9,7 +9,6 @@ impl Fmt for ast::Item<'_> {
         let Self { attrs, vis, kind, span } = self;
 
         let (outer_attrs, inner_attrs) = attrs.partition();
-
         if cx.skip(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
@@ -36,7 +35,7 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
             ast::ItemKind::Enum(item) => item.fmt(cx),
             ast::ItemKind::ExternBlock(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::ExternCrate(item) => item.fmt(cx),
-            ast::ItemKind::Fn(item) => item.fmt(cx),
+            ast::ItemKind::Fn(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::Impl(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::Mod(item) => (*item, attrs).fmt(cx),
             ast::ItemKind::Static(item) => item.fmt(cx),
@@ -259,11 +258,12 @@ impl Fmt for ast::ExternItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        let (outer_attrs, inner_attrs) = attrs.partition();
+        if cx.skip(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in attrs {
+        for attr in outer_attrs {
             attr.fmt(cx);
             LineBreak.fmt(cx);
         }
@@ -271,7 +271,7 @@ impl Fmt for ast::ExternItem<'_> {
         vis.trailing_space().fmt(cx);
 
         match kind {
-            ast::ExternItemKind::Fn(item) => item.fmt(cx),
+            ast::ExternItemKind::Fn(item) => (*item, inner_attrs).fmt(cx),
             ast::ExternItemKind::Static(item) => item.fmt(cx),
             ast::ExternItemKind::Ty(item) => item.fmt(cx),
             ast::ExternItemKind::MacroCall(call) => {
@@ -285,9 +285,10 @@ impl Fmt for ast::ExternItem<'_> {
     }
 }
 
-impl Fmt for ast::FnItem<'_> {
+impl Fmt for (ast::FnItem<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { modifiers, binder, generics, params, ret_ty, contract, body } = self;
+        let (item, attrs) = self;
+        let ast::FnItem { modifiers, binder, generics, params, ret_ty, contract, body } = item;
 
         modifiers.trailing_space().fmt(cx);
         fmt!(cx, "fn {binder}");
@@ -305,7 +306,7 @@ impl Fmt for ast::FnItem<'_> {
         generics.preds.fmt(cx);
         if let Some(body) = body {
             fmt!(cx, " ");
-            body.fmt(cx);
+            (body, attrs).fmt(cx);
         } else {
             fmt!(cx, ";");
         }
@@ -628,11 +629,12 @@ impl Fmt for ast::AssocItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, vis, kind, span } = self;
 
-        if cx.skip(&attrs) {
+        let (outer_attrs, inner_attrs) = attrs.partition();
+        if cx.skip(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
-        for attr in attrs {
+        for attr in outer_attrs {
             attr.fmt(cx);
             LineBreak.fmt(cx);
         }
@@ -642,7 +644,7 @@ impl Fmt for ast::AssocItem<'_> {
         match kind {
             ast::AssocItemKind::Const(item) => item.fmt(cx),
             ast::AssocItemKind::Delegation(item) => item.fmt(cx),
-            ast::AssocItemKind::Fn(item) => item.fmt(cx),
+            ast::AssocItemKind::Fn(item) => (*item, inner_attrs).fmt(cx),
             ast::AssocItemKind::Ty(item) => item.fmt(cx),
             ast::AssocItemKind::MacroCall(call) => {
                 let needs_semi = call.bracket != ast::Bracket::Curly;
