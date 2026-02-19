@@ -5,12 +5,8 @@ use super::{
     ty::PlusPolicy,
     weak::{self, Weak as _},
 };
-use crate::{
-    Edition, ast,
-    error::{Error, UnchainableExprOp},
-    span::Span,
-};
-use std::{cmp::Ordering, mem};
+use crate::{Edition, ast, error::Error, span::Span};
+use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse an expression.
@@ -111,10 +107,14 @@ impl<'src> Parser<'_, '_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            self.fin_parse_prefix_op_expr(op, s_policy, attrs)
+            let left = self.fin_parse_prefix_op_expr(op, s_policy, attrs)?;
+            if let Op::Range(_) = op {
+                return Ok(left);
+            }
+            left
         } else {
-            self.parse_lower_expr(s_policy, l_policy, attrs)
-        }?;
+            self.parse_lower_expr(s_policy, l_policy, attrs)?
+        };
 
         loop {
             let op = match self.token.kind {
@@ -165,31 +165,39 @@ impl<'src> Parser<'_, '_, 'src> {
             }
 
             let left_level = op.left_level().unwrap();
-            match left_level.cmp(&level) {
-                Ordering::Less => break,
-                Ordering::Equal => self.reject_unchainable_op_expr(level),
-                Ordering::Greater => {}
+
+            if left_level <= level {
+                break;
             }
+
+            if let Level::Compare = left_level
+                && let ast::ExprKind::BinOp(op, ..) = left.kind
+                && let ast::BinOp::Eq
+                | ast::BinOp::Ne
+                | ast::BinOp::Lt
+                | ast::BinOp::Le
+                | ast::BinOp::Gt
+                | ast::BinOp::Ge = op
+            {
+                self.error(Error::ChainedComparison(self.token.span));
+            }
+
             if let ast::ExprKind::Cast(..) = left.kind
                 && let Op::Call | Op::Index | Op::Dot | Op::Try = op
             {
                 self.error(Error::InvalidOpAfterCast(self.token.span));
             }
+
             self.advance();
 
             left = self.fin_parse_suffix_op_expr(op, left, s_policy, l_policy)?;
+
+            if let Op::Range(_) = op {
+                break;
+            }
         }
 
         Ok(left)
-    }
-
-    fn reject_unchainable_op_expr(&mut self, level: Level) {
-        let op = match level {
-            Level::Range => UnchainableExprOp::Range,
-            Level::Compare => UnchainableExprOp::Compare,
-            _ => unreachable!(),
-        };
-        self.error(Error::UnchainableExprOp(op, self.token.span));
     }
 
     fn fin_parse_prefix_op_expr(
@@ -399,21 +407,10 @@ impl<'src> Parser<'_, '_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
+
         Ok(ast::Expr { attrs, kind: ast::ExprKind::Borrow(kind, mut_, Box::new(expr)) })
     }
 
-    // FIXME: We're accepting `..{ 0 } + 0` as an expr stmt even though we shouldn't.
-    //        Passing along the OpSet doesn't help because we presumably break before
-    //        the `+` when parsing the RHS of the range because `..` has a lower level
-    //        compared to `+`. Thus we yield to the parent which presumably checks if
-    //        `..{ 0 }` is "complete" which it isn't of course, so it accepts the `+`.
-    //
-    //        I know that in rustc, ranges aren't really parsed via a level / precedence
-    //        system but ... ad hoc? I don't dare to read its code. I wonder if we
-    //        should just parse the RHS with the initial level or sth like that?
-    //
-    //        We currently also parse `return x + .. .field` incorrectly likely due
-    //        to similar reasons.
     fn fin_parse_range_expr(
         &mut self,
         kind: ast::RangeExprKind,
@@ -428,6 +425,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let right = if matches!(kind, ast::RangeExprKind::Inclusive)
             || (s_policy == StructPolicy::Allowed || self.token.kind != TokenKind::OpenCurlyBracket)
+                // NB: Indeed, we plain out ignore the level here.
                 && self.begins_expr()
         {
             Some(self.parse_expr_at_level(

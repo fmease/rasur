@@ -83,7 +83,7 @@ pub enum Error {
     StrLitGuardTooLarge(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall(Span),
-    UnchainableExprOp(UnchainableExprOp, Span),
+    ChainedComparison(Span),
     UnexpectedClosingDelimiter(Token),
     UnexpectedToken(Token, ExpectedFragment),
     UnknownBuiltinSyntax(Span),
@@ -93,11 +93,4 @@ pub enum Error {
     UnterminatedFrontmatter(Span),
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem(Span),
-}
-
-#[derive(Clone, Copy)]
-#[cfg_attr(test, derive(Debug))]
-pub enum UnchainableExprOp {
-    Compare,
-    Range,
 }

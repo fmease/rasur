@@ -1,6 +1,6 @@
 use annotate_snippets as ann;
 use rasur::{
-    error::{Error, UnchainableExprOp},
+    error::Error,
     normalizer::Normalized,
     parser::ExpectedFragment,
     span::Span,
@@ -54,12 +54,8 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
             Diag::new("this bound kind may not have a binder").highlight(span)
         }
         Error::MisplacedReceiver(span) => Diag::new("misplaced receiver").highlight(span),
-        Error::UnchainableExprOp(op, span) => {
-            let kind = match op {
-                UnchainableExprOp::Compare => "comparison",
-                UnchainableExprOp::Range => "range",
-            };
-            Diag::new(format!("{kind} operators cannot be chained")).highlight(span)
+        Error::ChainedComparison(span) => {
+            Diag::new("comparison operators cannot be chained").highlight(span)
         }
         Error::TyRelMacroCall(span) => Diag::new("type-relative macro call").highlight(span),
         Error::ReservedLabel(span) => Diag::new("reserved label").highlight(span),

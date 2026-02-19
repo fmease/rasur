@@ -2,13 +2,16 @@ use super::{ExpectedFragment, Parser};
 use crate::{
     Edition::{self, *},
     ast,
-    error::{Buffer as ErrorBuffer, Error, UnchainableExprOp},
+    error::{Buffer as ErrorBuffer, Error},
     lexer::{StripFrontmatter, StripShebang, lex},
     normalizer::{Normalized, normalize},
     token::{Token, TokenKind},
 };
 use deref as r;
 use std::assert_matches;
+
+// NOTE: We're not using implicit deref patterns at the moment since rust-analyzer
+//       can't handle them yet and would color the entirely red. Use `r!(…)` for now.
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
@@ -211,6 +214,497 @@ fn tuple_struct_field_visibility() {
             Token { kind: TokenKind::CloseRoundBracket, .. },
             ExpectedFragment::Ty
         )]))
+    );
+}
+
+#[test]
+fn range_exprs() {
+    assert_matches!(
+        parse_expr(n!(".."), Rust2015),
+        Ok(ast::Expr { kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive), .. })
+    );
+
+    assert_matches!(
+        parse_expr(n!("&.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Borrow(
+                ..,
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
+                    ..
+                })
+            ),
+            ..
+        }),
+    );
+
+    // We once used to wrongly accept this & parse it as `(..)?`.
+    assert_matches!(
+        parse_expr(n!("..?"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::QuestionMark, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )])),
+    );
+
+    // `(!x)..`, not `!(x..)`.
+    assert_matches!(
+        parse_expr(n!("!x.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Not, _), .. })),
+                None,
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    // `(&0)..`, not `&(0..)`.
+    assert_matches!(
+        parse_expr(n!("&0.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { kind: ast::ExprKind::Borrow(..), .. })),
+                None,
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        }),
+    );
+
+    // `..(-x)`, not `(..) - x`.
+    assert_matches!(
+        parse_expr(n!("..-x"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Neg, _), .. })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    // `..(*x)`, not `(..)*x`. Inspired by <https://github.com/tree-sitter/tree-sitter-rust/issues/291>.
+    assert_matches!(
+        parse_expr(n!("..*x"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    // `..(0?)`, not `(..0)?`.
+    assert_matches!(
+        parse_expr(n!("..0?"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr { kind: ast::ExprKind::Try(..), .. })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        }),
+    );
+
+    // `(1 + 2)..(3 + 4)`, not `1 + (2..3) + 4`.
+    assert_matches!(
+        parse_expr(n!("1 + 2..3 + 4"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. })),
+                Some(r!(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    // While here we parse the `{}` as the right argument of the range as one would expect...
+    assert_matches!(
+        parse_expr(n!("..{}"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    // ...here we consider it to belong to the overarching loop construct.
+    assert_matches!(
+        parse_expr(n!("for _ in .. {}"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
+                head: ast::Expr {
+                    kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
+                    ..
+                },
+                body: ast::BlockExpr { .. },
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("..=()"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr { kind: ast::ExprKind::Tuple(_), .. })),
+                ast::RangeExprKind::Inclusive
+            ),
+            ..
+        })
+    );
+
+    // `(*x)..=0`, not `*(x..=0)`.
+    assert_matches!(
+        parse_expr(n!("*x..=0"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. })),
+                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
+                ast::RangeExprKind::Inclusive
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("..="), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("'='..="), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::Expr
+        )])),
+    );
+
+    // Unlike the `..` case, `{}` gets interpreted as the right argument of the range.
+    assert_matches!(
+        parse_expr(n!("for _ in ..={} {}"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
+                head: ast::Expr {
+                    kind: ast::ExprKind::Range(
+                        None,
+                        Some(r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })),
+                        ast::RangeExprKind::Inclusive,
+                    ),
+                    ..
+                },
+                body: ast::BlockExpr { .. },
+                ..
+            })),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!(".. .. .."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::Range(
+                        None,
+                        Some(r!(ast::Expr {
+                            kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
+                            ..
+                        })),
+                        ast::RangeExprKind::Exclusive
+                    ),
+                    ..
+                })),
+                ast::RangeExprKind::Exclusive
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("..=..=.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::Range(
+                        None,
+                        Some(r!(ast::Expr {
+                            kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
+                            ..
+                        })),
+                        ast::RangeExprKind::Inclusive
+                    ),
+                    ..
+                })),
+                ast::RangeExprKind::Inclusive
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("0..1..2"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDot, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("0..=1..2"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDot, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("0..1..=2"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDotEquals, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )])),
+    );
+
+    assert_matches!(
+        parse_expr(n!("0..=1..=2"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDotEquals, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )])),
+    );
+
+    // FIXME
+    #[cfg(false)]
+    assert_matches!(
+        parse_stmt(n!("..if(){}else{}[0]"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::OpenSquareBracket, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    // FIXME
+    #[cfg(false)]
+    assert_matches!(
+        parse_stmt(n!("()..if(){}else{}[0]"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::OpenSquareBracket, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    // ...for comparison, this does parse:
+    assert_matches!(
+        parse_expr(n!("..if(){}else{}[0]"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::Index(
+                        r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
+                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })
+                    ),
+                    ..
+                })),
+                _
+            ),
+            ..
+        }),
+    );
+
+    // FIXME
+    #[cfg(false)]
+    assert_matches!(parse_stmt(n!("..{}+0"), Rust2015), Err(_));
+
+    // ...for comparison, this does parse:
+    assert_matches!(
+        parse_expr(n!("..{}+0"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                None,
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::BinOp(
+                        ast::BinOp::Add,
+                        r!(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
+                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                    ),
+                    ..
+                })),
+                _
+            ),
+            ..
+        })
+    );
+
+    // We once used to wrongly reject this on grounds of ranges allegedly being unchainable
+    // (like comparison operators) and parse / recover it as `&(..=(0..))`.
+    // However, it's actually to be accepted & interpreted as `(&(..=0))..`.
+    // issue: <https://github.com/fmease/rasur/issues/17>
+    assert_matches!(
+        parse_expr(n!("&..=0.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::Borrow(
+                        ..,
+                        r!(ast::Expr {
+                            kind: ast::ExprKind::Range(
+                                None,
+                                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
+                                ast::RangeExprKind::Inclusive
+                            ),
+                            ..
+                        })
+                    ),
+                    ..
+                })),
+                None,
+                ast::RangeExprKind::Exclusive,
+            ),
+            ..
+        }),
+    );
+
+    // ... this one however it to be rejected:
+    assert_matches!(
+        parse_expr(n!("..=0.."), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDot, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )])),
+    );
+
+    // We once used to wrongly parse this as `(T {}) + (..(0..))` instead of `((T {}) + (..0))..`.
+    // issue: <https://github.com/fmease/rasur/issues/17>
+    assert_matches!(
+        parse_expr(n!("T {} + ..0.."), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::BinOp(
+                        ast::BinOp::Add,
+                        r!(ast::Expr { kind: ast::ExprKind::Struct(_), .. }),
+                        r!(ast::Expr { kind: ast::ExprKind::Range(None, Some(_), _), .. }),
+                    ),
+                    ..
+                })),
+                None,
+                _
+            ),
+            ..
+        })
+    );
+
+    // FIXME: We currently wrongly parse this as `return (x + ((..).y))` instead of `(return (x + (..))).y`.
+    // Inspired by <https://github.com/rust-lang/rust/pull/142476#discussion_r2159721125>.
+    #[cfg(false)]
+    assert_matches!(
+        parse_expr(n!("return x + .. .y"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+                        kind: ast::ExprKind::BinOp(
+                            ast::BinOp::Add,
+                            r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                            r!(ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. }),
+                        ),
+                        ..
+                    }))),
+                    ..
+                }),
+                ast::Ident!("y"),
+            ),
+            ..
+        }),
+    );
+
+    // Replacing `..` with a lower expr like `0` makes it get parsed more like one would expect:
+    assert_matches!(
+        parse_expr(n!("return x + 0 .y"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+                kind: ast::ExprKind::BinOp(
+                    ast::BinOp::Add,
+                    r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::Field(
+                            r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                            ast::Ident!("y")
+                        ),
+                        ..
+                    }),
+                ),
+                ..
+            }))),
+            ..
+        }),
+    );
+}
+
+#[test]
+fn expr_levels() {
+    assert_matches!(
+        parse_expr(n!("if(){}else{}()"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Call(r!(ast::Expr { kind: ast::ExprKind::If(..), .. }), r!([])),
+            ..
+        }),
+    );
+
+    assert_matches!(
+        parse_expr(n!("if(){}else{}as _"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Cast(
+                r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
+                r!(ast::Ty::Inferred)
+            ),
+            ..
+        }),
+    );
+
+    // FIXME
+    #[cfg(false)]
+    assert_matches!(
+        parse_expr(n!("-if 0{}else{}()"), Rust2015),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::OpenRoundBracket, .. }, _)])),
+    );
+
+    // ...however, we accept this:
+    assert_matches!(
+        parse_expr(n!("1-if 0{}else{}()"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Sub,
+                r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Call(
+                        r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
+                        r!([])
+                    ),
+                    ..
+                })
+            ),
+            ..
+        }),
     );
 }
 
@@ -551,26 +1045,23 @@ fn or_nullary_closure_expr() {
 fn mut_ref_mut_pat() {
     assert_matches!(
         parse_pat(n!("mut ref mut x"), Rust2015),
-        Ok(ast::Pat::Binding(ast::BindingPat {
+        Ok(ast::Pat::Binding(r!(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
             binder: ast::Ident!("x"),
             pat: None,
-        }))
+        })))
     );
 }
 
 #[test]
 fn false_angle_gen_args_expr() {
-    assert_matches!(
-        parse_expr(n!("f<i32>()"), Rust2015),
-        Err(r!([Error::UnchainableExprOp(UnchainableExprOp::Compare, _)])),
-    );
+    assert_matches!(parse_expr(n!("f<i32>()"), Rust2015), Err(r!([Error::ChainedComparison(_)])),);
 
     assert_matches!(
         parse_expr(n!("f<i32>"), Rust2015),
         Err(r!([
-            Error::UnchainableExprOp(UnchainableExprOp::Compare, _),
+            Error::ChainedComparison(_),
             Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
         ])),
     );
@@ -654,7 +1145,7 @@ fn angle_gen_args_pat() {
 fn angle_gen_args_ty() {
     assert_matches!(
         parse_ty(n!("Ty<'a, (), 0>"), Rust2015),
-        Ok(ast::Ty::Path(ast::ExtPath {
+        Ok(ast::Ty::Path(r!(ast::ExtPath {
             ext: None,
             path: ast::Path {
                 segs: r!([ast::PathSeg {
@@ -671,7 +1162,7 @@ fn angle_gen_args_ty() {
                     ])))
                 }])
             }
-        }))
+        })))
     );
 
     assert_matches!(parse_ty(n!("Ty::<'a, (), 0>"), Rust2015), Ok(_)); // just a smoke test
@@ -686,7 +1177,7 @@ fn angle_args_in_path_ext_expr() {
     assert_matches!(
         parse_expr(n!("<() as TraitRef<()>>::assoc"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::Path(ast::ExtPath {
+            kind: ast::ExprKind::Path(r!(ast::ExtPath {
                 ext: Some(ast::PathExt {
                     self_ty: ast::Ty::Tuple(r!([])),
                     trait_ref: Some(ast::Path {
@@ -703,7 +1194,7 @@ fn angle_args_in_path_ext_expr() {
                 path: ast::Path {
                     segs: r!([ast::PathSeg { ident: ast::Ident!("assoc"), args: None }])
                 }
-            }),
+            })),
             ..
         })
     );
@@ -920,10 +1411,10 @@ fn control_flow_ops_block_expr() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Break(
                 None,
-                Some(ast::Expr {
+                Some(r!(ast::Expr {
                     kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: r!([]) }),
                     ..
-                })
+                }))
             ),
             ..
         })
