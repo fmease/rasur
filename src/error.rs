@@ -43,6 +43,7 @@ pub enum Error {
     ExpectedTraitFoundTy(Span),
     FinalOnInvalidItem(Span),
     ForbiddenInnerAttrs,
+    ForbiddenOuterAttrs,
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),

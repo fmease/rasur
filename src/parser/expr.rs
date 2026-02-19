@@ -85,7 +85,7 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::While
             // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Yield => true,
-            _ => self.begins_ext_path(0),
+            _ => self.begins_ext_path(0) || self.begins_outer_attr(),
         }
     }
 
@@ -96,6 +96,8 @@ impl<'src> Parser<'_, '_, 'src> {
         l_policy: LetPolicy,
         o_policy: OpPolicy,
     ) -> Result<ast::Expr<'src>> {
+        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+
         let op = match self.token.kind {
             TokenKind::SingleHyphen => Some(Op::Neg),
             TokenKind::SingleBang => Some(Op::Not),
@@ -108,9 +110,9 @@ impl<'src> Parser<'_, '_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            self.fin_parse_prefix_op_expr(op, s_policy)
+            self.fin_parse_prefix_op_expr(op, s_policy, attrs)
         } else {
-            self.parse_lower_expr(s_policy, l_policy)
+            self.parse_lower_expr(s_policy, l_policy, attrs)
         }?;
 
         loop {
@@ -141,7 +143,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::SingleAmpersand => Op::BitAnd,
                 TokenKind::SingleAsterisk => Op::Mul,
                 TokenKind::SingleCaret => Op::BitXor,
-                TokenKind::SingleDot => Op::Project,
+                TokenKind::SingleDot => Op::Dot,
                 TokenKind::SingleEquals => Op::Assign,
                 TokenKind::SingleGreaterThan => Op::Gt,
                 TokenKind::SingleHyphen => Op::Sub,
@@ -168,7 +170,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 Ordering::Greater => {}
             }
             if let ast::ExprKind::Cast(..) = left.kind
-                && let Op::Call | Op::Index | Op::Project | Op::Try = op
+                && let Op::Call | Op::Index | Op::Dot | Op::Try = op
             {
                 self.error(Error::InvalidOpAfterCast(self.token.span));
             }
@@ -193,6 +195,7 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         op: Op,
         s_policy: StructPolicy,
+        attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level().unwrap();
 
@@ -200,23 +203,21 @@ impl<'src> Parser<'_, '_, 'src> {
             Op::Neg => ast::UnOp::Neg,
             Op::Not => ast::UnOp::Not,
             Op::Deref => ast::UnOp::Deref,
-            Op::SingleBorrow => {
-                return self.fin_parse_borrow_expr(right_level, s_policy);
-            }
+            Op::SingleBorrow => return self.fin_parse_borrow_expr(right_level, s_policy, attrs),
             Op::DoubleBorrow => {
-                let borrow = self.fin_parse_borrow_expr(right_level, s_policy)?;
-                return Ok(ast::ExprKind::Borrow(
+                let expr = self.fin_parse_borrow_expr(right_level, s_policy, Vec::new())?;
+                let kind = ast::ExprKind::Borrow(
                     ast::BorrowKind::Ref,
                     ast::Mutability::Not,
-                    Box::new(borrow),
-                )
-                .into());
+                    Box::new(expr),
+                );
+                return Ok(ast::Expr { attrs, kind });
             }
             Op::RangeInclusive => {
-                return self.fin_parse_range_inclusive_expr(None, right_level, s_policy);
+                return self.fin_parse_range_inclusive_expr(None, right_level, s_policy, attrs);
             }
             Op::RangeExclusive => {
-                return self.fin_parse_range_exclusive_expr(None, right_level, s_policy);
+                return self.fin_parse_range_exclusive_expr(None, right_level, s_policy, attrs);
             }
             _ => unreachable!(),
         };
@@ -227,13 +228,13 @@ impl<'src> Parser<'_, '_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        Ok(ast::ExprKind::UnOp(ast_op, Box::new(right)).into())
+        Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(ast_op, Box::new(right)) })
     }
 
     fn fin_parse_suffix_op_expr(
         &mut self,
         op: Op,
-        left: ast::Expr<'src>,
+        mut left: ast::Expr<'src>,
         s_policy: StructPolicy,
         l_policy: LetPolicy,
     ) -> Result<ast::Expr<'src>> {
@@ -255,8 +256,9 @@ impl<'src> Parser<'_, '_, 'src> {
             Op::BitXor => ast::BinOp::BitXor,
             Op::BitXorAssign => ast::BinOp::Assign(ast::AssignOp::BitXor),
             Op::Call => {
+                let attrs = mem::take(&mut left.attrs);
                 let args = self.fin_parse_fn_args()?;
-                return Ok(ast::ExprKind::Call(Box::new(left), args).into());
+                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Call(Box::new(left), args) });
             }
             Op::Cast => {
                 let ty = self.parse_ty_where(PlusPolicy::Yield)?;
@@ -265,15 +267,15 @@ impl<'src> Parser<'_, '_, 'src> {
             Op::Div => ast::BinOp::Div,
             Op::DivAssign => ast::BinOp::Assign(ast::AssignOp::Div),
             Op::Eq => ast::BinOp::Eq,
-            Op::Project => {
-                return self.fin_parse_projection_expr(left);
-            }
+            Op::Dot => return self.fin_parse_dot_expr(left),
             Op::Ge => ast::BinOp::Ge,
             Op::Gt => ast::BinOp::Gt,
             Op::Index => {
+                let attrs = mem::take(&mut left.attrs);
                 let index = self.parse_expr()?;
                 self.parse(TokenKind::CloseSquareBracket)?;
-                return Ok(ast::ExprKind::Index(Box::new(left), Box::new(index)).into());
+                let kind = ast::ExprKind::Index(Box::new(left), Box::new(index));
+                return Ok(ast::Expr { attrs, kind });
             }
             Op::Le => ast::BinOp::Le,
             Op::Lt => ast::BinOp::Lt,
@@ -286,6 +288,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     Some(Box::new(left)),
                     right_level.unwrap(),
                     s_policy,
+                    Vec::new(),
                 );
             }
             Op::RangeInclusive => {
@@ -293,13 +296,17 @@ impl<'src> Parser<'_, '_, 'src> {
                     Some(Box::new(left)),
                     right_level.unwrap(),
                     s_policy,
+                    Vec::new(),
                 );
             }
             Op::Rem => ast::BinOp::Rem,
             Op::RemAssign => ast::BinOp::Assign(ast::AssignOp::Rem),
             Op::Sub => ast::BinOp::Sub,
             Op::SubAssign => ast::BinOp::Assign(ast::AssignOp::Sub),
-            Op::Try => return Ok(ast::ExprKind::Try(Box::new(left)).into()),
+            Op::Try => {
+                let attrs = mem::take(&mut left.attrs);
+                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Try(Box::new(left)) });
+            }
             _ => unreachable!(),
         };
 
@@ -314,32 +321,32 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::ExprKind::BinOp(ast_op, Box::new(left), Box::new(right)).into())
     }
 
-    fn fin_parse_projection_expr(&mut self, left: ast::Expr<'src>) -> Result<ast::Expr<'src>> {
+    fn fin_parse_dot_expr(&mut self, mut left: ast::Expr<'src>) -> Result<ast::Expr<'src>> {
+        let mut attrs = mem::take(&mut left.attrs);
+
         let numeric = match self.token.kind {
             TokenKind::Await => {
                 self.advance();
-                return Ok(ast::ExprKind::Await(Box::new(left)).into());
+                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Await(Box::new(left)) });
             }
             TokenKind::CommonIdent => false,
             // FEATURE: `postfix_match` <https://github.com/rust-lang/rust/issues/121618>
             TokenKind::Match => {
                 self.advance();
-                // FIXME: Don't send inner attrs down the drain! Requires patching up
-                //        expr attr parsing (more specifically *where* we parse them)!
-                return self
-                    .fin_parse_match_expr(left, ast::MatchKind::Postfix, &mut Vec::new())
-                    .map(Into::into);
+                let kind = self.fin_parse_match_expr(left, ast::MatchKind::Postfix, &mut attrs)?;
+                return Ok(ast::Expr { attrs, kind });
             }
             TokenKind::NumLit => true,
             // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             TokenKind::Use => {
                 self.advance();
-                return Ok(ast::ExprKind::Use(Box::new(left)).into());
+                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Use(Box::new(left)) });
             }
             // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
                 self.advance();
-                return Ok(ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left))).into());
+                let kind = ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left)));
+                return Ok(ast::Expr { attrs, kind });
             }
             _ => {
                 return self.fatal(Error::UnexpectedToken(
@@ -366,19 +373,20 @@ impl<'src> Parser<'_, '_, 'src> {
             let gen_args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
 
             if self.consume(TokenKind::OpenRoundBracket) {
-                let args = self.fin_parse_fn_args()?;
-                return Ok(ast::ExprKind::MethodCall(Box::new(ast::MethodCallExpr {
+                let fn_args = self.fin_parse_fn_args()?;
+                let kind = ast::ExprKind::MethodCall(Box::new(ast::MethodCallExpr {
                     receiver: left,
                     seg: ast::PathSeg { ident, args: gen_args },
-                    args,
-                }))
-                .into());
-            } else if gen_args.is_some() {
+                    args: fn_args,
+                }));
+                return Ok(ast::Expr { attrs, kind });
+            }
+            if gen_args.is_some() {
                 self.error(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
             }
         }
 
-        Ok(ast::ExprKind::Field(Box::new(left), ident).into())
+        Ok(ast::Expr { attrs, kind: ast::ExprKind::Field(Box::new(left), ident) })
     }
 
     fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
@@ -391,6 +399,7 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         right_level: Level,
         s_policy: StructPolicy,
+        attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let expr = self.parse_expr_at_level(
@@ -399,7 +408,7 @@ impl<'src> Parser<'_, '_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        Ok(ast::ExprKind::Borrow(kind, mut_, Box::new(expr)).into())
+        Ok(ast::Expr { attrs, kind: ast::ExprKind::Borrow(kind, mut_, Box::new(expr)) })
     }
 
     // FIXME: We're accepting `..{ 0 } + 0` as an expr stmt even though we shouldn't.
@@ -419,7 +428,12 @@ impl<'src> Parser<'_, '_, 'src> {
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
         s_policy: StructPolicy,
+        attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
+        if left.is_none() && !attrs.is_empty() {
+            self.error(Error::ForbiddenOuterAttrs);
+        }
+
         let right = if (s_policy == StructPolicy::Allowed
             || self.token.kind != TokenKind::OpenCurlyBracket)
             // FIXME: "begins_expr_at(right_level)"?
@@ -434,7 +448,11 @@ impl<'src> Parser<'_, '_, 'src> {
         } else {
             None
         };
-        Ok(ast::ExprKind::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive).into())
+
+        Ok(ast::Expr {
+            attrs,
+            kind: ast::ExprKind::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive),
+        })
     }
 
     // FIXME: See large comment above.
@@ -443,23 +461,31 @@ impl<'src> Parser<'_, '_, 'src> {
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
         s_policy: StructPolicy,
+        attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
+        if left.is_none() && !attrs.is_empty() {
+            self.error(Error::ForbiddenOuterAttrs);
+        }
+
         let right = self.parse_expr_at_level(
             right_level,
             s_policy,
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        Ok(ast::ExprKind::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive).into())
+
+        Ok(ast::Expr {
+            attrs,
+            kind: ast::ExprKind::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive),
+        })
     }
 
     fn parse_lower_expr(
         &mut self,
         s_policy: StructPolicy,
         l_policy: LetPolicy,
+        mut attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
-        // FIXME: This isn't the right place for parsing attrs I'm certain.
-        let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let kind = self.parse_lower_expr_kind(s_policy, l_policy, &mut attrs)?;
         Ok(ast::Expr { attrs, kind })
     }
@@ -1187,9 +1213,9 @@ pub(crate) enum Op {
     Deref,
     Div,
     DivAssign,
+    Dot,
     DoubleBorrow,
     Eq,
-    Project,
     Ge,
     Gt,
     Index,
@@ -1237,7 +1263,7 @@ impl Op {
                 return None;
             }
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
-            Self::Project => Level::Project,
+            Self::Dot => Level::Dot,
             Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
             Self::Or => Level::OrLeft,
             Self::RangeInclusive | Self::RangeExclusive => Level::Range,
@@ -1264,7 +1290,7 @@ impl Op {
             Self::BitOr => Level::BitOrRight,
             Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,
             Self::BitXor => Level::BitXorRight,
-            Self::Call | Self::Cast | Self::Project | Self::Index | Self::Try => return None,
+            Self::Call | Self::Cast | Self::Dot | Self::Index | Self::Try => return None,
             Self::Deref | Self::Neg | Self::Not | Self::SingleBorrow | Self::DoubleBorrow => {
                 Level::Prefix
             }
@@ -1276,7 +1302,7 @@ impl Op {
     }
 
     fn overrules_boundary(self) -> bool {
-        matches!(self, Self::Project | Self::Try)
+        matches!(self, Self::Dot | Self::Try)
     }
 }
 
@@ -1307,7 +1333,7 @@ enum Level {
     Prefix,
     Try,
     Call,
-    Project,
+    Dot,
 }
 
 enum Qualifier<'src> {

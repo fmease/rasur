@@ -136,6 +136,7 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
             Diag::new("invalid scalar in frontmatter body").highlight(span)
         }
         Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
+        Error::ForbiddenOuterAttrs => Diag::new("outer attributes are forbidden in this context"),
     }
 }
 

@@ -7,6 +7,7 @@ use crate::{
     normalizer::{Normalized, normalize},
     token::{Token, TokenKind},
 };
+use deref as r;
 use std::assert_matches;
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
@@ -67,13 +68,7 @@ fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>>
 fn file_empty() {
     assert_matches!(
         parse_file(n!(""), Rust2015),
-        Ok(ast::File {
-            shebang: None,
-            frontmatter: None,
-            attrs: deref!([]),
-            items: deref!([]),
-            span: _
-        })
+        Ok(ast::File { shebang: None, frontmatter: None, attrs: r!([]), items: r!([]), span: _ })
     );
 }
 
@@ -94,19 +89,19 @@ fn frontmatter_cr() {
     // CR isn't "horizontal whitespace" and therefore forbidden inside infostrings.
     assert_matches!(
         parse_file(n!("--- \r \n---"), Rust2015),
-        Err(deref!([Error::InvalidFrontmatterInfostring(_)])),
+        Err(r!([Error::InvalidFrontmatterInfostring(_)])),
     );
 
     // CR isn't "horizontal whitespace" and therefore forbidden inside trailers.
     assert_matches!(
         parse_file(n!("---\n--- \r "), Rust2015),
-        Err(deref!([Error::InvalidFrontmatterTrailer(_)]))
+        Err(r!([Error::InvalidFrontmatterTrailer(_)]))
     );
 
     // "Stray" CRs inside the frontmatter body are explicitly forbidden.
     assert_matches!(
         parse_file(n!("---\n(\r)\n---"), Rust2015),
-        Err(deref!([Error::InvalidScalarInFrontmatterBody(_)]))
+        Err(r!([Error::InvalidScalarInFrontmatterBody(_)]))
     );
 }
 
@@ -115,10 +110,10 @@ fn tuple_struct_field_visibility() {
     assert_matches!(
         parse_item(n!("struct T(pub([i32; 2]));"), Rust2015),
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
                     vis: ast::Visibility::Public,
-                    ty: ast::Ty::Grouped(deref!(ast::Ty::Array(..))),
+                    ty: ast::Ty::Grouped(r!(ast::Ty::Array(..))),
                     ..
                 }])),
                 ..
@@ -130,10 +125,10 @@ fn tuple_struct_field_visibility() {
     assert_matches!(
         parse_item(n!("struct T(pub(crate)[i32]);"), Rust2015),
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: deref!([ast::PathSeg { ident: ast::Ident!("crate"), .. }])
+                        segs: r!([ast::PathSeg { ident: ast::Ident!("crate"), .. }])
                     }),
                     ty: ast::Ty::Slice(_),
                     ..
@@ -147,10 +142,10 @@ fn tuple_struct_field_visibility() {
     assert_matches!(
         parse_item(n!("struct T(pub(self)&());"), Rust2015),
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: deref!([ast::PathSeg { ident: ast::Ident!("self"), .. }])
+                        segs: r!([ast::PathSeg { ident: ast::Ident!("self"), .. }])
                     }),
                     ty: ast::Ty::Ref(_),
                     ..
@@ -165,13 +160,13 @@ fn tuple_struct_field_visibility() {
     assert_matches!(
         parse_item(n!("struct T(pub(super::U));"), Rust2015),
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
                     vis: ast::Visibility::Public,
-                    ty: ast::Ty::Grouped(deref!(ast::Ty::Path(ast::ExtPath {
+                    ty: ast::Ty::Grouped(r!(ast::Ty::Path(ast::ExtPath {
                         ext: None,
                         path: ast::Path {
-                            segs: deref!([
+                            segs: r!([
                                 ast::PathSeg { ident: ast::Ident!("super"), .. },
                                 ast::PathSeg { ident: ast::Ident!("U"), .. },
                             ])
@@ -187,16 +182,16 @@ fn tuple_struct_field_visibility() {
 
     assert_matches!(
         parse_item(n!("struct T(pub(super::U)impl);"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
     );
 
     assert_matches!(
         parse_item(n!("struct T(pub(in super::U)!);"), Rust2015),
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(deref!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(deref!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: deref!([
+                        segs: r!([
                             ast::PathSeg { ident: ast::Ident!("super"), .. },
                             ast::PathSeg { ident: ast::Ident!("U"), .. },
                         ])
@@ -212,7 +207,7 @@ fn tuple_struct_field_visibility() {
 
     assert_matches!(
         parse_item(n!("struct T(pub);"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseRoundBracket, .. },
             ExpectedFragment::Ty
         )]))
@@ -220,17 +215,265 @@ fn tuple_struct_field_visibility() {
 }
 
 #[test]
-fn expr_double_borrow_and_double_borrow() {
+fn expr_attrs() {
+    assert_matches!(
+        parse_expr(n!("#[a]0"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, kind: ast::AttrKind::Normal(_) }]),
+            kind: ast::ExprKind::Lit(_),
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("#[a]#[b](#[c]#[d]0)"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([
+                ast::Attr {
+                    style: ast::AttrStyle::Outer,
+                    kind: ast::AttrKind::Normal(ast::NormalAttr {
+                        path: ast::Path {
+                            segs: r!([ast::PathSeg { ident: ast::Ident!("a"), .. }])
+                        },
+                        ..
+                    })
+                },
+                ast::Attr {
+                    style: ast::AttrStyle::Outer,
+                    kind: ast::AttrKind::Normal(ast::NormalAttr {
+                        path: ast::Path {
+                            segs: r!([ast::PathSeg { ident: ast::Ident!("b"), .. }])
+                        },
+                        ..
+                    })
+                },
+            ]),
+            kind: ast::ExprKind::Grouped(r!(ast::Expr {
+                attrs: r!([
+                    ast::Attr { style: ast::AttrStyle::Outer, .. },
+                    ast::Attr { style: ast::AttrStyle::Outer, .. },
+                ]),
+                kind: ast::ExprKind::Lit(_),
+            })),
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("#[a]*x"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::UnOp(..)
+        })
+    );
+
+    // issue: <https://github.com/fmease/rasur/issues/25>
+    assert_matches!(
+        parse_expr(n!("#[a]!x"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::UnOp(..)
+        })
+    );
+
+    assert_matches!(parse_expr(n!("#[a].."), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+
+    assert_matches!(parse_expr(n!("#[a]..()"), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+
+    assert_matches!(parse_expr(n!("#[a]..=_"), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+
+    assert_matches!(
+        parse_expr(n!("#[a]&#[b]()"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Borrow(
+                ..,
+                r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::Tuple(_),
+                    ..
+                })
+            )
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("#[a]&#[b]()"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Borrow(
+                ..,
+                r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::Tuple(_),
+                    ..
+                })
+            )
+        })
+    );
+
+    // issue: <https://github.com/fmease/rasur/issues/27>
+    assert_matches!(
+        parse_expr(n!("0..#[a]1"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([]),
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Lit(_), .. })),
+                Some(r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::Lit(_),
+                    ..
+                })),
+                ..
+            )
+        })
+    );
+
+    // The attr belongs to the inner expr, not to the cast itself.
+    assert_matches!(
+        parse_expr(n!("#[a]()as()"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([]),
+            kind: ast::ExprKind::Cast(
+                r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::Tuple(_)
+                }),
+                ..
+            ),
+        })
+    );
+
+    // The attr belongs to the inner left expr, not to the range itself.
+    assert_matches!(
+        parse_expr(n!("#[a]!0.."), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([]),
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::UnOp(..),
+                    ..
+                })),
+                None,
+                ..
+            )
+        })
+    );
+
+    // The attr belongs to the outermost try op expr, not to any of the inner exprs.
+    assert_matches!(
+        parse_expr(n!("#[a]0??"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Try(r!(ast::Expr {
+                attrs: r!([]),
+                kind: ast::ExprKind::Try(r!(ast::Expr {
+                    attrs: r!([]),
+                    kind: ast::ExprKind::Lit(_)
+                }),),
+            }))
+        })
+    );
+
+    // The attr belongs to the (outer) call expr, not to the (inner) callee expr.
+    assert_matches!(
+        parse_expr(n!("#[a]f()"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Call(
+                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
+                r!([])
+            )
+        })
+    );
+
+    // Here, the attr of course belongs to the inner path expr, not to the call expr itself.
+    assert_matches!(
+        parse_expr(n!("(#[a]f)()"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([]),
+            kind: ast::ExprKind::Call(
+                r!(ast::Expr {
+                    attrs: r!([]),
+                    kind: ast::ExprKind::Grouped(r!(ast::Expr {
+                        attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                        kind: ast::ExprKind::Path(_)
+                    }))
+                }),
+                r!([])
+            )
+        })
+    );
+
+    // The attr belongs to the (outer) indexing expr, not to the (inner) indexed expr.
+    assert_matches!(
+        parse_expr(n!("#[a]f[0]"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Index(
+                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
+                _
+            )
+        })
+    );
+
+    // The attr belongs to the (outer) field expr, not to the (inner) path expr.
+    assert_matches!(
+        parse_expr(n!("#[a]x.y"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
+                _,
+            )
+        })
+    );
+
+    // The outer attr belongs to the (outer) match expr, not to the (inner) scrutinee expr.
+    assert_matches!(
+        parse_expr(n!("#[a]x.match{#![b]}"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([
+                ast::Attr { style: ast::AttrStyle::Outer, .. },
+                ast::Attr { style: ast::AttrStyle::Inner, .. },
+            ]),
+            kind: ast::ExprKind::Match(r!(ast::MatchExpr {
+                scrutinee: ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) },
+                ..
+            }))
+        })
+    );
+
+    // The attr belongs to the inner left operand expr, not to the operation itself.
+    assert_matches!(
+        parse_expr(n!("#[a]-0+1"), Rust2015),
+        Ok(ast::Expr {
+            attrs: r!([]),
+            kind: ast::ExprKind::BinOp(
+                ast::BinOp::Add,
+                r!(ast::Expr {
+                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                    kind: ast::ExprKind::UnOp(..),
+                    ..
+                }),
+                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Lit(_), .. }),
+                ..
+            )
+        })
+    );
+}
+
+#[test]
+fn double_borrow_and_double_borrow_expr() {
     assert_matches!(
         parse_expr(n!("&&0&&&&1"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::And,
-                deref!(ast::Expr {
+                r!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
                         ast::Mutability::Not,
-                        deref!(ast::Expr {
+                        r!(ast::Expr {
                             kind: ast::ExprKind::Borrow(
                                 ast::BorrowKind::Ref,
                                 ast::Mutability::Not,
@@ -241,11 +484,11 @@ fn expr_double_borrow_and_double_borrow() {
                     ),
                     ..
                 }),
-                deref!(ast::Expr {
+                r!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
                         ast::Mutability::Not,
-                        deref!(ast::Expr {
+                        r!(ast::Expr {
                             kind: ast::ExprKind::Borrow(
                                 ast::BorrowKind::Ref,
                                 ast::Mutability::Not,
@@ -263,20 +506,20 @@ fn expr_double_borrow_and_double_borrow() {
 }
 
 #[test]
-fn expr_or_nullary_closure() {
+fn or_nullary_closure_expr() {
     assert_matches!(
         parse_expr(n!("()||||()"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Or,
-                deref!(ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }),
-                deref!(ast::Expr {
-                    kind: ast::ExprKind::Closure(deref!(ast::ClosureExpr {
-                        bound_vars: deref!([]),
+                r!(ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }),
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Closure(r!(ast::ClosureExpr {
+                        bound_vars: r!([]),
                         modifiers: _,
-                        params: deref!([]),
+                        params: r!([]),
                         ret_ty: None,
-                        body: ast::Expr { kind: ast::ExprKind::Tuple(deref!([])), .. }
+                        body: ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }
                     })),
                     ..
                 })
@@ -286,9 +529,8 @@ fn expr_or_nullary_closure() {
     );
 }
 
-// Unstable feature: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>.
 #[test]
-fn pat_mut_ref_mut() {
+fn mut_ref_mut_pat() {
     assert_matches!(
         parse_pat(n!("mut ref mut x"), Rust2015),
         Ok(ast::Pat::Binding(ast::BindingPat {
@@ -301,15 +543,15 @@ fn pat_mut_ref_mut() {
 }
 
 #[test]
-fn expr_false_angle_gen_args() {
+fn false_angle_gen_args_expr() {
     assert_matches!(
         parse_expr(n!("f<i32>()"), Rust2015),
-        Err(deref!([Error::UnchainableExprOp(UnchainableExprOp::Compare, _)])),
+        Err(r!([Error::UnchainableExprOp(UnchainableExprOp::Compare, _)])),
     );
 
     assert_matches!(
         parse_expr(n!("f<i32>"), Rust2015),
-        Err(deref!([
+        Err(r!([
             Error::UnchainableExprOp(UnchainableExprOp::Compare, _),
             Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
         ])),
@@ -317,34 +559,31 @@ fn expr_false_angle_gen_args() {
 }
 
 #[test]
-fn pat_false_angle_gen_args() {
+fn false_angle_gen_args_pat() {
     assert_matches!(
         parse_pat(n!("Some<i32>(0)"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
-            Token { kind: TokenKind::SingleLessThan, span: _ },
-            _
-        )]))
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 }
 
 #[test]
-fn expr_angle_gen_args() {
+fn angle_gen_args_expr() {
     assert_matches!(
         parse_expr(n!("f::<i32>()"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Call(
-                deref!(ast::Expr {
+                r!(ast::Expr {
                     kind: ast::ExprKind::Path(ast::ExtPath {
                         ext: None,
                         path: ast::Path {
-                            segs: deref!([ast::PathSeg {
+                            segs: r!([ast::PathSeg {
                                 ident: ast::Ident!("f"),
-                                args: Some(ast::GenericArgs::Angle(deref!([
+                                args: Some(ast::GenericArgs::Angle(r!([
                                     ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
                                         ast::Ty::Path(ast::ExtPath {
                                             ext: None,
                                             path: ast::Path {
-                                                segs: deref!([ast::PathSeg {
+                                                segs: r!([ast::PathSeg {
                                                     ident: ast::Ident!("i32"),
                                                     args: None
                                                 }])
@@ -357,7 +596,7 @@ fn expr_angle_gen_args() {
                     }),
                     ..
                 }),
-                deref!([])
+                r!([])
             ),
             ..
         })
@@ -365,52 +604,48 @@ fn expr_angle_gen_args() {
 }
 
 #[test]
-fn pat_angle_gen_args() {
+fn angle_gen_args_pat() {
     assert_matches!(
         parse_pat(n!("Some::<i32>(0)"), Rust2015),
-        Ok(ast::Pat::TupleStruct(deref!(ast::TupleStructPat {
+        Ok(ast::Pat::TupleStruct(r!(ast::TupleStructPat {
             path: ast::ExtPath {
                 ext: None,
                 path: ast::Path {
-                    segs: deref!([ast::PathSeg {
+                    segs: r!([ast::PathSeg {
                         ident: ast::Ident!("Some"),
-                        args: Some(ast::GenericArgs::Angle(deref!([
-                            ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Path(
-                                ast::ExtPath {
-                                    ext: None,
-                                    path: ast::Path {
-                                        segs: deref!([ast::PathSeg {
-                                            ident: ast::Ident!("i32"),
-                                            args: None
-                                        }]),
-                                    }
+                        args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Argument(
+                            ast::GenericArg::Ty(ast::Ty::Path(ast::ExtPath {
+                                ext: None,
+                                path: ast::Path {
+                                    segs: r!([ast::PathSeg {
+                                        ident: ast::Ident!("i32"),
+                                        args: None
+                                    }]),
                                 }
-                            )))
-                        ])))
+                            }))
+                        )])))
                     }])
                 }
             },
-            fields: deref!([ast::Pat::Lit(ast::Sign::None, ast::Lit::Num("0"))])
+            fields: r!([ast::Pat::Lit(ast::Sign::None, ast::Lit::Num("0"))])
         }))),
     );
 }
 
 #[test]
-fn ty_angle_gen_args() {
+fn angle_gen_args_ty() {
     assert_matches!(
         parse_ty(n!("Ty<'a, (), 0>"), Rust2015),
         Ok(ast::Ty::Path(ast::ExtPath {
             ext: None,
             path: ast::Path {
-                segs: deref!([ast::PathSeg {
+                segs: r!([ast::PathSeg {
                     ident: ast::Ident!("Ty"),
-                    args: Some(ast::GenericArgs::Angle(deref!([
+                    args: Some(ast::GenericArgs::Angle(r!([
                         ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Ident!(
                             "'a"
                         ))),
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(
-                            deref!([])
-                        ))),
+                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(r!([])))),
                         ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr {
                             kind: ast::ExprKind::Lit(ast::Lit::Num("0")),
                             ..
@@ -429,26 +664,26 @@ fn ty_angle_gen_args() {
 // and it's unambiguous that angle generic args are meant for the trait ref when
 // encountering just `<`.
 #[test]
-fn expr_angle_args_in_path_ext() {
+fn angle_args_in_path_ext_expr() {
     assert_matches!(
         parse_expr(n!("<() as TraitRef<()>>::assoc"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::Path(ast::ExtPath {
                 ext: Some(ast::PathExt {
-                    self_ty: ast::Ty::Tuple(deref!([])),
+                    self_ty: ast::Ty::Tuple(r!([])),
                     trait_ref: Some(ast::Path {
-                        segs: deref!([ast::PathSeg {
+                        segs: r!([ast::PathSeg {
                             ident: ast::Ident!("TraitRef"),
-                            args: Some(ast::GenericArgs::Angle(deref!([
+                            args: Some(ast::GenericArgs::Angle(r!([
                                 ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
-                                    ast::Ty::Tuple(deref!([]))
+                                    ast::Ty::Tuple(r!([]))
                                 ))
                             ])))
                         },])
                     })
                 }),
                 path: ast::Path {
-                    segs: deref!([ast::PathSeg { ident: ast::Ident!("assoc"), args: None }])
+                    segs: r!([ast::PathSeg { ident: ast::Ident!("assoc"), args: None }])
                 }
             }),
             ..
@@ -460,18 +695,18 @@ fn expr_angle_args_in_path_ext() {
 // Not only are parenthesized generic args permitted in expression and
 // pattern position but trailing `-> $Type` is also permitted.
 #[test]
-fn expr_pat_paren_gen_args_arrow() {
+fn paren_gen_args_arrow_expr_or_pat() {
     assert_matches!(
         parse_expr(n!("x::()->()"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::Path(deref!(ast::ExtPath {
+            kind: ast::ExprKind::Path(r!(ast::ExtPath {
                 ext: None,
                 path: ast::Path {
-                    segs: deref!([ast::PathSeg {
+                    segs: r!([ast::PathSeg {
                         ident: ast::Ident!("x"),
                         args: Some(ast::GenericArgs::Paren {
-                            inputs: deref!([]),
-                            output: Some(ast::Ty::Tuple(deref!([]))),
+                            inputs: r!([]),
+                            output: Some(ast::Ty::Tuple(r!([]))),
                         })
                     }])
                 }
@@ -482,14 +717,14 @@ fn expr_pat_paren_gen_args_arrow() {
 
     assert_matches!(
         parse_pat(n!("x::()->!::X"), Rust2015),
-        Ok(ast::Pat::Path(deref!(ast::ExtPath {
+        Ok(ast::Pat::Path(r!(ast::ExtPath {
             ext: None,
             path: ast::Path {
-                segs: deref!([
+                segs: r!([
                     ast::PathSeg {
                         ident: ast::Ident!("x"),
                         args: Some(ast::GenericArgs::Paren {
-                            inputs: deref!([]),
+                            inputs: r!([]),
                             output: Some(ast::Ty::Never),
                         })
                     },
@@ -501,46 +736,40 @@ fn expr_pat_paren_gen_args_arrow() {
 }
 
 #[test]
-fn item_macro_call_gen_args() {
+fn macro_call_item_gen_args() {
     assert_matches!(
         parse_item(n!("path::to::<>::call!();"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
-            Token { kind: TokenKind::SingleLessThan, span: _ },
-            _
-        )]))
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 
     assert_matches!(
         parse_item(n!("path::to::call<()>!();"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
-            Token { kind: TokenKind::SingleLessThan, span: _ },
-            _
-        )]))
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 }
 
 #[test]
-fn stmt_macro_call_gen_args() {
+fn macro_call_stmt_gen_args() {
     assert_matches!(
         parse_stmt(n!("path::to::<>::call::<>!();"), Rust2015),
         Ok(ast::Stmt::Expr(
             ast::Expr {
-                kind: ast::ExprKind::MacroCall(deref!(ast::MacroCall {
+                kind: ast::ExprKind::MacroCall(r!(ast::MacroCall {
                     path: ast::Path {
-                        segs: deref!([
+                        segs: r!([
                             ast::PathSeg { ident: ast::Ident!("path"), args: None },
                             ast::PathSeg {
                                 ident: ast::Ident!("to"),
-                                args: Some(ast::GenericArgs::Angle(deref!([])))
+                                args: Some(ast::GenericArgs::Angle(r!([])))
                             },
                             ast::PathSeg {
                                 ident: ast::Ident!("call"),
-                                args: Some(ast::GenericArgs::Angle(deref!([])))
+                                args: Some(ast::GenericArgs::Angle(r!([])))
                             },
                         ])
                     },
                     bracket: ast::Bracket::Round,
-                    stream: deref!([]),
+                    stream: r!([]),
                 })),
                 ..
             },
@@ -552,11 +781,11 @@ fn stmt_macro_call_gen_args() {
 }
 
 #[test]
-fn stmts_const_item_const_block() {
+fn const_block_const_item_modifier() {
     assert_matches!(
         parse_expr(
             n!("{
-    const { }
+    const {}
     const fn f() {}
 }"),
             Rust2015
@@ -564,21 +793,21 @@ fn stmts_const_item_const_block() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Block(
                 None,
-                deref!(ast::BlockExpr {
-                    attrs: deref!([]),
-                    stmts: deref!([
+                r!(ast::BlockExpr {
+                    attrs: r!([]),
+                    stmts: r!([
                         ast::Stmt::Expr(
                             ast::Expr {
                                 kind: ast::ExprKind::SpecialBlock(
                                     ast::SpecialBlockKind::Const,
-                                    deref!(ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) })
+                                    r!(ast::BlockExpr { attrs: r!([]), stmts: r!([]) })
                                 ),
                                 ..
                             },
                             ast::Semicolon::No
                         ),
                         ast::Stmt::Item(ast::Item {
-                            attrs: deref!([]),
+                            attrs: r!([]),
                             vis: ast::Visibility::Inherited,
                             kind: ast::ItemKind::Fn(ast::FnItem {
                                 modifiers: ast::FnItemModifiers {
@@ -596,13 +825,44 @@ fn stmts_const_item_const_block() {
             ..
         })
     );
+
+    assert_matches!(
+        parse_file(
+            n!("
+    const {}
+    const fn f() {}
+"),
+            Rust2015
+        ),
+        Ok(ast::File {
+            items: r!([
+                ast::Item {
+                    kind: ast::ItemKind::ConstBlock(r!(ast::ConstBlockItem {
+                        body: ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
+                    })),
+                    ..
+                },
+                ast::Item {
+                    attrs: r!([]),
+                    vis: ast::Visibility::Inherited,
+                    kind: ast::ItemKind::Fn(ast::FnItem {
+                        modifiers: ast::FnItemModifiers { constness: ast::Constness::Const, .. },
+                        binder: ast::Ident!("f"),
+                        ..
+                    }),
+                    span: _
+                },
+            ]),
+            ..
+        })
+    );
 }
 
 #[test]
-fn expr_control_flow_ops_block() {
+fn control_flow_ops_block_expr() {
     assert_matches!(
         parse_expr(n!("if return {}"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
             ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
         )]))
@@ -610,18 +870,18 @@ fn expr_control_flow_ops_block() {
     assert_matches!(
         parse_expr(n!("if return {} {}"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+            kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr {
-                    kind: ast::ExprKind::Return(Some(deref!(ast::Expr {
+                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
                         kind: ast::ExprKind::Block(
                             None,
-                            ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+                            ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
                         ),
                         ..
                     }))),
                     ..
                 },
-                consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+                consequent: ast::BlockExpr { attrs: r!([]), stmts: r!([]) },
                 alternate: None
             })),
             ..
@@ -632,9 +892,9 @@ fn expr_control_flow_ops_block() {
     assert_matches!(
         parse_expr(n!("if break {}"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+            kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
-                consequent: ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) },
+                consequent: ast::BlockExpr { attrs: r!([]), stmts: r!([]) },
                 alternate: None
             })),
             ..
@@ -649,7 +909,7 @@ fn expr_control_flow_ops_block() {
                 Some(ast::Expr {
                     kind: ast::ExprKind::Block(
                         None,
-                        ast::BlockExpr { attrs: deref!([]), stmts: deref!([]) }
+                        ast::BlockExpr { attrs: r!([]), stmts: r!([]) }
                     ),
                     ..
                 })
@@ -661,9 +921,9 @@ fn expr_control_flow_ops_block() {
     assert_matches!(
         parse_expr(n!("if continue {}"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(deref!(ast::IfExpr {
+            kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Continue(None), .. },
-                consequent: ast::BlockExpr { stmts: deref!([]), .. },
+                consequent: ast::BlockExpr { stmts: r!([]), .. },
                 alternate: None
             })),
             ..
@@ -679,38 +939,35 @@ fn expr_control_flow_ops_block() {
 //        (`'a: for <Ty>::AssocTy {} in () {}` is valid)
 // FIXME: Also add `impl <$ty>::$segs {}`
 #[test]
-fn expr_qualified_struct_pat_in_for_loop() {
+fn qualified_struct_pat_in_for_loop_expr() {
     assert_matches!(
         parse_expr(n!("for<Ty as Trait>::AssocTy {} in () {}"), Rust2015),
         Ok(ast::Expr {
-            kind: ast::ExprKind::ForLoop(deref!(ast::ForLoopExpr {
+            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
                 pat: ast::Pat::Struct(ast::StructPat {
                     path: ast::ExtPath {
                         ext: Some(ast::PathExt {
                             self_ty: ast::Ty::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
-                                    segs: deref!([ast::PathSeg {
+                                    segs: r!([ast::PathSeg {
                                         ident: ast::Ident!("Ty"),
                                         args: None
                                     }])
                                 },
                             }),
                             trait_ref: Some(ast::Path {
-                                segs: deref!([ast::PathSeg {
+                                segs: r!([ast::PathSeg {
                                     ident: ast::Ident!("Trait"),
                                     args: None
                                 }])
                             })
                         }),
                         path: ast::Path {
-                            segs: deref!([ast::PathSeg {
-                                ident: ast::Ident!("AssocTy"),
-                                args: None
-                            }])
+                            segs: r!([ast::PathSeg { ident: ast::Ident!("AssocTy"), args: None }])
                         }
                     },
-                    fields: deref!([]),
+                    fields: r!([]),
                     rest: false
                 }),
                 ..
@@ -730,7 +987,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Le,
-                deref!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                r!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
                 _
             ),
             ..
@@ -742,7 +999,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
-                deref!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                r!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
                 _
             ),
             ..
@@ -771,20 +1028,20 @@ fn method_receivers() {
 fn bare_trait_object_tys() {
     assert_matches!(
         parse_ty(n!("A+"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     assert_matches!(parse_ty(n!("Hold<A+>"), Rust2015), Ok(_));
 
     assert_matches!(
         parse_ty(n!("(A)+"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
     assert_matches!(
         parse_ty(n!("(A+)+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )])),
@@ -794,7 +1051,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("?A"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
                 ..
             }])
@@ -809,7 +1066,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("(?A)+"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
                 ..
             }])
@@ -820,7 +1077,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("const A"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
                 ..
             }])
@@ -831,7 +1088,7 @@ fn bare_trait_object_tys() {
     assert_matches!(
         parse_ty(n!("Hold<const A>"), Rust2015),
         // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CommonIdent, .. },
             ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
         )]))
@@ -841,7 +1098,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("(const A)+"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
                 ..
             }])
@@ -851,7 +1108,7 @@ fn bare_trait_object_tys() {
     // This is also a bug upstream, see also <https://github.com/rust-lang/rust/issues/146122>.
     assert_matches!(
         parse_ty(n!("[const] A"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseSquareBracket, .. },
             ExpectedFragment::Bound
         )])),
@@ -861,7 +1118,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("async A"), Rust2018),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { asyncness: ast::BoundAsyncness::Always, .. },
                 ..
             }])
@@ -871,25 +1128,25 @@ fn bare_trait_object_tys() {
     // See comment further up.
     assert_matches!(
         parse_ty(n!("Hold<async A>"), Rust2018),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)]))
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)]))
     );
 
     assert_matches!(
         parse_ty(n!("for<>A"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     assert_matches!(parse_ty(n!("Hold<for<>A>"), Rust2015), Ok(_));
 
     assert_matches!(
         parse_ty(n!("(for<>A)+"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
     assert_matches!(
         parse_ty(n!("(for<>A+)+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )])),
@@ -897,7 +1154,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_ty(n!("for<>'a"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
             ExpectedFragment::PathSegIdent
         )])),
@@ -905,7 +1162,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_ty(n!("for<>'a+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
             ExpectedFragment::PathSegIdent
         )])),
@@ -913,20 +1170,17 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_ty(n!("'a+"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Outlives(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Outlives(_)])))
     );
 
     assert_matches!(parse_ty(n!("Hold<'a+>"), Rust2015), Ok(_));
 
-    assert_matches!(
-        parse_ty(n!("'a"), Rust2015),
-        Err(deref!([Error::LifetimeObjectTyWithoutPlus(_)]))
-    );
+    assert_matches!(parse_ty(n!("'a"), Rust2015), Err(r!([Error::LifetimeObjectTyWithoutPlus(_)])));
 
     // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
     assert_matches!(
         parse_ty(n!("('a)+"), Rust2015),
-        Err(deref!([
+        Err(r!([
             Error::LifetimeObjectTyWithoutPlus(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::SinglePlus, .. },
@@ -938,7 +1192,7 @@ fn bare_trait_object_tys() {
     // issue: <https://github.com/fmease/rasur/issues/20>
     assert_matches!(
         parse_ty(n!("use<>"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Use(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
     );
 
     // Indeed, even though you can't parenthesize precise-capturing lists
@@ -946,13 +1200,13 @@ fn bare_trait_object_tys() {
     // If find it a bit janky. Might report upstream.
     assert_matches!(
         parse_ty(n!("(use<>)+"), Rust2015),
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, deref!([ast::Bound::Use(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
     assert_matches!(
         parse_ty(n!("(use<>+)+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )]))
@@ -960,40 +1214,40 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_ty(n!("Hold<use<>>"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)])),
     );
 
     assert_matches!(
         parse_ty(n!("A + B"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
         ))
     );
 
     assert_matches!(
         parse_ty(n!("&A + B"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     assert_matches!(
         parse_ty(n!("&for<>A + B"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     assert_matches!(
         parse_ty(n!("*const A + B"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     assert_matches!(
         parse_ty(n!("&A + B"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     assert_matches!(
         parse_ty(n!("fn() -> A + B"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     // Like `dyn (Fn() -> A) + B`, not like `dyn Fn() -> (dyn A + B)`.
@@ -1001,20 +1255,17 @@ fn bare_trait_object_tys() {
         parse_ty(n!("Fn() -> A + B"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([
+            r!([
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: deref!([ast::PathSeg {
+                        segs: r!([ast::PathSeg {
                             ident: ast::Ident!("Fn"),
                             args: Some(ast::GenericArgs::Paren {
-                                inputs: deref!([]),
+                                inputs: r!([]),
                                 output: Some(ast::Ty::Path(ast::ExtPath {
                                     ext: None,
                                     path: ast::Path {
-                                        segs: deref!([ast::PathSeg {
-                                            ident: ast::Ident!("A"),
-                                            ..
-                                        }])
+                                        segs: r!([ast::PathSeg { ident: ast::Ident!("A"), .. }])
                                     }
                                 }))
                             })
@@ -1023,9 +1274,7 @@ fn bare_trait_object_tys() {
                     ..
                 },
                 ast::Bound::Trait {
-                    path: ast::Path {
-                        segs: deref!([ast::PathSeg { ident: ast::Ident!("B"), .. }])
-                    },
+                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("B"), .. }]) },
                     ..
                 }
             ]),
@@ -1037,7 +1286,7 @@ fn bare_trait_object_tys() {
         parse_ty(n!("Fn() -> (A) + B"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]),
+            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]),
         )),
     );
 
@@ -1049,16 +1298,16 @@ fn bare_trait_object_tys() {
         parse_ty(n!("Fn() -> 'a + A"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([
+            r!([
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: deref!([ast::PathSeg {
+                        segs: r!([ast::PathSeg {
                             ident: ast::Ident!("Fn"),
                             args: Some(ast::GenericArgs::Paren {
-                                inputs: deref!([]),
+                                inputs: r!([]),
                                 output: Some(ast::Ty::DynTrait(
                                     ast::DynKind::Bare,
-                                    deref!([ast::Bound::Outlives(_)])
+                                    r!([ast::Bound::Outlives(_)])
                                 )),
                             })
                         }])
@@ -1076,15 +1325,15 @@ fn bare_trait_object_tys() {
         parse_ty(n!("Fn() -> 'a+"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([ast::Bound::Trait {
+            r!([ast::Bound::Trait {
                 path: ast::Path {
-                    segs: deref!([ast::PathSeg {
+                    segs: r!([ast::PathSeg {
                         ident: ast::Ident!("Fn"),
                         args: Some(ast::GenericArgs::Paren {
-                            inputs: deref!([]),
+                            inputs: r!([]),
                             output: Some(ast::Ty::DynTrait(
                                 ast::DynKind::Bare,
-                                deref!([ast::Bound::Outlives(_)])
+                                r!([ast::Bound::Outlives(_)])
                             )),
                         })
                     }])
@@ -1100,17 +1349,17 @@ fn bare_trait_object_tys() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Add,
-                deref!(ast::Expr {
+                r!(ast::Expr {
                     kind: ast::ExprKind::Cast(
-                        deref!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                        deref!(ast::Ty::Path(..))
+                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        r!(ast::Ty::Path(..))
                     ),
                     ..
                 }),
-                deref!(ast::Expr {
+                r!(ast::Expr {
                     kind: ast::ExprKind::Cast(
-                        deref!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                        deref!(ast::Ty::Path(..))
+                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        r!(ast::Ty::Path(..))
                     ),
                     ..
                 }),
@@ -1121,7 +1370,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_expr(n!("0 as for<> A+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
@@ -1129,7 +1378,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_expr(n!("0 as 'a+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
@@ -1137,7 +1386,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_expr(n!("0 as const A+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
@@ -1145,7 +1394,7 @@ fn bare_trait_object_tys() {
 
     assert_matches!(
         parse_expr(n!("0 as use<>+"), Rust2015),
-        Err(deref!([Error::UnexpectedToken(
+        Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
@@ -1154,48 +1403,45 @@ fn bare_trait_object_tys() {
 
 #[test]
 fn ambiguous_plus() {
-    assert_matches!(parse_ty(n!("&dyn A + B"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])),);
+    assert_matches!(parse_ty(n!("&dyn A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])),);
 
-    assert_matches!(parse_ty(n!("&dyn A+"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])),);
+    assert_matches!(parse_ty(n!("&dyn A+"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])),);
 
-    assert_matches!(parse_ty(n!("&impl A + B"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])));
+    assert_matches!(parse_ty(n!("&impl A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(parse_ty(n!("&impl A+"), Rust2015), Err(deref!([Error::AmbiguousPlus(_)])));
+    assert_matches!(parse_ty(n!("&impl A+"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(
-        parse_ty(n!("F() -> dyn A + B"), Rust2015),
-        Err(deref!([Error::AmbiguousPlus(_)]))
-    );
+    assert_matches!(parse_ty(n!("F() -> dyn A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
 
     assert_matches!(
         parse_ty(n!("F() -> impl A + B"), Rust2015),
-        Err(deref!([Error::AmbiguousPlus(_)]))
+        Err(r!([Error::AmbiguousPlus(_)]))
     );
 
     assert_matches!(
         parse_ty(n!("dyn F() -> impl A+"), Rust2015),
-        Err(deref!([Error::AmbiguousPlus(_)]))
+        Err(r!([Error::AmbiguousPlus(_)]))
     );
 
     assert_matches!(
         parse_ty(n!("impl F() -> dyn A+"), Rust2015),
-        Err(deref!([Error::AmbiguousPlus(_)]))
+        Err(r!([Error::AmbiguousPlus(_)]))
     );
 
     // Indeed, this is not (to be) flagged as ambiguous.
     // I wonder if it's an oversight or intentional?
     assert_matches!(
         parse_ty(n!("impl F() -> for<> A + B"), Rust2015),
-        Ok(ast::Ty::ImplTrait(deref!([
+        Ok(ast::Ty::ImplTrait(r!([
             ast::Bound::Trait {
                 path: ast::Path {
-                    segs: deref!([ast::PathSeg {
+                    segs: r!([ast::PathSeg {
                         ident: ast::Ident!("F"),
                         args: Some(ast::GenericArgs::Paren {
-                            inputs: deref!([]),
+                            inputs: r!([]),
                             output: Some(ast::Ty::DynTrait(
                                 ast::DynKind::Bare,
-                                deref!([ast::Bound::Trait { .. }])
+                                r!([ast::Bound::Trait { .. }])
                             )),
                         })
                     }])
@@ -1209,15 +1455,15 @@ fn ambiguous_plus() {
     // ... after all, you could hypothetically parse it like this:
     assert_matches!(
         parse_ty(n!("impl F() -> (for<> A + B)"), Rust2015),
-        Ok(ast::Ty::ImplTrait(deref!([ast::Bound::Trait {
+        Ok(ast::Ty::ImplTrait(r!([ast::Bound::Trait {
             path: ast::Path {
-                segs: deref!([ast::PathSeg {
+                segs: r!([ast::PathSeg {
                     ident: ast::Ident!("F"),
                     args: Some(ast::GenericArgs::Paren {
-                        inputs: deref!([]),
+                        inputs: r!([]),
                         output: Some(ast::Ty::Grouped(ast::Ty::DynTrait(
                             ast::DynKind::Bare,
-                            deref!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+                            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
                         ))),
                     })
                 }])
@@ -1231,13 +1477,13 @@ fn ambiguous_plus() {
         parse_ty(n!("F() -> fn() -> A + B"), Rust2015),
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            deref!([
+            r!([
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: deref!([ast::PathSeg {
+                        segs: r!([ast::PathSeg {
                             ident: ast::Ident!("F"),
                             args: Some(ast::GenericArgs::Paren {
-                                inputs: deref!([]),
+                                inputs: r!([]),
                                 output: Some(ast::Ty::FnPtr(..)),
                             })
                         }])
