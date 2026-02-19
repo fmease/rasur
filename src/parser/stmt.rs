@@ -17,7 +17,7 @@ impl<'src> Parser<'_, '_, 'src> {
     //       macro expansion. Update: However, I'm relatively sure you can deduce it from the
     //       AST alone anyway.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
-        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         // We only consider "restricted" items to prevent ambiguities.
         //
@@ -32,7 +32,7 @@ impl<'src> Parser<'_, '_, 'src> {
         // 3. We exclude const block items since const block exprs should take precedence.
         if self.begins_restricted_item() {
             let mut item = self.parse_item(ItemCx::Boring)?;
-            debug_assert!(item.attrs.is_empty());
+            attrs.append(&mut item.attrs);
             item.attrs = attrs;
 
             return Ok(ast::Stmt::Item(item));
@@ -76,7 +76,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 LetPolicy::Forbidden,
                 OpPolicy::Restricted(rule),
             )?;
-            debug_assert!(expr.attrs.is_empty());
+            attrs.append(&mut expr.attrs);
             expr.attrs = attrs;
 
             let semi = self.consume_or_parse(

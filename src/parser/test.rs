@@ -460,6 +460,24 @@ fn expr_attrs() {
             )
         })
     );
+
+    // This used to trigger a debug assertion.
+    assert_matches!(
+        parse_stmt(n!("#[a]match x{#![b]}"), Rust2015),
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                attrs: r!([
+                    ast::Attr { style: ast::AttrStyle::Outer, .. },
+                    ast::Attr { style: ast::AttrStyle::Inner, .. },
+                ]),
+                kind: ast::ExprKind::Match(r!(ast::MatchExpr {
+                    scrutinee: ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) },
+                    ..
+                }))
+            },
+            _
+        ))
+    );
 }
 
 #[test]
