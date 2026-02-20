@@ -1,14 +1,20 @@
 [package]
 name = "rasur"
 version = "0.0.0-pre-alpha"
-edition = "2024"
+edition.workspace = true
 publish = false
 
+autobins = false
+
+[lib]
+path = "src/lib/lib.rs"
+
 [dependencies]
-# FIXME: Remove this from the core parser. Only the CLI really needs to depend on it; the CLI needs to be split into a separate bin crate
-annotate-snippets = { git = "https://github.com/rust-lang/annotate-snippets-rs.git", rev = "74964e91d845e39fb549c4028452beffa7c6562b" }
-anstream = "1.0.0"
-anstyle = "1.0.13"
-clap = "4.5.58"
 unicode-xid = "=0.2.6"
 
+[workspace]
+members = ["src/bin"]
+default-members = ["src/bin"]
+
+[workspace.package]
+edition = "2024"
