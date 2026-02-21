@@ -138,8 +138,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rasur-bin"
-version = "0.0.0"
+name = "rasur-cli"
+version = "0.0.0-pre-alpha"
 dependencies = [
  "annotate-snippets",
  "anstream 1.0.0",

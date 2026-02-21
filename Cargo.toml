@@ -1,6 +1,6 @@
 [package]
 name = "rasur"
-version = "0.0.0-pre-alpha"
+version.workspace = true
 edition.workspace = true
 publish = false
 
@@ -13,8 +13,9 @@ path = "src/lib/lib.rs"
 unicode-xid = "=0.2.6"
 
 [workspace]
-members = ["src/bin"]
-default-members = ["src/bin"]
+members = ["src/cli"]
+default-members = ["src/cli"]
 
 [workspace.package]
+version = "0.0.0-pre-alpha"
 edition = "2024"

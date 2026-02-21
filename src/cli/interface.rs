@@ -4,7 +4,7 @@ use std::path::PathBuf;
 // FIXME: Ideally, we would be using something more lightweight than `clap`.
 
 pub(crate) fn opts() -> Opts {
-    let mut matches = Command::new(env!("CARGO_PKG_NAME"))
+    let mut matches = Command::new("rasur")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new(id::PATH)

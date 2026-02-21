@@ -32,7 +32,7 @@ fn main() -> ExitCode {
 fn try_main() -> Result<(), ()> {
     let opts = interface::opts();
 
-    let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur"))
+    let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur-cli"))
         .with_extension(env::consts::EXE_EXTENSION);
     let rustc_path = {
         let mut output = Command::new("rustup")
