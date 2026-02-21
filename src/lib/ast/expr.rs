@@ -121,93 +121,91 @@ pub(crate) enum CurlyBracketedMacroCallIsBoundary {
     No,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum UnOp {
     Deref,
     Neg,
     Not,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum BinOp {
     Add,
+    AddAssign,
     And,
-    Assign(AssignOp),
+    Assign,
     BitAnd,
+    BitAndAssign,
     BitOr,
+    BitOrAssign,
     BitShiftLeft,
+    BitShiftLeftAssign,
     BitShiftRight,
+    BitShiftRightAssign,
     BitXor,
+    BitXorAssign,
     Div,
+    DivAssign,
     Eq,
     Ge,
     Gt,
     Le,
     Lt,
     Mul,
+    MulAssign,
     Ne,
     Or,
     Rem,
+    RemAssign,
     Sub,
+    SubAssign,
 }
 
 impl BinOp {
     pub(crate) fn symbol(self) -> &'static str {
         match self {
             Self::Add => "+",
+            Self::AddAssign => "+=",
             Self::And => "&&",
-            Self::Assign(op) => op.symbol(),
+            Self::Assign => "=",
             Self::BitAnd => "&",
+            Self::BitAndAssign => "&=",
             Self::BitOr => "|",
+            Self::BitOrAssign => "|=",
             Self::BitShiftLeft => "<<",
+            Self::BitShiftLeftAssign => ">>=",
             Self::BitShiftRight => ">>",
+            Self::BitShiftRightAssign => "<<=",
             Self::BitXor => "^",
+            Self::BitXorAssign => "^=",
             Self::Div => "/",
+            Self::DivAssign => "/=",
             Self::Eq => "==",
             Self::Ge => ">=",
             Self::Gt => ">",
             Self::Le => "<=",
             Self::Lt => "<",
             Self::Mul => "*",
+            Self::MulAssign => "*=",
             Self::Ne => "!=",
             Self::Or => "||",
             Self::Rem => "%",
+            Self::RemAssign => "%=",
             Self::Sub => "-",
+            Self::SubAssign => "-=",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum AssignOp {
-    Normal,
-    Add,
-    BitAnd,
-    BitOr,
-    BitShiftLeft,
-    BitShiftRight,
-    BitXor,
-    Div,
-    Mul,
-    Rem,
-    Sub,
+#[rustfmt::skip]
+pub(crate) macro AssignOp() {
+    | BinOp::Assign
+    | BinOp::AddAssign | BinOp::BitAndAssign | BinOp::BitOrAssign | BinOp::BitShiftLeftAssign | BinOp::BitShiftRightAssign
+    | BinOp::BitXorAssign | BinOp::DivAssign | BinOp::MulAssign | BinOp::RemAssign | BinOp::SubAssign
 }
 
-impl AssignOp {
-    fn symbol(self) -> &'static str {
-        match self {
-            Self::Normal => "=",
-            Self::Add => "+=",
-            Self::BitAnd => "&=",
-            Self::BitOr => "|=",
-            Self::BitShiftLeft => ">>=",
-            Self::BitShiftRight => "<<=",
-            Self::BitXor => "^=",
-            Self::Div => "/=",
-            Self::Mul => "*=",
-            Self::Rem => "%=",
-            Self::Sub => "-=",
-        }
-    }
+pub(crate) macro CompareOp() {
+    BinOp::Eq | BinOp::Ge | BinOp::Gt | BinOp::Le | BinOp::Lt | BinOp::Ne
 }
 
 #[derive(Debug)]

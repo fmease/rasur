@@ -96,13 +96,13 @@ impl<'src> Parser<'_, '_, 'src> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         let op = match self.token.kind {
-            TokenKind::SingleHyphen => Some(Op::Neg),
-            TokenKind::SingleBang => Some(Op::Not),
-            TokenKind::SingleAsterisk => Some(Op::Deref),
-            TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
             TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
             TokenKind::DoubleDot => Some(Op::Range(ast::RangeExprKind::Exclusive)),
             TokenKind::DoubleDotEquals => Some(Op::Range(ast::RangeExprKind::Inclusive)),
+            TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
+            TokenKind::SingleAsterisk => Some(Op::UnOp(ast::UnOp::Deref)),
+            TokenKind::SingleBang => Some(Op::UnOp(ast::UnOp::Not)),
+            TokenKind::SingleHyphen => Some(Op::UnOp(ast::UnOp::Neg)),
             _ => None,
         };
         let mut left = if let Some(op) = op {
@@ -118,42 +118,42 @@ impl<'src> Parser<'_, '_, 'src> {
 
         loop {
             let op = match self.token.kind {
-                TokenKind::AmpersandEquals => Op::BitAndAssign,
+                TokenKind::AmpersandEquals => Op::BinOp(ast::BinOp::BitAndAssign),
                 TokenKind::As => Op::Cast,
-                TokenKind::AsteriskEquals => Op::MulAssign,
-                TokenKind::BangEquals => Op::Ne,
-                TokenKind::CaretEquals => Op::BitXorAssign,
-                TokenKind::DoubleAmpersand => Op::And,
+                TokenKind::AsteriskEquals => Op::BinOp(ast::BinOp::MulAssign),
+                TokenKind::BangEquals => Op::BinOp(ast::BinOp::Ne),
+                TokenKind::CaretEquals => Op::BinOp(ast::BinOp::BitXorAssign),
+                TokenKind::DoubleAmpersand => Op::BinOp(ast::BinOp::And),
                 TokenKind::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
                 TokenKind::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
-                TokenKind::DoubleEquals => Op::Eq,
-                TokenKind::DoubleGreaterThan => Op::BitShiftRight,
-                TokenKind::DoubleGreaterThanEquals => Op::BitShiftRightAssign,
-                TokenKind::DoubleLessThan => Op::BitShiftLeft,
-                TokenKind::DoubleLessThanEquals => Op::BitShiftLeftAssign,
-                TokenKind::DoublePipe => Op::Or,
-                TokenKind::GreaterThanEquals => Op::Ge,
-                TokenKind::HypenEquals => Op::SubAssign,
-                TokenKind::LessThanEquals => Op::Le,
+                TokenKind::DoubleEquals => Op::BinOp(ast::BinOp::Eq),
+                TokenKind::DoubleGreaterThan => Op::BinOp(ast::BinOp::BitShiftRight),
+                TokenKind::DoubleGreaterThanEquals => Op::BinOp(ast::BinOp::BitShiftRightAssign),
+                TokenKind::DoubleLessThan => Op::BinOp(ast::BinOp::BitShiftLeft),
+                TokenKind::DoubleLessThanEquals => Op::BinOp(ast::BinOp::BitShiftLeftAssign),
+                TokenKind::DoublePipe => Op::BinOp(ast::BinOp::Or),
+                TokenKind::GreaterThanEquals => Op::BinOp(ast::BinOp::Ge),
+                TokenKind::HypenEquals => Op::BinOp(ast::BinOp::SubAssign),
+                TokenKind::LessThanEquals => Op::BinOp(ast::BinOp::Le),
                 TokenKind::OpenRoundBracket => Op::Call,
                 TokenKind::OpenSquareBracket => Op::Index,
-                TokenKind::PercentEquals => Op::RemAssign,
-                TokenKind::PipeEquals => Op::BitOrAssign,
-                TokenKind::PlusEquals => Op::AddAssign,
+                TokenKind::PercentEquals => Op::BinOp(ast::BinOp::RemAssign),
+                TokenKind::PipeEquals => Op::BinOp(ast::BinOp::BitOrAssign),
+                TokenKind::PlusEquals => Op::BinOp(ast::BinOp::AddAssign),
                 TokenKind::QuestionMark => Op::Try,
-                TokenKind::SingleAmpersand => Op::BitAnd,
-                TokenKind::SingleAsterisk => Op::Mul,
-                TokenKind::SingleCaret => Op::BitXor,
+                TokenKind::SingleAmpersand => Op::BinOp(ast::BinOp::BitAnd),
+                TokenKind::SingleAsterisk => Op::BinOp(ast::BinOp::Mul),
+                TokenKind::SingleCaret => Op::BinOp(ast::BinOp::BitXor),
                 TokenKind::SingleDot => Op::Dot,
-                TokenKind::SingleEquals => Op::Assign,
-                TokenKind::SingleGreaterThan => Op::Gt,
-                TokenKind::SingleHyphen => Op::Sub,
-                TokenKind::SingleLessThan => Op::Lt,
-                TokenKind::SinglePercent => Op::Rem,
-                TokenKind::SinglePipe => Op::BitOr,
-                TokenKind::SinglePlus => Op::Add,
-                TokenKind::SingleSlash => Op::Div,
-                TokenKind::SlashEquals => Op::DivAssign,
+                TokenKind::SingleEquals => Op::BinOp(ast::BinOp::Assign),
+                TokenKind::SingleGreaterThan => Op::BinOp(ast::BinOp::Gt),
+                TokenKind::SingleHyphen => Op::BinOp(ast::BinOp::Sub),
+                TokenKind::SingleLessThan => Op::BinOp(ast::BinOp::Lt),
+                TokenKind::SinglePercent => Op::BinOp(ast::BinOp::Rem),
+                TokenKind::SinglePipe => Op::BinOp(ast::BinOp::BitOr),
+                TokenKind::SinglePlus => Op::BinOp(ast::BinOp::Add),
+                TokenKind::SingleSlash => Op::BinOp(ast::BinOp::Div),
+                TokenKind::SlashEquals => Op::BinOp(ast::BinOp::DivAssign),
                 _ => break,
             };
 
@@ -171,19 +171,13 @@ impl<'src> Parser<'_, '_, 'src> {
             }
 
             if let Level::Compare = left_level
-                && let ast::ExprKind::BinOp(op, ..) = left.kind
-                && let ast::BinOp::Eq
-                | ast::BinOp::Ne
-                | ast::BinOp::Lt
-                | ast::BinOp::Le
-                | ast::BinOp::Gt
-                | ast::BinOp::Ge = op
+                && let ast::ExprKind::BinOp(ast::CompareOp!(), ..) = left.kind
             {
                 self.error(Error::ChainedComparison(self.token.span));
             }
 
             if let ast::ExprKind::Cast(..) = left.kind
-                && let Op::Call | Op::Index | Op::Dot | Op::Try = op
+                && let Op::Call | Op::Dot | Op::Index | Op::Try = op
             {
                 self.error(Error::InvalidOpAfterCast(self.token.span));
             }
@@ -208,11 +202,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level().unwrap();
 
-        let ast_op = match op {
-            Op::Neg => ast::UnOp::Neg,
-            Op::Not => ast::UnOp::Not,
-            Op::Deref => ast::UnOp::Deref,
-            Op::SingleBorrow => return self.fin_parse_borrow_expr(right_level, s_policy, attrs),
+        let op = match op {
             Op::DoubleBorrow => {
                 let expr = self.fin_parse_borrow_expr(right_level, s_policy, Vec::new())?;
                 let kind = ast::ExprKind::Borrow(
@@ -225,6 +215,8 @@ impl<'src> Parser<'_, '_, 'src> {
             Op::Range(kind) => {
                 return self.fin_parse_range_expr(kind, None, right_level, s_policy, attrs);
             }
+            Op::SingleBorrow => return self.fin_parse_borrow_expr(right_level, s_policy, attrs),
+            Op::UnOp(op) => op,
             _ => unreachable!(),
         };
 
@@ -234,7 +226,8 @@ impl<'src> Parser<'_, '_, 'src> {
             LetPolicy::Forbidden,
             OpPolicy::Allowed,
         )?;
-        Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(ast_op, Box::new(right)) })
+
+        Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
     }
 
     fn fin_parse_suffix_op_expr(
@@ -246,21 +239,8 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level();
 
-        let ast_op = match op {
-            Op::Add => ast::BinOp::Add,
-            Op::AddAssign => ast::BinOp::Assign(ast::AssignOp::Add),
-            Op::And => ast::BinOp::And,
-            Op::Assign => ast::BinOp::Assign(ast::AssignOp::Normal),
-            Op::BitAnd => ast::BinOp::BitAnd,
-            Op::BitAndAssign => ast::BinOp::Assign(ast::AssignOp::BitAnd),
-            Op::BitOr => ast::BinOp::BitOr,
-            Op::BitOrAssign => ast::BinOp::Assign(ast::AssignOp::BitOr),
-            Op::BitShiftLeft => ast::BinOp::BitShiftLeft,
-            Op::BitShiftLeftAssign => ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
-            Op::BitShiftRight => ast::BinOp::BitShiftRight,
-            Op::BitShiftRightAssign => ast::BinOp::Assign(ast::AssignOp::BitShiftRight),
-            Op::BitXor => ast::BinOp::BitXor,
-            Op::BitXorAssign => ast::BinOp::Assign(ast::AssignOp::BitXor),
+        let op = match op {
+            Op::BinOp(op) => op,
             Op::Call => {
                 let attrs = mem::take(&mut left.attrs);
                 let args = self.fin_parse_fn_args()?;
@@ -270,12 +250,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let ty = self.parse_ty_where(PlusPolicy::Yield)?;
                 return Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into());
             }
-            Op::Div => ast::BinOp::Div,
-            Op::DivAssign => ast::BinOp::Assign(ast::AssignOp::Div),
-            Op::Eq => ast::BinOp::Eq,
             Op::Dot => return self.fin_parse_dot_expr(left),
-            Op::Ge => ast::BinOp::Ge,
-            Op::Gt => ast::BinOp::Gt,
             Op::Index => {
                 let attrs = mem::take(&mut left.attrs);
                 let index = self.parse_expr()?;
@@ -283,12 +258,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 let kind = ast::ExprKind::Index(Box::new(left), Box::new(index));
                 return Ok(ast::Expr { attrs, kind });
             }
-            Op::Le => ast::BinOp::Le,
-            Op::Lt => ast::BinOp::Lt,
-            Op::Mul => ast::BinOp::Mul,
-            Op::MulAssign => ast::BinOp::Assign(ast::AssignOp::Mul),
-            Op::Ne => ast::BinOp::Ne,
-            Op::Or => ast::BinOp::Or,
             Op::Range(kind) => {
                 return self.fin_parse_range_expr(
                     kind,
@@ -298,10 +267,6 @@ impl<'src> Parser<'_, '_, 'src> {
                     Vec::new(),
                 );
             }
-            Op::Rem => ast::BinOp::Rem,
-            Op::RemAssign => ast::BinOp::Assign(ast::AssignOp::Rem),
-            Op::Sub => ast::BinOp::Sub,
-            Op::SubAssign => ast::BinOp::Assign(ast::AssignOp::Sub),
             Op::Try => {
                 let attrs = mem::take(&mut left.attrs);
                 return Ok(ast::Expr { attrs, kind: ast::ExprKind::Try(Box::new(left)) });
@@ -309,7 +274,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => unreachable!(),
         };
 
-        let l_policy = match ast_op {
+        let l_policy = match op {
             ast::BinOp::And => l_policy,
             _ => LetPolicy::Forbidden,
         };
@@ -317,7 +282,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let right =
             self.parse_expr_at_level(right_level.unwrap(), s_policy, l_policy, OpPolicy::Allowed)?;
 
-        Ok(ast::ExprKind::BinOp(ast_op, Box::new(left), Box::new(right)).into())
+        Ok(ast::ExprKind::BinOp(op, Box::new(left), Box::new(right)).into())
     }
 
     fn fin_parse_dot_expr(&mut self, mut left: ast::Expr<'src>) -> Result<ast::Expr<'src>> {
@@ -1143,7 +1108,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.do_validate_let_chain(left, false, l_policy)?;
                 self.do_validate_let_chain(right, false, l_policy)?;
             }
-            ast::ExprKind::BinOp(ast::BinOp::Or | ast::BinOp::Assign(_), left, right) => {
+            ast::ExprKind::BinOp(ast::BinOp::Or | ast::AssignOp!(), left, right) => {
                 self.do_validate_let_chain(left, false, LetPolicy::Forbidden)?;
                 self.do_validate_let_chain(right, false, LetPolicy::Forbidden)?;
             }
@@ -1189,77 +1154,26 @@ pub(crate) enum AttrPolicy<'a, 'src> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Op {
-    Add,
-    AddAssign,
-    And,
-    Assign,
-    BitAnd,
-    BitAndAssign,
-    BitOr,
-    BitOrAssign,
-    BitShiftLeft,
-    BitShiftLeftAssign,
-    BitShiftRight,
-    BitShiftRightAssign,
-    BitXor,
-    BitXorAssign,
+    BinOp(ast::BinOp),
     Call,
     Cast,
-    Deref,
-    Div,
-    DivAssign,
     Dot,
     DoubleBorrow,
-    Eq,
-    Ge,
-    Gt,
     Index,
-    Le,
-    Lt,
-    Mul,
-    MulAssign,
-    Ne,
-    Neg,
-    Not,
-    Or,
     Range(ast::RangeExprKind),
-    Rem,
-    RemAssign,
     SingleBorrow,
-    Sub,
-    SubAssign,
     Try,
+    UnOp(ast::UnOp),
 }
 
 impl Op {
     fn left_level(self) -> Option<Level> {
         Some(match self {
-            Self::Add | Self::Sub => Level::SumLeft,
-            Self::And => Level::AndLeft,
-            | Self::AddAssign
-            | Self::Assign
-            | Self::BitAndAssign
-            | Self::BitOrAssign
-            | Self::BitShiftLeftAssign
-            | Self::BitShiftRightAssign
-            | Self::BitXorAssign
-            | Self::DivAssign
-            | Self::MulAssign
-            | Self::RemAssign
-            | Self::SubAssign => Level::AssignLeft,
-            Self::BitAnd => Level::BitAndLeft,
-            Self::BitOr => Level::BitOrLeft,
-            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftLeft,
-            Self::BitXor => Level::BitXorLeft,
+            Self::BinOp(op) => op.left_level(),
             Self::Call | Self::Index => Level::Call,
             Self::Cast => Level::Cast,
-            Self::Deref | Self::Neg | Self::Not | Self::SingleBorrow | Self::DoubleBorrow => {
-                return None;
-            }
-            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
+            Self::UnOp(_) | Self::SingleBorrow | Self::DoubleBorrow => return None,
             Self::Dot => Level::Dot,
-            Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
-            Self::Or => Level::OrLeft,
             Self::Range(_) => Level::Range,
             Self::Try => Level::Try,
         })
@@ -1267,36 +1181,47 @@ impl Op {
 
     fn right_level(self) -> Option<Level> {
         Some(match self {
-            Self::Add | Self::Sub => Level::SumRight,
-            Self::And => Level::AndRight,
-            | Self::AddAssign
-            | Self::Assign
-            | Self::BitAndAssign
-            | Self::BitOrAssign
-            | Self::BitShiftLeftAssign
-            | Self::BitShiftRightAssign
-            | Self::BitXorAssign
-            | Self::DivAssign
-            | Self::MulAssign
-            | Self::RemAssign
-            | Self::SubAssign => Level::AssignRight,
-            Self::BitAnd => Level::BitAndRight,
-            Self::BitOr => Level::BitOrRight,
-            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,
-            Self::BitXor => Level::BitXorRight,
+            Self::BinOp(op) => op.right_level(),
             Self::Call | Self::Cast | Self::Dot | Self::Index | Self::Try => return None,
-            Self::Deref | Self::Neg | Self::Not | Self::SingleBorrow | Self::DoubleBorrow => {
-                Level::Prefix
-            }
-            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
-            Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
-            Self::Or => Level::OrRight,
+            Self::UnOp(_) | Self::SingleBorrow | Self::DoubleBorrow => Level::Prefix,
             Self::Range(_) => Level::Range,
         })
     }
 
     fn overrules_boundary(self) -> bool {
         matches!(self, Self::Dot | Self::Try)
+    }
+}
+
+impl ast::BinOp {
+    fn left_level(self) -> Level {
+        match self {
+            Self::Add | Self::Sub => Level::SumLeft,
+            Self::And => Level::AndLeft,
+            Self::BitAnd => Level::BitAndLeft,
+            Self::BitOr => Level::BitOrLeft,
+            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftLeft,
+            Self::BitXor => Level::BitXorLeft,
+            Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
+            Self::Or => Level::OrLeft,
+            ast::AssignOp!() => Level::AssignLeft,
+            ast::CompareOp!() => Level::Compare,
+        }
+    }
+
+    fn right_level(self) -> Level {
+        match self {
+            Self::Add | Self::Sub => Level::SumRight,
+            Self::And => Level::AndRight,
+            Self::BitAnd => Level::BitAndRight,
+            Self::BitOr => Level::BitOrRight,
+            Self::BitShiftLeft | Self::BitShiftRight => Level::BitShiftRight,
+            Self::BitXor => Level::BitXorRight,
+            Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
+            Self::Or => Level::OrRight,
+            ast::AssignOp!() => Level::AssignRight,
+            ast::CompareOp!() => Level::Compare,
+        }
     }
 }
 

@@ -1500,7 +1500,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         parse_expr(n!("x as T <<= y"), Rust2015),
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
-                ast::BinOp::Assign(ast::AssignOp::BitShiftLeft),
+                ast::BinOp::BitShiftLeftAssign,
                 r!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
                 _
             ),
