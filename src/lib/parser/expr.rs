@@ -105,8 +105,8 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::SingleAsterisk => Some(Op::Deref),
             TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
             TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
-            TokenKind::DoubleDot => Some(Op::RangeExclusive),
-            TokenKind::DoubleDotEquals => Some(Op::RangeInclusive),
+            TokenKind::DoubleDot => Some(Op::Range(ast::RangeExprKind::Exclusive)),
+            TokenKind::DoubleDotEquals => Some(Op::Range(ast::RangeExprKind::Inclusive)),
             _ => None,
         };
         let mut left = if let Some(op) = op {
@@ -124,8 +124,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::BangEquals => Op::Ne,
                 TokenKind::CaretEquals => Op::BitXorAssign,
                 TokenKind::DoubleAmpersand => Op::And,
-                TokenKind::DoubleDot => Op::RangeExclusive,
-                TokenKind::DoubleDotEquals => Op::RangeInclusive,
+                TokenKind::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
+                TokenKind::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
                 TokenKind::DoubleEquals => Op::Eq,
                 TokenKind::DoubleGreaterThan => Op::BitShiftRight,
                 TokenKind::DoubleGreaterThanEquals => Op::BitShiftRightAssign,
@@ -214,11 +214,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 );
                 return Ok(ast::Expr { attrs, kind });
             }
-            Op::RangeInclusive => {
-                return self.fin_parse_range_inclusive_expr(None, right_level, s_policy, attrs);
-            }
-            Op::RangeExclusive => {
-                return self.fin_parse_range_exclusive_expr(None, right_level, s_policy, attrs);
+            Op::Range(kind) => {
+                return self.fin_parse_range_expr(kind, None, right_level, s_policy, attrs);
             }
             _ => unreachable!(),
         };
@@ -284,16 +281,9 @@ impl<'src> Parser<'_, '_, 'src> {
             Op::MulAssign => ast::BinOp::Assign(ast::AssignOp::Mul),
             Op::Ne => ast::BinOp::Ne,
             Op::Or => ast::BinOp::Or,
-            Op::RangeExclusive => {
-                return self.fin_parse_range_exclusive_expr(
-                    Some(Box::new(left)),
-                    right_level.unwrap(),
-                    s_policy,
-                    Vec::new(),
-                );
-            }
-            Op::RangeInclusive => {
-                return self.fin_parse_range_inclusive_expr(
+            Op::Range(kind) => {
+                return self.fin_parse_range_expr(
+                    kind,
                     Some(Box::new(left)),
                     right_level.unwrap(),
                     s_policy,
@@ -424,8 +414,9 @@ impl<'src> Parser<'_, '_, 'src> {
     //
     //        We currently also parse `return x + .. .field` incorrectly likely due
     //        to similar reasons.
-    fn fin_parse_range_exclusive_expr(
+    fn fin_parse_range_expr(
         &mut self,
+        kind: ast::RangeExprKind,
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
         s_policy: StructPolicy,
@@ -435,10 +426,9 @@ impl<'src> Parser<'_, '_, 'src> {
             self.error(Error::ForbiddenOuterAttrs);
         }
 
-        let right = if (s_policy == StructPolicy::Allowed
-            || self.token.kind != TokenKind::OpenCurlyBracket)
-            // FIXME: "begins_expr_at(right_level)"?
-            && self.begins_expr()
+        let right = if matches!(kind, ast::RangeExprKind::Inclusive)
+            || (s_policy == StructPolicy::Allowed || self.token.kind != TokenKind::OpenCurlyBracket)
+                && self.begins_expr()
         {
             Some(self.parse_expr_at_level(
                 right_level,
@@ -450,35 +440,7 @@ impl<'src> Parser<'_, '_, 'src> {
             None
         };
 
-        Ok(ast::Expr {
-            attrs,
-            kind: ast::ExprKind::Range(left, right.map(Box::new), ast::RangeExprKind::Exclusive),
-        })
-    }
-
-    // FIXME: See large comment above.
-    fn fin_parse_range_inclusive_expr(
-        &mut self,
-        left: Option<Box<ast::Expr<'src>>>,
-        right_level: Level,
-        s_policy: StructPolicy,
-        attrs: Vec<ast::Attr<'src>>,
-    ) -> Result<ast::Expr<'src>> {
-        if left.is_none() && !attrs.is_empty() {
-            self.error(Error::ForbiddenOuterAttrs);
-        }
-
-        let right = self.parse_expr_at_level(
-            right_level,
-            s_policy,
-            LetPolicy::Forbidden,
-            OpPolicy::Allowed,
-        )?;
-
-        Ok(ast::Expr {
-            attrs,
-            kind: ast::ExprKind::Range(left, Some(Box::new(right)), ast::RangeExprKind::Inclusive),
-        })
+        Ok(ast::Expr { attrs, kind: ast::ExprKind::Range(left, right.map(Box::new), kind) })
     }
 
     fn parse_lower_expr(
@@ -1262,8 +1224,7 @@ pub(crate) enum Op {
     Neg,
     Not,
     Or,
-    RangeExclusive,
-    RangeInclusive,
+    Range(ast::RangeExprKind),
     Rem,
     RemAssign,
     SingleBorrow,
@@ -1301,7 +1262,7 @@ impl Op {
             Self::Dot => Level::Dot,
             Self::Mul | Self::Div | Self::Rem => Level::ProductLeft,
             Self::Or => Level::OrLeft,
-            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
+            Self::Range(_) => Level::Range,
             Self::Try => Level::Try,
         })
     }
@@ -1332,7 +1293,7 @@ impl Op {
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => Level::Compare,
             Self::Mul | Self::Div | Self::Rem => Level::ProductRight,
             Self::Or => Level::OrRight,
-            Self::RangeInclusive | Self::RangeExclusive => Level::Range,
+            Self::Range(_) => Level::Range,
         })
     }
 

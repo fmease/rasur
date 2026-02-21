@@ -355,7 +355,7 @@ pub(crate) enum YieldExpr<'src> {
     Postfix(Box<Expr<'src>>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum RangeExprKind {
     Inclusive,
     Exclusive,
