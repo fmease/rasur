@@ -255,13 +255,21 @@ impl Fmt for LineBreak {
     }
 }
 
-impl Fmt for &'static str {
+impl Fmt for &str {
     fn fmt(self, cx: &mut Cx<'_>) {
         fmt!(cx, "{self}");
     }
 }
 
 struct TrailingSpace<T>(T);
+
+impl<T: Fmt> Fmt for TrailingSpace<Option<T>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(Some(node)) = self else { return };
+        node.fmt(cx);
+        fmt!(cx, " ");
+    }
+}
 
 trait TrailingSpaceExt: Sized {
     #[must_use]
@@ -286,9 +294,7 @@ where
         let Self { nodes, sep } = self;
 
         let mut nodes = nodes.into_iter();
-        if let Some(node) = nodes.next() {
-            node.fmt(cx);
-        }
+        nodes.next().fmt(cx);
         for node in nodes {
             sep.fmt(cx);
             node.fmt(cx);
@@ -314,9 +320,7 @@ impl<T: Fmt> Fmt for Tup<T> {
         // FIXME: Simplify!
         if !nodes.is_empty() {
             let mut nodes = nodes.into_iter();
-            if let Some(node) = nodes.next() {
-                node.fmt(cx);
-            }
+            nodes.next().fmt(cx);
             match nodes.next() {
                 Some(node) => {
                     fmt!(cx, ", ");

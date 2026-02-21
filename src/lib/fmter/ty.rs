@@ -37,6 +37,8 @@ impl Fmt for ast::Ty<'_> {
                 }
                 bounds.fmt(cx);
             }
+            // If the caller wants to treat `ImplicitSelf` special, they should do it themself.
+            Self::ImplicitSelf => fmt!(cx, "Self"),
             Self::Array(ty, expr) => {
                 fmt!(cx, "[");
                 ty.fmt(cx);
@@ -103,10 +105,7 @@ impl Fmt for ast::RefTy<'_> {
         let Self { lt, kind, mut_, pointee } = self;
 
         fmt!(cx, "&");
-        if let Some(lt) = lt {
-            lt.fmt(cx);
-            fmt!(cx, " ");
-        }
+        lt.trailing_space().fmt(cx);
         (kind, mut_).trailing_space().fmt(cx);
         pointee.fmt(cx);
     }
@@ -241,13 +240,7 @@ impl Fmt for ast::Bound<'_> {
             Self::Outlives(lt) => lt.fmt(cx),
             Self::Use(captures) => {
                 fmt!(cx, "use<");
-                let mut captures = captures.into_iter();
-                if let Some(capture) = captures.next() {
-                    fmt!(cx, "{capture}");
-                }
-                for capture in captures {
-                    fmt!(cx, ", {capture}");
-                }
+                captures.interleave(", ").fmt(cx);
                 fmt!(cx, ">");
             }
             Self::Trait { bound_vars, modifiers, path } => {

@@ -235,9 +235,7 @@ impl Fmt for (ast::ExternBlockItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
 
         safety.trailing_space().fmt(cx);
         fmt!(cx, "extern ");
-        if let Some(abi) = abi {
-            fmt!(cx, "{abi} ");
-        }
+        abi.trailing_space().fmt(cx);
         Cluster { attrs, nodes: body }.fmt(cx);
     }
 }
@@ -338,14 +336,34 @@ impl Fmt for ast::FnParam<'_> {
             fmt!(cx, " ");
         }
 
-        if let ast::Pat::Wildcard(ast::WildcardKind::Empty) = pat {
-            // do nothing
-        } else {
-            pat.fmt(cx);
-            fmt!(cx, ": ");
-        }
+        match (ty, pat) {
+            (
+                ast::Ty::ImplicitSelf,
+                ast::Pat::Binding(deref!(ast::BindingPat { mut_, binder, .. })),
+            ) => {
+                mut_.trailing_space().fmt(cx);
+                binder.fmt(cx);
+            }
+            (
+                ast::Ty::Ref(deref!(ast::RefTy { lt, mut_, kind, pointee: ast::Ty::ImplicitSelf })),
+                ast::Pat::Binding(deref!(ast::BindingPat { binder, .. })),
+            ) => {
+                fmt!(cx, "&");
+                lt.trailing_space().fmt(cx);
+                (kind, mut_).trailing_space().fmt(cx);
+                binder.fmt(cx);
+            }
+            (ty, pat) => {
+                if let ast::Pat::Wildcard(ast::WildcardKind::Empty) = pat {
+                    // do nothing
+                } else {
+                    pat.fmt(cx);
+                    fmt!(cx, ": ");
+                }
 
-        ty.fmt(cx);
+                ty.fmt(cx);
+            }
+        }
     }
 }
 
@@ -726,9 +744,7 @@ impl Fmt for TrailingSpace<ast::Externness<'_>> {
         match externness {
             ast::Externness::Extern(abi) => {
                 fmt!(cx, "extern ");
-                if let Some(abi) = abi {
-                    fmt!(cx, "{abi} ");
-                }
+                abi.trailing_space().fmt(cx);
             }
             ast::Externness::Not => {}
         }

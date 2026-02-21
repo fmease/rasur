@@ -9,11 +9,11 @@ pub(crate) enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     CVariadics,
     DynTrait(DynKind, Vec<Bound<'src>>),
-    // FIXME: Get rid of this payload once `Ty` carries a `Span`
     Error(Span),
     FnPtr(Box<FnPtrTy<'src>>),
     Grouped(Box<Ty<'src>>),
     ImplTrait(Vec<Bound<'src>>),
+    ImplicitSelf,
     Inferred,
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Never,

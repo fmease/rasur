@@ -93,18 +93,17 @@ impl<'src> Parser<'_, '_, 'src> {
                 pat: None,
             }));
 
-            // FIXME: Reintroduce a Ty::SelfTy, so we can losslessly reconstruct shorthands
-            let self_ty =
-                || ast::Ty::Path(Box::new(ast::ExtPath::ident(ast::Ident::new("Self", span))));
-
             let ty = match kind {
-                ShorthandKind::Ref(lt, kind) => {
-                    ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee: self_ty() }))
-                }
+                ShorthandKind::Ref(lt, kind) => ast::Ty::Ref(Box::new(ast::RefTy {
+                    lt,
+                    kind,
+                    mut_,
+                    pointee: ast::Ty::ImplicitSelf,
+                })),
                 ShorthandKind::Bare => match self.consume(TokenKind::SingleColon) {
                     // Indeed, C-variadics are not permitted here.
                     true => self.parse_ty()?,
-                    false => self_ty(),
+                    false => ast::Ty::ImplicitSelf,
                 },
             };
 
