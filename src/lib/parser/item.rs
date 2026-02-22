@@ -174,7 +174,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Tyness::Not, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_const_item(defaultness, tyness);
@@ -188,7 +188,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_mod_item(safety, attrs);
@@ -196,7 +196,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_static_item(safety);
@@ -217,7 +217,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_fn_item(modifiers, cx, attrs);
@@ -234,7 +234,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Autoness::Not, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_trait_item(modifiers, attrs);
@@ -249,7 +249,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_impl_item(defaultness, kind, constness, safety, attrs);
@@ -257,7 +257,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi, attrs);

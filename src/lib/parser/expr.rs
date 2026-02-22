@@ -462,14 +462,13 @@ impl<'src> Parser<'_, '_, 'src> {
         match self.parse_expr_qualifiers()?.as_mut_slice() {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
-                // FIXME: Parse `async use` closures etc.
                 if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                     // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                     if !qualifiers.is_empty() {
-                        return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
+                        self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
                     let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                     let kind = match (asyncness, genness) {
@@ -481,14 +480,22 @@ impl<'src> Parser<'_, '_, 'src> {
                     return Ok(ast::ExprKind::GenBlock(kind, mode, Box::new(block)));
                 }
 
-                let kind = match qualifiers {
-                    [] => None,
-                    [Qualifier::Const] => Some(ast::SpecialBlockKind::Const),
+                let (kind, qualifiers) = match qualifiers {
+                    [qualifiers @ .., Qualifier::Const] => {
+                        (Some(ast::SpecialBlockKind::Const), qualifiers)
+                    }
                     // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
-                    [Qualifier::Try(ty)] => Some(ast::SpecialBlockKind::Try(mem::take(ty))),
-                    [Qualifier::Unsafe] => Some(ast::SpecialBlockKind::Unsafe),
-                    _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
+                    [qualifiers @ .., Qualifier::Try(ty)] => {
+                        (Some(ast::SpecialBlockKind::Try(mem::take(ty))), qualifiers)
+                    }
+                    [qualifiers @ .., Qualifier::Unsafe] => {
+                        (Some(ast::SpecialBlockKind::Unsafe), qualifiers)
+                    }
+                    _ => (None, qualifiers),
                 };
+                if !qualifiers.is_empty() {
+                    self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                }
                 let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                 return Ok(match kind {
                     None => ast::ExprKind::Block(None, Box::new(block)),
@@ -520,7 +527,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
 
                 return self.fin_parse_closure_expr(bound_vars, modifiers);

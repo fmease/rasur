@@ -521,6 +521,7 @@ impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
             bounds.fmt(cx);
         }
         generics.preds.fmt(cx);
+        fmt!(cx, " ");
         Cluster { attrs, nodes: body }.fmt(cx);
     }
 }

@@ -65,7 +65,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    return self.fatal(Error::InvalidTyPrefix(start.until(self.token.span)));
+                    self.error(Error::InvalidTyPrefix(start.until(self.token.span)));
                 }
                 return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
