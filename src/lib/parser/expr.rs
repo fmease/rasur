@@ -510,14 +510,14 @@ impl<'src> Parser<'_, '_, 'src> {
                     [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
                     _ => (ast::Constness::Not, qualifiers),
                 };
-                (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
-                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
-                (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                 // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
                 (modifiers.staticness, qualifiers) = match qualifiers {
                     [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
                     _ => (ast::Staticness::Not, qualifiers),
                 };
+                (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
+                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
+                (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                 if !qualifiers.is_empty() {
                     return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span)));

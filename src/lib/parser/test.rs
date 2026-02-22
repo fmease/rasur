@@ -2308,14 +2308,16 @@ static |_| {};
 static use || {};
 static move || {};
 static move | | {};
+static gen use |_| {}; // [***]
+static async || {}; // [***]
+static async use | | {}; // [***]
 move || {};
 move |_| {};
 gen || {}; // [***]
 gen |_| {}; // [***]
 gen {};
 gen use || {}; // [***]
-gen use {};
-gen static use |_| {}; // [***]
+gen use {}; // [***]
 gen move || {}; // [***]
 gen move |_| {}; // [***]
 for<> || {};
@@ -2330,6 +2332,7 @@ for<> gen move || {};
 for<> gen move |_| {};
 for<> const || {};
 for<> const |_| {};
+for<> const static async gen move | | {};
 for<> const move || {};
 for<> const move |_| {};
 for<> const gen || {}; // [***]
@@ -2340,7 +2343,6 @@ for<> const async || {}; // [***]
 for<> const async |_| {}; // [***]
 for<> const async gen || {}; // [***]
 for<> const async gen |_| {}; // [***]
-for<> const async gen static move | | {}; // [***]
 for<> const async gen move || {}; // [***]
 for<> const async gen move |_| {}; // [***]
 for<> async || {};
@@ -2358,6 +2360,8 @@ const {};
 const use || {};
 const static || {};
 const static move | | {};
+const static async gen use | | {};
+const static async gen move || {};
 const move || {};
 const move |_| {};
 const gen || {}; // [***]
@@ -2368,7 +2372,6 @@ const async || {}; // [***]
 const async |_| {}; // [***]
 const async gen || {}; // [***]
 const async gen |_| {}; // [***]
-const async gen static use | | {}; // [***]
 const async gen move || {}; // [***]
 const async gen move |_| {}; // [***]
 async || {};
@@ -2376,7 +2379,6 @@ async |_| {};
 async {};
 async use || {};
 async use {};
-async static use | | {}; // [***]
 async move || {};
 async move |_| {};
 async move {};
@@ -2416,6 +2418,9 @@ fn expr_modifiers_in_expr_ctxt() {
 (static use || {});
 (static move || {});
 (static move | | {});
+(static gen use |_| {});
+(static async || {});
+(static async use | | {});
 (move || {});
 (move |_| {});
 (gen || {}); // [+++]
@@ -2423,7 +2428,6 @@ fn expr_modifiers_in_expr_ctxt() {
 (gen {}); // [+++]
 (gen use || {}); // [+++]
 (gen use {}); // [+++]
-(gen static use |_| {}); // [+++]
 (gen move || {}); // [+++]
 (gen move |_| {}); // [+++]
 (for<> || {});
@@ -2438,6 +2442,7 @@ fn expr_modifiers_in_expr_ctxt() {
 (for<> gen move |_| {});
 (for<> const || {});
 (for<> const |_| {});
+(for<> const static async gen move | | {});
 (for<> const move || {});
 (for<> const move |_| {});
 (for<> const gen || {}); // [+++]
@@ -2448,7 +2453,6 @@ fn expr_modifiers_in_expr_ctxt() {
 (for<> const async |_| {}); // [+++]
 (for<> const async gen || {}); // [+++]
 (for<> const async gen |_| {}); // [+++]
-(for<> const async gen static move | | {}); // [+++]
 (for<> const async gen move || {}); // [+++]
 (for<> const async gen move |_| {}); // [+++]
 (for<> async || {});
@@ -2466,6 +2470,8 @@ fn expr_modifiers_in_expr_ctxt() {
 (const use || {});
 (const static || {});
 (const static move | | {});
+(const static async gen use | | {});
+(const static async gen move || {});
 (const move || {});
 (const move |_| {});
 (const gen || {}); // [+++]
@@ -2476,7 +2482,6 @@ fn expr_modifiers_in_expr_ctxt() {
 (const async |_| {}); // [+++]
 (const async gen || {}); // [+++]
 (const async gen |_| {}); // [+++]
-(const async gen static use | | {}); // [+++]
 (const async gen move || {}); // [+++]
 (const async gen move |_| {}); // [+++]
 (async || {});
@@ -2484,7 +2489,6 @@ fn expr_modifiers_in_expr_ctxt() {
 (async {});
 (async use || {});
 (async use {});
-(async static use | | {}); // [+++]
 (async move || {});
 (async move |_| {});
 (async move {});

@@ -296,10 +296,10 @@ pub(crate) struct ClosureExpr<'src> {
 #[derive(Default, Debug)]
 pub(crate) struct ClosureExprModifiers {
     pub(crate) constness: Constness,
+    pub(crate) staticness: Staticness,
     pub(crate) asyncness: Asyncness,
     // FIXME: Horrible naming!
     pub(crate) genness: Genness,
-    pub(crate) staticness: Staticness,
     pub(crate) mode: CaptureMode,
 }
 
