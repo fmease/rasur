@@ -92,16 +92,16 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     ) -> Option<ast::Ident<'src>> {
         let TokenKind::TickedIdent = self.token.kind else { return None };
         let span = self.token.span;
-        let source = self.source(span);
+        let name = self.source(span);
         self.advance();
         // For better diagnostics, we lex here in the parser instead of in the lexer.
         // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
         // FIXME: Now that we have token validation on `self.advance()`, we can rethink this approach.
-        let ident = lex_ident(&source[1..], self.edition);
+        let ident = lex_ident(&name[1..], self.edition);
         if !validate(ident) {
             self.error(error(span));
         }
-        Some(ast::Ident::new(source, span))
+        Some(ast::Ident::new(name, span))
     }
 
     fn fin_parse_grouped_or_tuple<T, U>(
@@ -146,7 +146,6 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         let mut nodes = Vec::new();
 
         while !self.consume(delimiter) {
-            // FIXME: Add delimiter and separator to "the list of expected tokens".
             nodes.push(parse(self)?);
 
             if !self.matches(delimiter, self.token) {

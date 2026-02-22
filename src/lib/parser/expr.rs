@@ -327,10 +327,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         };
 
-        // FIXME: Reject int literal suffixes & exponents w/ explicit sign (NB: different bases are ok apparently)
-        // FIXME: Split float literals apart
-        let ident = self.ident(self.token.span);
-        self.advance();
+        let (ident, extra) = self.split_float_lit();
 
         if !numeric {
             let gen_args_start = self.token.span;
@@ -350,7 +347,14 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         }
 
-        Ok(ast::Expr { attrs, kind: ast::ExprKind::Field(Box::new(left), ident) })
+        left = ast::Expr { attrs, kind: ast::ExprKind::Field(Box::new(left), ident) };
+
+        if let Some(ident) = extra {
+            let attrs = mem::take(&mut left.attrs);
+            left = ast::Expr { attrs, kind: ast::ExprKind::Field(Box::new(left), ident) };
+        }
+
+        Ok(left)
     }
 
     fn fin_parse_fn_args(&mut self) -> Result<Vec<ast::Expr<'src>>> {
@@ -1044,16 +1048,31 @@ impl<'src> Parser<'_, '_, 'src> {
                 weak::OffsetOf::STR => {
                     let ty = this.parse_ty()?;
                     this.parse(TokenKind::Comma)?;
-                    // FIXME: split float lits
-                    let fields = this.fin_parse_delim_seq(
-                        TokenKind::CloseRoundBracket,
-                        TokenKind::SingleDot,
-                        |this| {
-                            // FIXME: reject suffixes
-                            let (ident, _) = this.parse_common_ident_or(TokenKind::NumLit)?;
-                            Ok(ident)
-                        },
-                    )?;
+
+                    let mut fields = Vec::new();
+
+                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                    const SEPARATOR: TokenKind = TokenKind::SingleDot;
+                    while !this.consume(DELIMITER) {
+                        let (TokenKind::CommonIdent | TokenKind::NumLit) = this.token.kind else {
+                            return this.fatal(Error::UnexpectedToken(
+                                this.token,
+                                one_of![TokenKind::CommonIdent, TokenKind::NumLit],
+                            ));
+                        };
+
+                        let (ident, extra) = this.split_float_lit();
+
+                        fields.push(ident);
+                        if let Some(ident) = extra {
+                            fields.push(ident);
+                        }
+
+                        if !this.matches(DELIMITER, this.token) {
+                            this.parse(SEPARATOR)?;
+                        }
+                    }
+
                     Some(ast::ExprKind::OffsetOf(Box::new(ty), fields))
                 }
                 weak::TypeAscribe::STR => {

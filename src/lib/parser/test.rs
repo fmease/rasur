@@ -1998,11 +1998,110 @@ fn ambiguous_plus() {
     );
 }
 
+#[test]
+fn numeric_field_exprs() {
+    assert_matches!(
+        parse_expr(n!("x.0"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                ast::Ident!("0"),
+            ),
+            ..
+        })
+    );
+
+    assert_matches!(
+        parse_expr(n!("x.0 .1"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Field(
+                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Ident!("0"),
+                    ),
+                    ..
+                }),
+                ast::Ident!("1"),
+            ),
+            ..
+        })
+    );
+
+    // Context: Like rustc we currently lex this as [Ident(`x`), NumLit(`0.1`)] since the `0.1` gets
+    // bluntly interpreted as a float literal. As a result, the parser has to split the literal.
+    assert_matches!(
+        parse_expr(n!("x.0.1"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Field(
+                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Ident!("0"),
+                    ),
+                    ..
+                }),
+                ast::Ident!("1"),
+            ),
+            ..
+        })
+    );
+
+    // ... same thing, just with an extra space.
+    assert_matches!(
+        parse_expr(n!("x. 0.1"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Field(
+                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Ident!("0"),
+                    ),
+                    ..
+                }),
+                ast::Ident!("1"),
+            ),
+            ..
+        })
+    );
+
+    // ...here we first split the `0.` & then push `.` back
+    // "onto the stack" for the callee to pick up again.
+    assert_matches!(
+        parse_expr(n!("x.0. 1"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Field(
+                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Ident!("0"),
+                    ),
+                    ..
+                }),
+                ast::Ident!("1"),
+            ),
+            ..
+        })
+    );
+
+    // ...similarly, we need to split the number lit `0.1` here.
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, x.0.1)"), Rust2015),
+        Ok(ast::Expr {
+            kind: ast::ExprKind::OffsetOf(
+                _,
+                r!([ast::Ident!("x"), ast::Ident!("0"), ast::Ident!("1")])
+            ),
+            ..
+        }),
+    );
+}
+
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
 // FIXME: ops
 // FIXME: structs in ifs etc.
 // FIXME: almost-assoc-item-constraint due to (  )
-// FIXME: ranges!! exprs, pats
+// FIXME: exprs, pats
 // FIXME: A bunch of negative behavior tests!
 // FIXME: Add stmt `{ 0 } + 0` error, stmt `&{ 0 } + 0` ok but stmt `..{ 0 } + 0` err! etc.
 //        More: `0 + { 0 } + 0` OK. stmt `{ 0 } || 0` err.

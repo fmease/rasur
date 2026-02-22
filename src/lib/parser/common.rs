@@ -3,7 +3,11 @@ use super::{
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::Error, span::Span};
+use crate::{
+    ast,
+    error::Error,
+    span::{ByteIndex, Span},
+};
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -22,7 +26,6 @@ impl<'src> Parser<'_, '_, 'src> {
 
             let mut attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-            #[expect(irrefutable_let_patterns)]
             if let start = this.token.span
                 && let Some(param) = this.parse_self_param(&mut attrs)?
             {
@@ -272,6 +275,45 @@ impl<'src> Parser<'_, '_, 'src> {
                 error(start.until(self.token.span))
             }
         })
+    }
+
+    pub(super) fn split_float_lit(&mut self) -> (ast::Ident<'src>, Option<ast::Ident<'src>>) {
+        // FIXME: Unfortunately, we have to split float literals. It would be better if the lexer
+        //        would emit "richer" token kinds. Well, ideally, we wouldn't lex eagerly but
+        //        "on the parser's demand" using a parametrized step function that'd allow us to
+        //        communicate the "expectation" or something like that.
+
+        // FIXME: Reject int literal suffixes & exponents w/ explicit sign
+        //        (NB: different bases are ok apparently)
+
+        const DOT: char = '.';
+
+        let mut span = self.token.span;
+        let mut name = self.source(span);
+        let mut extra = None;
+
+        if let TokenKind::NumLit = self.token.kind
+            && let Some((left, right)) = name.split_once(DOT)
+        {
+            let dot = span.start + ByteIndex::from(left.len());
+
+            if right.is_empty() {
+                self.token.kind = TokenKind::SingleDot;
+                self.token.span.start = dot;
+            } else {
+                let mut span = span;
+                span.start = dot + const { ByteIndex::from(DOT.len_utf8()) };
+                extra = Some(ast::Ident::new(right, span));
+                self.advance();
+            }
+
+            span.end = dot;
+            name = left;
+        } else {
+            self.advance();
+        }
+
+        (ast::Ident::new(name, span), extra)
     }
 }
 
