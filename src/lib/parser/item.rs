@@ -10,6 +10,7 @@ use crate::{
     error::{Buffer as ErrorBuffer, Error},
     span::Span,
 };
+use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a sequence of items.
@@ -156,11 +157,11 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let start = self.token.span;
 
-        let qualifiers: Vec<_> =
+        let mut qualifiers: Vec<_> =
             self.parse_item_qualifiers().map(|(qualifier, _)| qualifier).collect();
 
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
-        match qualifiers.as_slice() {
+        match qualifiers.as_mut_slice() {
             [] => {}
             [Qualifier::Type] => return self.fin_parse_ty_alias_item(defaultness),
             // FEATURE: `const_block_items` <https://github.com/rust-lang/rust/issues/149226>
@@ -201,7 +202,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                 return self.fin_parse_static_item(safety);
             }
-            &[mut ref qualifiers @ .., Qualifier::Fn] => {
+            &mut [mut ref mut qualifiers @ .., Qualifier::Fn] => {
                 let mut modifiers = ast::FnItemModifiers { defaultness, .. };
 
                 (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
@@ -222,7 +223,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                 return self.fin_parse_fn_item(modifiers, cx, attrs);
             }
-            &[mut ref qualifiers @ .., Qualifier::Trait] => {
+            &mut [mut ref mut qualifiers @ .., Qualifier::Trait] => {
                 let mut modifiers = ast::TraitItemModifiers::default();
 
                 // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
@@ -232,6 +233,13 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.autoness, qualifiers) = match qualifiers {
                     [Qualifier::Auto, qualifiers @ ..] => (ast::Autoness::Auto, qualifiers),
                     _ => (ast::Autoness::Not, qualifiers),
+                };
+                (modifiers.impl_restriction, qualifiers) = match qualifiers {
+                    [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
+                        let Ok(path) = path else { return Err(()) };
+                        (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
+                    }
+                    _ => (None, qualifiers),
                 };
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
@@ -327,6 +335,13 @@ impl<'src> Parser<'_, '_, 'src> {
                 },
                 TokenKind::Impl => {
                     self.advance();
+
+                    // FEATURE: `impl_restriction` <https://github.com/rust-lang/rust/issues/105077>
+                    if let Some(path) = self.parse_restriction(Some(TokenKind::Trait)) {
+                        yield (Qualifier::ImplRestriction(Box::new(path)), self.token.kind);
+                        continue;
+                    }
+
                     yield (Qualifier::Impl, self.token.kind);
                     // Once we encounter `impl`, don't attempt to look for more item qualifiers.
                     // That's because the grammar following an impl item's `impl` is very complex &
@@ -807,7 +822,7 @@ impl<'src> Parser<'_, '_, 'src> {
     /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_trait_item(
         &mut self,
-        modifiers: ast::TraitItemModifiers,
+        modifiers: ast::TraitItemModifiers<'src>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
@@ -836,7 +851,7 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Finish parsing a trait alias item.
     fn fin_parse_trait_alias_item(
         &mut self,
-        modifiers: ast::TraitItemModifiers,
+        modifiers: ast::TraitItemModifiers<'src>,
         binder: ast::Ident<'src>,
         params: Vec<ast::GenericParam<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
@@ -845,7 +860,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         self.parse(TokenKind::Semicolon)?;
 
-        let ast::TraitItemModifiers { constness, safety, autoness } = modifiers;
+        let ast::TraitItemModifiers { constness, safety, autoness, impl_restriction } = modifiers;
 
         match safety {
             ast::Safety::Inherited => {}
@@ -855,6 +870,10 @@ impl<'src> Parser<'_, '_, 'src> {
         match autoness {
             ast::Autoness::Auto => self.error(Error::AutoTraitAlias),
             ast::Autoness::Not => {}
+        }
+
+        if impl_restriction.is_some() {
+            self.error(Error::ImplRestrictedTraitAlias);
         }
 
         Ok(ast::ItemKind::TraitAlias(Box::new(ast::TraitAliasItem {
@@ -1025,34 +1044,8 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Visibility::Inherited);
         }
 
-        enum VisKeyword {
-            In,
-            CrateSuperSelf(Span),
-        }
-
-        // FIXME: Only do this lookahead dance for tuple struct fields. This way, we can
-        // can give better errors on invalid vis restrictions in the common cases.
-        if self.token.kind == TokenKind::OpenRoundBracket
-            && let token = self.peek(1)
-            && let Some(keyword) = match token.kind {
-                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower
-                    if let TokenKind::CloseRoundBracket = self.peek(2).kind =>
-                {
-                    Some(VisKeyword::CrateSuperSelf(token.span))
-                }
-                TokenKind::In => Some(VisKeyword::In),
-                _ => None,
-            }
-        {
-            self.advance();
-            self.advance();
-
-            let path = match keyword {
-                VisKeyword::In => self.parse_path(PathMode::Normal)?,
-                VisKeyword::CrateSuperSelf(span) => ast::Path::ident(self.ident(span)),
-            };
-            self.parse(TokenKind::CloseRoundBracket)?;
-            return Ok(ast::Visibility::Restricted(path));
+        if let Some(path) = self.parse_restriction(None) {
+            return Ok(ast::Visibility::Restricted(path?));
         }
 
         Ok(ast::Visibility::Public)
@@ -1062,6 +1055,46 @@ impl<'src> Parser<'_, '_, 'src> {
         // To kept in sync with `Self::parse_visibility`.
 
         self.token.kind == TokenKind::Pub
+    }
+
+    fn parse_restriction(
+        &mut self,
+        disambiguator: Option<TokenKind>,
+    ) -> Option<Result<ast::Path<'src, ast::NoGenericArgs>>> {
+        enum Herald {
+            In,
+            CrateSuperSelf(Span),
+        }
+
+        if self.token.kind == TokenKind::OpenRoundBracket
+            && let token = self.peek(1)
+            && let Some(herald) = match token.kind {
+                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower
+                    if let TokenKind::CloseRoundBracket = self.peek(2).kind
+                        && disambiguator.is_none_or(|t| self.peek(3).kind == t) =>
+                {
+                    Some(Herald::CrateSuperSelf(token.span))
+                }
+                TokenKind::In => Some(Herald::In),
+                _ => None,
+            }
+        {
+            self.advance(); // parenthesis
+            self.advance(); // herald
+
+            let path = try {
+                let path = match herald {
+                    Herald::In => self.parse_path(PathMode::Normal)?,
+                    Herald::CrateSuperSelf(span) => ast::Path::ident(self.ident(span)),
+                };
+                self.parse(TokenKind::CloseRoundBracket)?;
+                path
+            };
+
+            return Some(path);
+        }
+
+        None
     }
 }
 
@@ -1121,7 +1154,6 @@ pub(super) enum ItemCx {
     Trait,
 }
 
-#[derive(Clone, Copy)]
 enum Qualifier<'src> {
     Async,
     Auto,
@@ -1130,6 +1162,7 @@ enum Qualifier<'src> {
     Fn,
     Gen,
     Impl,
+    ImplRestriction(Box<Result<ast::Path<'src, ast::NoGenericArgs>>>),
     Mod,
     Reuse,
     Safe,
@@ -1140,21 +1173,21 @@ enum Qualifier<'src> {
 }
 
 impl<'src> Qualifier<'src> {
-    fn strip_const(qualifiers: &[Self]) -> (ast::Constness, &[Self]) {
+    fn strip_const(qualifiers: &mut [Self]) -> (ast::Constness, &mut [Self]) {
         match qualifiers {
             [Self::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
             _ => (ast::Constness::Not, qualifiers),
         }
     }
 
-    fn strip_unsafe(qualifiers: &[Self]) -> (ast::Safety, &[Self]) {
+    fn strip_unsafe(qualifiers: &mut [Self]) -> (ast::Safety, &mut [Self]) {
         match qualifiers {
             [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }
 
-    fn strip_safety(qualifiers: &[Self]) -> (ast::Safety<()>, &[Self]) {
+    fn strip_safety(qualifiers: &mut [Self]) -> (ast::Safety<()>, &mut [Self]) {
         match qualifiers {
             [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
             [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe(()), qualifiers),
@@ -1162,7 +1195,7 @@ impl<'src> Qualifier<'src> {
         }
     }
 
-    fn strip_extern(qualifiers: &[Self]) -> (ast::Externness<'src>, &[Self]) {
+    fn strip_extern(qualifiers: &mut [Self]) -> (ast::Externness<'src>, &mut [Self]) {
         match qualifiers {
             [Self::Extern(abi), qualifiers @ ..] => (ast::Externness::Extern(*abi), qualifiers),
             _ => (ast::Externness::Not, qualifiers),

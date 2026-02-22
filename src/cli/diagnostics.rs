@@ -97,6 +97,7 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
             Diag::new("string literal guard too large").highlight(span)
         }
         Error::ReservedMultiHash(span) => Diag::new("reserved multi-hash").highlight(span),
+        Error::ImplRestrictedTraitAlias => Diag::new("trait aliases cannot be impl-restricted"),
         Error::InvalidEscapeSequence(span) => Diag::new("invalid escape sequence").highlight(span),
         Error::EmptyCharLit(span) => Diag::new("empty char literal").highlight(span),
         Error::MultiScalarCharLit(span) => Diag::new("multi-scalar char literal").highlight(span),

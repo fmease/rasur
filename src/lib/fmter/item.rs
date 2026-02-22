@@ -526,13 +526,18 @@ impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     }
 }
 
-impl Fmt for TrailingSpace<ast::TraitItemModifiers> {
+impl Fmt for TrailingSpace<ast::TraitItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::TraitItemModifiers { constness, safety, autoness }) = self;
+        let Self(ast::TraitItemModifiers { constness, safety, autoness, impl_restriction }) = self;
 
         constness.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
         autoness.trailing_space().fmt(cx);
+        if let Some(path) = impl_restriction {
+            fmt!(cx, "impl");
+            Restriction(path).fmt(cx);
+            fmt!(cx, " ");
+        }
     }
 }
 
@@ -683,18 +688,31 @@ impl Fmt for TrailingSpace<ast::Visibility<'_>> {
         match vis {
             ast::Visibility::Inherited => {}
             ast::Visibility::Restricted(path) => {
-                fmt!(cx, "pub(");
-                if let [ast::PathSeg { ident: ast::Ident!("crate" | "super" | "self"), args: () }] =
-                    &*path.segs
-                {
-                } else {
-                    fmt!(cx, "in ");
-                }
-                path.fmt(cx);
-                fmt!(cx, ") ");
+                fmt!(cx, "pub");
+                Restriction(path).fmt(cx);
+                fmt!(cx, " ");
             }
             ast::Visibility::Public => fmt!(cx, "pub "),
         }
+    }
+}
+
+struct Restriction<'src>(ast::Path<'src, ast::NoGenericArgs>);
+
+impl Fmt for Restriction<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(path) = self;
+
+        fmt!(cx, "(");
+        if let [seg] = path.segs.as_slice()
+            && let name @ ("crate" | "super" | "self") = seg.ident.name
+        {
+            name.fmt(cx);
+        } else {
+            fmt!(cx, "in ");
+            path.fmt(cx);
+        }
+        fmt!(cx, ")");
     }
 }
 

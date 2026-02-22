@@ -259,7 +259,7 @@ pub(crate) struct StructItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct TraitItem<'src> {
-    pub(crate) modifiers: TraitItemModifiers,
+    pub(crate) modifiers: TraitItemModifiers<'src>,
     pub(crate) binder: Ident<'src>,
     pub(crate) generics: Generics<'src>,
     pub(crate) bounds: Vec<Bound<'src>>,
@@ -275,10 +275,11 @@ pub(crate) struct TraitAliasItem<'src> {
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct TraitItemModifiers {
+pub(crate) struct TraitItemModifiers<'src> {
     pub(crate) constness: Constness,
     pub(crate) safety: Safety,
     pub(crate) autoness: Autoness,
+    pub(crate) impl_restriction: Option<Path<'src, NoGenericArgs>>,
 }
 
 #[derive(Default, Debug)]

@@ -13,6 +13,7 @@
 #![feature(mut_ref)]
 #![feature(negative_impls)]
 #![feature(never_type)]
+#![feature(try_blocks)]
 #![feature(type_changing_struct_update)]
 // Lints
 #![expect(incomplete_features, reason = "deref_patterns")]

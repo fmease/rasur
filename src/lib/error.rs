@@ -48,6 +48,7 @@ pub enum Error {
     FrontmatterOpeningTooLarge(Span),
     GenericArgsOnFieldExpr(Span),
     HigherRankedBinderOnInvalidBound(Span),
+    ImplRestrictedTraitAlias,
     InvalidAbiStr(Span),
     InvalidAssocItemKind(Span),
     InvalidDigit(Span),
