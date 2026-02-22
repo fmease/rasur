@@ -20,10 +20,7 @@ mod test;
 mod ty;
 mod weak;
 
-type Result<T, E = BufferedError> = std::result::Result<T, E>;
-
-#[derive(Debug)]
-struct BufferedError(());
+type Result<T, E = ()> = std::result::Result<T, E>;
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
 #[expect(clippy::result_unit_err)] // handled via an out-parameter
@@ -37,7 +34,7 @@ pub fn parse<'src>(
     let shebang = file.shebang.map(|shebang| this.source(shebang));
     let frontmatter = file.frontmatter.map(|frontmatter| this.source(frontmatter));
 
-    this.parse_file(shebang, frontmatter).map_err(drop)
+    this.parse_file(shebang, frontmatter)
 }
 
 struct Parser<'t, 'e, 'src> {
@@ -169,7 +166,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
 
     fn fatal<T>(&mut self, error: Error) -> Result<T> {
         self.error(error);
-        Err(BufferedError(()))
+        Err(())
     }
 
     // FIXME: Overload the ret ty to allow for `-> Option<Span>`
@@ -236,7 +233,6 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         Parser { errors, ..*self }
     }
 
-    // FIXME: Improve impl
     fn probe<T>(
         &mut self,
         parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> Option<T>,
@@ -244,6 +240,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         let mut errors = ErrorBuffer::Hold(Vec::new());
         let mut this = self.snapshot(&mut errors);
         parse(&mut this).inspect(|_| {
+            let Self { tokens: _, errors: _, token: _, index: _, source: _, edition: _ };
             self.tokens = this.tokens;
             self.token = this.token;
             self.index = this.index;
