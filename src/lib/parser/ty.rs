@@ -177,7 +177,8 @@ impl<'src> Parser<'_, '_, 'src> {
             // FEATURE: `unsafe_binders` <https://github.com/rust-lang/rust/issues/130516>
             TokenKind::Unsafe => {
                 self.advance();
-                let bound_vars = self.parse_generic_param_list()?;
+                self.parse(TokenPrefix::LessThan)?;
+                let bound_vars = self.fin_parse_generic_param_list()?;
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::UnsafeBinder(bound_vars, Box::new(ty)));
             }
@@ -217,31 +218,37 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
-        std::iter::from_fn(|| self.parse_ty_qualifier()).collect()
-    }
+        let mut qualifiers = Vec::new();
 
-    fn parse_ty_qualifier(&mut self) -> Option<Result<Qualifier<'src>>> {
-        let qualifier = match self.token.kind {
-            TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
-                _ => return None,
-            },
-            TokenKind::Extern => {
-                self.advance();
-                return Some(Ok(Qualifier::Extern(self.parse_abi_str())));
-            }
-            TokenKind::Fn => Qualifier::Fn,
-            TokenKind::For => {
-                self.advance();
-                return Some(self.parse_generic_param_list().map(Qualifier::ForBinder));
-            }
-            TokenKind::Unsafe if self.peek(1).kind != TokenKind::SingleLessThan => {
-                Qualifier::Unsafe
-            }
-            _ => return None,
-        };
-        self.advance();
-        Some(Ok(qualifier))
+        loop {
+            let qualifier = match self.token.kind {
+                TokenKind::CommonIdent => match self.source(self.token.span) {
+                    weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
+                    _ => break,
+                },
+                TokenKind::Extern => {
+                    self.advance();
+                    qualifiers.push(Qualifier::Extern(self.parse_abi_str()));
+                    continue;
+                }
+                TokenKind::Fn => Qualifier::Fn,
+                TokenKind::For => {
+                    self.advance();
+                    self.parse(TokenPrefix::LessThan)?;
+                    let bound_vars = self.fin_parse_generic_param_list()?;
+                    qualifiers.push(Qualifier::ForBinder(bound_vars));
+                    continue;
+                }
+                TokenKind::Unsafe if self.peek(1).kind != TokenKind::SingleLessThan => {
+                    Qualifier::Unsafe
+                }
+                _ => break,
+            };
+            self.advance();
+            qualifiers.push(qualifier);
+        }
+
+        Ok(qualifiers)
     }
 
     fn fin_parse_grouped_or_tuple_or_bare_trait_object_ty(
@@ -348,7 +355,7 @@ impl<'src> Parser<'_, '_, 'src> {
         self.parse_ty()
     }
 
-    /// Parse generics.
+    /// Optionally parse generics (generic parameter list followed by a where-clause).
     ///
     /// # Grammar
     ///
@@ -361,7 +368,7 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::Generics { params, preds })
     }
 
-    /// Parse a list of generic parameters.
+    /// Optionally parse a list of generic parameters.
     ///
     /// # Grammar
     ///
@@ -376,7 +383,10 @@ impl<'src> Parser<'_, '_, 'src> {
         if !self.consume(TokenPrefix::LessThan) {
             return Ok(Vec::new());
         }
+        self.fin_parse_generic_param_list()
+    }
 
+    pub(super) fn fin_parse_generic_param_list(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
         self.fin_parse_delim_seq(TokenPrefix::GreaterThan, SEPARATOR, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
@@ -431,7 +441,7 @@ impl<'src> Parser<'_, '_, 'src> {
         })
     }
 
-    /// Parse a where clause.
+    /// Optionally parse a where-clause.
     ///
     /// # Grammar
     ///
@@ -763,7 +773,8 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(None);
         }
 
-        let bound_vars = self.parse_generic_param_list()?;
+        self.parse(TokenPrefix::LessThan)?;
+        let bound_vars = self.fin_parse_generic_param_list()?;
 
         // FIXME: Better span
         Ok(Some((bound_vars, start.until(self.token.span))))

@@ -772,7 +772,9 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 TokenKind::For if self.pick_generic_param_list_over_ext_path(1) => {
                     self.advance();
-                    qualifiers.push(Qualifier::ForBinder(self.parse_generic_param_list()?));
+                    self.parse(TokenPrefix::LessThan)?;
+                    let bound_vars = self.fin_parse_generic_param_list()?;
+                    qualifiers.push(Qualifier::ForBinder(bound_vars));
                     continue;
                 }
                 // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
