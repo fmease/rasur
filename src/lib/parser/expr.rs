@@ -727,6 +727,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
                         } else {

@@ -119,20 +119,17 @@ impl Fmt for ast::StructPat<'_> {
 
 impl Fmt for ast::StructPatField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, mut_, by_ref, binder, body } = self;
+        let Self { attrs, binder, body } = self;
 
         for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
 
-        mut_.trailing_space().fmt(cx);
-        by_ref.trailing_space().fmt(cx);
-        fmt!(cx, "{binder}");
-        if let Some(body) = body {
-            fmt!(cx, ": ");
-            body.fmt(cx);
+        if let Some(binder) = binder {
+            fmt!(cx, "{binder}: ");
         }
+        body.fmt(cx);
     }
 }
 

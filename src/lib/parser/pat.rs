@@ -203,6 +203,7 @@ impl<'src> Parser<'_, '_, 'src> {
             };
         }
 
+        // FEATURE: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>
         match (self.parse_mutability(), self.parse_by_ref()) {
             (ast::Mutability::Not, ast::ByRef::No) => {}
             (mut_, by_ref) => {
@@ -212,7 +213,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            // FEATURE: `box_patterns` <https://github.com/rust-lang/rust/issues/29641>
+            // FEATURE: `box_patterns` (ungated) <https://github.com/rust-lang/rust/issues/29641>
             TokenKind::Box => {
                 self.advance();
                 return Ok(ast::Pat::Box(Box::new(self.parse_pat(OrPolicy::Forbidden)?)));
@@ -286,6 +287,8 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
+                        // FEATURE: `box_patterns` (ungated) <https://github.com/rust-lang/rust/issues/29641>
+                        let box_ = self.consume(TokenKind::Box);
                         // FEATURE: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>
                         let mut_ = self.parse_mutability();
                         let by_ref = self.parse_by_ref();
@@ -294,15 +297,27 @@ impl<'src> Parser<'_, '_, 'src> {
                         //       struct pats contrary to struct exprs.
                         // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
                         let (binder, _) = self.parse_common_ident_or(TokenKind::NumLit)?;
-                        let body = if let (ast::Mutability::Not, ast::ByRef::No) = (mut_, by_ref)
+
+                        let (binder, body) = if let (false, ast::Mutability::Not, ast::ByRef::No) =
+                            (box_, mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)
                         {
-                            Some(self.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed)?)
+                            let body =
+                                self.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed)?;
+                            (Some(binder), body)
                         } else {
-                            None
+                            let body = ast::Pat::Binding(Box::new(ast::BindingPat {
+                                mut_,
+                                by_ref,
+                                binder,
+                                pat: None,
+                            }));
+                            let body = if box_ { ast::Pat::Box(Box::new(body)) } else { body };
+
+                            (None, body)
                         };
 
-                        fields.push(ast::StructPatField { attrs, mut_, by_ref, binder, body });
+                        fields.push(ast::StructPatField { attrs, binder, body });
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;

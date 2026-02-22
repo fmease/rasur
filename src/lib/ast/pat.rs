@@ -68,10 +68,8 @@ pub(crate) struct StructPat<'src> {
 #[derive(Debug)]
 pub(crate) struct StructPatField<'src> {
     pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) mut_: Mutability,
-    pub(crate) by_ref: ByRef,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) body: Option<Pat<'src>>,
+    pub(crate) binder: Option<Ident<'src>>,
+    pub(crate) body: Pat<'src>,
 }
 
 #[derive(Debug)]

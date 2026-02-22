@@ -2036,6 +2036,28 @@ fn main() {
 }
 
 #[test]
+fn pseudo_field_binding_mode_box() {
+    // issue: <https://github.com/fmease/rasur/issues/19>
+
+    assert_matches!(
+        parse_pat(n!("X { box mut ref mut x }"), Rust2015),
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            fields: r!([ast::StructPatField {
+                attrs: _,
+                binder: None,
+                body: ast::Pat::Box(r!(ast::Pat::Binding(r!(ast::BindingPat {
+                    mut_: ast::Mutability::Mut,
+                    by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
+                    binder: ast::Ident!("x"),
+                    pat: None,
+                }))))
+            }]),
+            ..
+        })))
+    );
+}
+
+#[test]
 fn item_modifiers_in_item_ctxt() {
     // NOTE: Test cases marked `[***]` actually get rejected by rustc
     //       but they should compile in my opinion.
