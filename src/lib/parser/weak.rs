@@ -52,6 +52,7 @@ weak! {
     Default "default" |p| p.peek(1).kind.is_ident(),
     Deref "deref",
     Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.begins_2015_dyn_bound(p.peek(1)),
+    FieldOf "field_of",
     MacroRules "macro_rules" |p|
         p.peek(1).kind == TokenKind::SingleBang
             && p.peek(2).kind == TokenKind::CommonIdent,

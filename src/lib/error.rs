@@ -80,6 +80,7 @@ pub enum Error {
     ReservedPrefix(Span),
     ReuseInherentImpl,
     StrLitGuardTooLarge(Span),
+    InvalidExtraFieldProjections(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall(Span),
     UnexpectedClosingDelimiter(Token),

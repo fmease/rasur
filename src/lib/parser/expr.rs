@@ -1048,30 +1048,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 weak::OffsetOf::STR => {
                     let ty = this.parse_ty()?;
                     this.parse(TokenKind::Comma)?;
-
-                    let mut fields = Vec::new();
-
-                    const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-                    const SEPARATOR: TokenKind = TokenKind::SingleDot;
-                    while !this.consume(DELIMITER) {
-                        let (TokenKind::CommonIdent | TokenKind::NumLit) = this.token.kind else {
-                            return this.fatal(Error::UnexpectedToken(
-                                this.token,
-                                one_of![TokenKind::CommonIdent, TokenKind::NumLit],
-                            ));
-                        };
-
-                        let (ident, extra) = this.split_float_lit();
-
-                        fields.push(ident);
-                        if let Some(ident) = extra {
-                            fields.push(ident);
-                        }
-
-                        if !this.matches(DELIMITER, this.token) {
-                            this.parse(SEPARATOR)?;
-                        }
-                    }
+                    let fields = this.fin_parse_delimited_field_seq()?;
 
                     Some(ast::ExprKind::OffsetOf(Box::new(ty), fields))
                 }

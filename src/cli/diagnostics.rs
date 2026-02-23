@@ -58,6 +58,9 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
             Diag::new("comparison operators cannot be chained").highlight(span)
         }
         Error::TyRelMacroCall(span) => Diag::new("type-relative macro call").highlight(span),
+        Error::InvalidExtraFieldProjections(span) => {
+            Diag::new("invalid extra field accesses").highlight(span)
+        }
         Error::ReservedLabel(span) => Diag::new("reserved label").highlight(span),
         Error::ReservedLifetime(span) => Diag::new("reserved lifetime").highlight(span),
         Error::ReservedPrefix(span) => Diag::new("reserved prefix").highlight(span),

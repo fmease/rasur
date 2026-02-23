@@ -88,10 +88,18 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            TokenKind::CommonIdent if self.check(weak::Dyn) => {
-                self.advance();
-                return self.fin_parse_dyn_trait_object_ty(p_policy);
-            }
+            TokenKind::CommonIdent => match () {
+                // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
+                () if self.check(weak::Builtin) => {
+                    self.advance();
+                    return self.fin_parse_builtin_ty(start);
+                }
+                () if self.check(weak::Dyn) => {
+                    self.advance();
+                    return self.fin_parse_dyn_trait_object_ty(p_policy);
+                }
+                () => {}
+            },
             TokenKind::DoubleAmpersand => {
                 self.advance();
                 let pointee = self.fin_parse_ref_ty()?;
@@ -324,6 +332,36 @@ impl<'src> Parser<'_, '_, 'src> {
         self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
 
         Ok(Some(ast::Ty::DynTrait(ast::DynKind::Bare, bounds)))
+    }
+
+    fn fin_parse_builtin_ty(&mut self, start: Span) -> Result<ast::Ty<'src>> {
+        self.fin_parse_builtin_syntax(start, ast::Ty::Error, |this, name| match name {
+            weak::FieldOf::STR => {
+                let ty = this.parse_ty()?;
+                this.parse(TokenKind::Comma)?;
+                let fields = this.fin_parse_delimited_field_seq()?;
+
+                let (variant, field) = match *fields {
+                    [] => unreachable!(),
+                    [field] => (None, field),
+                    [variant, field, ref extra @ ..] => {
+                        let extra = match extra {
+                            [] => None,
+                            [single] => Some(single.span),
+                            [first, .., last] => Some(first.span.to(last.span)),
+                        };
+                        if let Some(span) = extra {
+                            this.error(Error::InvalidExtraFieldProjections(span));
+                        }
+
+                        (Some(variant), field)
+                    }
+                };
+
+                Ok(Some(ast::Ty::FieldOf(Box::new(ty), variant, field)))
+            }
+            _ => Ok(None),
+        })
     }
 
     fn fin_parse_dyn_trait_object_ty(&mut self, p_policy: PlusPolicy) -> Result<ast::Ty<'src>> {

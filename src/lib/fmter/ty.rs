@@ -1,5 +1,5 @@
 use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
-use crate::ast;
+use crate::{ast, fmter::BuiltinSyntax};
 
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -65,6 +65,16 @@ impl Fmt for ast::Ty<'_> {
                 fmt!(cx, " ");
                 ty.fmt(cx);
             }
+            Self::FieldOf(ty, variant, field) => BuiltinSyntax("field_of", |cx| {
+                ty.fmt(cx);
+                fmt!(cx, ", ");
+                if let Some(variant) = variant {
+                    variant.fmt(cx);
+                    fmt!(cx, ".");
+                }
+                field.fmt(cx);
+            })
+            .fmt(cx),
         }
     }
 }
