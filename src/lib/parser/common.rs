@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
+    ExpectedFragment, Parser, Result, TokenKind, one_of,
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
@@ -314,6 +314,36 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         (ast::Ident::new(name, span), extra)
+    }
+
+    pub(super) fn fin_parse_delimited_field_seq(&mut self) -> Result<Vec<ast::Ident<'src>>> {
+        let mut fields = Vec::new();
+
+        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+        const SEPARATOR: TokenKind = TokenKind::SingleDot;
+        loop {
+            let (TokenKind::CommonIdent | TokenKind::NumLit) = self.token.kind else {
+                return self.fatal(Error::UnexpectedToken(
+                    self.token,
+                    one_of![TokenKind::CommonIdent, TokenKind::NumLit],
+                ));
+            };
+
+            let (ident, extra) = self.split_float_lit();
+
+            fields.push(ident);
+            if let Some(ident) = extra {
+                fields.push(ident);
+            }
+
+            if self.consume(DELIMITER) {
+                break;
+            }
+
+            self.parse(SEPARATOR)?;
+        }
+
+        Ok(fields)
     }
 }
 

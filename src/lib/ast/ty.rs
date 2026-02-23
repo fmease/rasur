@@ -10,6 +10,7 @@ pub(crate) enum Ty<'src> {
     CVariadics,
     DynTrait(DynKind, Vec<Bound<'src>>),
     Error(Span),
+    FieldOf(Box<Ty<'src>>, Option<Ident<'src>>, Ident<'src>),
     FnPtr(Box<FnPtrTy<'src>>),
     Grouped(Box<Ty<'src>>),
     ImplTrait(Vec<Bound<'src>>),
