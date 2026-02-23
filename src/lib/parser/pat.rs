@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, one_of,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::Error, span::Span};
+use crate::{ast, error::Error};
 use std::cmp::Ordering;
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -221,7 +221,18 @@ impl<'src> Parser<'_, '_, 'src> {
             // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
-                return self.fin_parse_builtin_pat(start);
+                return self.fin_parse_builtin_syntax(
+                    start,
+                    ast::Pat::Error,
+                    |this, name| match name {
+                        weak::Deref::STR => {
+                            let pat = this.parse_pat(OrPolicy::Allowed)?;
+                            this.parse(TokenKind::CloseRoundBracket)?;
+                            Ok(Some(ast::Pat::Deref(Box::new(pat))))
+                        }
+                        _ => Ok(None),
+                    },
+                );
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -386,26 +397,6 @@ impl<'src> Parser<'_, '_, 'src> {
             .then(|| self.parse_pat(OrPolicy::Forbidden).map(Box::new))
             .transpose()?;
         Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })))
-    }
-
-    fn fin_parse_builtin_pat(&mut self, start: Span) -> Result<ast::Pat<'src>> {
-        self.parse(TokenKind::Hash)?;
-
-        let ident = self.parse_common_ident()?;
-        self.parse(TokenKind::OpenRoundBracket)?;
-
-        Ok(match ident.name {
-            weak::Deref::STR => {
-                let pat = self.parse_pat(OrPolicy::Allowed)?;
-                self.parse(TokenKind::CloseRoundBracket)?;
-                ast::Pat::Deref(Box::new(pat))
-            }
-            _ => {
-                self.error(Error::UnknownBuiltinSyntax(ident.span));
-                let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                ast::Pat::Error(start.until(self.token.span))
-            }
-        })
     }
 
     fn parse_by_ref(&mut self) -> ast::ByRef {

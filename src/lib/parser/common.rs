@@ -3,7 +3,7 @@ use super::{
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::Error};
+use crate::{ast, error::Error, span::Span};
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -251,6 +251,27 @@ impl<'src> Parser<'_, '_, 'src> {
 
         self.advance();
         Some(abi)
+    }
+
+    pub(super) fn fin_parse_builtin_syntax<T>(
+        &mut self,
+        start: Span,
+        error: impl FnOnce(Span) -> T,
+        parse: impl FnOnce(&mut Self, &'src str) -> Result<Option<T>>,
+    ) -> Result<T> {
+        self.parse(TokenKind::Hash)?;
+
+        let ident = self.parse_common_ident()?;
+        self.parse(TokenKind::OpenRoundBracket)?;
+
+        Ok(match parse(self, ident.name)? {
+            Some(value) => value,
+            None => {
+                self.error(Error::UnknownBuiltinSyntax(ident.span));
+                let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
+                error(start.until(self.token.span))
+            }
+        })
     }
 }
 

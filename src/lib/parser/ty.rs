@@ -88,6 +88,10 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
+            TokenKind::CommonIdent if self.check(weak::Dyn) => {
+                self.advance();
+                return self.fin_parse_dyn_trait_object_ty(p_policy);
+            }
             TokenKind::DoubleAmpersand => {
                 self.advance();
                 let pointee = self.fin_parse_ref_ty()?;
@@ -99,10 +103,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 })));
             }
             TokenKind::Dyn => {
-                self.advance();
-                return self.fin_parse_dyn_trait_object_ty(p_policy);
-            }
-            TokenKind::CommonIdent if self.check(weak::Dyn) => {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty(p_policy);
             }
@@ -130,10 +130,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_ref_ty();
             }
-            TokenKind::SingleBang => {
-                self.advance();
-                return Ok(ast::Ty::Never);
-            }
             TokenKind::SingleAsterisk => {
                 self.advance();
                 let mut_ = match self.token.kind {
@@ -154,6 +150,10 @@ impl<'src> Parser<'_, '_, 'src> {
                 };
                 let ty = self.parse_ty_where(PlusPolicy::Yield)?;
                 return Ok(ast::Ty::Ptr(mut_, Box::new(ty)));
+            }
+            TokenKind::SingleBang => {
+                self.advance();
+                return Ok(ast::Ty::Never);
             }
             // NB: We're indeed committing to parsing a trait object type if the lifetime is
             //     followed by a `+` while completely disregarding the plus policy! It means
