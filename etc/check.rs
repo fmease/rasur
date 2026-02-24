@@ -15,8 +15,10 @@ compile_error!("non-Unix platforms not supported");
 
 use painter::{AnsiColor, Effects, Painter};
 use std::{
+    collections::BTreeSet,
     env, fs,
     io::{self, BufRead as _, Write as _},
+    os::unix::process::ExitStatusExt as _,
     path::{Path, PathBuf},
     process::{Command, ExitCode, ExitStatus, Stdio},
     sync::{Arc, Mutex},
@@ -24,6 +26,10 @@ use std::{
 };
 
 const TMP_DIR_PATH: &str = "/tmp/rasurck";
+
+// FIXME: If more than one edition is passed and we should save the failures, consider writing
+//        the relevant results to `FAILURES.$EDITION.txt` per EDITION (loading would need to
+//        account for that, of course).
 
 fn main() -> ExitCode {
     match try_main() {
@@ -65,7 +71,7 @@ fn try_main() -> Result<(), ()> {
     let entries = opts.paths.iter().flat_map(walkdir::WalkDir::new);
     let entries = Arc::new(Mutex::new(entries));
 
-    let rasur_path = &rasur_path();
+    let rasur_path = &rasur_path(&opts);
     let rustc_path = &rustc_path(&opts);
     let time = Instant::now();
 
@@ -114,7 +120,6 @@ fn try_main() -> Result<(), ()> {
 
     let duration = time.elapsed();
 
-    // FIXME: Collect into Vec of `.display()`'ed `Path`s that can be used by save  & render.
     stats.failures.sort_unstable_by(|(path0, ..), (path1, ..)| path0.cmp(path1));
 
     stats.render(duration, &opts, &mut p).unwrap();
@@ -125,7 +130,7 @@ fn try_main() -> Result<(), ()> {
         let mut file = io::BufWriter::new(fs::File::create(path).unwrap());
 
         for (path, ..) in &stats.failures {
-            writeln!(file, "{}", path.display()).unwrap();
+            writeln!(file, "{path}").unwrap();
         }
     }
 
@@ -138,9 +143,12 @@ fn try_main() -> Result<(), ()> {
     if stats.failures.is_empty() { Ok(()) } else { Err(()) }
 }
 
-fn rasur_path() -> PathBuf {
-    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur-cli"))
-        .with_extension(env::consts::EXE_EXTENSION)
+fn rasur_path(opts: &interface::Opts) -> PathBuf {
+    let profile = match opts.debug {
+        true => "debug",
+        false => "release",
+    };
+    [env!("CARGO_MANIFEST_DIR"), "..", "target", profile, "rasur-cli"].into_iter().collect()
 }
 
 fn rustc_path(opts: &interface::Opts) -> PathBuf {
@@ -156,7 +164,7 @@ fn rustc_path(opts: &interface::Opts) -> PathBuf {
 
 #[derive(Default)]
 struct Stats {
-    failures: Vec<(PathBuf, ExitStatus, ExitStatus)>,
+    failures: Vec<(String, Vec<(Edition, Mismatch)>)>,
     total: usize,
 }
 
@@ -176,31 +184,49 @@ impl Stats {
         let Self { ref failures, total } = *self;
 
         if !failures.is_empty() {
-            const BAR_WIDTH: usize = 80;
+            let width = failures.iter().map(|(path, ..)| path.len()).max().unwrap_or_default();
 
-            writeln!(p, "{:─^BAR_WIDTH$}", " FAILURES ")?;
-            p.set(AnsiColor::Red)?;
-            for &(ref path, rasur_exit_status, rustc_exit_status) in failures {
-                if opts.verbose {
-                    // FIXME: Handle non-codes (signals, ..)
-                    let write = |p: &mut Painter<_>, status: ExitStatus| {
-                        if let Some(code) = status.code() {
-                            write!(p, "{code}")
+            writeln!(p, "{:─^width$}", " FAILURES ")?;
+            for (path, subfailures) in failures {
+                write!(p, "{path:<width$}")?;
+
+                const SPACER: &str = "    ";
+
+                if subfailures.len() < opts.test.editions.len() {
+                    let mut condensed = Vec::<(Range, _)>::new();
+                    for &(edition, mismatch) in subfailures {
+                        if let Some((last_editions, last_mismatch)) = condensed.last_mut()
+                            && mismatch == *last_mismatch
+                            && last_editions.end as usize + 1 == edition as usize
+                        {
+                            last_editions.end = edition;
                         } else {
-                            write!(p, "?")
+                            let range = Range { start: edition, end: edition };
+                            condensed.push((range, mismatch));
                         }
-                    };
+                    }
 
-                    write(p, rasur_exit_status)?;
-                    write!(p, "v")?;
-                    write(p, rustc_exit_status)?;
-                    write!(p, "  ")?;
+                    for (editions, mismatch) in condensed {
+                        write!(p, "{SPACER}{}", editions.start.to_str())?;
+                        if editions.end != editions.start {
+                            write!(p, "–{}", editions.end.to_str())?;
+                        }
+                        write!(p, "  ")?;
+                        mismatch.render(p)?;
+                    }
+
+                    struct Range {
+                        start: Edition,
+                        end: Edition,
+                    }
+                } else {
+                    let (_, mismatch) = subfailures.first().unwrap();
+                    write!(p, "{SPACER}")?;
+                    mismatch.render(p)?;
                 }
-
-                writeln!(p, "{}", path.display())?;
+                writeln!(p)?;
             }
-            p.unset()?;
-            writeln!(p, "{:─^BAR_WIDTH$}", "")?;
+            writeln!(p, "{:─^width$}", "")?;
             writeln!(p)?;
         }
 
@@ -253,6 +279,26 @@ impl Stats {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Mismatch {
+    rasur: ExitStatus,
+    rustc: ExitStatus,
+}
+
+impl Mismatch {
+    fn render(self, p: &mut Painter<impl io::Write>) -> io::Result<()> {
+        let status = |p: &mut Painter<_>, status: ExitStatus| match () {
+            () if let Some(code) = status.code() => write!(p, "{code}"),
+            () if let Some(signal) = status.signal() => write!(p, "{signal}s"),
+            () => write!(p, "{}w", status.into_raw()),
+        };
+
+        status(p, self.rasur)?;
+        write!(p, "·")?;
+        status(p, self.rustc)
+    }
+}
+
 fn check(
     entry: Result<walkdir::DirEntry, walkdir::Error>,
     rasur_path: &Path,
@@ -263,31 +309,45 @@ fn check(
     // FIXME: Mark file as invalid instead!
     let entry = entry.expect("failed to read dir entry");
 
-    if entry.file_type().is_file()
-        && let path = entry.path()
-        && let Some(ext) = path.extension()
-        && ext == "rs"
-    {
-        let result = compare(path, rasur_path, rustc_path, opts);
-        stats.total += 1;
+    if !entry.file_type().is_file() {
+        return;
+    }
 
-        if let Err((rasur_exit_status, rustc_exit_status)) = result {
-            stats.failures.push((entry.into_path(), rasur_exit_status, rustc_exit_status));
+    let path = entry.path();
+    if path.extension().is_none_or(|ext| ext != "rs") {
+        return;
+    }
+
+    stats.total += 1;
+
+    let mut subfailures = Vec::new();
+
+    for &edition in &opts.editions {
+        let rasur = run_rasur(path, edition, rasur_path);
+        let rustc = run_rustc(path, edition, opts.measure, rustc_path);
+
+        if (rasur == rustc) == opts.invert {
+            subfailures.push((edition, Mismatch { rasur, rustc }));
         }
+    }
+
+    if !subfailures.is_empty() {
+        stats.failures.push((path.display().to_string(), subfailures));
     }
 }
 
-fn compare(
-    path: &Path,
-    rasur_path: &Path,
-    rustc_path: &Path,
-    opts: &TestOpts,
-) -> Result<(), (ExitStatus, ExitStatus)> {
-    let mut rustc_call = Command::new(rustc_path);
-    rustc_call.stdout(Stdio::null()).stderr(Stdio::null()).arg(&path);
-    match opts.measure {
-        Measure::ParseOnly => rustc_call.arg("-Zparse-crate-root-only"),
-        Measure::CfgFalse => rustc_call.args([
+fn run_rustc(path: &Path, edition: Edition, measure: Measure, rustc_path: &Path) -> ExitStatus {
+    let mut cmd = Command::new(rustc_path);
+
+    cmd.stdout(Stdio::null()).stderr(Stdio::null()).arg(path).args([
+        "--edition",
+        edition.to_str(),
+        "-Zunstable-options",
+    ]);
+
+    match measure {
+        Measure::ParseOnly => cmd.arg("-Zparse-crate-root-only"),
+        Measure::CfgFalse => cmd.args([
             "-Zcrate-attr=cfg(false)",
             "--crate-type=lib",
             "--emit=metadata",
@@ -295,32 +355,46 @@ fn compare(
             TMP_DIR_PATH,
         ]),
     };
-    if let Some(edition) = &opts.edition {
-        rustc_call.arg("--edition");
-        rustc_call.arg(edition);
-    }
 
-    let rustc_exit_status = rustc_call.status().expect("failed to execute `rustc`");
+    cmd.status().expect("failed to execute `rustc`")
+}
 
-    let mut rasur_call = Command::new(rasur_path);
-    rasur_call.stdout(Stdio::null()).stderr(Stdio::null()).arg(&path);
-    if let Some(edition) = &opts.edition {
-        rasur_call.arg("--edition");
-        rasur_call.arg(edition);
-    }
-    let rasur_exit_status = rasur_call.status().expect("failed to execute `rasur`");
-
-    if (rasur_exit_status == rustc_exit_status) == opts.invert {
-        return Err((rasur_exit_status, rustc_exit_status));
-    }
-
-    Ok(())
+fn run_rasur(path: &Path, edition: Edition, rasur_path: &Path) -> ExitStatus {
+    Command::new(rasur_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .arg(path)
+        .args(["--edition", edition.to_str()])
+        .status()
+        .expect("failed to execute `rasur`")
 }
 
 struct TestOpts {
-    edition: Option<std::ffi::OsString>,
+    // FIXME: move out of test opts?
+    editions: BTreeSet<Edition>,
     measure: Measure,
     invert: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum Edition {
+    Rust2015,
+    Rust2018,
+    Rust2021,
+    Rust2024,
+    Future,
+}
+
+impl Edition {
+    fn to_str(self) -> &'static str {
+        match self {
+            Self::Rust2015 => "2015",
+            Self::Rust2018 => "2018",
+            Self::Rust2021 => "2021",
+            Self::Rust2024 => "2024",
+            Self::Future => "future",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -330,7 +404,7 @@ enum Measure {
 }
 
 mod interface {
-    use super::{Measure, TestOpts};
+    use super::{Edition, Measure, TestOpts};
     use clap::{Arg, ArgAction, Command, value_parser as P};
     use std::{num::NonZeroUsize, path::PathBuf};
 
@@ -359,11 +433,13 @@ mod interface {
                     .help("Paths to the source files"),
             )
             .arg(
-                Arg::new(id::EDITION)
+                Arg::new(id::EDITIONS)
                     .short('e')
                     .long("edition")
-                    .value_parser(P!(std::ffi::OsString))
-                    .help("Set the edition of the source files"),
+                    .value_parser(parse_editions)
+                    .action(ArgAction::Append)
+                    .default_value("2015")
+                    .help("Set the editions used for the source files"),
             )
             .arg(
                 Arg::new(id::TOOLCHAIN)
@@ -411,7 +487,7 @@ mod interface {
                     .conflicts_with(id::PATHS)
                     .help(format!("Load the paths from a file [fallback: {DEFAULT_STORAGE_PATH}]")),
             )
-            .arg(Arg::new(id::VERBOSE).short('v').long("verbose").action(ArgAction::SetTrue))
+            .arg(Arg::new(id::DEBUG).short('D').long("debug").action(ArgAction::SetTrue).help("Use the debug build of rasur instead of the release one"))
             .get_matches();
 
         Opts {
@@ -420,13 +496,18 @@ mod interface {
             jobs: matches.remove_one(id::JOBS).unwrap(),
             chunk_size: matches.remove_one(id::CHUNK_SIZE).unwrap(),
             test: TestOpts {
-                edition: matches.remove_one(id::EDITION),
+                editions: matches
+                    .remove_many::<Editions>(id::EDITIONS)
+                    .unwrap()
+                    .flat_map(Editions::expand)
+                    .copied()
+                    .collect(),
                 measure: matches.remove_one(id::MEASURE).unwrap(),
                 invert: matches.remove_one(id::INVERT).unwrap_or_default(),
             },
             save: matches.remove_one(id::SAVE),
             load: matches.remove_one(id::LOAD),
-            verbose: matches.remove_one(id::VERBOSE).unwrap_or_default(),
+            debug: matches.remove_one(id::DEBUG).unwrap_or_default(),
         }
     }
 
@@ -438,7 +519,7 @@ mod interface {
         pub(super) test: TestOpts,
         pub(super) save: Option<PathBuf>,
         pub(super) load: Option<PathBuf>,
-        pub(super) verbose: bool,
+        pub(super) debug: bool,
     }
 
     macro_rules! parse {
@@ -448,6 +529,45 @@ mod interface {
                 _ => return Err(format!("possible values: {}", [$(concat!("`", $key, "`")),+].join(", "))),
             })
         }
+    }
+
+    #[derive(Clone, Copy)]
+    enum Editions {
+        Rust2015,
+        Rust2018,
+        Rust2021,
+        Rust2024,
+        Future,
+        Most,
+        All,
+    }
+
+    impl Editions {
+        fn expand(self) -> &'static [Edition] {
+            use Edition::*;
+
+            match self {
+                Self::Rust2015 => &[Rust2015],
+                Self::Rust2018 => &[Rust2018],
+                Self::Rust2021 => &[Rust2021],
+                Self::Rust2024 => &[Rust2024],
+                Self::Future => &[Future],
+                Self::Most => &[Rust2015, Rust2018, Rust2021, Rust2024],
+                Self::All => &[Rust2015, Rust2018, Rust2021, Rust2024, Future],
+            }
+        }
+    }
+
+    fn parse_editions(source: &str) -> Result<Editions, String> {
+        parse!(
+            "2015" => Editions::Rust2015,
+            "2018" => Editions::Rust2018,
+            "2021" => Editions::Rust2021,
+            "2024" => Editions::Rust2024,
+            "future" => Editions::Future,
+            "most" => Editions::Most,
+            "all" => Editions::All,
+        )(source)
     }
 
     fn parse_measure(source: &str) -> Result<Measure, String> {
@@ -467,7 +587,8 @@ mod interface {
 
     ids! {
         CHUNK_SIZE,
-        EDITION,
+        DEBUG,
+        EDITIONS,
         INVERT,
         JOBS,
         LOAD,
@@ -475,6 +596,5 @@ mod interface {
         PATHS,
         SAVE,
         TOOLCHAIN,
-        VERBOSE,
     }
 }
