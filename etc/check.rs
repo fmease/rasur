@@ -13,9 +13,10 @@ walkdir = "2.5.0"
 #[cfg(not(unix))]
 compile_error!("non-Unix platforms not supported");
 
+use painter::{AnsiColor, Effects, Painter};
 use std::{
-    env,
-    io::{self, Write as _},
+    env, fs,
+    io::{self, BufRead as _, Write as _},
     path::{Path, PathBuf},
     process::{Command, ExitCode, ExitStatus, Stdio},
     sync::{Arc, Mutex},
@@ -32,32 +33,46 @@ fn main() -> ExitCode {
 }
 
 fn try_main() -> Result<(), ()> {
-    let opts = interface::opts();
+    let mut opts = interface::opts();
 
-    let rasur_path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur-cli"))
-        .with_extension(env::consts::EXE_EXTENSION);
-    let rustc_path = {
-        let mut output = Command::new("rustup")
-            .arg(format!("+{}", opts.toolchain))
-            .args(["which", "rustc"])
-            .output()
+    let mut p = Painter::new(io::stdout(), io::BufWriter::new);
+
+    if let Some(path) = &opts.save {
+        write!(p, "Do you really want to save test failures as `{}`? [y/N]: ", path.display())
             .unwrap();
-        output.status.exit_ok().unwrap();
-        output.stdout.pop(); // \n
-        PathBuf::from(String::from_utf8(output.stdout).unwrap())
-    };
+        p.flush().unwrap();
+
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer).unwrap();
+        let answer = answer.trim();
+
+        if !answer.eq_ignore_ascii_case("y") && !answer.eq_ignore_ascii_case("yes") {
+            eprintln!("Operation denied; aborting.");
+            return Err(());
+        } else {
+            writeln!(p).unwrap();
+        }
+    }
+
+    if let Some(path) = &opts.load {
+        opts.paths.extend(
+            io::BufReader::new(fs::File::open(path).unwrap())
+                .lines()
+                .map(|line| PathBuf::from(line.unwrap())),
+        );
+    }
 
     let entries = opts.paths.iter().flat_map(walkdir::WalkDir::new);
     let entries = Arc::new(Mutex::new(entries));
 
+    let rasur_path = &rasur_path();
+    let rustc_path = &rustc_path(&opts);
     let time = Instant::now();
 
-    let stats = std::thread::scope(|scope| {
+    let mut stats = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..opts.jobs.get())
             .map(|_| {
                 let entries = entries.clone();
-                let rasur_path = &rasur_path;
-                let rustc_path = &rustc_path;
                 let test_opts = &opts.test;
 
                 scope.spawn(move || {
@@ -98,43 +113,74 @@ fn try_main() -> Result<(), ()> {
     });
 
     let duration = time.elapsed();
-    stats.render(duration, &opts).unwrap();
+
+    // FIXME: Collect into Vec of `.display()`'ed `Path`s that can be used by save  & render.
+    stats.failures.sort_unstable_by(|(path0, ..), (path1, ..)| path0.cmp(path1));
+
+    stats.render(duration, &opts, &mut p).unwrap();
+
+    if let Some(path) = opts.save
+        && !stats.failures.is_empty()
+    {
+        let mut file = io::BufWriter::new(fs::File::create(path).unwrap());
+
+        for (path, ..) in &stats.failures {
+            writeln!(file, "{}", path.display()).unwrap();
+        }
+    }
 
     if let Measure::CfgFalse = opts.test.measure
         && stats.total > 0
     {
-        _ = std::fs::remove_dir_all(TMP_DIR_PATH);
+        _ = fs::remove_dir_all(TMP_DIR_PATH);
     }
 
-    if stats.failed.is_empty() { Ok(()) } else { Err(()) }
+    if stats.failures.is_empty() { Ok(()) } else { Err(()) }
+}
+
+fn rasur_path() -> PathBuf {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rasur-cli"))
+        .with_extension(env::consts::EXE_EXTENSION)
+}
+
+fn rustc_path(opts: &interface::Opts) -> PathBuf {
+    let mut output = Command::new("rustup")
+        .arg(format!("+{}", opts.toolchain))
+        .args(["which", "rustc"])
+        .output()
+        .unwrap();
+    output.status.exit_ok().unwrap();
+    output.stdout.pop(); // \n
+    PathBuf::from(String::from_utf8(output.stdout).unwrap())
 }
 
 #[derive(Default)]
 struct Stats {
-    failed: Vec<(PathBuf, ExitStatus, ExitStatus)>,
+    failures: Vec<(PathBuf, ExitStatus, ExitStatus)>,
     total: usize,
 }
 
 impl Stats {
     fn adjoin(mut self, mut other: Self) -> Self {
-        self.failed.append(&mut other.failed);
+        self.failures.append(&mut other.failures);
         self.total += other.total;
         self
     }
 
-    fn render(&self, duration: std::time::Duration, opts: &interface::Opts) -> io::Result<()> {
-        use painter::{AnsiColor, Effects, Painter};
+    fn render(
+        &self,
+        duration: std::time::Duration,
+        opts: &interface::Opts,
+        p: &mut Painter<impl io::Write>,
+    ) -> io::Result<()> {
+        let Self { ref failures, total } = *self;
 
-        let Self { ref failed, total } = *self;
-
-        let mut p = Painter::new(io::stdout(), io::BufWriter::new);
-
-        if !failed.is_empty() {
+        if !failures.is_empty() {
             const BAR_WIDTH: usize = 80;
 
             writeln!(p, "{:─^BAR_WIDTH$}", " FAILURES ")?;
             p.set(AnsiColor::Red)?;
-            for &(ref path, rasur_exit_status, rustc_exit_status) in failed {
+            for &(ref path, rasur_exit_status, rustc_exit_status) in failures {
                 if opts.verbose {
                     // FIXME: Handle non-codes (signals, ..)
                     let write = |p: &mut Painter<_>, status: ExitStatus| {
@@ -145,9 +191,9 @@ impl Stats {
                         }
                     };
 
-                    write(&mut p, rasur_exit_status)?;
+                    write(p, rasur_exit_status)?;
                     write!(p, "v")?;
-                    write(&mut p, rustc_exit_status)?;
+                    write(p, rustc_exit_status)?;
                     write!(p, "  ")?;
                 }
 
@@ -160,7 +206,7 @@ impl Stats {
 
         const PADDING: usize = 4;
 
-        let (color, tag) = match (failed.as_slice(), total) {
+        let (color, tag) = match (failures.as_slice(), total) {
             (_, 0) => (AnsiColor::Yellow, "NO TESTS WERE RUN!"),
             ([], _) => (AnsiColor::Green, "ALL TESTS PASSED!"),
             ([_, ..], _) => (AnsiColor::Red, "SOME TESTS FAILED!"),
@@ -170,7 +216,7 @@ impl Stats {
         })?;
         let indent = " ".repeat(tag.len() + PADDING);
 
-        let failed = failed.len();
+        let failed = failures.len();
         let passed = total - failed;
         let percentage = if total == 0 { 1. } else { (passed as f32 / total as f32) * 1. } * 100.;
 
@@ -192,10 +238,10 @@ impl Stats {
 
         const SEP: &str = " │ ";
 
-        column(&mut p, passed, "passed", AnsiColor::Green)?;
+        column(p, passed, "passed", AnsiColor::Green)?;
         write!(p, " ({percentage:.2}%)")?;
         write!(p, "{SEP}")?;
-        column(&mut p, failed, "failed", AnsiColor::Red)?;
+        column(p, failed, "failed", AnsiColor::Red)?;
         write!(p, "{SEP}")?;
         write!(p, "{total} in total")?;
         writeln!(p)?;
@@ -226,7 +272,7 @@ fn check(
         stats.total += 1;
 
         if let Err((rasur_exit_status, rustc_exit_status)) = result {
-            stats.failed.push((entry.into_path(), rasur_exit_status, rustc_exit_status));
+            stats.failures.push((entry.into_path(), rasur_exit_status, rustc_exit_status));
         }
     }
 }
@@ -290,9 +336,14 @@ mod interface {
 
     const DEFAULT_CHUNK_SIZE: &str = "10";
     const DEFAULT_MEASURE: &str = "parse-only";
+    const DEFAULT_STORAGE_PATH: &str = "FAILURES.txt";
 
     pub(super) fn opts() -> Opts {
-        let jobs = Arg::new(id::JOBS).short('j').long("jobs").value_parser(P!(NonZeroUsize));
+        let jobs = Arg::new(id::JOBS)
+            .short('j')
+            .long("jobs")
+            .value_parser(P!(NonZeroUsize))
+            .help("Set the number of threads used for running tests in parallel");
         let jobs = match std::thread::available_parallelism() {
             // FIXME: unfortunately, clap requires the &str to live for the static lifetime.
             Ok(value) => jobs.default_value(&*value.to_string().leak()),
@@ -328,14 +379,37 @@ mod interface {
                     .value_parser(parse_measure)
                     .default_value(DEFAULT_MEASURE),
             )
-            .arg(Arg::new(id::INVERT).short('I').long("invert").action(ArgAction::SetTrue))
+            .arg(Arg::new(id::INVERT).short('I').long("invert").action(ArgAction::SetTrue).help("Invert the test expectation (so unequal exit statuses means success)"))
             .arg(jobs)
             .arg(
                 Arg::new(id::CHUNK_SIZE)
                     .short('c')
                     .long("chunk")
                     .value_parser(P!(NonZeroUsize))
-                    .default_value(DEFAULT_CHUNK_SIZE),
+                    .default_value(DEFAULT_CHUNK_SIZE).help("Set the amount of tests a single thread should run sequentially each 'step'"),
+            )
+            .arg(
+                Arg::new(id::SAVE)
+                    .long("save")
+                    .value_name("PATH")
+                    .require_equals(true)
+                    .num_args(..=1)
+                    .default_missing_value(DEFAULT_STORAGE_PATH)
+                    .value_parser(P!(PathBuf))
+                    .help(format!(
+                        "Save the paths to failing tests in a file [fallback: {DEFAULT_STORAGE_PATH}]"
+                    )),
+            )
+            .arg(
+                Arg::new(id::LOAD)
+                    .long("load")
+                    .value_name("PATH")
+                    .require_equals(true)
+                    .num_args(..=1)
+                    .default_missing_value(DEFAULT_STORAGE_PATH)
+                    .value_parser(P!(PathBuf))
+                    .conflicts_with(id::PATHS)
+                    .help(format!("Load the paths from a file [fallback: {DEFAULT_STORAGE_PATH}]")),
             )
             .arg(Arg::new(id::VERBOSE).short('v').long("verbose").action(ArgAction::SetTrue))
             .get_matches();
@@ -350,6 +424,8 @@ mod interface {
                 measure: matches.remove_one(id::MEASURE).unwrap(),
                 invert: matches.remove_one(id::INVERT).unwrap_or_default(),
             },
+            save: matches.remove_one(id::SAVE),
+            load: matches.remove_one(id::LOAD),
             verbose: matches.remove_one(id::VERBOSE).unwrap_or_default(),
         }
     }
@@ -360,6 +436,8 @@ mod interface {
         pub(super) jobs: NonZeroUsize,
         pub(super) chunk_size: NonZeroUsize,
         pub(super) test: TestOpts,
+        pub(super) save: Option<PathBuf>,
+        pub(super) load: Option<PathBuf>,
         pub(super) verbose: bool,
     }
 
@@ -392,8 +470,10 @@ mod interface {
         EDITION,
         INVERT,
         JOBS,
+        LOAD,
         MEASURE,
         PATHS,
+        SAVE,
         TOOLCHAIN,
         VERBOSE,
     }
