@@ -10,7 +10,6 @@ path = "main.rs"
 
 [dependencies]
 annotate-snippets = { git = "https://github.com/rust-lang/annotate-snippets-rs.git", rev = "74964e91d845e39fb549c4028452beffa7c6562b" }
-anstream = "1.0.0"
-anstyle = "1.0.13"
 clap = "4.5.58"
+painter = { path = "../../etc/lib/painter" }
 rasur = { path = "../.." }

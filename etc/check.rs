@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = "4.5.58"
+painter = { path = "lib/painter" }
 walkdir = "2.5.0"
 ---
 #![feature(exit_status_error)]
@@ -14,6 +15,7 @@ compile_error!("non-Unix platforms not supported");
 
 use std::{
     env,
+    io::{self, Write as _},
     path::{Path, PathBuf},
     process::{Command, ExitCode, ExitStatus, Stdio},
     sync::{Arc, Mutex},
@@ -96,9 +98,7 @@ fn try_main() -> Result<(), ()> {
     });
 
     let duration = time.elapsed();
-
-    stats.render(&opts);
-    println!("    {duration:?}");
+    stats.render(duration, &opts).unwrap();
 
     if let Measure::CfgFalse = opts.test.measure
         && stats.total > 0
@@ -113,54 +113,97 @@ fn try_main() -> Result<(), ()> {
 struct Stats {
     failed: Vec<(PathBuf, ExitStatus, ExitStatus)>,
     total: usize,
-    ignored: usize,
 }
 
 impl Stats {
     fn adjoin(mut self, mut other: Self) -> Self {
         self.failed.append(&mut other.failed);
         self.total += other.total;
-        self.ignored += other.ignored;
         self
     }
 
-    fn render(&self, opts: &interface::Opts) {
-        let Self { ref failed, total, ignored } = *self;
+    fn render(&self, duration: std::time::Duration, opts: &interface::Opts) -> io::Result<()> {
+        use painter::{AnsiColor, Effects, Painter};
+
+        let Self { ref failed, total } = *self;
+
+        let mut p = Painter::new(io::stdout(), io::BufWriter::new);
 
         if !failed.is_empty() {
-            println!("=== FAILURES ===");
+            const BAR_WIDTH: usize = 80;
+
+            writeln!(p, "{:─^BAR_WIDTH$}", " FAILURES ")?;
+            p.set(AnsiColor::Red)?;
             for &(ref path, rasur_exit_status, rustc_exit_status) in failed {
                 if opts.verbose {
                     // FIXME: Handle non-codes (signals, ..)
-                    let print = |status: ExitStatus| {
+                    let write = |p: &mut Painter<_>, status: ExitStatus| {
                         if let Some(code) = status.code() {
-                            print!("{code}");
+                            write!(p, "{code}")
                         } else {
-                            print!("?");
+                            write!(p, "?")
                         }
                     };
 
-                    print(rasur_exit_status);
-                    print!("v");
-                    print(rustc_exit_status);
-                    print!("  ");
+                    write(&mut p, rasur_exit_status)?;
+                    write!(p, "v")?;
+                    write(&mut p, rustc_exit_status)?;
+                    write!(p, "  ")?;
                 }
 
-                println!("{}", path.display());
+                writeln!(p, "{}", path.display())?;
             }
-            println!("================");
-            println!();
+            p.unset()?;
+            writeln!(p, "{:─^BAR_WIDTH$}", "")?;
+            writeln!(p)?;
         }
 
-        println!("{}", if failed.is_empty() { "ALL TESTS PASSED!" } else { "SOME TESTS FAILED!" });
+        const PADDING: usize = 4;
+
+        let (color, tag) = match (failed.as_slice(), total) {
+            (_, 0) => (AnsiColor::Yellow, "NO TESTS WERE RUN!"),
+            ([], _) => (AnsiColor::Green, "ALL TESTS PASSED!"),
+            ([_, ..], _) => (AnsiColor::Red, "SOME TESTS FAILED!"),
+        };
+        p.with(color.on_default().effects(Effects::BOLD), |p| {
+            write!(p, "{tag}{}", " ".repeat(PADDING))
+        })?;
+        let indent = " ".repeat(tag.len() + PADDING);
 
         let failed = failed.len();
         let passed = total - failed;
-        let percentage = if total == 0 { 1. } else { (passed as f32 / total as f32) * 100. };
+        let percentage = if total == 0 { 1. } else { (passed as f32 / total as f32) * 1. } * 100.;
 
-        println!(
-            "    {passed} passed ({percentage:.2}%) | {failed} failed | {ignored} ignored | {total} in total"
-        );
+        let column = |p: &mut Painter<_>, count, tag, color| {
+            if count > 0 {
+                p.set(color)?;
+                p.set(Effects::BOLD)?;
+            }
+            write!(p, "{count}")?;
+            if count > 0 {
+                p.unset()?;
+            }
+            write!(p, " {tag}")?;
+            if count > 0 {
+                p.unset()?;
+            }
+            io::Result::Ok(())
+        };
+
+        const SEP: &str = " │ ";
+
+        column(&mut p, passed, "passed", AnsiColor::Green)?;
+        write!(p, " ({percentage:.2}%)")?;
+        write!(p, "{SEP}")?;
+        column(&mut p, failed, "failed", AnsiColor::Red)?;
+        write!(p, "{SEP}")?;
+        write!(p, "{total} in total")?;
+        writeln!(p)?;
+
+        write!(p, "{indent}")?;
+        p.with(AnsiColor::BrightBlack, |p| write!(p, "{duration:?}"))?;
+
+        writeln!(p)
     }
 }
 
@@ -180,14 +223,10 @@ fn check(
         && ext == "rs"
     {
         let result = compare(path, rasur_path, rustc_path, opts);
-        if let Some(result) = result {
-            stats.total += 1;
+        stats.total += 1;
 
-            if let Err((rasur_exit_status, rustc_exit_status)) = result {
-                stats.failed.push((entry.into_path(), rasur_exit_status, rustc_exit_status));
-            }
-        } else {
-            stats.ignored += 1;
+        if let Err((rasur_exit_status, rustc_exit_status)) = result {
+            stats.failed.push((entry.into_path(), rasur_exit_status, rustc_exit_status));
         }
     }
 }
@@ -197,7 +236,7 @@ fn compare(
     rasur_path: &Path,
     rustc_path: &Path,
     opts: &TestOpts,
-) -> Option<Result<(), (ExitStatus, ExitStatus)>> {
+) -> Result<(), (ExitStatus, ExitStatus)> {
     let mut rustc_call = Command::new(rustc_path);
     rustc_call.stdout(Stdio::null()).stderr(Stdio::null()).arg(&path);
     match opts.measure {
@@ -226,10 +265,10 @@ fn compare(
     let rasur_exit_status = rasur_call.status().expect("failed to execute `rasur`");
 
     if (rasur_exit_status == rustc_exit_status) == opts.invert {
-        return Some(Err((rasur_exit_status, rustc_exit_status)));
+        return Err((rasur_exit_status, rustc_exit_status));
     }
 
-    Some(Ok(()))
+    Ok(())
 }
 
 struct TestOpts {

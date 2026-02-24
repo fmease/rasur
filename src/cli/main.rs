@@ -5,6 +5,7 @@
 #![deny(unused_must_use, rust_2018_idioms)]
 
 use Default::default;
+use painter::Painter;
 use rasur::{
     lexer::{StripFrontmatter, StripShebang},
     normalizer::Normalized,
@@ -25,14 +26,15 @@ fn try_main() -> Result<(), ()> {
     let opts = interface::opts();
 
     match opts.color {
-        clap::ColorChoice::Always => anstream::ColorChoice::Always.write_global(),
-        clap::ColorChoice::Never => anstream::ColorChoice::Never.write_global(),
+        clap::ColorChoice::Always => painter::ColorChoice::Always.write_global(),
+        clap::ColorChoice::Never => painter::ColorChoice::Never.write_global(),
         clap::ColorChoice::Auto => {}
     }
 
     let (source, path) = match opts.source {
         interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&path).map_err(|error| {
+                // FIXME: use annotate-snippet for this error, too
                 eprintln!("error: failed to read `{}`: {error}", path.display())
             })?;
             (source, path)
@@ -99,13 +101,10 @@ fn try_main() -> Result<(), ()> {
 }
 
 fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::Result<()> {
-    use anstyle::AnsiColor;
-    use std::io::Write;
+    use painter::{AnsiColor, Effects};
+    use std::io::{self, Write as _};
 
-    let stderr = std::io::stderr();
-    let colorize = anstream::AutoStream::choice(&stderr) != anstream::ColorChoice::Never;
-    let stderr = std::io::BufWriter::new(stderr);
-    let mut p = Painter::new(stderr, colorize);
+    let mut p = Painter::new(io::stderr(), io::BufWriter::new);
 
     let render = |p: &mut Painter<_>, span: rasur::span::Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
@@ -113,13 +112,13 @@ fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::
     };
 
     if let Some(shebang) = file.shebang {
-        p.with(anstyle::Effects::ITALIC, |p| write!(p, "Shebang "))?;
+        p.with(Effects::ITALIC, |p| write!(p, "Shebang "))?;
         render(&mut p, shebang)?;
         writeln!(p)?;
     }
 
     if let Some(frontmatter) = file.frontmatter {
-        p.with(anstyle::Effects::ITALIC, |p| write!(p, "Frontmatter "))?;
+        p.with(Effects::ITALIC, |p| write!(p, "Frontmatter "))?;
         render(&mut p, frontmatter)?;
         writeln!(p)?;
     }
@@ -131,77 +130,4 @@ fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::
     }
 
     Ok(())
-}
-
-struct Painter<W: std::io::Write> {
-    writer: W,
-    colorize: bool,
-    style: anstyle::Style,
-}
-
-impl<W: std::io::Write> Painter<W> {
-    pub(crate) fn new(writer: W, colorize: bool) -> Self {
-        Self { writer, colorize, style: anstyle::Style::new() }
-    }
-}
-
-impl<W: std::io::Write> Painter<W> {
-    pub(crate) fn set(&mut self, style: impl IntoStyle) -> std::io::Result<()> {
-        if !self.colorize {
-            return Ok(());
-        }
-
-        self.style = style.into_style();
-        self.style.write_to(&mut self.writer)
-    }
-
-    fn unset(&mut self) -> std::io::Result<()> {
-        if !self.colorize {
-            return Ok(());
-        }
-
-        std::mem::take(&mut self.style).write_reset_to(&mut self.writer)
-    }
-
-    fn with(
-        &mut self,
-        style: impl IntoStyle,
-        inner: impl FnOnce(&mut Self) -> std::io::Result<()>,
-    ) -> std::io::Result<()> {
-        self.set(style)?;
-        inner(self)?;
-        self.unset()
-    }
-}
-
-impl<W: std::io::Write> std::io::Write for Painter<W> {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.writer.write(buffer)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.writer.flush()
-    }
-}
-
-trait IntoStyle {
-    fn into_style(self) -> anstyle::Style;
-}
-
-impl IntoStyle for anstyle::Style {
-    fn into_style(self) -> anstyle::Style {
-        self
-    }
-}
-
-impl IntoStyle for anstyle::AnsiColor {
-    fn into_style(self) -> anstyle::Style {
-        self.on_default()
-    }
-}
-
-impl IntoStyle for anstyle::Effects {
-    fn into_style(self) -> anstyle::Style {
-        anstyle::Style::new().effects(self)
-    }
 }

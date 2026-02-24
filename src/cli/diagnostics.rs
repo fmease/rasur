@@ -10,7 +10,7 @@ use std::{borrow::Cow, io::Write as _, path::Path};
 
 pub(crate) fn render(errors: Vec<Error>, cx: RenderCx<'_>) {
     let mut stderr = std::io::stderr();
-    let colorize = anstream::AutoStream::choice(&stderr) != anstream::ColorChoice::Never;
+    let colorize = painter::colorize(&stderr);
 
     for error in errors {
         writeln!(stderr, "{}", convert(error, cx).render(colorize, cx)).unwrap();
