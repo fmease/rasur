@@ -6,253 +6,214 @@ use crate::{
     token::{PathSegKeyword, Token, TokenKind},
 };
 use iter::IndexedChars;
+use std::mem;
 use unicode_xid::UnicodeXID;
 
-pub fn lex(
-    source: Normalized<&str>,
+pub type Tokens<'err, 'src> = impl Iterator<Item = Token>;
+
+#[define_opaque(Tokens)]
+pub fn lex<'err, 'src>(
+    source: Normalized<&'src str>,
+    offset: ByteIndex,
     edition: Edition,
-    strip_shebang: StripShebang,
-    strip_frontmatter: StripFrontmatter,
-    errors: &mut ErrorBuffer,
-) -> File {
-    let source = source.into_inner();
-    let mut offset = ByteIndex::default();
+    errors: &'err ErrorBuffer,
+) -> Tokens<'err, 'src> {
+    Lexer::new(source.into_inner(), offset, edition, errors)
+}
 
-    let shebang = strip_shebang.apply(source, edition, &mut offset);
-    let frontmatter = strip_frontmatter.apply(source, &mut offset, errors);
+pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> Option<Span> {
+    let suffix = source.strip_prefix("#!")?;
 
-    let mut chars = Lexer::new(source, offset, edition, errors);
-    let mut tokens = Vec::new();
-
-    loop {
-        let token = chars.lex();
-
-        if let TokenKind::Trivia | TokenKind::Error = token.kind {
-            continue;
+    let errors = ErrorBuffer::sealed();
+    for token in Lexer::new(suffix, *offset, edition, &errors) {
+        match token.kind {
+            TokenKind::Trivia => {}
+            TokenKind::OpenSquareBracket => return None,
+            _ => break,
         }
+    }
 
-        tokens.push(token);
+    let mut chars = IndexedChars::new(source, *offset);
+    let start = chars.index();
+    chars.advance_while(|char| char != '\n');
 
-        if let TokenKind::EndOfInput = token.kind {
+    *offset = chars.index();
+    Some(chars.span(start))
+}
+
+pub fn strip_frontmatter(
+    source: &str,
+    offset: &mut ByteIndex,
+    errors: &ErrorBuffer,
+) -> Option<Frontmatter> {
+    let mut chars = IndexedChars::new(source, *offset);
+
+    let mut start = *offset;
+    let mut line_start = true;
+    let mut leading_dashes = 0;
+
+    while let Some((index, char)) = chars.advance() {
+        if char == '-' && line_start {
+            leading_dashes += 1;
+            start = index;
             break;
         }
-    }
-
-    File { shebang, frontmatter, tokens }
-}
-
-pub struct File {
-    pub shebang: Option<Span>,
-    pub frontmatter: Option<Span>,
-    pub tokens: Vec<Token>,
-}
-
-#[derive(Clone, Copy)]
-pub enum StripShebang {
-    Yes,
-    No,
-}
-
-impl StripShebang {
-    fn apply(self, source: &str, edition: Edition, offset: &mut ByteIndex) -> Option<Span> {
-        let Self::Yes = self else { return None };
-        let suffix = source.strip_prefix("#!")?;
-        let mut errors = ErrorBuffer::Void;
-        let mut lexer = Lexer::new(suffix, *offset, edition, &mut errors);
-
-        loop {
-            match lexer.lex().kind {
-                TokenKind::Trivia => {}
-                TokenKind::OpenSquareBracket => return None,
-                _ => break,
-            }
-        }
-
-        let mut chars = IndexedChars::new(source, *offset);
-        let start = chars.index();
-        chars.next_while(|char| char != '\n');
-
-        *offset = chars.index();
-        Some(chars.span(start))
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum StripFrontmatter {
-    Yes,
-    No,
-}
-
-impl StripFrontmatter {
-    fn apply(self, source: &str, offset: &mut ByteIndex, errors: &mut ErrorBuffer) -> Option<Span> {
-        let Self::Yes = self else { return None };
-        let mut chars = IndexedChars::new(source, *offset);
-
-        let mut start = *offset;
-        let mut line_start = true;
-        let mut leading_dashes = 0;
-
-        while let Some((index, char)) = chars.next() {
-            if char == '-' && line_start {
-                leading_dashes += 1;
-                start = index;
-                break;
-            }
-            if !is_whitespace(char) {
-                return None;
-            }
-            line_start = char == '\n';
-        }
-
-        while let Some('-') = chars.peek() {
-            leading_dashes += 1;
-            chars.next();
-        }
-
-        if leading_dashes < 3 {
+        if !is_whitespace(char) {
             return None;
         }
-
-        if leading_dashes > 255 {
-            errors.add(Error::FrontmatterOpeningTooLarge(chars.span(start)));
-        }
-
-        // The infostring.
-        {
-            chars.next_while(is_horizontal_whitespace);
-            let start = chars.index();
-
-            if chars.peek().is_some_and(is_ident_start) {
-                chars.next();
-                chars.next_while(|char| char == '-' || char == '.' || is_ident_middle(char));
-            }
-
-            chars.next_while(is_horizontal_whitespace);
-
-            let valid = chars.peek().is_none_or(|char| char == '\n');
-            let mut end = chars.index();
-
-            while let Some(char) = chars.peek() {
-                if char == '\n' {
-                    break;
-                }
-                chars.next();
-                if !is_horizontal_whitespace(char) {
-                    end = chars.index();
-                }
-            }
-
-            if !valid {
-                errors.add(Error::InvalidFrontmatterInfostring(Span::new(start, end)));
-            }
-        }
-
-        let mut line_start = true;
-        let mut trailing_dashes = 0;
-        let mut terminated = false;
-
-        while let Some((index, char)) = chars.next() {
-            if char == '-' && (line_start || trailing_dashes > 0) {
-                trailing_dashes += 1;
-                if trailing_dashes == leading_dashes {
-                    terminated = true;
-                    break;
-                }
-            }
-
-            if char == '\r' {
-                errors.add(Error::InvalidScalar(
-                    char,
-                    InvalidScalarPlace::FrontmatterBody,
-                    chars.span(index),
-                ));
-            }
-
-            line_start = char == '\n';
-            if line_start {
-                trailing_dashes = 0;
-            }
-        }
-
-        let span = chars.span(start);
-
-        // The trailer.
-        {
-            chars.next_while(is_horizontal_whitespace);
-            let start = chars.index();
-
-            let valid = chars.peek().is_none_or(|char| char == '\n');
-            let mut end = chars.index();
-
-            while let Some(char) = chars.peek() {
-                if char == '\n' {
-                    break;
-                }
-                chars.next();
-                if !is_horizontal_whitespace(char) {
-                    end = chars.index();
-                }
-            }
-
-            if !valid {
-                // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
-                errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
-            }
-        }
-
-        if !terminated {
-            errors.add(Error::UnterminatedFrontmatter(span));
-        }
-
-        *offset = chars.index();
-        Some(span)
+        line_start = char == '\n';
     }
+
+    while let Some('-') = chars.peek() {
+        leading_dashes += 1;
+        chars.advance();
+    }
+
+    if leading_dashes < 3 {
+        return None;
+    }
+
+    if leading_dashes > 255 {
+        errors.add(Error::FrontmatterOpeningTooLarge(chars.span(start)));
+    }
+
+    let infostring = {
+        chars.advance_while(is_horizontal_whitespace);
+        let start = chars.index();
+
+        if chars.peek().is_some_and(is_ident_start) {
+            chars.advance();
+            chars.advance_while(|char| char == '-' || char == '.' || is_ident_middle(char));
+        }
+
+        chars.advance_while(is_horizontal_whitespace);
+
+        let valid = chars.peek().is_none_or(|char| char == '\n');
+        let mut end = chars.index();
+
+        while let Some((_, char)) = chars.advance() {
+            if char == '\n' {
+                break;
+            }
+            if !is_horizontal_whitespace(char) {
+                end = chars.index();
+            }
+        }
+
+        let span = Span::new(start, end);
+
+        if !valid {
+            errors.add(Error::InvalidFrontmatterInfostring(span));
+        }
+
+        span
+    };
+
+    let mut content = Span::from(chars.index());
+    let mut line_start = true;
+    let mut trailing_dashes = 0;
+    let mut terminated = false;
+
+    while let Some((index, char)) = chars.advance() {
+        if char == '-' && (line_start || trailing_dashes > 0) {
+            trailing_dashes += 1;
+            if trailing_dashes == leading_dashes {
+                terminated = true;
+                break;
+            }
+        }
+
+        if char == '\r' {
+            errors.add(Error::InvalidScalar(
+                char,
+                InvalidScalarPlace::FrontmatterBody,
+                chars.span(index),
+            ));
+        }
+
+        line_start = char == '\n';
+        if line_start {
+            content.end = chars.index();
+            trailing_dashes = 0;
+        }
+    }
+
+    let span = chars.span(start);
+
+    // The trailer.
+    {
+        chars.advance_while(is_horizontal_whitespace);
+        let start = chars.index();
+
+        let valid = chars.peek().is_none_or(|char| char == '\n');
+        let mut end = chars.index();
+
+        while let Some(char) = chars.peek() {
+            if char == '\n' {
+                break;
+            }
+            chars.advance();
+            if !is_horizontal_whitespace(char) {
+                end = chars.index();
+            }
+        }
+
+        if !valid {
+            // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
+            errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
+        }
+    }
+
+    if !terminated {
+        errors.add(Error::UnterminatedFrontmatter(span));
+    }
+
+    *offset = chars.index();
+    Some(Frontmatter { infostring, content, span })
 }
 
-struct Lexer<'a, 'src> {
+#[derive(Clone, Copy)]
+pub struct Frontmatter {
+    pub infostring: Span,
+    pub content: Span,
+    pub span: Span,
+}
+
+struct Lexer<'err, 'src> {
     source: &'src str,
     edition: Edition,
     chars: IndexedChars<'src>,
-    errors: &'a mut ErrorBuffer,
+    unexhausted: bool = true,
+    errors: &'err ErrorBuffer,
 }
 
-impl<'a, 'src> Lexer<'a, 'src> {
+impl<'err, 'src> Lexer<'err, 'src> {
     fn new(
         source: &'src str,
         offset: ByteIndex,
         edition: Edition,
-        errors: &'a mut ErrorBuffer,
+        errors: &'err ErrorBuffer,
     ) -> Self {
-        Self { source, edition, chars: IndexedChars::new(source, offset), errors }
+        Self { source, edition, chars: IndexedChars::new(source, offset), errors, .. }
     }
 
-    fn lex(&mut self) -> Token {
-        if let Some((start, char)) = self.next() {
-            let kind = self.fin_lex(char, start);
-            Token::new(kind, Span::new(start, self.index()))
-        } else {
-            let index = self.index();
-            Token::new(TokenKind::EndOfInput, Span::new(index, index))
-        }
-    }
-
-    fn fin_lex(&mut self, char: char, start: ByteIndex) -> TokenKind {
+    fn fin_lex_token(&mut self, char: char, start: ByteIndex) -> TokenKind {
         match char {
             _ if is_whitespace(char) => {
-                self.next_while(is_whitespace);
+                self.advance_while(is_whitespace);
                 TokenKind::Trivia
             }
             '/' => match self.peek() {
                 Some('/') => {
-                    self.next();
+                    self.advance();
                     self.fin_lex_line_comment()
                 }
                 Some('*') => {
-                    self.next();
+                    self.advance();
                     self.fin_lex_block_comment(start)
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::SlashEquals
                 }
                 _ => TokenKind::SingleSlash,
@@ -266,14 +227,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
             ';' => TokenKind::Semicolon,
             '.' => {
                 if let Some('.') = self.peek() {
-                    self.next();
+                    self.advance();
                     match self.peek() {
                         Some('.') => {
-                            self.next();
+                            self.advance();
                             TokenKind::TripleDot
                         }
                         Some('=') => {
-                            self.next();
+                            self.advance();
                             TokenKind::DoubleDotEquals
                         }
                         _ => TokenKind::DoubleDot,
@@ -284,7 +245,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             ':' => {
                 if let Some(':') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::DoubleColon
                 } else {
                     TokenKind::SingleColon
@@ -292,7 +253,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '!' => {
                 if let Some('=') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::BangEquals
                 } else {
                     TokenKind::SingleBang
@@ -301,7 +262,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '?' => TokenKind::QuestionMark,
             '+' => {
                 if let Some('=') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::PlusEquals
                 } else {
                     TokenKind::SinglePlus
@@ -309,7 +270,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '*' => {
                 if let Some('=') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::AsteriskEquals
                 } else {
                     TokenKind::SingleAsterisk
@@ -317,22 +278,22 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '-' => match self.peek() {
                 Some('>') => {
-                    self.next();
+                    self.advance();
                     TokenKind::ThinArrow
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::HypenEquals
                 }
                 _ => TokenKind::SingleHyphen,
             },
             '=' => match self.peek() {
                 Some('>') => {
-                    self.next();
+                    self.advance();
                     TokenKind::WideArrow
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::DoubleEquals
                 }
                 _ => TokenKind::SingleEquals,
@@ -343,7 +304,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
                     while self.peek().is_some_and(|char| char == '#') {
                         multi = true;
-                        self.next();
+                        self.advance();
                     }
 
                     if let Some('"') = self.peek() {
@@ -361,29 +322,29 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '&' => match self.peek() {
                 Some('&') => {
-                    self.next();
+                    self.advance();
                     TokenKind::DoubleAmpersand
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::AmpersandEquals
                 }
                 _ => TokenKind::SingleAmpersand,
             },
             '|' => match self.peek() {
                 Some('|') => {
-                    self.next();
+                    self.advance();
                     TokenKind::DoublePipe
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::PipeEquals
                 }
                 _ => TokenKind::SinglePipe,
             },
             '%' => {
                 if let Some('=') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::PercentEquals
                 } else {
                     TokenKind::SinglePercent
@@ -391,7 +352,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
             }
             '^' => {
                 if let Some('=') = self.peek() {
-                    self.next();
+                    self.advance();
                     TokenKind::CaretEquals
                 } else {
                     TokenKind::SingleCaret
@@ -407,36 +368,36 @@ impl<'a, 'src> Lexer<'a, 'src> {
             '}' => TokenKind::CloseCurlyBracket,
             '<' => match self.peek() {
                 Some('<') => {
-                    self.next();
+                    self.advance();
                     if let Some('=') = self.peek() {
-                        self.next();
+                        self.advance();
                         TokenKind::DoubleLessThanEquals
                     } else {
                         TokenKind::DoubleLessThan
                     }
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::LessThanEquals
                 }
                 Some('-') => {
-                    self.next();
+                    self.advance();
                     TokenKind::ThinBackArrow
                 }
                 _ => TokenKind::SingleLessThan,
             },
             '>' => match self.peek() {
                 Some('>') => {
-                    self.next();
+                    self.advance();
                     if let Some('=') = self.peek() {
-                        self.next();
+                        self.advance();
                         TokenKind::DoubleGreaterThanEquals
                     } else {
                         TokenKind::DoubleGreaterThan
                     }
                 }
                 Some('=') => {
-                    self.next();
+                    self.advance();
                     TokenKind::GreaterThanEquals
                 }
                 _ => TokenKind::SingleGreaterThan,
@@ -452,11 +413,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut this = self.snapshot();
         let kind = match this.next() {
             Some('!') => {
-                self.next();
+                self.advance();
                 TokenKind::InnerDocComment
             }
             Some('/') if this.next().is_none_or(|char| char != '/') => {
-                self.next();
+                self.advance();
                 TokenKind::OuterDocComment
             }
             _ => TokenKind::Trivia,
@@ -467,7 +428,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 break;
             }
             let start = self.index();
-            self.next();
+            self.advance();
             if let TokenKind::InnerDocComment | TokenKind::OuterDocComment = kind
                 && let '\r' = char
             {
@@ -489,24 +450,24 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut this = self.snapshot();
         let kind = match this.next() {
             Some('!') => {
-                self.next();
+                self.advance();
                 TokenKind::InnerDocComment
             }
             Some('*') if this.next().is_none_or(|char| char != '*' && char != '/') => {
-                self.next();
+                self.advance();
                 TokenKind::OuterDocComment
             }
             _ => TokenKind::Trivia,
         };
 
-        while let Some((index, char)) = self.next() {
+        while let Some((index, char)) = self.advance() {
             match (char, self.peek()) {
                 ('/', Some('*')) => {
-                    self.next();
+                    self.advance();
                     depth += 1;
                 }
                 ('*', Some('/')) => {
-                    self.next();
+                    self.advance();
                     if depth == 0 {
                         terminated = true;
                         break;
@@ -548,7 +509,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         };
         let mut is_empty = match base {
             Base::Bin | Base::Oct | Base::Hex => {
-                self.next();
+                self.advance();
                 true
             }
             Base::Dec => false,
@@ -556,7 +517,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
         while let Some(char) = self.peek() {
             if char == '_' {
-                self.next();
+                self.advance();
                 continue;
             }
             match base {
@@ -570,7 +531,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 _ => break,
             }
             is_empty = false;
-            self.next();
+            self.advance();
         }
 
         if is_empty {
@@ -581,8 +542,8 @@ impl<'a, 'src> Lexer<'a, 'src> {
         if let Some('.') = this.next()
             && !this.next().is_some_and(|char| char == '.' || is_ident_start(char))
         {
-            self.next();
-            self.next_while(|char| char == '_' || is_dec_digit(char));
+            self.advance();
+            self.advance_while(|char| char == '_' || is_dec_digit(char));
 
             match base {
                 Base::Dec => {}
@@ -593,24 +554,24 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         if let Some('e' | 'E') = self.peek() {
-            self.next();
+            self.advance();
 
             if let Some('+' | '-') = self.peek() {
-                self.next();
+                self.advance();
             }
 
             let mut is_empty = true;
 
             while let Some(char) = self.peek() {
                 if char == '_' {
-                    self.next();
+                    self.advance();
                     continue;
                 }
                 if !is_dec_digit(char) {
                     break;
                 }
                 is_empty = false;
-                self.next();
+                self.advance();
             }
 
             if is_empty {
@@ -630,7 +591,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         let unticked = self.index();
-        self.next();
+        self.advance();
 
         let mut raw = None;
         let mut count = 1usize;
@@ -638,12 +599,12 @@ impl<'a, 'src> Lexer<'a, 'src> {
         loop {
             match self.peek() {
                 Some(char) if is_ident_middle(char) => {
-                    self.next();
+                    self.advance();
                     count += 1;
                 }
                 Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
                     if let "r" = self.source(unticked) {
-                        self.next();
+                        self.advance();
                         raw = Some(self.index());
                     } else {
                         self.error(Error::ReservedPrefix(self.span(unticked)));
@@ -651,7 +612,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     }
                 }
                 Some('\'') => {
-                    self.next();
+                    self.advance();
 
                     match count {
                         0 => unreachable!(),
@@ -682,7 +643,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut has_invalid_escape_seqs = false;
         let mut invalid_scalar = None;
 
-        while let Some((index, char)) = self.next() {
+        while let Some((index, char)) = self.advance() {
             match char {
                 '\\' => {
                     has_invalid_escape_seqs |= !self.fin_lex_escape_seq(TextLitKind::Char, flavor);
@@ -732,7 +693,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut terminated = false;
         let mut invalid_scalar = None;
 
-        while let Some((index, char)) = self.next() {
+        while let Some((index, char)) = self.advance() {
             match char {
                 '\\' if let Raw::No = raw => {
                     self.fin_lex_escape_seq(TextLitKind::Str, flavor);
@@ -765,7 +726,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
     }
 
     fn fin_lex_ident_or_str_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
-        self.next_while(is_ident_middle);
+        self.advance_while(is_ident_middle);
 
         let ident = self.source(start);
 
@@ -776,15 +737,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
             ("cr", Some('"')) if self.edition >= Edition::Rust2021 => (Raw::Yes, TextLitFlavor::C),
             ("r", Some('"')) => (Raw::Yes, TextLitFlavor::Utf8),
             ("b", Some('\'')) => {
-                self.next();
+                self.advance();
                 return self.fin_lex_char_lit(TextLitFlavor::Ascii, start);
             }
             ("r", Some('#')) => {
-                self.next();
+                self.advance();
 
                 let unprefixed = self.index();
                 if self.peek().is_some_and(is_ident_start) {
-                    self.next_while(is_ident_middle);
+                    self.advance_while(is_ident_middle);
 
                     if let PathSegKeyword!() | TokenKind::Underscore =
                         lex_ident(self.source(unprefixed), self.edition)
@@ -798,23 +759,23 @@ impl<'a, 'src> Lexer<'a, 'src> {
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("br", Some('#')) => {
-                self.next();
+                self.advance();
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
-                self.next();
+                self.advance();
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
                 if char == '#' {
-                    self.next();
+                    self.advance();
                 }
                 return TokenKind::Error;
             }
             _ => return lex_ident(ident, self.edition),
         };
-        self.next();
+        self.advance();
         self.fin_lex_str_lit(raw, flavor, start)
     }
 
@@ -824,11 +785,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
         let mut open = 1usize;
 
         while let Some('#') = self.peek() {
-            self.next();
+            self.advance();
             open += 1;
         }
 
-        if let Some((index, char)) = self.next()
+        if let Some((index, char)) = self.advance()
             && char != '"'
         {
             self.error(Error::InvalidStrLitDelim(self.span(index)));
@@ -836,14 +797,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
         }
 
         'outer: loop {
-            while self.next().is_some_and(|(_, char)| char != '"') {}
+            while self.advance().is_some_and(|(_, char)| char != '"') {}
 
             let mut close = 0usize;
 
             loop {
                 match self.peek() {
                     Some('#') => {
-                        self.next();
+                        self.advance();
                         close += 1;
                         if open == close {
                             terminated = true;
@@ -878,7 +839,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
 
     // FIXME: Emit slightly more precise diagnostics & better diagnostic spans.
     fn fin_lex_escape_seq_inner(&mut self, kind: TextLitKind, flavor: TextLitFlavor) -> bool {
-        let Some((_, char)) = self.next() else { return false };
+        let Some((_, char)) = self.advance() else { return false };
 
         match (char, kind, flavor) {
             | ('\\' | '"' | '\'' | 'n' | 'r' | 't', _, _)
@@ -891,15 +852,15 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     TextLitFlavor::Ascii | TextLitFlavor::C if is_hex_digit(char) => {}
                     _ => return false,
                 }
-                self.next();
+                self.advance();
                 if !self.peek().is_some_and(is_hex_digit) {
                     return false;
                 }
-                self.next();
+                self.advance();
                 true
             }
             ('u', _, _) => {
-                let Some((_, '{')) = self.next() else { return false };
+                let Some((_, '{')) = self.advance() else { return false };
 
                 let mut is_empty = true;
                 let mut value = 0;
@@ -912,11 +873,11 @@ impl<'a, 'src> Lexer<'a, 'src> {
                         'a'..='f' => sub(char, 'a') + 10,
                         'A'..='F' => sub(char, 'A') + 10,
                         '_' if !is_empty => {
-                            self.next();
+                            self.advance();
                             continue;
                         }
                         '}' => {
-                            self.next();
+                            self.advance();
                             break;
                         }
                         _ => return false,
@@ -925,7 +886,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
                     value += plus;
 
                     is_empty = false;
-                    self.next();
+                    self.advance();
                 }
 
                 !is_empty && value <= 0x10_FFFF
@@ -933,13 +894,14 @@ impl<'a, 'src> Lexer<'a, 'src> {
             _ => false,
         }
     }
+
     fn lex_lit_suffix(&mut self) {
         if let Some(char) = self.peek()
             && is_ident_start(char)
         {
             let start = self.index();
-            self.next();
-            self.next_while(is_ident_middle);
+            self.advance();
+            self.advance_while(is_ident_middle);
 
             let span = self.span(start);
             if char == '_' && span.len() == 1 {
@@ -952,7 +914,7 @@ impl<'a, 'src> Lexer<'a, 'src> {
         &self.source[self.span(start).range()]
     }
 
-    fn error(&mut self, error: Error) {
+    fn error(&self, error: Error) {
         self.errors.add(error);
     }
 }
@@ -968,6 +930,19 @@ impl<'src> std::ops::Deref for Lexer<'_, 'src> {
 impl std::ops::DerefMut for Lexer<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.chars
+    }
+}
+
+impl Iterator for Lexer<'_, '_> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (kind, start) = match self.advance() {
+            Some((start, char)) => (self.fin_lex_token(char, start), start),
+            None if mem::take(&mut self.unexhausted) => (TokenKind::EndOfInput, self.index()),
+            None => return None,
+        };
+        Some(Token::new(kind, Span::new(start, self.index())))
     }
 }
 
@@ -1101,22 +1076,22 @@ mod iter {
 
     impl<'src> IndexedChars<'src> {
         pub(super) fn new(source: &'src str, offset: ByteIndex) -> Self {
-            Self { chars: source[offset.into()..].chars(), index: offset }
+            Self { chars: source[offset.value()..].chars(), index: offset }
         }
 
-        pub(super) fn next(&mut self) -> Option<(ByteIndex, char)> {
+        pub(super) fn advance(&mut self) -> Option<(ByteIndex, char)> {
             self.chars.next().map(|char| {
                 let index = self.index();
-                self.index += ByteIndex::from(char.len_utf8());
+                self.index += ByteIndex::new(char.len_utf8());
                 (index, char)
             })
         }
 
-        pub(super) fn next_while(&mut self, predicate: impl Fn(char) -> bool) {
+        pub(super) fn advance_while(&mut self, predicate: impl Fn(char) -> bool) {
             while let Some(char) = self.peek()
                 && predicate(char)
             {
-                self.next();
+                self.advance();
             }
         }
 

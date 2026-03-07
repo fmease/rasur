@@ -295,14 +295,14 @@ impl<'src> Parser<'_, '_, 'src> {
         if let TokenKind::NumLit = self.token.kind
             && let Some((left, right)) = name.split_once(DOT)
         {
-            let dot = span.start + ByteIndex::from(left.len());
+            let dot = span.start + ByteIndex::new(left.len());
 
             if right.is_empty() {
                 self.token.kind = TokenKind::SingleDot;
                 self.token.span.start = dot;
             } else {
                 let mut span = span;
-                span.start = dot + const { ByteIndex::from(DOT.len_utf8()) };
+                span.start = dot + const { ByteIndex::new(DOT.len_utf8()) };
                 extra = Some(ast::Ident::new(right, span));
                 self.advance();
             }

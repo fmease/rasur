@@ -52,7 +52,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
 
         // FIXME: Find a better way to obtain the span
-        let span = start.to(self.prev_token().map(|token| token.span));
+        let span = self.prev_token().map_or(start, |token| start.to(token.span));
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
             self.error(Error::VisibilityOnInvalidItem(span));
@@ -110,7 +110,8 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         let mut qualified = false;
-        for (qualifier, token) in self.snapshot(&mut ErrorBuffer::Void).parse_item_qualifiers() {
+        let mut errors = ErrorBuffer::sealed();
+        for (qualifier, token) in self.snapshot(&mut errors).parse_item_qualifiers() {
             match qualifier {
                 Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
                 _ => return true,

@@ -1,4 +1,4 @@
-use crate::span::Span;
+use crate::span::{Span, Spanned};
 use crate::token::Token;
 pub(crate) use attr::*;
 pub(crate) use expr::*;
@@ -20,10 +20,17 @@ mod ty;
 #[derive(Debug)]
 pub struct File<'src> {
     pub(crate) shebang: Option<&'src str>,
-    pub(crate) frontmatter: Option<&'src str>,
+    pub(crate) frontmatter: Option<Frontmatter<'src>>,
     pub(crate) attrs: Vec<Attr<'src>>,
     pub(crate) items: Vec<Item<'src>>,
     pub(crate) span: Span,
+}
+
+#[derive(Debug)]
+pub struct Frontmatter<'src> {
+    pub infostring: Spanned<&'src str>,
+    pub content: Spanned<&'src str>,
+    pub span: Span,
 }
 
 pub(crate) struct MacroCall<'src, M: GenericArgsMode> {

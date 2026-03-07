@@ -45,7 +45,8 @@ impl<'src> Parser<'_, '_, 'src> {
             PathMode::Normal => {
                 let span = self.token.span;
                 if self.consume(TokenKind::DoubleColon) {
-                    path.segs.push(ast::PathSeg::ident(ast::Ident::new("", span.start())));
+                    let ident = ast::Ident::new("", span.start.into());
+                    path.segs.push(ast::PathSeg::ident(ident));
                 }
             }
             PathMode::Suffix => self.parse(TokenKind::DoubleColon)?,

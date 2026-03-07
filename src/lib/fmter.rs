@@ -102,19 +102,26 @@ impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { shebang, frontmatter, attrs, items, span } = self;
 
+        if cx.skip(&attrs) {
+            fmt!(cx, "{}", cx.source(span));
+            return;
+        }
+
         if let Some(shebang) = shebang {
             fmt!(cx, "{shebang}");
             LineBreak.fmt(cx);
         }
 
-        if let Some(frontmatter) = frontmatter {
-            fmt!(cx, "{frontmatter}");
+        if let Some(ast::Frontmatter { infostring, content, span: _ }) = frontmatter {
+            // FIXME: Proper amount of dashes!
+            fmt!(cx, "---");
+            if !infostring.bare.is_empty() {
+                fmt!(cx, " {}", infostring.bare);
+            }
             LineBreak.fmt(cx);
-        }
-
-        if cx.skip(&attrs) {
-            fmt!(cx, "{}", cx.source(span));
-            return;
+            fmt!(cx, "{}", content.bare);
+            fmt!(cx, "---");
+            LineBreak.fmt(cx);
         }
 
         let non_empty_attrs = !attrs.is_empty();

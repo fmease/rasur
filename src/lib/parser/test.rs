@@ -3,8 +3,9 @@ use crate::{
     Edition::{self, *},
     ast,
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
-    lexer::{StripFrontmatter, StripShebang, lex},
+    lexer::{self, lex},
     normalizer::{Normalized, normalize},
+    span::{ByteIndex, Spanned},
     token::{Token, TokenKind},
 };
 use deref as r;
@@ -20,13 +21,22 @@ macro n($source:expr) {
 }
 
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
-    let mut errors = ErrorBuffer::Hold(Vec::new());
-    let file = lex(source, edition, StripShebang::Yes, StripFrontmatter::Yes, &mut errors);
-    let file = super::parse(&file, source, edition, &mut errors);
-    match errors.non_empty() {
-        Some(errors) => Err(errors),
-        None => Ok(file.unwrap()),
+    let errors = ErrorBuffer::default();
+
+    let mut offset = ByteIndex::default();
+    let shebang = lexer::strip_shebang(source.into_inner(), &mut offset, edition);
+    let frontmatter = lexer::strip_frontmatter(source.into_inner(), &mut offset, &errors);
+
+    let tokens = lex(source, offset, edition, &errors);
+    let file = super::parse(tokens, shebang, frontmatter, source, edition, &errors);
+
+    if let errors = errors.into_inner()
+        && !errors.is_empty()
+    {
+        return Err(errors);
     }
+
+    Ok(file.unwrap())
 }
 
 fn parse_via<'src, T>(
@@ -34,17 +44,23 @@ fn parse_via<'src, T>(
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
-    let mut errors = ErrorBuffer::Hold(Vec::new());
-    let file = lex(source, edition, StripShebang::No, StripFrontmatter::No, &mut errors);
-    let mut p = Parser::new(&file.tokens, source, edition, &mut errors);
-    let result = parse(&mut p).and_then(|r| {
+    let errors = ErrorBuffer::default();
+    let tokens = lex(source, ByteIndex::default(), edition, &errors);
+    let tokens = super::prepare(tokens);
+    let mut p = Parser::new(&tokens, source, edition, &errors);
+
+    let node = parse(&mut p).and_then(|r| {
         p.parse(TokenKind::EndOfInput)?;
         Ok(r)
     });
-    match errors.non_empty() {
-        Some(errors) => Err(errors),
-        None => Ok(result.unwrap()),
+
+    if let errors = errors.into_inner()
+        && !errors.is_empty()
+    {
+        return Err(errors);
     }
+
+    Ok(node.unwrap())
 }
 
 fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
@@ -83,7 +99,15 @@ fn frontmatter_crlf() {
 
     assert_matches!(
         parse_file(n!("---\t\r\n---\t\r\n"), Rust2015),
-        Ok(ast::File { shebang: None, frontmatter: Some("---\t\n---"), .. })
+        Ok(ast::File {
+            shebang: None,
+            frontmatter: Some(ast::Frontmatter {
+                infostring: Spanned { bare: "", .. },
+                content: Spanned { bare: "", .. },
+                ..
+            }),
+            ..
+        })
     );
 }
 

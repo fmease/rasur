@@ -1,9 +1,9 @@
 use crate::{
     Edition, ast,
     error::{Buffer as ErrorBuffer, Error},
-    lexer::lex_ident,
+    lexer::{Frontmatter, Tokens, lex_ident},
     normalizer::Normalized,
-    span::{ByteIndex, Span},
+    span::{ByteIndex, Span, Spanned},
     token::{Token, TokenKind},
 };
 
@@ -24,22 +24,38 @@ type Result<T, E = ()> = std::result::Result<T, E>;
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
 #[expect(clippy::result_unit_err)] // handled via an out-parameter
-pub fn parse<'src>(
-    file: &crate::lexer::File,
+pub fn parse<'err, 'src>(
+    tokens: Tokens<'err, 'src>,
+    shebang: Option<Span>,
+    frontmatter: Option<Frontmatter>,
     source: Normalized<&'src str>,
     edition: Edition,
-    errors: &mut ErrorBuffer,
-) -> Result<ast::File<'src>, ()> {
-    let mut this = Parser::new(&file.tokens, source, edition, errors);
-    let shebang = file.shebang.map(|shebang| this.source(shebang));
-    let frontmatter = file.frontmatter.map(|frontmatter| this.source(frontmatter));
+    errors: &'err ErrorBuffer,
+) -> Result<ast::File<'src>> {
+    let tokens = prepare(tokens);
+    let mut this = Parser::new(&tokens, source, edition, errors);
+    let file = this.parse_file()?;
 
-    this.parse_file(shebang, frontmatter)
+    Ok(ast::File {
+        shebang: shebang.map(|shebang| this.source(shebang)),
+        frontmatter: frontmatter.map(|frontmatter| ast::Frontmatter {
+            infostring: Spanned::new(this.source(frontmatter.infostring), frontmatter.infostring),
+            content: Spanned::new(this.source(frontmatter.content), frontmatter.content),
+            span: frontmatter.span,
+        }),
+        attrs: file.attrs,
+        items: file.items,
+        span: file.span,
+    })
 }
 
-struct Parser<'t, 'e, 'src> {
-    tokens: &'t [Token],
-    errors: &'e mut ErrorBuffer,
+fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {
+    tokens.filter(|token| !matches!(token.kind, TokenKind::Trivia | TokenKind::Error)).collect()
+}
+
+struct Parser<'tok, 'err, 'src> {
+    tokens: &'tok [Token],
+    errors: &'err ErrorBuffer,
     token: Token,
     index: usize,
     source: &'src str,
@@ -48,12 +64,12 @@ struct Parser<'t, 'e, 'src> {
 
 // FIXME: Move some parsing methods into mod common.
 
-impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
+impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
     fn new(
-        tokens: &'t [Token],
+        tokens: &'tok [Token],
         source: Normalized<&'src str>,
         edition: Edition,
-        errors: &'e mut ErrorBuffer,
+        errors: &'err ErrorBuffer,
     ) -> Self {
         let index = 0;
         let token = tokens[index];
@@ -67,19 +83,13 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     /// ```grammar
     /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
     /// ```
-    fn parse_file(
-        &mut self,
-        shebang: Option<&'src str>,
-        frontmatter: Option<&'src str>,
-    ) -> Result<ast::File<'src>> {
+    fn parse_file(&mut self) -> Result<File<'src>> {
         let start = self.token.span;
-
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let items = self.parse_items(item::ItemCx::Boring, TokenKind::EndOfInput)?;
+        let span = self.prev_token().map_or(start, |token| start.to(token.span));
 
-        let span = start.to(self.prev_token().map(|token| token.span));
-
-        Ok(ast::File { shebang, frontmatter, attrs, items, span })
+        Ok(File { attrs, items, span })
     }
 
     fn parse_ticked_ident(
@@ -160,7 +170,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         }
     }
 
-    fn error(&mut self, error: Error) {
+    fn error(&self, error: Error) {
         self.errors.add(error);
     }
 
@@ -199,7 +209,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     // FIXME: Temporary API and bad name.
     fn modify_in_place(&mut self, token: TokenKind) {
         self.token.kind = token;
-        self.token.span.start += const { ByteIndex::from(1) };
+        self.token.span.start += const { ByteIndex::new(1) };
     }
 
     fn peek(&self, amount: usize) -> Token {
@@ -229,7 +239,7 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         ast::Ident::new(self.source(span), span)
     }
 
-    fn snapshot<'r>(&self, errors: &'r mut ErrorBuffer) -> Parser<'t, 'r, 'src> {
+    fn snapshot<'tmperr>(&self, errors: &'tmperr ErrorBuffer) -> Parser<'tok, 'tmperr, 'src> {
         Parser { errors, ..*self }
     }
 
@@ -237,8 +247,8 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
         &mut self,
         parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> Option<T>,
     ) -> Option<T> {
-        let mut errors = ErrorBuffer::Hold(Vec::new());
-        let mut this = self.snapshot(&mut errors);
+        let errors = ErrorBuffer::default();
+        let mut this = self.snapshot(&errors);
         parse(&mut this).inspect(|_| {
             let Self { tokens: _, errors: _, token: _, index: _, source: _, edition: _ };
             self.tokens = this.tokens;
@@ -297,6 +307,12 @@ impl<'t, 'e, 'src> Parser<'t, 'e, 'src> {
     {
         category.matches(token, self)
     }
+}
+
+struct File<'src> {
+    attrs: Vec<ast::Attr<'src>>,
+    items: Vec<ast::Item<'src>>,
+    span: Span,
 }
 
 trait TokenCategory: Copy {
@@ -401,7 +417,7 @@ impl TokenPrefix {
         }
     }
 
-    fn strip(self, token: TokenKind) -> Result<Option<TokenKind>, ()> {
+    fn strip(self, token: TokenKind) -> Result<Option<TokenKind>> {
         // See also <https://github.com/rust-lang/rust/issues/152398>.
 
         #[expect(clippy::match_same_arms)] // leads to more legible code

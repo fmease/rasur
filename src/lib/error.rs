@@ -1,32 +1,46 @@
 use crate::{parser::ExpectedFragment, span::Span, token::Token};
+use Default::default;
+use std::cell::RefCell;
 
-pub enum Buffer {
-    Void,
-    Hold(Vec<Error>),
+pub struct Buffer {
+    raw: RawBuffer,
 }
 
 impl Buffer {
-    #[must_use]
-    pub fn non_empty(self) -> Option<Vec<Error>> {
-        match self {
-            Self::Void => None,
-            Self::Hold(errors) if errors.is_empty() => None,
-            Self::Hold(errors) => Some(errors),
+    pub const fn sealed() -> Self {
+        Self { raw: RawBuffer::Seal }
+    }
+
+    pub(crate) fn add(&self, error: Error) {
+        match &self.raw {
+            RawBuffer::Seal => {}
+            RawBuffer::Hold(errors) => errors.borrow_mut().push(error),
         }
     }
 
-    pub(crate) fn add(&mut self, error: Error) {
-        match self {
-            Self::Void => {}
-            Self::Hold(errors) => errors.push(error),
-        }
+    pub(crate) fn extend(&self, other: Buffer) {
+        let RawBuffer::Hold(this) = &self.raw else { return };
+        let RawBuffer::Hold(that) = &other.raw else { return };
+        this.borrow_mut().append(&mut *that.borrow_mut());
     }
 
-    pub(crate) fn extend(&mut self, other: Buffer) {
-        if let (Self::Hold(this), Self::Hold(mut other)) = (self, other) {
-            this.append(&mut other);
+    pub fn into_inner(self) -> Vec<Error> {
+        match self.raw {
+            RawBuffer::Seal => Vec::new(),
+            RawBuffer::Hold(errors) => errors.into_inner(),
         }
     }
+}
+
+impl Default for Buffer {
+    fn default() -> Self {
+        Self { raw: RawBuffer::Hold(default()) }
+    }
+}
+
+enum RawBuffer {
+    Seal,
+    Hold(RefCell<Vec<Error>>),
 }
 
 // FIXME: Overhaul this error type; most of the variants are just placeholders.

@@ -6,10 +6,7 @@
 
 use Default::default;
 use painter::Painter;
-use rasur::{
-    lexer::{StripFrontmatter, StripShebang},
-    normalizer::Normalized,
-};
+use rasur::normalizer::Normalized;
 use std::process::ExitCode;
 
 mod diagnostics;
@@ -49,20 +46,30 @@ fn try_main() -> Result<(), ()> {
     let edition = opts.edition.unwrap_or_default();
     let cx = diagnostics::RenderCx::new(source, &path, opts.short);
 
-    let mut errors = rasur::error::Buffer::Hold(Vec::new());
+    let errors = rasur::error::Buffer::default();
 
-    let strip_shebang = if opts.strip_shebang { StripShebang::Yes } else { StripShebang::No };
-    let strip_frontmatter =
-        if opts.strip_frontmatter { StripFrontmatter::Yes } else { StripFrontmatter::No };
+    let mut offset = rasur::span::ByteIndex::default();
+    let shebang = opts
+        .strip_shebang
+        .then(|| rasur::lexer::strip_shebang(source.into_inner(), &mut offset, edition))
+        .flatten();
+    let frontmatter = opts
+        .strip_frontmatter
+        .then(|| rasur::lexer::strip_frontmatter(source.into_inner(), &mut offset, &errors))
+        .flatten();
+    let tokens = rasur::lexer::lex(source, offset, edition, &errors);
 
-    let file = rasur::lexer::lex(source, edition, strip_shebang, strip_frontmatter, &mut errors);
+    // FIXME: Make it possible again to continue parsing after emitting tokens.
+    if opts.emit_tokens || opts.lex_only {
+        if opts.emit_tokens {
+            emit_tokens(tokens, shebang, frontmatter, source).unwrap();
+        } else {
+            drop(tokens);
+        }
 
-    if opts.emit_tokens {
-        emit_tokens(&file, source).unwrap();
-    }
-
-    if opts.lex_only {
-        if let Some(errors) = errors.non_empty() {
+        if let errors = errors.into_inner()
+            && !errors.is_empty()
+        {
             diagnostics::render(errors, cx);
             return Err(());
         }
@@ -70,7 +77,7 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let file = rasur::parser::parse(&file, source, edition, &mut errors);
+    let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &errors);
 
     if let Ok(file) = &file
         && opts.emit_ast
@@ -78,7 +85,9 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let result = if let Some(errors) = errors.non_empty() {
+    let result = if let errors = errors.into_inner()
+        && !errors.is_empty()
+    {
         diagnostics::render(errors, cx);
         Err(())
     } else {
@@ -100,7 +109,12 @@ fn try_main() -> Result<(), ()> {
     result
 }
 
-fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::Result<()> {
+fn emit_tokens(
+    tokens: rasur::lexer::Tokens<'_, '_>,
+    shebang: Option<rasur::span::Span>,
+    frontmatter: Option<rasur::lexer::Frontmatter>,
+    source: Normalized<&str>,
+) -> std::io::Result<()> {
     use painter::{AnsiColor, Effects};
     use std::io::{self, Write as _};
 
@@ -111,19 +125,28 @@ fn emit_tokens(file: &rasur::lexer::File, source: Normalized<&str>) -> std::io::
         p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source.into_inner()[span.range()]))
     };
 
-    if let Some(shebang) = file.shebang {
+    if let Some(shebang) = shebang {
         p.with(Effects::ITALIC, |p| write!(p, "Shebang "))?;
         render(&mut p, shebang)?;
         writeln!(p)?;
     }
 
-    if let Some(frontmatter) = file.frontmatter {
-        p.with(Effects::ITALIC, |p| write!(p, "Frontmatter "))?;
-        render(&mut p, frontmatter)?;
+    if let Some(frontmatter) = frontmatter {
+        p.with(Effects::ITALIC, |p| writeln!(p, "Frontmatter"))?;
+        p.with(Effects::ITALIC, |p| write!(p, "    Infostring "))?;
+        render(&mut p, frontmatter.infostring)?;
+        writeln!(p)?;
+        p.with(Effects::ITALIC, |p| write!(p, "    Content "))?;
+        render(&mut p, frontmatter.content)?;
         writeln!(p)?;
     }
 
-    for token in &file.tokens {
+    for token in tokens {
+        // FIXME: Allow the CLI to dictate if we print all tokens instead of "most".
+        if let rasur::token::TokenKind::Trivia | rasur::token::TokenKind::Error = token.kind {
+            continue;
+        }
+
         write!(p, "{:?} ", token.kind)?;
         render(&mut p, token.span)?;
         writeln!(p)?;
