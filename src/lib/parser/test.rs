@@ -1,7 +1,7 @@
 use super::{ExpectedFragment, Parser};
 use crate::{
-    Edition::{self, *},
     ast,
+    edition::Edition::{self, *},
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     lexer::{self, lex},
     span::{ByteIndex, Spanned},

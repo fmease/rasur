@@ -6,8 +6,7 @@ mod path;
 mod stmt;
 mod ty;
 
-use crate::{Edition, token};
-use crate::{ast, span::Span};
+use crate::{ast, edition::Edition, span::Span, token};
 use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.

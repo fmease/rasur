@@ -12,7 +12,8 @@ mod ty;
 mod weak;
 
 use crate::{
-    Edition, ast,
+    ast,
+    edition::Edition,
     error::{Buffer as ErrorBuffer, Error},
     lexer::{Frontmatter, Tokens, lex_ident},
     span::{ByteIndex, Span, Spanned},

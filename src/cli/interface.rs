@@ -1,4 +1,5 @@
 use clap::{Arg, ArgAction::SetTrue, Command, builder::EnumValueParser};
+use rasur::edition::Edition;
 use std::path::PathBuf;
 
 // FIXME: Ideally, we would be using something more lightweight than `clap`.
@@ -24,6 +25,7 @@ pub(crate) fn opts() -> Opts {
                 .short('e')
                 .long("edition")
                 .value_parser(parse_edition)
+                .default_value(Edition::default().to_str())
                 .help("Set the edition of the source file"),
         )
         .arg(
@@ -89,7 +91,7 @@ pub(crate) fn opts() -> Opts {
         emit_tokens: matches.remove_one(id::TOKENS).unwrap_or_default(),
         fmt: matches.remove_one(id::FMT).unwrap_or_default(),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
-        skip_marker: rasur::fmter::SkipMarker::None, // FIXME
+        skip_marker: matches.remove_one(id::SKIP_MARKER).unwrap_or_default(),
         strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
         strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
         short: matches.remove_one(id::SHORT).unwrap_or_default(),
@@ -99,7 +101,7 @@ pub(crate) fn opts() -> Opts {
 
 pub(crate) struct Opts {
     pub(crate) source: Source,
-    pub(crate) edition: Option<rasur::Edition>,
+    pub(crate) edition: Option<Edition>,
     pub(crate) emit_ast: bool,
     pub(crate) emit_tokens: bool,
     pub(crate) fmt: bool,
@@ -123,16 +125,18 @@ macro_rules! parse {
     })}
 }
 
-fn parse_edition(source: &str) -> Result<rasur::Edition, String> {
-    use rasur::Edition::*;
+fn parse_edition(source: &str) -> Result<Edition, String> {
+    source.parse().map_err(|()| {
+        use std::fmt::Write as _;
 
-    parse!(
-        "2015" => Rust2015,
-        "2018" => Rust2018,
-        "2021" => Rust2021,
-        "2024" => Rust2024,
-        "future" => Future,
-    )(source)
+        let mut msg = String::from("possible values: ");
+        let mut editions = Edition::ALL;
+        if let Some(edition) = editions.next() {
+            _ = write!(msg, "`{edition}`");
+        }
+        editions.for_each(|edition| _ = write!(msg, ", `{edition}`"));
+        msg
+    })
 }
 
 fn parse_skip_marker(source: &str) -> Result<rasur::fmter::SkipMarker, String> {

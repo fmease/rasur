@@ -1,4 +1,6 @@
 // Features
+#![feature(const_cmp)]
+#![feature(const_clone)]
 #![feature(const_default)]
 #![feature(const_trait_impl)]
 #![feature(decl_macro)]
@@ -12,6 +14,7 @@
 #![feature(mut_ref)]
 #![feature(negative_impls)]
 #![feature(never_type)]
+#![feature(step_trait)]
 #![feature(try_blocks)]
 #![feature(type_alias_impl_trait)]
 #![feature(type_changing_struct_update)]
@@ -29,19 +32,10 @@
 #![allow(clippy::unnested_or_patterns)] // <https://github.com/rust-lang/rust-clippy/issues/9899>
 
 pub mod ast;
+pub mod edition;
 pub mod error;
 pub mod fmter;
 pub mod lexer;
 pub mod parser;
 pub mod span;
 pub mod token;
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub enum Edition {
-    #[default]
-    Rust2015,
-    Rust2018,
-    Rust2021,
-    Rust2024,
-    Future,
-}

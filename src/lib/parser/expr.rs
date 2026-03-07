@@ -5,7 +5,7 @@ use super::{
     ty::PlusPolicy,
     weak::{self, Weak as _},
 };
-use crate::{Edition, ast, error::Error, span::Span};
+use crate::{ast, edition::Edition, error::Error, span::Span};
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {

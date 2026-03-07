@@ -2,7 +2,7 @@ use super::{
     Cutter, is_horizontal_whitespace, is_ident_middle, is_ident_start, is_whitespace, lex,
 };
 use crate::{
-    Edition,
+    edition::Edition,
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     span::{ByteIndex, Span},
     token::TokenKind,
@@ -29,7 +29,9 @@ pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> 
 
     let mut cutter = Cutter::new(source, *offset);
     let start = cutter.index();
-    cutter.advance_while(|char| char != '\n');
+    while let Some((_, char)) = cutter.advance()
+        && char != '\n'
+    {}
 
     *offset = cutter.index();
     Some(cutter.span(start))

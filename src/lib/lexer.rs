@@ -2,7 +2,7 @@ mod cutter;
 mod transformer;
 
 use crate::{
-    Edition,
+    edition::Edition,
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     span::{ByteIndex, Span},
     token::{PathSegKeyword, Token, TokenKind},

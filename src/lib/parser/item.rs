@@ -6,7 +6,8 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{
-    Edition, ast,
+    ast,
+    edition::Edition,
     error::{Buffer as ErrorBuffer, Error},
     span::Span,
 };
