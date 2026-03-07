@@ -49,7 +49,11 @@ pub fn parse<'err, 'src>(
 }
 
 fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {
-    tokens.filter(|token| !matches!(token.kind, TokenKind::Trivia | TokenKind::Error)).collect()
+    tokens
+        .filter(|token| {
+            !matches!(token.kind, TokenKind::Comment | TokenKind::Error | TokenKind::Whitespace)
+        })
+        .collect()
 }
 
 struct Parser<'tok, 'err, 'src> {

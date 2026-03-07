@@ -21,7 +21,7 @@ pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> 
     let errors = ErrorBuffer::sealed();
     for token in lex(suffix, *offset, edition, &errors) {
         match token.kind {
-            TokenKind::Trivia => {}
+            TokenKind::Comment | TokenKind::Whitespace => {}
             TokenKind::OpenSquareBracket => return None,
             _ => break,
         }

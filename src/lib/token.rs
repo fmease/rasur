@@ -94,6 +94,7 @@ pub enum TokenKind {
     CloseRoundBracket,
     CloseSquareBracket,
     Comma,
+    Comment,
     Dollar,
     DoubleAmpersand,
     DoubleColon,
@@ -144,7 +145,7 @@ pub enum TokenKind {
     TickedIdent,
     Tilde,
     TripleDot,
-    Trivia,
+    Whitespace,
     WideArrow,
 }
 
@@ -173,6 +174,7 @@ impl TokenKind {
             Self::CloseRoundBracket => Repr::Src(")"),
             Self::CloseSquareBracket => Repr::Src("]"),
             Self::Comma => Repr::Src(","),
+            Self::Comment => Repr::Tag("comment"),
             Self::CommonIdent => Repr::Tag("common identifier"),
             Self::Const => Repr::Src("const"),
             Self::Continue => Repr::Src("continue"),
@@ -258,7 +260,6 @@ impl TokenKind {
             Self::Tilde => Repr::Src("~"),
             Self::Trait => Repr::Src("trait"),
             Self::TripleDot => Repr::Src("..."),
-            Self::Trivia => Repr::Tag("trivia"),
             Self::True => Repr::Src("true"),
             Self::Try => Repr::Src("try"),
             Self::Type => Repr::Src("type"),
@@ -269,6 +270,7 @@ impl TokenKind {
             Self::Virtual => Repr::Src("virtual"),
             Self::Where => Repr::Src("where"),
             Self::While => Repr::Src("while"),
+            Self::Whitespace => Repr::Tag("whitespace"),
             Self::WideArrow => Repr::Src("=>"),
             Self::Yield => Repr::Src("yield"),
         }

@@ -46,7 +46,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
         match char {
             _ if is_whitespace(char) => {
                 self.advance_while(is_whitespace);
-                TokenKind::Trivia
+                TokenKind::Whitespace
             }
             '/' => match self.peek() {
                 Some('/') => {
@@ -265,7 +265,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
                 self.advance();
                 TokenKind::OuterDocComment
             }
-            _ => TokenKind::Trivia,
+            _ => TokenKind::Comment,
         };
 
         while let Some(char) = self.peek() {
@@ -302,7 +302,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
                 self.advance();
                 TokenKind::OuterDocComment
             }
-            _ => TokenKind::Trivia,
+            _ => TokenKind::Comment,
         };
 
         while let Some((index, char)) = self.advance() {

@@ -142,7 +142,10 @@ fn emit_tokens(
 
     for token in tokens {
         // FIXME: Allow the CLI to dictate if we print all tokens instead of "most".
-        if let rasur::token::TokenKind::Trivia | rasur::token::TokenKind::Error = token.kind {
+        if let rasur::token::TokenKind::Comment
+        | rasur::token::TokenKind::Error
+        | rasur::token::TokenKind::Whitespace = token.kind
+        {
             continue;
         }
 
