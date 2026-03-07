@@ -132,10 +132,9 @@ impl Fmt for ast::File<'_> {
 
 impl Fmt for ast::Lit<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        match self {
-            Self::Bool(lit) => fmt!(cx, "{lit}"),
-            Self::Num(lit) | Self::Str(lit) | Self::Char(lit) => fmt!(cx, "{lit}"),
-        }
+        let Self { kind: _, value, suffix } = self;
+        value.fmt(cx);
+        suffix.fmt(cx);
     }
 }
 

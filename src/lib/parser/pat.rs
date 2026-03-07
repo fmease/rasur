@@ -1,5 +1,7 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, one_of,
+    ExpectedFragment, Parser, Result, TokenKind,
+    common::ExpInNumIdentPolicy,
+    one_of,
     weak::{self, Weak as _},
 };
 use crate::{ast, error::Error};
@@ -151,7 +153,7 @@ impl<'src> Parser<'_, '_, 'src> {
         } else {
             self.fatal(Error::UnexpectedToken(
                 self.token,
-                one_of![ExpectedFragment::Literal, ExpectedFragment::ExtPath],
+                one_of![ExpectedFragment::Lit, ExpectedFragment::ExtPath],
             ))
         }
     }
@@ -304,10 +306,12 @@ impl<'src> Parser<'_, '_, 'src> {
                         let mut_ = self.parse_mutability();
                         let by_ref = self.parse_by_ref();
 
-                        // NOTE: Shorthand numeric fields are syntactically permitted in
-                        //       struct pats contrary to struct exprs.
-                        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
-                        let (binder, _) = self.parse_common_ident_or(TokenKind::NumLit)?;
+                        // NB: Shorthand numeric fields are permitted
+                        //     in struct pats contrary to struct exprs.
+                        let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+                        if numeric {
+                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Forbidden);
+                        }
 
                         let (binder, body) = if let (false, ast::Mutability::Not, ast::ByRef::No) =
                             (box_, mut_, by_ref)

@@ -138,6 +138,8 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         }
         Error::ForbiddenInnerAttrs => Diag::new("inner attributes are forbidden in this context"),
         Error::ForbiddenOuterAttrs => Diag::new("outer attributes are forbidden in this context"),
+        Error::InvalidNumericIdent(span) => Diag::new("invalid numeric identifier").highlight(span),
+        Error::AbiStrSuffix(span) => Diag::new("suffix on ABI string").highlight(span),
     }
 }
 
@@ -185,7 +187,7 @@ impl ToDiagStr for ExpectedFragment {
             Self::GenericArg => "generic argument",
             Self::GenericParam => "generic parameter",
             Self::Item => "item",
-            Self::Literal => "literal",
+            Self::Lit => "literal",
             Self::OneOf(frags) => {
                 return frags
                     .iter()

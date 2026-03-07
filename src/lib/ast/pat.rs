@@ -13,7 +13,7 @@ pub(crate) enum Pat<'src> {
     Error(Span),
     Grouped(Box<Pat<'src>>),
     Guarded(Box<Pat<'src>>, Box<Expr<'src>>),
-    Lit(Sign, Lit<'src>),
+    Lit(Sign, Box<Lit<'src>>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
@@ -74,7 +74,7 @@ pub(crate) struct StructPatField<'src> {
 
 #[derive(Debug)]
 pub(crate) enum RangePatBound<'src> {
-    Lit(Sign, Lit<'src>),
+    Lit(Sign, Box<Lit<'src>>),
     Path(ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>),
 }
 

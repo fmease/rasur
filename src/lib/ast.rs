@@ -67,12 +67,19 @@ pub(crate) enum Orientation {
 }
 
 #[derive(Debug)]
-pub(crate) enum Lit<'src> {
-    Bool(bool),
-    // FIXME: char
-    Char(&'src str),
-    Num(&'src str),
-    Str(&'src str),
+pub(crate) struct Lit<'src> {
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) kind: LitKind,
+    pub(crate) value: &'src str,
+    pub(crate) suffix: Option<&'src str>,
+}
+
+#[derive(Debug)]
+pub(crate) enum LitKind {
+    Bool,
+    Char,
+    Num,
+    Str,
 }
 
 #[derive(Debug, Clone, Copy)]

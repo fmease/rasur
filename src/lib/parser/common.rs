@@ -160,43 +160,24 @@ impl<'src> Parser<'_, '_, 'src> {
 
     pub(crate) fn opt_parse_negatable_lit(
         &mut self,
-    ) -> Result<Option<(ast::Sign, ast::Lit<'src>)>> {
+    ) -> Result<Option<(ast::Sign, Box<ast::Lit<'src>>)>> {
         // NOTE: To be kept in sync with `Self::begins_negatable_lit`.
 
         let sign =
             if self.consume(TokenKind::SingleHyphen) { ast::Sign::Neg } else { ast::Sign::None };
 
         let lit = match self.token.kind {
-            TokenKind::CharLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Char(lit))
-            }
-            TokenKind::False => {
-                self.advance();
-                Some(ast::Lit::Bool(false))
-            }
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Num(lit))
-            }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                Some(ast::Lit::Str(lit))
-            }
-            TokenKind::True => {
-                self.advance();
-                Some(ast::Lit::Bool(true))
-            }
+            TokenKind::CharLit => Some(ast::LitKind::Char),
+            TokenKind::False | TokenKind::True => Some(ast::LitKind::Bool),
+            TokenKind::NumLit => Some(ast::LitKind::Num),
+            TokenKind::StrLit => Some(ast::LitKind::Str),
             _ => None,
         };
 
-        if let Some(lit) = lit {
-            Ok(Some((sign, lit)))
+        if let Some(kind) = lit {
+            Ok(Some((sign, Box::new(self.fin_parse_lit(kind)))))
         } else if let ast::Sign::Neg = sign {
-            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Literal))
+            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Lit))
         } else {
             Ok(None)
         }
@@ -215,6 +196,21 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::True => true,
             _ => false,
         }
+    }
+
+    pub(crate) fn fin_parse_lit(&mut self, kind: ast::LitKind) -> ast::Lit<'src> {
+        let value = self.source(self.token.span);
+        self.advance();
+
+        let suffix = if let TokenKind::LitSuffix = self.token.kind {
+            let source = self.source(self.token.span);
+            self.advance();
+            Some(source)
+        } else {
+            None
+        };
+
+        ast::Lit { kind, value, suffix }
     }
 
     pub(crate) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
@@ -243,16 +239,20 @@ impl<'src> Parser<'_, '_, 'src> {
     pub(super) fn parse_abi_str(&mut self) -> Option<&'src str> {
         let TokenKind::StrLit = self.token.kind else { return None };
         let abi = self.source(self.token.span);
-
         // FIXME: This is a bit awkward. Ideally the lexer would somehow encode this
         //        in the token. NB: We want to keep `TokenKind` payload-less if possible.
         //        Maybe add another field to `Token`?
-        if !abi.starts_with(['r', '"']) || !abi.ends_with(['"', '#']) {
+        if !abi.starts_with(['r', '"']) {
             // FIXME: Make the diagnostic more specific.
             self.error(Error::InvalidAbiStr(self.token.span));
         }
-
         self.advance();
+
+        if let TokenKind::LitSuffix = self.token.kind {
+            self.error(Error::AbiStrSuffix(self.token.span));
+            self.advance();
+        }
+
         Some(abi)
     }
 
@@ -283,18 +283,15 @@ impl<'src> Parser<'_, '_, 'src> {
         //        "on the parser's demand" using a parametrized step function that'd allow us to
         //        communicate the "expectation" or something like that.
 
-        // FIXME: Reject int literal suffixes & exponents w/ explicit sign
-        //        (NB: different bases are ok apparently)
-
         const DOT: char = '.';
 
         let mut span = self.token.span;
         let mut name = self.source(span);
         let mut extra = None;
 
-        if let TokenKind::NumLit = self.token.kind
-            && let Some((left, right)) = name.split_once(DOT)
-        {
+        let numeric = matches!(self.token.kind, TokenKind::NumLit);
+
+        if numeric && let Some((left, right)) = name.split_once(DOT) {
             let dot = span.start + ByteIndex::new(left.len());
 
             if right.is_empty() {
@@ -313,7 +310,32 @@ impl<'src> Parser<'_, '_, 'src> {
             self.advance();
         }
 
-        (ast::Ident::new(name, span), extra)
+        let ident = ast::Ident::new(name, span);
+
+        if numeric {
+            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::AllowedIfUnsigned);
+        }
+        if let Some(ident) = extra {
+            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::AllowedIfUnsigned);
+        }
+
+        (ident, extra)
+    }
+
+    pub(crate) fn validate_numeric_ident(
+        &self,
+        ident: ast::Ident<'src>,
+        exp_policy: ExpInNumIdentPolicy,
+    ) {
+        let pattern: &[_] = match exp_policy {
+            ExpInNumIdentPolicy::AllowedIfUnsigned => &['+', '-', '.'],
+            ExpInNumIdentPolicy::Forbidden => &['e', '.'],
+        };
+        if ident.name.contains(pattern) {
+            // We could also split at the offending token and
+            // generate a fake "unexpected token" diagnostic.
+            self.error(Error::InvalidNumericIdent(ident.span));
+        }
     }
 
     pub(super) fn fin_parse_delimited_field_seq(&mut self) -> Result<Vec<ast::Ident<'src>>> {
@@ -351,6 +373,11 @@ impl<'src> Parser<'_, '_, 'src> {
 pub(crate) enum FnParamMode {
     Required,
     Optional,
+}
+
+pub(crate) enum ExpInNumIdentPolicy {
+    AllowedIfUnsigned,
+    Forbidden,
 }
 
 pub(crate) trait ParseBorrowKind: Sized {

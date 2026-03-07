@@ -37,7 +37,7 @@ pub(crate) enum ExprKind<'src> {
     If(Box<IfExpr<'src>>),
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Let(Box<LetExpr<'src>>),
-    Lit(Lit<'src>),
+    Lit(Box<Lit<'src>>),
     Loop(Option<Ident<'src>>, Box<BlockExpr<'src>>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Match(Box<MatchExpr<'src>>),

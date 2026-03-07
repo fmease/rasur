@@ -178,7 +178,7 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         self.errors.add(error);
     }
 
-    fn fatal<T>(&mut self, error: Error) -> Result<T> {
+    fn fatal<T>(&self, error: Error) -> Result<T> {
         self.error(error);
         Err(())
     }
@@ -465,7 +465,7 @@ pub enum ExpectedFragment {
     GenericArg,
     GenericParam,
     Item,
-    Literal,
+    Lit,
     OneOf(Box<[Self]>),
     Pat,
     PathSegIdent,

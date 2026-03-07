@@ -1,5 +1,7 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, one_of,
+    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
+    common::ExpInNumIdentPolicy,
+    one_of,
     pat::OrPolicy,
     path::GenericArgsMode,
     ty::PlusPolicy,
@@ -561,11 +563,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 };
                 return Ok(ast::ExprKind::Break(label, expr));
             }
-            TokenKind::CharLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Char(lit)));
-            }
+            TokenKind::CharLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Char)),
             // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
@@ -583,10 +581,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Yeet(expr));
             }
-            TokenKind::False => {
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(false)));
-            }
+            TokenKind::False => return Ok(self.fin_parse_lit_expr(ast::LitKind::Bool)),
             TokenKind::For => {
                 self.advance();
                 return self.fin_parse_for_loop_expr(None, attrs);
@@ -624,11 +619,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                 return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix, attrs);
             }
-            TokenKind::NumLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Num(lit)));
-            }
+            TokenKind::NumLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Num)),
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
@@ -668,15 +659,8 @@ impl<'src> Parser<'_, '_, 'src> {
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Return(expr));
             }
-            TokenKind::StrLit => {
-                let lit = self.source(self.token.span);
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Str(lit)));
-            }
-            TokenKind::True => {
-                self.advance();
-                return Ok(ast::ExprKind::Lit(ast::Lit::Bool(true)));
-            }
+            TokenKind::StrLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Str)),
+            TokenKind::True => return Ok(self.fin_parse_lit_expr(ast::LitKind::Bool)),
             TokenKind::Underscore => {
                 self.advance();
                 return Ok(ast::ExprKind::Wildcard);
@@ -736,9 +720,13 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        // FIXME: Reject int literal suffixes (NB: different bases are ok apparently)
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+                        if numeric {
+                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Forbidden);
+                        }
 
+                        // NB: Shorthand numeric fields are not permitted
+                        //     in struct exprs contrary to struct pats.
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
                         } else {
@@ -824,6 +812,10 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         Ok(qualifiers)
+    }
+
+    fn fin_parse_lit_expr(&mut self, kind: ast::LitKind) -> ast::ExprKind<'src> {
+        ast::ExprKind::Lit(Box::new(self.fin_parse_lit(kind)))
     }
 
     pub(super) fn parse_block_expr(
@@ -1080,7 +1072,7 @@ impl<'src> Parser<'_, '_, 'src> {
         })
     }
 
-    fn validate_let_chain(&mut self, expr: &ast::Expr<'src>, l_policy: LetPolicy) -> Result<()> {
+    fn validate_let_chain(&self, expr: &ast::Expr<'src>, l_policy: LetPolicy) -> Result<()> {
         if let LetPolicy::Forbidden = l_policy {
             // The parser fully takes care of this.
             return Ok(());
@@ -1090,7 +1082,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn do_validate_let_chain(
-        &mut self,
+        &self,
         expr: &ast::Expr<'_>,
         root: bool,
         l_policy: LetPolicy,

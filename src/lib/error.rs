@@ -48,6 +48,7 @@ enum RawBuffer {
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub enum Error {
+    AbiStrSuffix(Span),
     AmbiguousPlus(Span),
     AutoTraitAlias,
     ChainedComparison(Span),
@@ -69,11 +70,13 @@ pub enum Error {
     InvalidEscapeSequence(Span),
     InvalidExprPrefix(Span),
     InvalidExternItemKind(Span),
+    InvalidExtraFieldProjections(Span),
     InvalidFrontmatterInfostring(Span),
     InvalidFrontmatterTrailer(Span),
     InvalidItemPrefix(Span),
     InvalidLetChain,
     InvalidLitSuffix(Span),
+    InvalidNumericIdent(Span),
     InvalidOpAfterCast(Span),
     InvalidParenthesizedBound,
     InvalidRawIdent(Span),
@@ -95,7 +98,6 @@ pub enum Error {
     ReservedPrefix(Span),
     ReuseInherentImpl,
     StrLitGuardTooLarge(Span),
-    InvalidExtraFieldProjections(Span),
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall(Span),
     UnexpectedClosingDelimiter(Token),

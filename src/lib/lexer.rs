@@ -8,7 +8,6 @@ use crate::{
     token::{PathSegKeyword, Token, TokenKind},
 };
 use cutter::Cutter;
-use std::mem;
 pub use transformer::{Frontmatter, normalize, strip_frontmatter, strip_shebang};
 use unicode_xid::UnicodeXID;
 
@@ -21,27 +20,18 @@ pub fn lex<'err, 'src>(
     edition: Edition,
     errors: &'err ErrorBuffer,
 ) -> Tokens<'err, 'src> {
-    Lexer::new(source, offset, edition, errors)
+    Lexer { source, edition, cutter: Cutter::new(source, offset), previous: None, errors }
 }
 
 struct Lexer<'err, 'src> {
     source: &'src str,
     edition: Edition,
     cutter: Cutter<'src>,
-    unexhausted: bool = true,
+    previous: Option<TokenKind>,
     errors: &'err ErrorBuffer,
 }
 
 impl<'err, 'src> Lexer<'err, 'src> {
-    fn new(
-        source: &'src str,
-        offset: ByteIndex,
-        edition: Edition,
-        errors: &'err ErrorBuffer,
-    ) -> Self {
-        Self { source, edition, cutter: Cutter::new(source, offset), errors, .. }
-    }
-
     fn fin_lex_token(&mut self, char: char, start: ByteIndex) -> TokenKind {
         match char {
             _ if is_whitespace(char) => {
@@ -64,7 +54,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
                 _ => TokenKind::SingleSlash,
             },
             '0'..='9' => self.fin_lex_num_lit(char, start),
-            _ if is_ident_start(char) => self.fin_lex_ident_or_str_or_char_lit(start),
+            _ if is_ident_start(char) => self.fin_lex_ident_prefixed_token(start),
             '"' => self.fin_lex_str_lit(Raw::No, TextLitFlavor::Utf8, start),
             '\'' => self.fin_lex_ticked_ident_or_char_lit(start),
             '@' => TokenKind::At,
@@ -424,8 +414,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
             }
         }
 
-        self.lex_lit_suffix();
-
         TokenKind::NumLit
     }
 
@@ -464,8 +452,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
                         1 => {}
                         _ => self.error(Error::MultiScalarCharLit(self.span(start))),
                     }
-
-                    self.lex_lit_suffix();
 
                     break TokenKind::CharLit;
                 }
@@ -529,8 +515,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
             }
         }
 
-        self.lex_lit_suffix();
-
         TokenKind::CharLit
     }
 
@@ -565,15 +549,20 @@ impl<'err, 'src> Lexer<'err, 'src> {
             self.error(Error::InvalidScalar(char, InvalidScalarPlace::Lit, span));
         }
 
-        self.lex_lit_suffix();
-
         TokenKind::StrLit
     }
 
-    fn fin_lex_ident_or_str_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
+    fn fin_lex_ident_prefixed_token(&mut self, start: ByteIndex) -> TokenKind {
         self.advance_while(is_ident_middle);
 
         let ident = self.source(start);
+
+        if let Some(TokenKind::CharLit | TokenKind::NumLit | TokenKind::StrLit) = self.previous {
+            if let "_" = ident {
+                self.error(Error::InvalidLitSuffix(self.span(start)));
+            }
+            return TokenKind::LitSuffix;
+        }
 
         let (raw, flavor) = match (ident, self.peek()) {
             ("b", Some('"')) => (Raw::No, TextLitFlavor::Ascii),
@@ -668,8 +657,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
             self.error(Error::StrLitGuardTooLarge(self.span(start)));
         }
 
-        self.lex_lit_suffix();
-
         TokenKind::StrLit
     }
 
@@ -740,21 +727,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
         }
     }
 
-    fn lex_lit_suffix(&mut self) {
-        if let Some(char) = self.peek()
-            && is_ident_start(char)
-        {
-            let start = self.index();
-            self.advance();
-            self.advance_while(is_ident_middle);
-
-            let span = self.span(start);
-            if char == '_' && span.len() == 1 {
-                self.error(Error::InvalidLitSuffix(span));
-            }
-        }
-    }
-
     fn source(&self, start: ByteIndex) -> &'src str {
         &self.source[self.span(start).range()]
     }
@@ -784,9 +756,10 @@ impl Iterator for Lexer<'_, '_> {
     fn next(&mut self) -> Option<Self::Item> {
         let (kind, start) = match self.advance() {
             Some((start, char)) => (self.fin_lex_token(char, start), start),
-            None if mem::take(&mut self.unexhausted) => (TokenKind::EndOfInput, self.index()),
-            None => return None,
+            None if let Some(TokenKind::EndOfInput) = self.previous => return None,
+            None => (TokenKind::EndOfInput, self.index()),
         };
+        self.previous = Some(kind);
         Some(Token::new(kind, Span::new(start, self.index())))
     }
 }

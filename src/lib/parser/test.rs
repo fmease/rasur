@@ -1094,6 +1094,196 @@ fn or_nullary_closure_expr() {
 }
 
 #[test]
+fn num_lit_suffixes_invalid_places() {
+    assert_matches!(
+        parse_expr(n!("compound.0suffix"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0suffix)"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::SingleDot),
+        )]))
+    );
+
+    assert_matches!(
+        parse_ty(n!("builtin#field_of(T, 0suffix)"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::SingleDot),
+        )]))
+    );
+
+    assert_matches!(
+        parse_expr(n!("Compound { 0suffix: 0 }"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::SingleColon),
+        )]))
+    );
+
+    assert_matches!(
+        parse_pat(n!("Compound { 0suffix: 0 }"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::Comma),
+        )]))
+    );
+
+    assert_matches!(
+        parse_pat(n!("Compound { 0suffix }"), Rust2015),
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::LitSuffix, .. },
+            ExpectedFragment::Token(TokenKind::Comma),
+        )]))
+    );
+}
+
+#[test]
+fn num_lit_exponents_invalid_places() {
+    // In field exprs, "exponents" in the numeric identifier are legal...
+    assert_matches!(
+        parse_expr(n!("compound.0e1"), Rust2015),
+        Ok(ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0e1")), .. }),
+    );
+    assert_matches!(
+        parse_expr(n!("compound.0.1e2"), Rust2015), // exercise float lit splitting
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0")), .. }),
+                ast::Ident!("1e2")
+            ),
+            ..
+        }),
+    );
+
+    // ...unless the "exponent" contains an explicit sign:
+    assert_matches!(
+        parse_expr(n!("compound.0e+1"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("compound.0e-1"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("compound.0.1e+2"), Rust2015), // exercise float lit splitting
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("compound.0. 1e-2"), Rust2015), // exercise float lit splitting
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+
+    // Similarly, in OffsetOf/FieldOf exprs, "exponents" in the numeric are legal...
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0e1)"), Rust2015),
+        Ok(ast::Expr { kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0e1")])), .. }),
+    );
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0.1e2)"), Rust2015), // exercise float lit splitting
+        Ok(ast::Expr {
+            kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
+            ..
+        }),
+    );
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0. 1e2)"), Rust2015), // exercise float lit splitting
+        Ok(ast::Expr {
+            kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
+            ..
+        }),
+    );
+
+    // ...unless the "exponent" contains an explicit sign:
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0e+1)"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0e-1)"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0.1e+2)"), Rust2015), // exercise float lit splitting
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("builtin#offset_of(T, 0. 1e-2)"), Rust2015), // exercise float lit splitting
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+
+    // In stark contrast, in struct exprs & pats  "exponents" are outright forbidden
+    // regardless of whether they have an explicit sign or not:
+
+    assert_matches!(
+        parse_expr(n!("Compound { 0e1: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("Compound { 0e-1: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0e1: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0e+1: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0e1 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0e+1 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0e-1 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+}
+
+#[test]
+fn num_lit_fractional_part_invalid_places() {
+    // We lex `0.0` and `0.` as a single token, a number literal.
+    // However, in the cases below we require integer literals.
+    // The parser needs to inspect the literal itself to detect this.
+
+    assert_matches!(
+        parse_expr(n!("Compound { 0.0: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_expr(n!("Compound { 0.: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0.0: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0.: 0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0.0 }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+    assert_matches!(
+        parse_pat(n!("Compound { 0. }"), Rust2015),
+        Err(r!([Error::InvalidNumericIdent(_)]))
+    );
+}
+
+#[test]
 fn mut_ref_mut_pat() {
     assert_matches!(
         parse_pat(n!("mut ref mut x"), Rust2015),
@@ -1188,7 +1378,10 @@ fn angle_gen_args_pat() {
                     }])
                 }
             },
-            fields: r!([ast::Pat::Lit(ast::Sign::None, ast::Lit::Num("0"))])
+            fields: r!([ast::Pat::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "0", .. }),
+            )])
         }))),
     );
 }
@@ -1208,7 +1401,11 @@ fn angle_gen_args_ty() {
                         ))),
                         ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(r!([])))),
                         ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr {
-                            kind: ast::ExprKind::Lit(ast::Lit::Num("0")),
+                            kind: ast::ExprKind::Lit(r!(ast::Lit {
+                                kind: ast::LitKind::Num,
+                                value: "0",
+                                ..
+                            })),
                             ..
                         })),
                     ])))
@@ -1339,6 +1536,60 @@ fn macro_call_stmt_gen_args() {
     );
 
     assert_matches!(parse_stmt(n!("path::to::<>::call::()!();"), Rust2015), Ok(_)); // just a smoke test
+}
+
+#[test]
+fn abi_strs() {
+    // To borrow our lexer terms ABI strings have to have flavor UTF-8 and
+    // no suffix but they can be unguared, guarded or raw.
+
+    assert_matches!(
+        parse_ty(n!(r#"extern "ABI" fn()"#), Rust2015),
+        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+            modifiers: ast::FnPtrTyModifiers {
+                externness: ast::Externness::Extern(Some(r#""ABI""#)),
+                ..
+            },
+            ..
+        })))
+    );
+
+    assert_matches!(
+        parse_ty(n!(r#"extern r"ABI" fn()"#), Rust2015),
+        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+            modifiers: ast::FnPtrTyModifiers {
+                externness: ast::Externness::Extern(Some(r#"r"ABI""#)),
+                ..
+            },
+            ..
+        })))
+    );
+
+    assert_matches!(
+        parse_ty(n!(r##"extern r#"ABI"# fn()"##), Rust2015),
+        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+            modifiers: ast::FnPtrTyModifiers {
+                externness: ast::Externness::Extern(Some(r##"r#"ABI"#"##)),
+                ..
+            },
+            ..
+        })))
+    );
+
+    assert_matches!(
+        parse_ty(n!(r#"extern b"ABI" fn()"#), Rust2015),
+        Err(r!([Error::InvalidAbiStr(_)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!(r#"extern c"ABI" fn()"#), Rust2021),
+        Err(r!([Error::InvalidAbiStr(_)]))
+    );
+
+    assert_matches!(
+        parse_ty(n!(r#"extern "ABI"suffix fn()"#), Rust2018),
+        Err(r!([Error::AbiStrSuffix(_)])),
+    );
 }
 
 #[test]

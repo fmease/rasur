@@ -63,7 +63,7 @@ fn try_main() -> Result<(), ()> {
         if opts.emit_tokens {
             emit_tokens(tokens, shebang, frontmatter, source).unwrap();
         } else {
-            drop(tokens);
+            tokens.for_each(drop);
         }
 
         if let errors = errors.into_inner()
