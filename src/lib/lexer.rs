@@ -1,188 +1,33 @@
+mod cutter;
+mod transformer;
+
 use crate::{
     Edition,
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
-    normalizer::Normalized,
     span::{ByteIndex, Span},
     token::{PathSegKeyword, Token, TokenKind},
 };
-use iter::IndexedChars;
+use cutter::Cutter;
 use std::mem;
+pub use transformer::{Frontmatter, normalize, strip_frontmatter, strip_shebang};
 use unicode_xid::UnicodeXID;
 
 pub type Tokens<'err, 'src> = impl Iterator<Item = Token>;
 
 #[define_opaque(Tokens)]
 pub fn lex<'err, 'src>(
-    source: Normalized<&'src str>,
+    source: &'src str,
     offset: ByteIndex,
     edition: Edition,
     errors: &'err ErrorBuffer,
 ) -> Tokens<'err, 'src> {
-    Lexer::new(source.into_inner(), offset, edition, errors)
-}
-
-pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> Option<Span> {
-    let suffix = source.strip_prefix("#!")?;
-
-    let errors = ErrorBuffer::sealed();
-    for token in Lexer::new(suffix, *offset, edition, &errors) {
-        match token.kind {
-            TokenKind::Trivia => {}
-            TokenKind::OpenSquareBracket => return None,
-            _ => break,
-        }
-    }
-
-    let mut chars = IndexedChars::new(source, *offset);
-    let start = chars.index();
-    chars.advance_while(|char| char != '\n');
-
-    *offset = chars.index();
-    Some(chars.span(start))
-}
-
-pub fn strip_frontmatter(
-    source: &str,
-    offset: &mut ByteIndex,
-    errors: &ErrorBuffer,
-) -> Option<Frontmatter> {
-    let mut chars = IndexedChars::new(source, *offset);
-
-    let mut start = *offset;
-    let mut line_start = true;
-    let mut leading_dashes = 0;
-
-    while let Some((index, char)) = chars.advance() {
-        if char == '-' && line_start {
-            leading_dashes += 1;
-            start = index;
-            break;
-        }
-        if !is_whitespace(char) {
-            return None;
-        }
-        line_start = char == '\n';
-    }
-
-    while let Some('-') = chars.peek() {
-        leading_dashes += 1;
-        chars.advance();
-    }
-
-    if leading_dashes < 3 {
-        return None;
-    }
-
-    if leading_dashes > 255 {
-        errors.add(Error::FrontmatterOpeningTooLarge(chars.span(start)));
-    }
-
-    let infostring = {
-        chars.advance_while(is_horizontal_whitespace);
-        let start = chars.index();
-
-        if chars.peek().is_some_and(is_ident_start) {
-            chars.advance();
-            chars.advance_while(|char| char == '-' || char == '.' || is_ident_middle(char));
-        }
-
-        chars.advance_while(is_horizontal_whitespace);
-
-        let valid = chars.peek().is_none_or(|char| char == '\n');
-        let mut end = chars.index();
-
-        while let Some((_, char)) = chars.advance() {
-            if char == '\n' {
-                break;
-            }
-            if !is_horizontal_whitespace(char) {
-                end = chars.index();
-            }
-        }
-
-        let span = Span::new(start, end);
-
-        if !valid {
-            errors.add(Error::InvalidFrontmatterInfostring(span));
-        }
-
-        span
-    };
-
-    let mut content = Span::from(chars.index());
-    let mut line_start = true;
-    let mut trailing_dashes = 0;
-    let mut terminated = false;
-
-    while let Some((index, char)) = chars.advance() {
-        if char == '-' && (line_start || trailing_dashes > 0) {
-            trailing_dashes += 1;
-            if trailing_dashes == leading_dashes {
-                terminated = true;
-                break;
-            }
-        }
-
-        if char == '\r' {
-            errors.add(Error::InvalidScalar(
-                char,
-                InvalidScalarPlace::FrontmatterBody,
-                chars.span(index),
-            ));
-        }
-
-        line_start = char == '\n';
-        if line_start {
-            content.end = chars.index();
-            trailing_dashes = 0;
-        }
-    }
-
-    let span = chars.span(start);
-
-    // The trailer.
-    {
-        chars.advance_while(is_horizontal_whitespace);
-        let start = chars.index();
-
-        let valid = chars.peek().is_none_or(|char| char == '\n');
-        let mut end = chars.index();
-
-        while let Some(char) = chars.peek() {
-            if char == '\n' {
-                break;
-            }
-            chars.advance();
-            if !is_horizontal_whitespace(char) {
-                end = chars.index();
-            }
-        }
-
-        if !valid {
-            // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
-            errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
-        }
-    }
-
-    if !terminated {
-        errors.add(Error::UnterminatedFrontmatter(span));
-    }
-
-    *offset = chars.index();
-    Some(Frontmatter { infostring, content, span })
-}
-
-#[derive(Clone, Copy)]
-pub struct Frontmatter {
-    pub infostring: Span,
-    pub content: Span,
-    pub span: Span,
+    Lexer::new(source, offset, edition, errors)
 }
 
 struct Lexer<'err, 'src> {
     source: &'src str,
     edition: Edition,
-    chars: IndexedChars<'src>,
+    cutter: Cutter<'src>,
     unexhausted: bool = true,
     errors: &'err ErrorBuffer,
 }
@@ -194,7 +39,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
         edition: Edition,
         errors: &'err ErrorBuffer,
     ) -> Self {
-        Self { source, edition, chars: IndexedChars::new(source, offset), errors, .. }
+        Self { source, edition, cutter: Cutter::new(source, offset), errors, .. }
     }
 
     fn fin_lex_token(&mut self, char: char, start: ByteIndex) -> TokenKind {
@@ -920,16 +765,16 @@ impl<'err, 'src> Lexer<'err, 'src> {
 }
 
 impl<'src> std::ops::Deref for Lexer<'_, 'src> {
-    type Target = IndexedChars<'src>;
+    type Target = Cutter<'src>;
 
     fn deref(&self) -> &Self::Target {
-        &self.chars
+        &self.cutter
     }
 }
 
 impl std::ops::DerefMut for Lexer<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.chars
+        &mut self.cutter
     }
 }
 
@@ -1062,54 +907,5 @@ pub(crate) fn lex_ident(source: &str, edition: Edition) -> TokenKind {
         "while" => TokenKind::While,
         "yield" => TokenKind::Yield,
         _ => TokenKind::CommonIdent,
-    }
-}
-
-mod iter {
-    use crate::span::{ByteIndex, Span};
-    use std::str::Chars;
-
-    pub(super) struct IndexedChars<'src> {
-        chars: Chars<'src>,
-        index: ByteIndex,
-    }
-
-    impl<'src> IndexedChars<'src> {
-        pub(super) fn new(source: &'src str, offset: ByteIndex) -> Self {
-            Self { chars: source[offset.value()..].chars(), index: offset }
-        }
-
-        pub(super) fn advance(&mut self) -> Option<(ByteIndex, char)> {
-            self.chars.next().map(|char| {
-                let index = self.index();
-                self.index += ByteIndex::new(char.len_utf8());
-                (index, char)
-            })
-        }
-
-        pub(super) fn advance_while(&mut self, predicate: impl Fn(char) -> bool) {
-            while let Some(char) = self.peek()
-                && predicate(char)
-            {
-                self.advance();
-            }
-        }
-
-        pub(super) fn snapshot(&self) -> impl Iterator<Item = char> + use<'src> {
-            self.chars.clone()
-        }
-
-        pub(super) fn peek(&mut self) -> Option<char> {
-            let mut chars = self.chars.clone();
-            chars.next()
-        }
-
-        pub(super) fn index(&self) -> ByteIndex {
-            self.index
-        }
-
-        pub(super) fn span(&self, start: ByteIndex) -> Span {
-            Span::new(start, self.index())
-        }
     }
 }

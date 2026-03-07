@@ -1,7 +1,6 @@
 use annotate_snippets as ann;
 use rasur::{
     error::{Error, InvalidScalarPlace},
-    normalizer::Normalized,
     parser::ExpectedFragment,
     span::Span,
     token::{Repr, Token, TokenKind},
@@ -255,7 +254,7 @@ pub(crate) struct RenderCx<'a> {
 }
 
 impl<'a> RenderCx<'a> {
-    pub(crate) fn new(source: Normalized<&'a str>, path: &'a Path, short: bool) -> Self {
-        Self { source: source.into_inner(), path, short }
+    pub(crate) fn new(source: &'a str, path: &'a Path, short: bool) -> Self {
+        Self { source, path, short }
     }
 }

@@ -45,34 +45,3 @@ pub enum Edition {
     Rust2024,
     Future,
 }
-
-pub mod normalizer {
-    use std::borrow::Cow;
-
-    #[must_use]
-    pub fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
-        const BOM: char = '\u{FEFF}';
-        let source = source.strip_prefix(BOM).unwrap_or(source);
-        let source =
-            if source.contains('\r') { source.replace("\r\n", "\n").into() } else { source.into() };
-        Normalized { raw: source }
-    }
-
-    #[derive(Clone, Copy)]
-    pub struct Normalized<T> {
-        raw: T,
-    }
-
-    impl<T> Normalized<T> {
-        pub fn into_inner(self) -> T {
-            self.raw
-        }
-    }
-
-    impl Normalized<Cow<'_, str>> {
-        #[must_use]
-        pub fn as_ref(&self) -> Normalized<&str> {
-            Normalized { raw: &self.raw }
-        }
-    }
-}

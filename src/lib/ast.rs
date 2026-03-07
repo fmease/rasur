@@ -1,3 +1,11 @@
+pub(crate) mod attr;
+mod expr;
+mod item;
+mod pat;
+mod path;
+mod stmt;
+mod ty;
+
 use crate::span::{Span, Spanned};
 use crate::token::Token;
 pub(crate) use attr::*;
@@ -8,14 +16,6 @@ pub(crate) use path::*;
 use std::fmt;
 pub(crate) use stmt::*;
 pub(crate) use ty::*;
-
-pub(crate) mod attr;
-mod expr;
-mod item;
-mod pat;
-mod path;
-mod stmt;
-mod ty;
 
 #[derive(Debug)]
 pub struct File<'src> {

@@ -4,13 +4,12 @@
 #![feature(type_alias_impl_trait)]
 #![deny(unused_must_use, rust_2018_idioms)]
 
-use Default::default;
-use painter::Painter;
-use rasur::normalizer::Normalized;
-use std::process::ExitCode;
-
 mod diagnostics;
 mod interface;
+
+use Default::default;
+use painter::Painter;
+use std::process::ExitCode;
 
 fn main() -> ExitCode {
     match try_main() {
@@ -40,7 +39,7 @@ fn try_main() -> Result<(), ()> {
         interface::Source::String(string) => (string, "<anon>".into()),
     };
 
-    let source = rasur::normalizer::normalize(&source);
+    let source = rasur::lexer::normalize(&source);
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();
@@ -51,11 +50,11 @@ fn try_main() -> Result<(), ()> {
     let mut offset = rasur::span::ByteIndex::default();
     let shebang = opts
         .strip_shebang
-        .then(|| rasur::lexer::strip_shebang(source.into_inner(), &mut offset, edition))
+        .then(|| rasur::lexer::strip_shebang(source, &mut offset, edition))
         .flatten();
     let frontmatter = opts
         .strip_frontmatter
-        .then(|| rasur::lexer::strip_frontmatter(source.into_inner(), &mut offset, &errors))
+        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &errors))
         .flatten();
     let tokens = rasur::lexer::lex(source, offset, edition, &errors);
 
@@ -113,7 +112,7 @@ fn emit_tokens(
     tokens: rasur::lexer::Tokens<'_, '_>,
     shebang: Option<rasur::span::Span>,
     frontmatter: Option<rasur::lexer::Frontmatter>,
-    source: Normalized<&str>,
+    source: &str,
 ) -> std::io::Result<()> {
     use painter::{AnsiColor, Effects};
     use std::io::{self, Write as _};
@@ -122,7 +121,7 @@ fn emit_tokens(
 
     let render = |p: &mut Painter<_>, span: rasur::span::Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
-        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source.into_inner()[span.range()]))
+        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source[span.range()]))
     };
 
     if let Some(shebang) = shebang {

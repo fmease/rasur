@@ -1,12 +1,3 @@
-use crate::{
-    Edition, ast,
-    error::{Buffer as ErrorBuffer, Error},
-    lexer::{Frontmatter, Tokens, lex_ident},
-    normalizer::Normalized,
-    span::{ByteIndex, Span, Spanned},
-    token::{Token, TokenKind},
-};
-
 mod attr;
 mod common;
 mod expr;
@@ -20,6 +11,14 @@ mod test;
 mod ty;
 mod weak;
 
+use crate::{
+    Edition, ast,
+    error::{Buffer as ErrorBuffer, Error},
+    lexer::{Frontmatter, Tokens, lex_ident},
+    span::{ByteIndex, Span, Spanned},
+    token::{Token, TokenKind},
+};
+
 type Result<T, E = ()> = std::result::Result<T, E>;
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
@@ -28,7 +27,7 @@ pub fn parse<'err, 'src>(
     tokens: Tokens<'err, 'src>,
     shebang: Option<Span>,
     frontmatter: Option<Frontmatter>,
-    source: Normalized<&'src str>,
+    source: &'src str,
     edition: Edition,
     errors: &'err ErrorBuffer,
 ) -> Result<ast::File<'src>> {
@@ -67,13 +66,13 @@ struct Parser<'tok, 'err, 'src> {
 impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
     fn new(
         tokens: &'tok [Token],
-        source: Normalized<&'src str>,
+        source: &'src str,
         edition: Edition,
         errors: &'err ErrorBuffer,
     ) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, errors, token, index, source: source.into_inner(), edition }
+        Self { tokens, errors, token, index, source, edition }
     }
 
     /// Parse a source file.

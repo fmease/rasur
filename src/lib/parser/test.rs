@@ -4,11 +4,11 @@ use crate::{
     ast,
     error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
     lexer::{self, lex},
-    normalizer::{Normalized, normalize},
     span::{ByteIndex, Spanned},
     token::{Token, TokenKind},
 };
 use deref as r;
+use normalizer::{Normalized, n};
 use std::assert_matches;
 
 // NOTE: We're not using implicit deref patterns at the moment since rust-analyzer
@@ -16,16 +16,42 @@ use std::assert_matches;
 
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
-macro n($source:expr) {
-    normalize($source).as_ref()
+mod normalizer {
+    use std::borrow::Cow;
+
+    pub(super) macro n($source:expr) {
+        normalize($source).as_ref()
+    }
+
+    pub fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
+        Normalized { raw: crate::lexer::normalize(source) }
+    }
+
+    #[derive(Clone, Copy)]
+    pub(super) struct Normalized<T> {
+        raw: T,
+    }
+
+    impl<T> Normalized<T> {
+        pub(super) fn into_inner(self) -> T {
+            self.raw
+        }
+    }
+
+    impl Normalized<Cow<'_, str>> {
+        pub(super) fn as_ref(&self) -> Normalized<&str> {
+            Normalized { raw: &self.raw }
+        }
+    }
 }
 
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
+    let source = source.into_inner();
     let errors = ErrorBuffer::default();
 
     let mut offset = ByteIndex::default();
-    let shebang = lexer::strip_shebang(source.into_inner(), &mut offset, edition);
-    let frontmatter = lexer::strip_frontmatter(source.into_inner(), &mut offset, &errors);
+    let shebang = lexer::strip_shebang(source, &mut offset, edition);
+    let frontmatter = lexer::strip_frontmatter(source, &mut offset, &errors);
 
     let tokens = lex(source, offset, edition, &errors);
     let file = super::parse(tokens, shebang, frontmatter, source, edition, &errors);
@@ -44,7 +70,9 @@ fn parse_via<'src, T>(
     edition: Edition,
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
+    let source = source.into_inner();
     let errors = ErrorBuffer::default();
+
     let tokens = lex(source, ByteIndex::default(), edition, &errors);
     let tokens = super::prepare(tokens);
     let mut p = Parser::new(&tokens, source, edition, &errors);

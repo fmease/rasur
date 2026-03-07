@@ -1,8 +1,3 @@
-use crate::normalizer::Normalized;
-use crate::{Edition, token};
-use crate::{ast, span::Span};
-use std::fmt::Write as _;
-
 mod attr;
 mod expr;
 mod item;
@@ -10,6 +5,10 @@ mod pat;
 mod path;
 mod stmt;
 mod ty;
+
+use crate::{Edition, token};
+use crate::{ast, span::Span};
+use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.
 // FIXME: The indentation setup is busted.
@@ -39,8 +38,7 @@ macro fmt($cx:ident, $($arg:tt)*) {
 }
 
 #[must_use]
-pub fn fmt(file: ast::File<'_>, source: Normalized<&str>, edition: Edition, cfg: Cfg) -> String {
-    let source = source.into_inner();
+pub fn fmt(file: ast::File<'_>, source: &str, edition: Edition, cfg: Cfg) -> String {
     let output = String::with_capacity(source.len()); // FIXME: better heuristic
     let mut cx = Cx { cfg, source, edition, indent: 0, output };
     file.fmt(&mut cx);
