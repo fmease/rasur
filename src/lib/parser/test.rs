@@ -1540,8 +1540,8 @@ fn macro_call_stmt_gen_args() {
 
 #[test]
 fn abi_strs() {
-    // To borrow our lexer terms ABI strings have to have flavor UTF-8 and
-    // no suffix but they can be unguared, guarded or raw.
+    // To borrow our lexer terms, ABI strings have to have flavor UTF-8
+    // and no suffix but they can be unguarded, guarded or raw.
 
     assert_matches!(
         parse_ty(n!(r#"extern "ABI" fn()"#), Rust2015),
@@ -2477,6 +2477,8 @@ async safe extern fn f() {}
 async safe fn f() {}
 async unsafe extern fn f() {}
 async unsafe fn f() {}
+auto impl(crate) trait Trait {}
+auto impl(in crate) trait Trait {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
@@ -2583,6 +2585,8 @@ async safe extern fn f() {}
 async safe fn f() {}
 async unsafe extern fn f() {}
 async unsafe fn f() {}
+auto impl(crate) trait Trait {}
+auto impl(in crate) trait Trait {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
@@ -2663,6 +2667,73 @@ use {self::*, self::{}};
             Rust2024 // for `async` and `gen`
         ),
         Ok(_) // just a smoke test
+    );
+
+    // Make sure that we don't consider these weak / context-dependent keywords as item modifiers:
+    assert_matches!(
+        parse_stmt(n!("auto as _"), Rust2015),
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                kind: ast::ExprKind::Cast(
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                            ext: None,
+                            path: ast::Path {
+                                segs: [ast::PathSeg { ident: ast::Ident!("auto"), .. }]
+                            }
+                        })),
+                        ..
+                    }),
+                    _
+                ),
+                ..
+            },
+            _
+        ))
+    );
+
+    assert_matches!(
+        parse_stmt(n!("default as _"), Rust2015),
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                kind: ast::ExprKind::Cast(
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                            ext: None,
+                            path: ast::Path {
+                                segs: [ast::PathSeg { ident: ast::Ident!("default"), .. }]
+                            }
+                        })),
+                        ..
+                    }),
+                    _
+                ),
+                ..
+            },
+            _
+        ))
+    );
+
+    assert_matches!(
+        parse_stmt(n!("safe as _"), Rust2015),
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                kind: ast::ExprKind::Cast(
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                            ext: None,
+                            path: ast::Path {
+                                segs: [ast::PathSeg { ident: ast::Ident!("safe"), .. }]
+                            }
+                        })),
+                        ..
+                    }),
+                    _
+                ),
+                ..
+            },
+            _
+        ))
     );
 }
 

@@ -21,7 +21,8 @@ impl fmt::Debug for Token {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Copy, Debug)]
+#[derive_const(Clone, PartialEq, Eq)]
 pub enum TokenKind {
     //
     // Ident
@@ -151,12 +152,16 @@ pub enum TokenKind {
 }
 
 impl TokenKind {
-    pub(crate) fn is_ident(self) -> bool {
+    pub const fn is_ident(self) -> bool {
         Self::Abstract as u8 <= self as u8 && self as u8 <= Self::Yield as u8
     }
 
+    pub const fn is_keyword(self) -> bool {
+        self.is_ident() && self != Self::CommonIdent
+    }
+
     #[must_use]
-    pub fn repr(self) -> Repr {
+    pub const fn repr(self) -> Repr {
         match self {
             Self::Abstract => Repr::Src("abstract"),
             Self::AmpersandEquals => Repr::Src("&="),

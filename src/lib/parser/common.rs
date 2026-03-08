@@ -248,6 +248,9 @@ impl<'src> Parser<'_, '_, 'src> {
         }
         self.advance();
 
+        // This check isn't really necessary but it drastically improves diagnostics
+        // in types since the qualifier system which would otherwise encounter this
+        // token generally emits quite bad placeholder diagnostics at the moment.
         if let TokenKind::LitSuffix = self.token.kind {
             self.error(Error::AbiStrSuffix(self.token.span));
             self.advance();

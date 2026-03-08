@@ -43,8 +43,8 @@ macro_rules! weak {
 }
 
 weak! {
-    // FIXME: Do we want to generalize this to `is_ident`?
-    Auto "auto" |p| p.peek(1).kind == TokenKind::Trait,
+    // Alternatively, we could check `$kind.is_ident() && $kind != TokenKind::As`
+    Auto "auto" |p| matches!(p.peek(1).kind, TokenKind::Trait | TokenKind::Impl),
     Bikeshed "bikeshed",
     Builtin "builtin" |p| p.peek(1).kind == TokenKind::Hash,
     ContractEnsures "contract_ensures",
@@ -67,7 +67,7 @@ weak! {
             || TokenPrefix::LessThan.matches(token.kind)
             && p.begins_ty(2)
     },
-    // FIXME: Do we want to generalize this to `is_ident`?
+    // Alternatively, we could check `$kind.is_ident() && $kind != TokenKind::As`
     Safe "safe" |p| matches!(p.peek(1).kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static),
     TypeAscribe "type_ascribe",
     Union "union" |p| p.peek(1).kind == TokenKind::CommonIdent,
