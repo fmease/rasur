@@ -3103,3 +3103,33 @@ fn builtin_syntax() {
         Ok(ast::Pat::Deref(r!(ast::Pat::Lit(..))))
     );
 }
+
+#[test]
+fn delegation() {
+    // FIXME: This is just a smoke test, convert to proper tests.
+    // See also <https://github.com/fmease/rasur/issues/30>
+
+    assert_matches!(parse_item(n!("reuse it;"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse self;"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse path::<>::to::<_>::something::();"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it as that;"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::*;"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::{};"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::{f, g, h};"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::{f as f, g as g};"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::{self, super, crate};"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it {}"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it { 1 + 2 * 3}"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse it::{} {}"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse <()>::it;"), Rust2015), Ok(_));
+    assert_matches!(parse_item(n!("reuse <() as Trait>::it;"), Rust2015), Ok(_));
+
+    // Contrary to its sibling, the use-item, these are not accepted:
+    assert_matches!(parse_item(n!("reuse *;"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse {};"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse ::it;"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse it as _;"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse it::{*};"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse it::{f::g::h};"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse it::{f::{g::{h}}};"), Rust2015), Err(_));
+}

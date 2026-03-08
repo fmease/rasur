@@ -375,6 +375,14 @@ impl<T: Fmt> Fmt for Option<T> {
     }
 }
 
+struct Inline<F: FnOnce(&mut Cx<'_>)>(F);
+
+impl<F: FnOnce(&mut Cx<'_>)> Fmt for Inline<F> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        self.0(cx)
+    }
+}
+
 trait Fmt {
     fn fmt(self, cx: &mut Cx<'_>);
 }

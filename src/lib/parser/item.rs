@@ -2,7 +2,8 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
     common::FnParamMode,
     expr::AttrPolicy,
-    path::PathMode,
+    one_of,
+    path::{GenericArgsMode, PathMode},
     weak::{self, Weak as _},
 };
 use crate::{
@@ -10,6 +11,7 @@ use crate::{
     edition::Edition,
     error::{Buffer as ErrorBuffer, Error},
     span::Span,
+    token::PathSegIdent,
 };
 use std::mem;
 
@@ -942,18 +944,71 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a use-item assuming the leading `use` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Use_Item ::= "use" Path_Tree ";"
-    /// Path_Tree ::= …
-    /// ```
     fn fin_parse_use_item(&mut self) -> Result<ast::ItemKind<'src>> {
-        let path = self.parse_path_tree(PathMode::Normal)?;
+        let path = self.parse_use_path_tree(PathMode::Normal)?;
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Use(Box::new(ast::UseItem { path })))
+    }
+
+    fn parse_use_path_tree(&mut self, mode: PathMode) -> Result<ast::UsePathTree<'src>> {
+        let mut path = self.parse_path_prefix(mode)?;
+
+        match self.parse_use_path_tree_kind(&mut path)? {
+            ast::UsePathTreeKind::Stump(None) => {}
+            kind => return Ok(ast::UsePathTree { path, kind }),
+        }
+
+        while self.consume(TokenKind::DoubleColon) {
+            match self.parse_use_path_tree_kind(&mut path)? {
+                ast::UsePathTreeKind::Stump(None) => {}
+                kind => return Ok(ast::UsePathTree { path, kind }),
+            }
+        }
+
+        Ok(ast::UsePathTree { path, kind: ast::UsePathTreeKind::Stump(None) })
+    }
+
+    fn parse_use_path_tree_kind(
+        &mut self,
+        path: &mut ast::Path<'src, ast::NoGenericArgs>,
+    ) -> Result<ast::UsePathTreeKind<'src>> {
+        Ok(match self.token.kind {
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                ast::UsePathTreeKind::Branch(self.fin_parse_delim_seq(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    |this| this.parse_use_path_tree(PathMode::Normal),
+                )?)
+            }
+            TokenKind::SingleAsterisk => {
+                self.advance();
+                ast::UsePathTreeKind::Global
+            }
+            PathSegIdent!() => {
+                path.segs.push(ast::PathSeg::ident(self.ident(self.token.span)));
+                self.advance();
+                let binder = if self.consume(TokenKind::As) {
+                    let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
+                    Some(binder)
+                } else {
+                    None
+                };
+                ast::UsePathTreeKind::Stump(binder)
+            }
+            _ => {
+                return self.fatal(Error::UnexpectedToken(
+                    self.token,
+                    // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
+                    one_of![
+                        ExpectedFragment::PathSegIdent,
+                        TokenKind::OpenCurlyBracket,
+                        TokenKind::SingleAsterisk
+                    ],
+                ));
+            }
+        })
     }
 
     fn parse_macro_call_item(&mut self) -> Result<ast::ItemKind<'src>> {
@@ -1023,11 +1078,78 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Finish parsing a delegation item assuming the leading `reuse` has been parsed already.
     fn fin_parse_delegation_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let (ext, mode) = self.parse_path_ext()?;
-        // FIXME: Permit generic args at the top level!
-        let path = self.parse_path_tree(mode)?;
+        let path = self.parse_delegation_path_tree(mode)?;
         let body = self.parse_delegation_body()?;
 
         Ok(ast::ItemKind::Delegation(Box::new(ast::DelegationItem { ext, path, body })))
+    }
+
+    fn parse_delegation_path_tree(
+        &mut self,
+        mode: PathMode,
+    ) -> Result<ast::DelegationPathTree<'src>> {
+        let mut path = self.parse_path_prefix(mode)?;
+
+        match self.parse_delegation_path_tree_kind(&mut path)? {
+            ast::DelegationPathTreeKind::Stump(None) => {}
+            kind => return Ok(ast::DelegationPathTree { path, kind }),
+        }
+
+        while self.consume(TokenKind::DoubleColon) {
+            match self.parse_delegation_path_tree_kind(&mut path)? {
+                ast::DelegationPathTreeKind::Stump(None) => {}
+                kind => return Ok(ast::DelegationPathTree { path, kind }),
+            }
+        }
+
+        Ok(ast::DelegationPathTree { path, kind: ast::DelegationPathTreeKind::Stump(None) })
+    }
+
+    fn parse_delegation_path_tree_kind(
+        &mut self,
+        path: &mut ast::Path<'src, ast::ObligatorilyDisambiguatedGenericArgs>,
+    ) -> Result<ast::DelegationPathTreeKind<'src>> {
+        let parse_binder = |this: &mut Self| {
+            this.consume(TokenKind::As).then(|| this.parse_common_ident()).transpose()
+        };
+
+        Ok(match self.token.kind {
+            TokenKind::OpenCurlyBracket => {
+                self.advance();
+                ast::DelegationPathTreeKind::Branch(self.fin_parse_delim_seq(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    |this| {
+                        let ast::PathSeg { ident, args: () } =
+                            this.parse_path_seg::<ast::NoGenericArgs>()?;
+                        let binder = parse_binder(this)?;
+                        Ok((ident, binder))
+                    },
+                )?)
+            }
+            TokenKind::SingleAsterisk => {
+                self.advance();
+                ast::DelegationPathTreeKind::Global
+            }
+            PathSegIdent!() => {
+                let ident = self.ident(self.token.span);
+                self.advance();
+                let args = ast::ObligatorilyDisambiguatedGenericArgs::parse(self)?;
+                path.segs.push(ast::PathSeg { ident, args });
+                let binder = parse_binder(self)?;
+                ast::DelegationPathTreeKind::Stump(binder)
+            }
+            _ => {
+                return self.fatal(Error::UnexpectedToken(
+                    self.token,
+                    one_of![
+                        ExpectedFragment::PathSegIdent,
+                        TokenKind::OpenCurlyBracket,
+                        TokenKind::SingleAsterisk
+                    ],
+                ));
+            }
+        })
     }
 
     fn parse_delegation_body(&mut self) -> Result<Option<ast::BlockExpr<'src>>> {

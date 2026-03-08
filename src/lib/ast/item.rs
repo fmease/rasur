@@ -1,7 +1,7 @@
 use super::{
     Attr, BlockExpr, Bound, Expr, Externness, Generics, Ident, MacroCall, Mutability,
-    NoGenericArgs, Pat, Path, PathExt, PathTree, Safety, Span, TokenStream, Ty,
-    UnambiguousGenericArgs,
+    NoGenericArgs, ObligatorilyDisambiguatedGenericArgs, Pat, Path, PathExt, Safety, Span,
+    TokenStream, Ty, UnambiguousGenericArgs,
 };
 use Default::default;
 
@@ -61,8 +61,21 @@ pub(crate) struct ConstBlockItem<'src> {
 #[derive(Debug)]
 pub(crate) struct DelegationItem<'src> {
     pub(crate) ext: Option<PathExt<'src>>,
-    pub(crate) path: PathTree<'src>,
+    pub(crate) path: DelegationPathTree<'src>,
     pub(crate) body: Option<BlockExpr<'src>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DelegationPathTree<'src> {
+    pub(crate) path: Path<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub(crate) kind: DelegationPathTreeKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum DelegationPathTreeKind<'src> {
+    Global,
+    Stump(Option<Ident<'src>>),
+    Branch(Vec<(Ident<'src>, Option<Ident<'src>>)>),
 }
 
 #[derive(Debug)]
@@ -325,7 +338,20 @@ pub(crate) struct UnionItem<'src> {
 
 #[derive(Debug)]
 pub(crate) struct UseItem<'src> {
-    pub(crate) path: PathTree<'src>,
+    pub(crate) path: UsePathTree<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) struct UsePathTree<'src> {
+    pub(crate) path: Path<'src, NoGenericArgs>,
+    pub(crate) kind: UsePathTreeKind<'src>,
+}
+
+#[derive(Debug)]
+pub(crate) enum UsePathTreeKind<'src> {
+    Global,
+    Stump(Option<Ident<'src>>),
+    Branch(Vec<UsePathTree<'src>>),
 }
 
 #[derive(Debug)]

@@ -94,19 +94,6 @@ pub(crate) struct PathExt<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct PathTree<'src> {
-    pub(crate) path: Path<'src, NoGenericArgs>,
-    pub(crate) kind: PathTreeKind<'src>,
-}
-
-#[derive(Debug)]
-pub(crate) enum PathTreeKind<'src> {
-    Global,
-    Stump(Option<Ident<'src>>),
-    Branch(Vec<PathTree<'src>>),
-}
-
-#[derive(Debug)]
 pub(crate) enum GenericArgs<'src> {
     Angle(Vec<AngleGenericArg<'src>>),
     Paren { inputs: Vec<Ty<'src>>, output: Option<Ty<'src>> },

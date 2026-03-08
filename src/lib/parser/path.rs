@@ -35,7 +35,7 @@ impl<'src> Parser<'_, '_, 'src> {
         matches!(self.peek(offset).kind, TokenKind::DoubleColon | PathSegIdent!())
     }
 
-    fn parse_path_prefix<M: GenericArgsMode>(
+    pub(super) fn parse_path_prefix<M: GenericArgsMode>(
         &mut self,
         mode: PathMode,
     ) -> Result<ast::Path<'src, M>> {
@@ -88,7 +88,7 @@ impl<'src> Parser<'_, '_, 'src> {
         self.matches(TokenPrefix::LessThan, self.peek(offset)) || self.begins_path(offset)
     }
 
-    fn parse_path_seg<M: GenericArgsMode>(&mut self) -> Result<ast::PathSeg<'src, M>> {
+    pub(super) fn parse_path_seg<M: GenericArgsMode>(&mut self) -> Result<ast::PathSeg<'src, M>> {
         match self.token.kind {
             PathSegIdent!() => {
                 let ident = self.ident(self.token.span);
@@ -258,66 +258,6 @@ impl<'src> Parser<'_, '_, 'src> {
         matches!(self.token.kind, TokenKind::OpenCurlyBracket | TokenKind::Const)
             || self.begins_negatable_lit()
     }
-
-    pub(super) fn parse_path_tree(&mut self, mode: PathMode) -> Result<ast::PathTree<'src>> {
-        let mut path = self.parse_path_prefix(mode)?;
-
-        match self.parse_path_tree_kind(&mut path)? {
-            ast::PathTreeKind::Stump(None) => {}
-            kind => return Ok(ast::PathTree { path, kind }),
-        }
-
-        while self.consume(TokenKind::DoubleColon) {
-            match self.parse_path_tree_kind(&mut path)? {
-                ast::PathTreeKind::Stump(None) => {}
-                kind => return Ok(ast::PathTree { path, kind }),
-            }
-        }
-
-        Ok(ast::PathTree { path, kind: ast::PathTreeKind::Stump(None) })
-    }
-
-    fn parse_path_tree_kind(
-        &mut self,
-        path: &mut ast::Path<'src, ast::NoGenericArgs>,
-    ) -> Result<ast::PathTreeKind<'src>> {
-        Ok(match self.token.kind {
-            TokenKind::OpenCurlyBracket => {
-                self.advance();
-                ast::PathTreeKind::Branch(self.fin_parse_delim_seq(
-                    TokenKind::CloseCurlyBracket,
-                    TokenKind::Comma,
-                    |this| this.parse_path_tree(PathMode::Normal),
-                )?)
-            }
-            TokenKind::SingleAsterisk => {
-                self.advance();
-                ast::PathTreeKind::Global
-            }
-            PathSegIdent!() => {
-                path.segs.push(ast::PathSeg::ident(self.ident(self.token.span)));
-                self.advance();
-                let binder = if self.consume(TokenKind::As) {
-                    let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
-                    Some(binder)
-                } else {
-                    None
-                };
-                ast::PathTreeKind::Stump(binder)
-            }
-            _ => {
-                return self.fatal(Error::UnexpectedToken(
-                    self.token,
-                    // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
-                    one_of![
-                        ExpectedFragment::PathSegIdent,
-                        TokenKind::OpenCurlyBracket,
-                        TokenKind::SingleAsterisk
-                    ],
-                ));
-            }
-        })
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -363,7 +303,7 @@ fn extract_assoc_item_seg<'src>(
     arg: &mut ast::GenericArg<'src>,
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
     if let ast::GenericArg::Ty(ty) = arg
-        && let ast::Ty::Path(path) = ty
+        && let ast::Ty::Path(deref!(path)) = ty
         && let ast::ExtPath { ext: None, path } = path
         && let ast::Path { segs: deref!([seg]) } = path
     {

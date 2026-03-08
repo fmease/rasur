@@ -106,6 +106,44 @@ impl Fmt for ast::DelegationItem<'_> {
     }
 }
 
+impl Fmt for ast::DelegationPathTree<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { path, kind } = self;
+        let is_non_empty = !path.segs.is_empty();
+        path.fmt(cx);
+        if is_non_empty && !matches!(kind, ast::DelegationPathTreeKind::Stump(_)) {
+            fmt!(cx, "::");
+        }
+        kind.fmt(cx);
+    }
+}
+
+impl Fmt for ast::DelegationPathTreeKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Global => fmt!(cx, "*"),
+            Self::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
+            Self::Stump(None) => {}
+            Self::Branch(binders) => {
+                fmt!(cx, "{{");
+                binders
+                    .into_iter()
+                    .map(|(ident, binder)| {
+                        super::Inline(move |cx| {
+                            ident.fmt(cx);
+                            if let Some(binder) = binder {
+                                fmt!(cx, " as {binder}")
+                            }
+                        })
+                    })
+                    .interleave(", ")
+                    .fmt(cx);
+                fmt!(cx, "}}");
+            }
+        }
+    }
+}
+
 impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { binder, generics, variants } = self;
@@ -601,19 +639,19 @@ impl Fmt for ast::UseItem<'_> {
     }
 }
 
-impl Fmt for ast::PathTree<'_> {
+impl Fmt for ast::UsePathTree<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { path, kind } = self;
         let is_non_empty = !path.segs.is_empty();
         path.fmt(cx);
-        if is_non_empty && !matches!(kind, ast::PathTreeKind::Stump(_)) {
+        if is_non_empty && !matches!(kind, ast::UsePathTreeKind::Stump(_)) {
             fmt!(cx, "::");
         }
         kind.fmt(cx);
     }
 }
 
-impl Fmt for ast::PathTreeKind<'_> {
+impl Fmt for ast::UsePathTreeKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Global => fmt!(cx, "*"),
