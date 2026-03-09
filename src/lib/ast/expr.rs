@@ -5,9 +5,9 @@ use super::{
 use crate::span::Span;
 
 #[derive(Debug)]
-pub(crate) struct Expr<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) kind: ExprKind<'src>,
+pub struct Expr<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub kind: ExprKind<'src>,
 }
 
 impl<'src> From<ExprKind<'src>> for Expr<'src> {
@@ -17,7 +17,7 @@ impl<'src> From<ExprKind<'src>> for Expr<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) enum ExprKind<'src> {
+pub enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
     Ascription(Box<Expr<'src>>, Box<Ty<'src>>),
     Await(Box<Expr<'src>>),
@@ -74,7 +74,7 @@ impl ExprKind<'_> {
             | Self::ForLoop(_)
             // NOTE: Not so sure about this one. What is better for recovery?
             | Self::Error(_) => true,
-            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
+            Self::MacroCall(deref!(MacroCall { bracket: Bracket::Curly, .. })) => match extra {
                 CurlyBracketedMacroCallIsBoundary::Yes => true,
                 CurlyBracketedMacroCallIsBoundary::No => false,
             },
@@ -122,14 +122,14 @@ pub(crate) enum CurlyBracketedMacroCallIsBoundary {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum UnOp {
+pub enum UnOp {
     Deref,
     Neg,
     Not,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum BinOp {
+pub enum BinOp {
     Add,
     AddAssign,
     And,
@@ -162,7 +162,7 @@ pub(crate) enum BinOp {
 }
 
 impl BinOp {
-    pub(crate) fn symbol(self) -> &'static str {
+    pub fn symbol(self) -> &'static str {
         match self {
             Self::Add => "+",
             Self::AddAssign => "+=",
@@ -209,109 +209,109 @@ pub(crate) macro CompareOp() {
 }
 
 #[derive(Debug)]
-pub(crate) struct IfExpr<'src> {
-    pub(crate) condition: Expr<'src>,
-    pub(crate) consequent: BlockExpr<'src>,
-    pub(crate) alternate: Option<Expr<'src>>,
+pub struct IfExpr<'src> {
+    pub condition: Expr<'src>,
+    pub consequent: BlockExpr<'src>,
+    pub alternate: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct MatchExpr<'src> {
-    pub(crate) kind: MatchKind,
-    pub(crate) scrutinee: Expr<'src>,
-    pub(crate) arms: Vec<MatchArm<'src>>,
+pub struct MatchExpr<'src> {
+    pub kind: MatchKind,
+    pub scrutinee: Expr<'src>,
+    pub arms: Vec<MatchArm<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum MatchKind {
+pub enum MatchKind {
     Prefix,
     Postfix,
 }
 
 #[derive(Debug)]
-pub(crate) struct MatchArm<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) pat: Pat<'src>,
-    pub(crate) guard: Option<Expr<'src>>,
-    pub(crate) body: Option<Expr<'src>>,
+pub struct MatchArm<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub pat: Pat<'src>,
+    pub guard: Option<Expr<'src>>,
+    pub body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct WhileLoopExpr<'src> {
-    pub(crate) label: Option<Ident<'src>>,
-    pub(crate) condition: Expr<'src>,
-    pub(crate) body: BlockExpr<'src>,
+pub struct WhileLoopExpr<'src> {
+    pub label: Option<Ident<'src>>,
+    pub condition: Expr<'src>,
+    pub body: BlockExpr<'src>,
 }
 
 // FIXME: Bad name
 #[derive(Debug)]
-pub(crate) enum SpecialBlockKind<'src> {
+pub enum SpecialBlockKind<'src> {
     Const,
     Try(Option<Box<Ty<'src>>>),
     Unsafe,
 }
 
 #[derive(Debug)]
-pub(crate) enum GenBlockKind {
+pub enum GenBlockKind {
     Async,
     AsyncGen,
     Gen,
 }
 
 #[derive(Debug)]
-pub(crate) struct BlockExpr<'src> {
-    pub(crate) stmts: Vec<Stmt<'src>>,
+pub struct BlockExpr<'src> {
+    pub stmts: Vec<Stmt<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructExpr<'src> {
-    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub(crate) fields: Vec<StructExprField<'src>>,
-    pub(crate) base: Option<Option<Expr<'src>>>,
+pub struct StructExpr<'src> {
+    pub path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub fields: Vec<StructExprField<'src>>,
+    pub base: Option<Option<Expr<'src>>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructExprField<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) body: Option<Expr<'src>>,
+pub struct StructExprField<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub binder: Ident<'src>,
+    pub body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct MethodCallExpr<'src> {
-    pub(crate) receiver: Expr<'src>,
-    pub(crate) seg: PathSeg<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub(crate) args: Vec<Expr<'src>>,
+pub struct MethodCallExpr<'src> {
+    pub receiver: Expr<'src>,
+    pub seg: PathSeg<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub args: Vec<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ClosureExpr<'src> {
-    pub(crate) bound_vars: Vec<GenericParam<'src>>,
-    pub(crate) modifiers: ClosureExprModifiers,
-    pub(crate) params: Vec<ClosureParam<'src>>,
-    pub(crate) ret_ty: Option<Ty<'src>>,
-    pub(crate) body: Expr<'src>,
+pub struct ClosureExpr<'src> {
+    pub bound_vars: Vec<GenericParam<'src>>,
+    pub modifiers: ClosureExprModifiers,
+    pub params: Vec<ClosureParam<'src>>,
+    pub ret_ty: Option<Ty<'src>>,
+    pub body: Expr<'src>,
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct ClosureExprModifiers {
-    pub(crate) constness: Constness,
-    pub(crate) staticness: Staticness,
-    pub(crate) asyncness: Asyncness,
+pub struct ClosureExprModifiers {
+    pub constness: Constness,
+    pub staticness: Staticness,
+    pub asyncness: Asyncness,
     // FIXME: Horrible naming!
-    pub(crate) genness: Genness,
-    pub(crate) mode: CaptureMode,
+    pub genness: Genness,
+    pub mode: CaptureMode,
 }
 
 #[derive(Default, Debug)]
-pub(crate) enum Staticness {
+pub enum Staticness {
     Static,
     #[default]
     Not,
 }
 
 #[derive(Default, Debug)]
-pub(crate) enum CaptureMode {
+pub enum CaptureMode {
     #[default]
     Ref,
     Move,
@@ -319,48 +319,48 @@ pub(crate) enum CaptureMode {
 }
 
 #[derive(Debug)]
-pub(crate) struct ClosureParam<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) pat: Pat<'src>,
-    pub(crate) ty: Option<Ty<'src>>,
+pub struct ClosureParam<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub pat: Pat<'src>,
+    pub ty: Option<Ty<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct LetExpr<'src> {
-    pub(crate) pat: Pat<'src>,
-    pub(crate) body: Expr<'src>,
+pub struct LetExpr<'src> {
+    pub pat: Pat<'src>,
+    pub body: Expr<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ForLoopExpr<'src> {
-    pub(crate) label: Option<Ident<'src>>,
+pub struct ForLoopExpr<'src> {
+    pub label: Option<Ident<'src>>,
     // FIXME: Horrendous naming scheme, replace.
-    pub(crate) awaitness: Awaitness,
-    pub(crate) pat: Pat<'src>,
-    pub(crate) head: Expr<'src>,
-    pub(crate) body: BlockExpr<'src>,
+    pub awaitness: Awaitness,
+    pub pat: Pat<'src>,
+    pub head: Expr<'src>,
+    pub body: BlockExpr<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum Awaitness {
+pub enum Awaitness {
     Await,
     Not,
 }
 
 #[derive(Debug)]
-pub(crate) enum YieldExpr<'src> {
+pub enum YieldExpr<'src> {
     Prefix(Option<Box<Expr<'src>>>),
     Postfix(Box<Expr<'src>>),
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum RangeExprKind {
+pub enum RangeExprKind {
     Inclusive,
     Exclusive,
 }
 
 #[derive(Debug)]
-pub(crate) enum UnsafeBinderCastKind {
+pub enum UnsafeBinderCastKind {
     Wrap,
     Unwrap,
 }

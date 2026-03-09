@@ -5,7 +5,7 @@ use super::{
 use crate::span::Span;
 
 #[derive(Debug)]
-pub(crate) enum Pat<'src> {
+pub enum Pat<'src> {
     Binding(Box<BindingPat<'src>>),
     Borrow(BorrowKind<!>, Mutability, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
@@ -27,65 +27,65 @@ pub(crate) enum Pat<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) enum Sign {
+pub enum Sign {
     None,
     Neg,
 }
 
 #[derive(Debug)]
-pub(crate) enum WildcardKind {
+pub enum WildcardKind {
     Normal,
     Empty,
 }
 
 #[derive(Debug)]
-pub(crate) struct BindingPat<'src> {
-    pub(crate) mut_: Mutability,
-    pub(crate) by_ref: ByRef,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) pat: Option<Box<Pat<'src>>>,
+pub struct BindingPat<'src> {
+    pub mut_: Mutability,
+    pub by_ref: ByRef,
+    pub binder: Ident<'src>,
+    pub pat: Option<Box<Pat<'src>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum ByRef {
+pub enum ByRef {
     Yes(BorrowKind<!>, Mutability),
     No,
 }
 
 #[derive(Debug)]
-pub(crate) struct TupleStructPat<'src> {
-    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub(crate) fields: Vec<Pat<'src>>,
+pub struct TupleStructPat<'src> {
+    pub path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub fields: Vec<Pat<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructPat<'src> {
-    pub(crate) path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub(crate) fields: Vec<StructPatField<'src>>,
-    pub(crate) rest: bool,
+pub struct StructPat<'src> {
+    pub path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub fields: Vec<StructPatField<'src>>,
+    pub rest: bool,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructPatField<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) binder: Option<Ident<'src>>,
-    pub(crate) body: Pat<'src>,
+pub struct StructPatField<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub binder: Option<Ident<'src>>,
+    pub body: Pat<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum RangePatBound<'src> {
+pub enum RangePatBound<'src> {
     Lit(Sign, Box<Lit<'src>>),
     Path(ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>),
 }
 
 #[derive(Debug)]
-pub(crate) enum RangePatKind {
+pub enum RangePatKind {
     Inclusive(RangeInclusivePatKind),
     Exclusive,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum RangeInclusivePatKind {
+pub enum RangeInclusivePatKind {
     Normal,
     Legacy,
 }

@@ -7,15 +7,15 @@ use Default::default;
 
 // FIXME: Maybe represent as Item<Free>?
 #[derive(Debug)]
-pub(crate) struct Item<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) kind: ItemKind<'src>,
-    pub(crate) span: Span,
+pub struct Item<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub kind: ItemKind<'src>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
-pub(crate) enum ItemKind<'src> {
+pub enum ItemKind<'src> {
     Const(Box<ConstItem<'src>>),
     ConstBlock(Box<ConstBlockItem<'src>>),
     Delegation(Box<DelegationItem<'src>>),
@@ -37,65 +37,65 @@ pub(crate) enum ItemKind<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct ConstItem<'src> {
-    pub(crate) defaultness: Defaultness,
-    pub(crate) tyness: Tyness,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) ty: Ty<'src>,
-    pub(crate) body: Option<Expr<'src>>,
+pub struct ConstItem<'src> {
+    pub defaultness: Defaultness,
+    pub tyness: Tyness,
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub ty: Ty<'src>,
+    pub body: Option<Expr<'src>>,
 }
 
 // FIXME: horrible name
 #[derive(Debug)]
-pub(crate) enum Tyness {
+pub enum Tyness {
     Ty,
     Not,
 }
 
 #[derive(Debug)]
-pub(crate) struct ConstBlockItem<'src> {
-    pub(crate) body: BlockExpr<'src>,
+pub struct ConstBlockItem<'src> {
+    pub body: BlockExpr<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct DelegationItem<'src> {
-    pub(crate) ext: Option<PathExt<'src>>,
-    pub(crate) path: DelegationPathTree<'src>,
-    pub(crate) body: Option<BlockExpr<'src>>,
+pub struct DelegationItem<'src> {
+    pub ext: Option<PathExt<'src>>,
+    pub path: DelegationPathTree<'src>,
+    pub body: Option<BlockExpr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct DelegationPathTree<'src> {
-    pub(crate) path: Path<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub(crate) kind: DelegationPathTreeKind<'src>,
+pub struct DelegationPathTree<'src> {
+    pub path: Path<'src, ObligatorilyDisambiguatedGenericArgs>,
+    pub kind: DelegationPathTreeKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum DelegationPathTreeKind<'src> {
+pub enum DelegationPathTreeKind<'src> {
     Global,
     Stump(Option<Ident<'src>>),
     Branch(Vec<(Ident<'src>, Option<Ident<'src>>)>),
 }
 
 #[derive(Debug)]
-pub(crate) struct EnumItem<'src> {
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) variants: Vec<Variant<'src>>,
+pub struct EnumItem<'src> {
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub variants: Vec<Variant<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Variant<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) kind: VariantKind<'src>,
-    pub(crate) discr: Option<Expr<'src>>,
+pub struct Variant<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub binder: Ident<'src>,
+    pub kind: VariantKind<'src>,
+    pub discr: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum VariantKind<'src> {
+pub enum VariantKind<'src> {
     Unit,
     Tuple(Vec<TupleFieldDef<'src>>),
     Struct(Vec<StructFieldDef<'src>>),
@@ -111,47 +111,47 @@ impl VariantKind<'_> {
 }
 
 #[derive(Debug)]
-pub(crate) struct TupleFieldDef<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) ty: Ty<'src>,
-    pub(crate) default: Option<Expr<'src>>,
+pub struct TupleFieldDef<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub ty: Ty<'src>,
+    pub default: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructFieldDef<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) safety: Safety,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) ty: Ty<'src>,
-    pub(crate) default: Option<Expr<'src>>,
+pub struct StructFieldDef<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub safety: Safety,
+    pub binder: Ident<'src>,
+    pub ty: Ty<'src>,
+    pub default: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ExternBlockItem<'src> {
-    pub(crate) safety: Safety,
-    pub(crate) abi: Option<&'src str>,
-    pub(crate) body: Vec<ExternItem<'src>>,
+pub struct ExternBlockItem<'src> {
+    pub safety: Safety,
+    pub abi: Option<&'src str>,
+    pub body: Vec<ExternItem<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ExternCrateItem<'src> {
-    pub(crate) target: Ident<'src>,
-    pub(crate) binder: Option<Ident<'src>>,
+pub struct ExternCrateItem<'src> {
+    pub target: Ident<'src>,
+    pub binder: Option<Ident<'src>>,
 }
 
 // FIXME: Maybe represent as Item<Extern>?
 #[derive(Debug)]
-pub(crate) struct ExternItem<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) kind: ExternItemKind<'src>,
-    pub(crate) span: Span,
+pub struct ExternItem<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub kind: ExternItemKind<'src>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
-pub(crate) enum ExternItemKind<'src> {
+pub enum ExternItemKind<'src> {
     Fn(Box<FnItem<'src>>),
     MacroCall(Box<MacroCall<'src, NoGenericArgs>>),
     Static(Box<StaticItem<'src>>),
@@ -159,29 +159,29 @@ pub(crate) enum ExternItemKind<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FnItem<'src> {
-    pub(crate) modifiers: FnItemModifiers<'src>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) params: Vec<FnParam<'src>>,
-    pub(crate) ret_ty: Option<Ty<'src>>,
-    pub(crate) contract: Contract<'src>,
-    pub(crate) body: Option<BlockExpr<'src>>,
+pub struct FnItem<'src> {
+    pub modifiers: FnItemModifiers<'src>,
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub params: Vec<FnParam<'src>>,
+    pub ret_ty: Option<Ty<'src>>,
+    pub contract: Contract<'src>,
+    pub body: Option<BlockExpr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct FnItemModifiers<'src> {
-    pub(crate) defaultness: Defaultness,
-    pub(crate) constness: Constness = default(),
-    pub(crate) asyncness: Asyncness = default(),
-    pub(crate) genness: Genness = default(),
-    pub(crate) safety: Safety<()> = default(),
-    pub(crate) externness: Externness<'src> = default(),
+pub struct FnItemModifiers<'src> {
+    pub defaultness: Defaultness,
+    pub constness: Constness = default(),
+    pub asyncness: Asyncness = default(),
+    pub genness: Genness = default(),
+    pub safety: Safety<()> = default(),
+    pub externness: Externness<'src> = default(),
 }
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub(crate) enum Constness {
+pub enum Constness {
     Const,
     #[default]
     Not,
@@ -189,7 +189,7 @@ pub(crate) enum Constness {
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub(crate) enum Asyncness {
+pub enum Asyncness {
     Async,
     #[default]
     Not,
@@ -198,105 +198,105 @@ pub(crate) enum Asyncness {
 // FIXME: Awful name, rethink whole naming scheme here
 #[derive_const(Default)]
 #[derive(Debug)]
-pub(crate) enum Genness {
+pub enum Genness {
     Gen,
     #[default]
     Not,
 }
 
 #[derive(Debug)]
-pub(crate) struct FnParam<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) pat: Pat<'src>,
-    pub(crate) ty: Ty<'src>,
+pub struct FnParam<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub pat: Pat<'src>,
+    pub ty: Ty<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Contract<'src> {
-    pub(crate) requires: Option<Box<BlockExpr<'src>>>,
-    pub(crate) ensures: Option<Box<Expr<'src>>>,
+pub struct Contract<'src> {
+    pub requires: Option<Box<BlockExpr<'src>>>,
+    pub ensures: Option<Box<Expr<'src>>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ImplItem<'src> {
-    pub(crate) generics: Generics<'src>,
-    pub(crate) constness: Constness,
-    pub(crate) trait_ref: Option<ImplTraitRef<'src>>,
-    pub(crate) self_ty: Ty<'src>,
-    pub(crate) body: ImplBody<'src>,
+pub struct ImplItem<'src> {
+    pub generics: Generics<'src>,
+    pub constness: Constness,
+    pub trait_ref: Option<ImplTraitRef<'src>>,
+    pub self_ty: Ty<'src>,
+    pub body: ImplBody<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct ImplTraitRef<'src> {
-    pub(crate) defaultness: Defaultness,
-    pub(crate) safety: Safety,
-    pub(crate) polarity: ImplPolarity,
-    pub(crate) path: Path<'src, UnambiguousGenericArgs>,
+pub struct ImplTraitRef<'src> {
+    pub defaultness: Defaultness,
+    pub safety: Safety,
+    pub polarity: ImplPolarity,
+    pub path: Path<'src, UnambiguousGenericArgs>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum ImplPolarity {
+pub enum ImplPolarity {
     Positive,
     Negative,
 }
 
 #[derive(Debug)]
-pub(crate) enum ImplBody<'src> {
+pub enum ImplBody<'src> {
     Normal(Vec<AssocItem<'src>>),
     Delegated(Option<BlockExpr<'src>>),
 }
 
 #[derive(Debug)]
-pub(crate) struct ModItem<'src> {
+pub struct ModItem<'src> {
     // <https://github.com/rust-lang/rust/pull/75857>
-    pub(crate) safety: Safety,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) body: Option<Vec<Item<'src>>>,
+    pub safety: Safety,
+    pub binder: Ident<'src>,
+    pub body: Option<Vec<Item<'src>>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StaticItem<'src> {
-    pub(crate) safety: Safety<()>,
-    pub(crate) mut_: Mutability,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) ty: Ty<'src>,
-    pub(crate) body: Option<Expr<'src>>,
+pub struct StaticItem<'src> {
+    pub safety: Safety<()>,
+    pub mut_: Mutability,
+    pub binder: Ident<'src>,
+    pub ty: Ty<'src>,
+    pub body: Option<Expr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct StructItem<'src> {
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) kind: VariantKind<'src>,
+pub struct StructItem<'src> {
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub kind: VariantKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct TraitItem<'src> {
-    pub(crate) modifiers: TraitItemModifiers<'src>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) bounds: Vec<Bound<'src>>,
-    pub(crate) body: Vec<AssocItem<'src>>,
+pub struct TraitItem<'src> {
+    pub modifiers: TraitItemModifiers<'src>,
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub bounds: Vec<Bound<'src>>,
+    pub body: Vec<AssocItem<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct TraitAliasItem<'src> {
-    pub(crate) constness: Constness,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) bounds: Vec<Bound<'src>>,
+pub struct TraitAliasItem<'src> {
+    pub constness: Constness,
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub bounds: Vec<Bound<'src>>,
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct TraitItemModifiers<'src> {
-    pub(crate) constness: Constness,
-    pub(crate) safety: Safety,
-    pub(crate) autoness: Autoness,
-    pub(crate) impl_restriction: Option<Path<'src, NoGenericArgs>>,
+pub struct TraitItemModifiers<'src> {
+    pub constness: Constness,
+    pub safety: Safety,
+    pub autoness: Autoness,
+    pub impl_restriction: Option<Path<'src, NoGenericArgs>>,
 }
 
 #[derive(Default, Debug)]
-pub(crate) enum Autoness {
+pub enum Autoness {
     Auto,
     #[default]
     Not,
@@ -304,15 +304,15 @@ pub(crate) enum Autoness {
 
 // FIXME: Maybe represent as Item<Assoc>?
 #[derive(Debug)]
-pub(crate) struct AssocItem<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) vis: Visibility<'src>,
-    pub(crate) kind: AssocItemKind<'src>,
-    pub(crate) span: Span,
+pub struct AssocItem<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub vis: Visibility<'src>,
+    pub kind: AssocItemKind<'src>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
-pub(crate) enum AssocItemKind<'src> {
+pub enum AssocItemKind<'src> {
     Const(Box<ConstItem<'src>>),
     Delegation(Box<DelegationItem<'src>>),
     Fn(Box<FnItem<'src>>),
@@ -321,49 +321,49 @@ pub(crate) enum AssocItemKind<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct TyAliasItem<'src> {
-    pub(crate) defaultness: Defaultness,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) bounds: Vec<Bound<'src>>,
-    pub(crate) body: Option<Ty<'src>>,
+pub struct TyAliasItem<'src> {
+    pub defaultness: Defaultness,
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub bounds: Vec<Bound<'src>>,
+    pub body: Option<Ty<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct UnionItem<'src> {
-    pub(crate) binder: Ident<'src>,
-    pub(crate) generics: Generics<'src>,
-    pub(crate) fields: Vec<StructFieldDef<'src>>,
+pub struct UnionItem<'src> {
+    pub binder: Ident<'src>,
+    pub generics: Generics<'src>,
+    pub fields: Vec<StructFieldDef<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct UseItem<'src> {
-    pub(crate) path: UsePathTree<'src>,
+pub struct UseItem<'src> {
+    pub path: UsePathTree<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct UsePathTree<'src> {
-    pub(crate) path: Path<'src, NoGenericArgs>,
-    pub(crate) kind: UsePathTreeKind<'src>,
+pub struct UsePathTree<'src> {
+    pub path: Path<'src, NoGenericArgs>,
+    pub kind: UsePathTreeKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum UsePathTreeKind<'src> {
+pub enum UsePathTreeKind<'src> {
     Global,
     Stump(Option<Ident<'src>>),
     Branch(Vec<UsePathTree<'src>>),
 }
 
 #[derive(Debug)]
-pub(crate) struct MacroDef<'src> {
-    pub(crate) binder: Ident<'src>,
-    pub(crate) params: Option<TokenStream>,
-    pub(crate) body: TokenStream,
-    pub(crate) style: MacroDefStyle,
+pub struct MacroDef<'src> {
+    pub binder: Ident<'src>,
+    pub params: Option<TokenStream>,
+    pub body: TokenStream,
+    pub style: MacroDefStyle,
 }
 
 #[derive(Debug)]
-pub(crate) enum MacroDefStyle {
+pub enum MacroDefStyle {
     /// Macro 1.2 aka. `macro_rules!`.
     Old,
     /// Macro 2.0.
@@ -371,7 +371,7 @@ pub(crate) enum MacroDefStyle {
 }
 
 #[derive(Debug)]
-pub(crate) enum Visibility<'src> {
+pub enum Visibility<'src> {
     Inherited,
     Restricted(Path<'src, NoGenericArgs>),
     Public,
@@ -379,7 +379,7 @@ pub(crate) enum Visibility<'src> {
 
 // FIXME: Find a better name for the type and its variants!
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Defaultness {
+pub enum Defaultness {
     Default,
     Final,
     Not,

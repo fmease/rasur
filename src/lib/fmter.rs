@@ -215,7 +215,7 @@ impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mutability)> {
 }
 
 struct Cluster<'src, T> {
-    attrs: Vec<ast::Attr<'src, ast::attr::Inner>>,
+    attrs: Vec<ast::Attr<'src, ast::InnerAttrStyle>>,
     nodes: Vec<T>,
 }
 

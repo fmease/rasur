@@ -2,13 +2,12 @@ use super::{Bound, Expr, Ty};
 use crate::span::Span;
 use std::fmt;
 
-pub(crate) struct Path<'src, M: GenericArgsMode> {
-    // INVARIANT: Has to be non-empty!
-    pub(crate) segs: Vec<PathSeg<'src, M>>,
+pub struct Path<'src, M: GenericArgsMode> {
+    pub segs: Vec<PathSeg<'src, M>>,
 }
 
 impl<'src, M: GenericArgsMode> Path<'src, M> {
-    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+    pub fn ident(ident: Ident<'src>) -> Self {
         Self { segs: vec![PathSeg::ident(ident)] }
     }
 }
@@ -21,13 +20,13 @@ impl<M: GenericArgsMode> fmt::Debug for Path<'_, M> {
     }
 }
 
-pub(crate) struct PathSeg<'src, M: GenericArgsMode> {
-    pub(crate) ident: Ident<'src>,
-    pub(crate) args: M::Args<'src>,
+pub struct PathSeg<'src, M: GenericArgsMode> {
+    pub ident: Ident<'src>,
+    pub args: M::Args<'src>,
 }
 
 impl<'src, M: GenericArgsMode> PathSeg<'src, M> {
-    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+    pub fn ident(ident: Ident<'src>) -> Self {
         Self { ident, args: Default::default() }
     }
 }
@@ -41,13 +40,13 @@ impl<M: GenericArgsMode> fmt::Debug for PathSeg<'_, M> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Ident<'src> {
-    pub(crate) name: &'src str,
-    pub(crate) span: Span,
+pub struct Ident<'src> {
+    pub name: &'src str,
+    pub span: Span,
 }
 
 impl<'src> Ident<'src> {
-    pub(crate) fn new(name: &'src str, span: Span) -> Self {
+    pub fn new(name: &'src str, span: Span) -> Self {
         Self { name, span }
     }
 }
@@ -64,17 +63,17 @@ impl fmt::Debug for Ident<'_> {
     }
 }
 
-pub(crate) macro Ident($pat:pat) {
+pub macro Ident($pat:pat) {
     Ident { name: $pat, .. }
 }
 
-pub(crate) struct ExtPath<'src, S: GenericArgsStyle> {
-    pub(crate) ext: Option<PathExt<'src>>,
-    pub(crate) path: Path<'src, S>,
+pub struct ExtPath<'src, S: GenericArgsStyle> {
+    pub ext: Option<PathExt<'src>>,
+    pub path: Path<'src, S>,
 }
 
 impl<'src, S: GenericArgsStyle> ExtPath<'src, S> {
-    pub(crate) fn ident(ident: Ident<'src>) -> Self {
+    pub fn ident(ident: Ident<'src>) -> Self {
         Self { ext: None, path: Path::ident(ident) }
     }
 }
@@ -88,13 +87,13 @@ impl<S: GenericArgsStyle> fmt::Debug for ExtPath<'_, S> {
 }
 
 #[derive(Debug)]
-pub(crate) struct PathExt<'src> {
-    pub(crate) self_ty: Ty<'src>,
-    pub(crate) trait_ref: Option<Path<'src, UnambiguousGenericArgs>>,
+pub struct PathExt<'src> {
+    pub self_ty: Ty<'src>,
+    pub trait_ref: Option<Path<'src, UnambiguousGenericArgs>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum GenericArgs<'src> {
+pub enum GenericArgs<'src> {
     Angle(Vec<AngleGenericArg<'src>>),
     Paren { inputs: Vec<Ty<'src>>, output: Option<Ty<'src>> },
     ParenElided,
@@ -103,42 +102,42 @@ pub(crate) enum GenericArgs<'src> {
 // FIXME: Merge AngleGenericArg & GenericArg?
 //        So we end up with { Lt, Ty, Ct, Eq, Bd }?.
 #[derive(Debug)]
-pub(crate) enum AngleGenericArg<'src> {
+pub enum AngleGenericArg<'src> {
     Argument(GenericArg<'src>),
     Constraint(AssocItemConstraint<'src>),
 }
 
 #[derive(Debug)]
-pub(crate) enum GenericArg<'src> {
+pub enum GenericArg<'src> {
     Ty(Ty<'src>),
     Const(Expr<'src>),
     Lifetime(Ident<'src>),
 }
 
 #[derive(Debug)]
-pub(crate) struct AssocItemConstraint<'src> {
-    pub(crate) ident: Ident<'src>,
-    pub(crate) args: Option<GenericArgs<'src>>,
-    pub(crate) kind: AssocItemConstraintKind<'src>,
+pub struct AssocItemConstraint<'src> {
+    pub ident: Ident<'src>,
+    pub args: Option<GenericArgs<'src>>,
+    pub kind: AssocItemConstraintKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum AssocItemConstraintKind<'src> {
+pub enum AssocItemConstraintKind<'src> {
     Equality(Term<'src>),
     Bound(Vec<Bound<'src>>),
 }
 
 #[derive(Debug)]
-pub(crate) enum Term<'src> {
+pub enum Term<'src> {
     Ty(Ty<'src>),
     Const(Expr<'src>),
 }
 
-pub(crate) enum NoGenericArgs {}
-pub(crate) enum UnambiguousGenericArgs {}
-pub(crate) enum ObligatorilyDisambiguatedGenericArgs {}
+pub enum NoGenericArgs {}
+pub enum UnambiguousGenericArgs {}
+pub enum ObligatorilyDisambiguatedGenericArgs {}
 
-pub(crate) trait GenericArgsMode {
+pub trait GenericArgsMode {
     type Args<'src>: Default + fmt::Debug;
 }
 
@@ -154,7 +153,7 @@ impl GenericArgsMode for ObligatorilyDisambiguatedGenericArgs {
     type Args<'src> = <UnambiguousGenericArgs as GenericArgsMode>::Args<'src>;
 }
 
-pub(crate) trait GenericArgsStyle: GenericArgsMode {}
+pub trait GenericArgsStyle: GenericArgsMode {}
 
 impl GenericArgsStyle for UnambiguousGenericArgs {}
 impl GenericArgsStyle for ObligatorilyDisambiguatedGenericArgs {}

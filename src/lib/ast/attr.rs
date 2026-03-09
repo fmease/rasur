@@ -2,19 +2,19 @@ use super::{Bracket, Expr, NoGenericArgs, Path, Safety, TokenStream};
 use crate::span::Span;
 use std::fmt;
 
-pub(crate) struct Attr<'src, M: AttrMode = Any> {
-    pub(crate) style: M::Style,
-    pub(crate) kind: AttrKind<'src>,
+pub struct Attr<'src, M: AttrMode = AnyAttrStyle> {
+    pub style: M::Style,
+    pub kind: AttrKind<'src>,
 }
 
-impl<'src> Attr<'src, Outer> {
-    pub(crate) fn upcast(self) -> Attr<'src> {
+impl<'src> Attr<'src, OuterAttrStyle> {
+    pub fn upcast(self) -> Attr<'src> {
         Attr { style: AttrStyle::Outer, ..self }
     }
 }
 
-impl<'src> Attr<'src, Inner> {
-    pub(crate) fn upcast(self) -> Attr<'src> {
+impl<'src> Attr<'src, InnerAttrStyle> {
+    pub fn upcast(self) -> Attr<'src> {
         Attr { style: AttrStyle::Inner, ..self }
     }
 }
@@ -28,57 +28,57 @@ impl<M: AttrMode> fmt::Debug for Attr<'_, M> {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum AttrStyle {
+pub enum AttrStyle {
     Inner,
     Outer,
 }
 
 #[derive(Debug)]
-pub(crate) enum AttrKind<'src> {
+pub enum AttrKind<'src> {
     Normal(NormalAttr<'src>),
     DocComment(Span),
 }
 
 #[derive(Debug)]
-pub(crate) struct NormalAttr<'src> {
-    pub(crate) safety: Safety,
-    pub(crate) path: Path<'src, NoGenericArgs>,
-    pub(crate) args: AttrArgs<'src>,
+pub struct NormalAttr<'src> {
+    pub safety: Safety,
+    pub path: Path<'src, NoGenericArgs>,
+    pub args: AttrArgs<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum AttrArgs<'src> {
+pub enum AttrArgs<'src> {
     Unit,
     Call(Bracket, TokenStream),
     Assign(Expr<'src>),
 }
 
-pub(crate) trait AttrMode {
+pub trait AttrMode {
     type Style: fmt::Debug;
 }
 
-pub(crate) enum Any {}
-pub(crate) enum Inner {}
-pub(crate) enum Outer {}
+pub enum AnyAttrStyle {}
+pub enum InnerAttrStyle {}
+pub enum OuterAttrStyle {}
 
-impl AttrMode for Any {
+impl AttrMode for AnyAttrStyle {
     type Style = AttrStyle;
 }
 
-impl AttrMode for Inner {
+impl AttrMode for InnerAttrStyle {
     type Style = ();
 }
 
-impl AttrMode for Outer {
+impl AttrMode for OuterAttrStyle {
     type Style = ();
 }
 
-pub(crate) trait AttrsExt<'src> {
-    fn partition(self) -> (Vec<Attr<'src, Outer>>, Vec<Attr<'src, Inner>>);
+pub trait AttrsExt<'src> {
+    fn partition(self) -> (Vec<Attr<'src, OuterAttrStyle>>, Vec<Attr<'src, InnerAttrStyle>>);
 }
 
 impl<'src> AttrsExt<'src> for Vec<Attr<'src>> {
-    fn partition(self) -> (Vec<Attr<'src, Outer>>, Vec<Attr<'src, Inner>>) {
+    fn partition(self) -> (Vec<Attr<'src, OuterAttrStyle>>, Vec<Attr<'src, InnerAttrStyle>>) {
         let mut outer_attrs = Vec::new();
         let mut inner_attrs = Vec::new();
 

@@ -23,7 +23,7 @@ impl Fmt for ast::Item<'_> {
     }
 }
 
-impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         // FIXME: Assert inner attrs is empty for most item kinds.
         let (item, attrs) = self;
@@ -266,7 +266,7 @@ impl Fmt for ast::StructFieldDef<'_> {
     }
 }
 
-impl Fmt for (ast::ExternBlockItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::ExternBlockItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
         let ast::ExternBlockItem { safety, abi, body } = item;
@@ -321,7 +321,7 @@ impl Fmt for ast::ExternItem<'_> {
     }
 }
 
-impl Fmt for (ast::FnItem<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
+impl Fmt for (ast::FnItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
         let ast::FnItem { modifiers, binder, generics, params, ret_ty, contract, body } = item;
@@ -424,7 +424,7 @@ impl Fmt for ast::Contract<'_> {
     }
 }
 
-impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
         let ast::ImplItem { generics, constness, trait_ref, self_ty, body } = item;
@@ -464,7 +464,7 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     }
 }
 
-impl Fmt for (ast::ImplBody<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::ImplBody<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (body, attrs) = self;
 
@@ -487,7 +487,7 @@ impl Fmt for (ast::ImplBody<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
     }
 }
 
-impl Fmt for (ast::ModItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::ModItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
         let ast::ModItem { safety, binder, body } = item;
@@ -544,7 +544,7 @@ impl Fmt for ast::StructItem<'_> {
     }
 }
 
-impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
         let ast::TraitItem { modifiers, binder, generics, bounds, body } = item;

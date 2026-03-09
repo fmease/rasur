@@ -21,7 +21,7 @@ impl Fmt for ast::Expr<'_> {
 }
 
 // FIXME: Don't render unnecessary parentheses!
-impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::attr::Inner>>) {
+impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         // FIXME: Assert inner attrs for most expr kinds.
         let (expr, attrs) = self;
@@ -253,7 +253,7 @@ impl Fmt for ast::IfExpr<'_> {
     }
 }
 
-impl Fmt for (ast::MatchExpr<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::MatchExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (expr, attrs) = self;
         let ast::MatchExpr { kind, scrutinee, arms } = expr;
@@ -301,7 +301,7 @@ impl Fmt for ast::MatchArm<'_> {
     }
 }
 
-impl Fmt for (ast::WhileLoopExpr<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
+impl Fmt for (ast::WhileLoopExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (expr, attrs) = self;
         let ast::WhileLoopExpr { label, condition, body } = expr;
@@ -446,7 +446,7 @@ impl Fmt for ast::ClosureParam<'_> {
     }
 }
 
-impl Fmt for (ast::ForLoopExpr<'_>, Vec<ast::Attr<'_, ast::Inner>>) {
+impl Fmt for (ast::ForLoopExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (expr, attrs) = self;
         let ast::ForLoopExpr { label, awaitness, pat, head, body } = expr;
@@ -505,7 +505,7 @@ impl Fmt for ast::BlockExpr<'_> {
     }
 }
 
-impl Fmt for (ast::BlockExpr<'_>, Vec<ast::Attr<'_, ast::attr::Inner>>) {
+impl Fmt for (ast::BlockExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (ast::BlockExpr { stmts }, attrs) = self;
 

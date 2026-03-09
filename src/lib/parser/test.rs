@@ -3132,4 +3132,8 @@ fn delegation() {
     assert_matches!(parse_item(n!("reuse it::{*};"), Rust2015), Err(_));
     assert_matches!(parse_item(n!("reuse it::{f::g::h};"), Rust2015), Err(_));
     assert_matches!(parse_item(n!("reuse it::{f::{g::{h}}};"), Rust2015), Err(_));
+
+    // Some other invalid forms:
+    assert_matches!(parse_item(n!("reuse it<i32>;"), Rust2015), Err(_));
+    assert_matches!(parse_item(n!("reuse it::f<i32>;"), Rust2015), Err(_));
 }

@@ -1,7 +1,7 @@
 use super::{Attr, BlockExpr, Expr, Item, Pat, Ty};
 
 #[derive(Debug)]
-pub(crate) enum Stmt<'src> {
+pub enum Stmt<'src> {
     Item(Item<'src>),
     Let(Box<LetStmt<'src>>),
     Expr(Expr<'src>, Semicolon),
@@ -9,28 +9,28 @@ pub(crate) enum Stmt<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) struct LetStmt<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) superness: Superness,
-    pub(crate) pat: Pat<'src>,
-    pub(crate) ty: Option<Ty<'src>>,
-    pub(crate) body: Option<LetStmtBody<'src>>,
+pub struct LetStmt<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub superness: Superness,
+    pub pat: Pat<'src>,
+    pub ty: Option<Ty<'src>>,
+    pub body: Option<LetStmtBody<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum Superness {
+pub enum Superness {
     Super,
     Not,
 }
 
 #[derive(Debug)]
-pub(crate) struct LetStmtBody<'src> {
-    pub(crate) consequent: Expr<'src>,
-    pub(crate) alternate: Option<BlockExpr<'src>>,
+pub struct LetStmtBody<'src> {
+    pub consequent: Expr<'src>,
+    pub alternate: Option<BlockExpr<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum Semicolon {
+pub enum Semicolon {
     Yes,
     No,
 }

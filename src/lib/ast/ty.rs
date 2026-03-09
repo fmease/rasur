@@ -5,7 +5,7 @@ use super::{
 use crate::span::Span;
 
 #[derive(Debug)]
-pub(crate) enum Ty<'src> {
+pub enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
     CVariadics,
     DynTrait(DynKind, Vec<Bound<'src>>),
@@ -27,81 +27,81 @@ pub(crate) enum Ty<'src> {
 }
 
 #[derive(Debug)]
-pub(crate) enum DynKind {
+pub enum DynKind {
     Dyn,
     Bare,
 }
 
 #[derive(Debug)]
-pub(crate) struct FnPtrTy<'src> {
-    pub(crate) bound_vars: Vec<GenericParam<'src>>,
-    pub(crate) modifiers: FnPtrTyModifiers<'src>,
-    pub(crate) inputs: Vec<FnParam<'src>>,
-    pub(crate) output: Option<Ty<'src>>,
+pub struct FnPtrTy<'src> {
+    pub bound_vars: Vec<GenericParam<'src>>,
+    pub modifiers: FnPtrTyModifiers<'src>,
+    pub inputs: Vec<FnParam<'src>>,
+    pub output: Option<Ty<'src>>,
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct FnPtrTyModifiers<'src> {
-    pub(crate) safety: Safety<()>,
-    pub(crate) externness: Externness<'src>,
+pub struct FnPtrTyModifiers<'src> {
+    pub safety: Safety<()>,
+    pub externness: Externness<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct RefTy<'src> {
-    pub(crate) lt: Option<Ident<'src>>,
-    pub(crate) kind: BorrowKind<!>,
-    pub(crate) mut_: Mutability,
-    pub(crate) pointee: Ty<'src>,
+pub struct RefTy<'src> {
+    pub lt: Option<Ident<'src>>,
+    pub kind: BorrowKind<!>,
+    pub mut_: Mutability,
+    pub pointee: Ty<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Generics<'src> {
-    pub(crate) params: Vec<GenericParam<'src>>,
-    pub(crate) preds: Vec<Predicate<'src>>,
+pub struct Generics<'src> {
+    pub params: Vec<GenericParam<'src>>,
+    pub preds: Vec<Predicate<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct GenericParam<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) binder: Ident<'src>,
-    pub(crate) kind: GenericParamKind<'src>,
+pub struct GenericParam<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub binder: Ident<'src>,
+    pub kind: GenericParamKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum GenericParamKind<'src> {
+pub enum GenericParamKind<'src> {
     Ty { bounds: Vec<Bound<'src>>, default: Option<Ty<'src>> },
     Const { ty: Ty<'src>, default: Option<Expr<'src>> },
     Lifetime(Vec<Ident<'src>>),
 }
 
 #[derive(Debug)]
-pub(crate) struct Predicate<'src> {
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) kind: PredicateKind<'src>,
+pub struct Predicate<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub kind: PredicateKind<'src>,
 }
 
 #[derive(Debug)]
-pub(crate) enum PredicateKind<'src> {
+pub enum PredicateKind<'src> {
     Trait(TraitPredicate<'src>),
     Outlives(OutlivesPredicate<'src>),
     Equality(Ty<'src>, Ty<'src>),
 }
 
 #[derive(Debug)]
-pub(crate) struct TraitPredicate<'src> {
-    pub(crate) bound_vars: Vec<GenericParam<'src>>,
-    pub(crate) ty: Ty<'src>,
-    pub(crate) bounds: Vec<Bound<'src>>,
+pub struct TraitPredicate<'src> {
+    pub bound_vars: Vec<GenericParam<'src>>,
+    pub ty: Ty<'src>,
+    pub bounds: Vec<Bound<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct OutlivesPredicate<'src> {
-    pub(crate) lt: Ident<'src>,
-    pub(crate) bounds: Vec<Ident<'src>>,
+pub struct OutlivesPredicate<'src> {
+    pub lt: Ident<'src>,
+    pub bounds: Vec<Ident<'src>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum Bound<'src> {
+pub enum Bound<'src> {
     Outlives(Ident<'src>),
     Use(Vec<Ident<'src>>),
     Trait {
@@ -122,14 +122,14 @@ impl<'src> From<Path<'src, UnambiguousGenericArgs>> for Bound<'src> {
 // FIXME: Make this more type-safe: non-normal polarity is
 //        incompatible with constness & asyncness
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) struct TraitBoundModifiers {
-    pub(crate) constness: BoundConstness,
-    pub(crate) asyncness: BoundAsyncness,
-    pub(crate) polarity: BoundPolarity,
+pub struct TraitBoundModifiers {
+    pub constness: BoundConstness,
+    pub asyncness: BoundAsyncness,
+    pub polarity: BoundPolarity,
 }
 
 impl TraitBoundModifiers {
-    pub(crate) const NONE: Self = Self {
+    pub const NONE: Self = Self {
         constness: BoundConstness::Never,
         asyncness: BoundAsyncness::Never,
         polarity: BoundPolarity::Positive,
@@ -137,20 +137,20 @@ impl TraitBoundModifiers {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum BoundConstness {
+pub enum BoundConstness {
     Never,
     Maybe,
     Always,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum BoundAsyncness {
+pub enum BoundAsyncness {
     Never,
     Always,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum BoundPolarity {
+pub enum BoundPolarity {
     Positive,
     Negative,
     Maybe,

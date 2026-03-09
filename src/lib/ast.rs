@@ -1,4 +1,4 @@
-pub(crate) mod attr;
+mod attr;
 mod expr;
 mod item;
 mod pat;
@@ -8,22 +8,22 @@ mod ty;
 
 use crate::span::{Span, Spanned};
 use crate::token::Token;
-pub(crate) use attr::*;
-pub(crate) use expr::*;
-pub(crate) use item::*;
-pub(crate) use pat::*;
-pub(crate) use path::*;
+pub use attr::*;
+pub use expr::*;
+pub use item::*;
+pub use pat::*;
+pub use path::*;
 use std::fmt;
-pub(crate) use stmt::*;
-pub(crate) use ty::*;
+pub use stmt::*;
+pub use ty::*;
 
 #[derive(Debug)]
 pub struct File<'src> {
-    pub(crate) shebang: Option<&'src str>,
-    pub(crate) frontmatter: Option<Frontmatter<'src>>,
-    pub(crate) attrs: Vec<Attr<'src>>,
-    pub(crate) items: Vec<Item<'src>>,
-    pub(crate) span: Span,
+    pub shebang: Option<&'src str>,
+    pub frontmatter: Option<Frontmatter<'src>>,
+    pub attrs: Vec<Attr<'src>>,
+    pub items: Vec<Item<'src>>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -33,10 +33,10 @@ pub struct Frontmatter<'src> {
     pub span: Span,
 }
 
-pub(crate) struct MacroCall<'src, M: GenericArgsMode> {
-    pub(crate) path: Path<'src, M>,
-    pub(crate) bracket: Bracket,
-    pub(crate) stream: TokenStream,
+pub struct MacroCall<'src, M: GenericArgsMode> {
+    pub path: Path<'src, M>,
+    pub bracket: Bracket,
+    pub stream: TokenStream,
 }
 
 impl<M: GenericArgsMode> fmt::Debug for MacroCall<'_, M> {
@@ -52,30 +52,29 @@ impl<M: GenericArgsMode> fmt::Debug for MacroCall<'_, M> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Bracket {
+pub enum Bracket {
     Round,
     Square,
     Curly,
 }
 
-pub(crate) type TokenStream = Vec<Token>;
+pub type TokenStream = Vec<Token>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Orientation {
+pub enum Orientation {
     Open,
     Close,
 }
 
 #[derive(Debug)]
-pub(crate) struct Lit<'src> {
-    #[cfg_attr(not(test), expect(dead_code))]
-    pub(crate) kind: LitKind,
-    pub(crate) value: &'src str,
-    pub(crate) suffix: Option<&'src str>,
+pub struct Lit<'src> {
+    pub kind: LitKind,
+    pub value: &'src str,
+    pub suffix: Option<&'src str>,
 }
 
 #[derive(Debug)]
-pub(crate) enum LitKind {
+pub enum LitKind {
     Bool,
     Char,
     Num,
@@ -83,13 +82,13 @@ pub(crate) enum LitKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Mutability {
+pub enum Mutability {
     Mut,
     Not,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum BorrowKind<X = ()> {
+pub enum BorrowKind<X = ()> {
     Pin,
     Ref,
     Raw(X),
@@ -97,7 +96,7 @@ pub(crate) enum BorrowKind<X = ()> {
 
 #[derive_const(Default)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Safety<X = !> {
+pub enum Safety<X = !> {
     #[default]
     Inherited,
     Safe(X),
@@ -106,7 +105,7 @@ pub(crate) enum Safety<X = !> {
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub(crate) enum Externness<'src> {
+pub enum Externness<'src> {
     Extern(Option<&'src str>),
     #[default]
     Not,

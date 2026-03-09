@@ -1,19 +1,19 @@
 use super::{Cx, Fmt, fmt};
 use crate::ast;
 
-impl Fmt for ast::Attr<'_, ast::attr::Outer> {
+impl Fmt for ast::Attr<'_, ast::OuterAttrStyle> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.upcast().fmt(cx);
     }
 }
 
-impl Fmt for ast::Attr<'_, ast::attr::Inner> {
+impl Fmt for ast::Attr<'_, ast::InnerAttrStyle> {
     fn fmt(self, cx: &mut Cx<'_>) {
         self.upcast().fmt(cx);
     }
 }
 
-impl Fmt for ast::Attr<'_, ast::attr::Any> {
+impl Fmt for ast::Attr<'_, ast::AnyAttrStyle> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { style, kind } = self;
 
