@@ -242,6 +242,55 @@ fn unicode_17() {
 }
 
 #[test]
+fn raw_idents() {
+    // FIXME: Instead of literally storing "r#loop" for (bare) raw idents in the AST, we should
+    //        just store "loop". However, we can't that do without changing their representation
+    //        from &str to sth. that is / can be owned since we can't just slice off the `r#`
+    //        from raw *ticked* idents like `'r#if` which we'd like to map to `'if` in the future.
+    //        Maybe I should just go with Cow<'_, str> for now and worry about better
+    //        representations later.
+    //        A better representation is also needed if we want to perform Unicode
+    //        normalization (duh!)
+
+    t!(
+        parse_expr,
+        Rust2015,
+        "r#loop {}",
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Struct(r!(ast::StructExpr {
+                path: ast::ExtPath {
+                    ext: None,
+                    path: ast::Path {
+                        // FIXME: Strip + Unicode-normalize to `loop`.
+                        // See comment above.
+                        segs: r!([ast::PathSeg { ident: ast::Ident!("r#loop"), .. }])
+                    }
+                },
+                ..
+            })),
+            ..
+        })
+    );
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2015,
+        "K!(r#self r#_);",
+        Err(r!([Error::InvalidRawIdent(_), Error::InvalidRawIdent(_)]))
+    );
+
+    // `r#` is considered to be a malformed raw delimited string literal. That's what rustc does, too.
+    // We might want to diverge from that behaviorally eventually but it's not super important.
+    t!(
+        parse_item,
+        Rust2015,
+        "K!(r#);",
+        Err(r!([Error::InvalidStrLitDelimiter(_), Error::MissingClosingDelimiters(_)]))
+    );
+}
+
+#[test]
 fn ticked_idents() {
     // Ticked keywords aren't illegal per se:
     t!(
@@ -262,4 +311,58 @@ fn ticked_idents() {
 
     // Similarly, as labels they are, too:
     t!(parse_expr, Rust2015, "'if: loop {}", Err(r!([Error::ReservedLabel(_)])));
+}
+
+#[test]
+fn raw_ticked_idents() {
+    t!(
+        parse_item,
+        Rust2021,
+        "type T<'r#if>;",
+        Ok(ast::Item {
+            kind: ast::ItemKind::TyAlias(r!(ast::TyAliasItem {
+                generics: ast::Generics {
+                    params: r!([ast::GenericParam {
+                        kind: ast::GenericParamKind::Lifetime(_),
+                        // FIXME: Transform + Unicode-normalize to `'if`.
+                        // See comment in test `raw_idents` above.
+                        binder: ast::Ident!("'r#if"),
+                        ..
+                    }]),
+                    ..
+                },
+                ..
+            })),
+            ..
+        })
+    );
+
+    t!(parse_expr, Rust2021, "'r#if: loop {}", Ok(_));
+
+    t!(
+        parse_expr,
+        Rust2018,
+        "'r#if: loop {}",
+        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Hash, .. }, _)]))
+    );
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2018,
+        "C! { 'r#if }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
+                stream: r!([
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::Hash, .. },
+                    Token { kind: TokenKind::If, .. }
+                ]),
+                ..
+            })),
+            ..
+        })
+    );
+
+    t!(parse_item, Rust2021, "type R = &'r#_ ();", Err(r!([Error::InvalidRawTickedIdent(_)])));
 }

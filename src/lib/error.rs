@@ -82,7 +82,7 @@ pub enum Error {
     InvalidRawIdent(Span),
     InvalidRawTickedIdent(Span),
     InvalidScalar(char, InvalidScalarPlace, Span),
-    InvalidStrLitDelim(Span),
+    InvalidStrLitDelimiter(Span),
     InvalidTyPrefix(Span),
     LifetimeObjectTyWithoutPlus(Span),
     MisplacedReceiver(Span),

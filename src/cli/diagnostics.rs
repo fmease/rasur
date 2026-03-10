@@ -106,7 +106,7 @@ fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
             };
             Diag::new(format!("invalid scalar U+{:04X}{place}", char as u32)).highlight(span)
         }
-        Error::InvalidStrLitDelim(span) => {
+        Error::InvalidStrLitDelimiter(span) => {
             Diag::new("invalid string literal delimiter").highlight(span)
         }
         Error::EmptyNumLit(span) => Diag::new("empty number literal").highlight(span),

@@ -625,7 +625,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
         if let Some((index, char)) = self.advance()
             && char != '"'
         {
-            self.error(Error::InvalidStrLitDelim(self.span(index)));
+            self.error(Error::InvalidStrLitDelimiter(self.span(index)));
             return TokenKind::StrLit;
         }
 
