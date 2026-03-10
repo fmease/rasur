@@ -28,8 +28,10 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
+        let start = self.token.span;
         let expr = self.parse_expr_at_level(Level::Initial, s_policy, l_policy, o_policy)?;
-        self.validate_let_chain(&expr, l_policy)?;
+        let span = self.prev_token().map_or(start, |token| start.to(token.span));
+        self.validate_let_chain(&expr, span, l_policy);
 
         Ok(expr)
     }
@@ -590,9 +592,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_if_expr();
             }
-            TokenKind::Let
-                if let LetPolicy::Allowed | LetPolicy::AllowedAtTopLevelOnly = l_policy =>
-            {
+            TokenKind::Let if let LetPolicy::Allowed(_) = l_policy => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Allowed)?;
                 self.parse(TokenKind::SingleEquals)?;
@@ -911,14 +911,11 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
-        let l_policy = if self.edition >= Edition::Rust2024 {
-            LetPolicy::Allowed
-        } else {
-            LetPolicy::AllowedAtTopLevelOnly
-        };
-
-        let condition =
-            self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
+        let condition = self.parse_expr_where(
+            StructPolicy::Forbidden,
+            LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            OpPolicy::Allowed,
+        )?;
         let consequent = self.parse_block_expr(AttrPolicy::Reject)?;
 
         let alternate = if self.consume(TokenKind::Else) {
@@ -984,7 +981,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     pat,
                     Some(self.parse_expr_where(
                         StructPolicy::Allowed,
-                        LetPolicy::Allowed,
+                        LetPolicy::Allowed(LetAllowance::Unconditional),
                         OpPolicy::Allowed,
                     )?),
                 ),
@@ -1021,14 +1018,11 @@ impl<'src> Parser<'_, '_, 'src> {
         label: Option<ast::Ident<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        let l_policy = if self.edition >= Edition::Rust2024 {
-            LetPolicy::Allowed
-        } else {
-            LetPolicy::AllowedAtTopLevelOnly
-        };
-
-        let condition =
-            self.parse_expr_where(StructPolicy::Forbidden, l_policy, OpPolicy::Allowed)?;
+        let condition = self.parse_expr_where(
+            StructPolicy::Forbidden,
+            LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            OpPolicy::Allowed,
+        )?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
@@ -1072,50 +1066,41 @@ impl<'src> Parser<'_, '_, 'src> {
         })
     }
 
-    fn validate_let_chain(&self, expr: &ast::Expr<'src>, l_policy: LetPolicy) -> Result<()> {
-        if let LetPolicy::Forbidden = l_policy {
-            // The parser fully takes care of this.
-            return Ok(());
+    fn validate_let_chain(&self, expr: &ast::Expr<'src>, span: Span, l_policy: LetPolicy) {
+        // If the let policy was forbidden, we would've already failed while (actually) parsing.
+        if let LetPolicy::Allowed(_) = l_policy
+            && !self.is_valid_let_chain(expr, true, l_policy)
+        {
+            // FIXME: Fake an UnexpectedToken(Let|&&|.., ExpectedFragment::Expr) in the
+            // relevant cases for uniformity with the corresp. parser diagnostic.
+            self.error(Error::InvalidLetChain(span));
         }
-
-        self.do_validate_let_chain(expr, true, l_policy)
     }
 
-    fn do_validate_let_chain(
-        &self,
-        expr: &ast::Expr<'_>,
-        root: bool,
-        l_policy: LetPolicy,
-    ) -> Result<()> {
+    fn is_valid_let_chain(&self, expr: &ast::Expr<'src>, root: bool, l_policy: LetPolicy) -> bool {
         // We only check the cases that weren't already covered by the parser.
 
         match &expr.kind {
-            ast::ExprKind::Let(_) => {
-                if match l_policy {
-                    LetPolicy::Allowed => false,
-                    LetPolicy::AllowedAtTopLevelOnly => !root,
-                    LetPolicy::Forbidden => true,
-                } {
-                    // FIXME: Fake an UnexpectedToken(Let, ExpectedFragment::Expr) in the
-                    // relevant cases for uniformity with the corresp. parser diagnostic.
-                    return self.fatal(Error::InvalidLetChain);
+            ast::ExprKind::Let(_) => match l_policy {
+                LetPolicy::Allowed(LetAllowance::Unconditional) => true,
+                LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024) => {
+                    root || self.edition >= Edition::Rust2024
                 }
-            }
+                LetPolicy::Forbidden => false,
+            },
             ast::ExprKind::BinOp(ast::BinOp::And, left, right) => {
-                self.do_validate_let_chain(left, false, l_policy)?;
-                self.do_validate_let_chain(right, false, l_policy)?;
+                self.is_valid_let_chain(left, false, l_policy)
+                    && self.is_valid_let_chain(right, false, l_policy)
             }
             ast::ExprKind::BinOp(ast::BinOp::Or | ast::AssignOp!(), left, right) => {
-                self.do_validate_let_chain(left, false, LetPolicy::Forbidden)?;
-                self.do_validate_let_chain(right, false, LetPolicy::Forbidden)?;
+                self.is_valid_let_chain(left, false, LetPolicy::Forbidden)
+                    && self.is_valid_let_chain(right, false, LetPolicy::Forbidden)
             }
             ast::ExprKind::Range(Some(left), _right, _) => {
-                self.do_validate_let_chain(left, false, LetPolicy::Forbidden)?;
+                self.is_valid_let_chain(left, false, LetPolicy::Forbidden)
             }
-            _ => {}
+            _ => true,
         }
-
-        Ok(())
     }
 
     /// Optionally parse a label.
@@ -1132,10 +1117,15 @@ pub(crate) enum StructPolicy {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum LetPolicy {
-    Allowed,
-    // FIXME: I'm not really sure about encoding this piece of information here.
-    AllowedAtTopLevelOnly,
+    #[expect(private_interfaces)] // nobody should use this variant outside of this module
+    Allowed(LetAllowance),
     Forbidden,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum LetAllowance {
+    Unconditional,
+    AtTopLevelOnlyPriorTo2024,
 }
 
 #[derive(Clone, Copy)]

@@ -425,9 +425,7 @@ impl TokenPrefix {
         #[expect(clippy::match_same_arms)] // leads to more legible code
         Ok(Some(match (self, token) {
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
-            // FIXME: Likely not a valid split.
             (Self::GreaterThan, TokenKind::DoubleGreaterThanEquals) => TokenKind::GreaterThanEquals,
-            // FIXME: Likely not a valid split.
             (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
             (Self::GreaterThan, TokenKind::SingleGreaterThan) => return Ok(None),
             // NB: `LessThanEquals` and `DoubleLessThanEquals` are indeed *not* eligible!

@@ -74,7 +74,7 @@ pub enum Error {
     InvalidFrontmatterInfostring(Span),
     InvalidFrontmatterTrailer(Span),
     InvalidItemPrefix(Span),
-    InvalidLetChain,
+    InvalidLetChain(Span),
     InvalidLitSuffix(Span),
     InvalidNumericIdent(Span),
     InvalidOpAfterCast(Span),

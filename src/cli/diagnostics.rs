@@ -78,7 +78,7 @@ fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
             Diag::new("invalid operator following a cast").highlight(span)
         }
         Error::UnknownBuiltinSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
-        Error::InvalidLetChain => Diag::new("invalid let-chain"),
+        Error::InvalidLetChain(span) => Diag::new("invalid let-chain").highlight(span),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
         Error::InvalidRawTickedIdent(span) => {
             Diag::new("invalid raw ticked identifier").highlight(span)
@@ -231,7 +231,7 @@ impl RenderExt for Diag {
                 let file = cx.file.as_ref().expect("highlight requested but no source provided");
 
                 super let path = match file.path {
-                // FIXME: Being forced to use to_string_lossy is sad :(
+                    // FIXME: Being forced to use to_string_lossy is sad :(
                     SourcePath::Real(path) => path.to_string_lossy(),
                     SourcePath::Anon => "<anon>".into(),
                 };
