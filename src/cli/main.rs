@@ -7,6 +7,7 @@
 mod diagnostics;
 mod interface;
 
+use crate::diagnostics::{Diag, RenderExt as _, SourcePathBuf};
 use Default::default;
 use painter::Painter;
 use std::process::ExitCode;
@@ -27,23 +28,28 @@ fn try_main() -> Result<(), ()> {
         clap::ColorChoice::Auto => {}
     }
 
+    let cx = diagnostics::RenderCx::new(opts.short);
+
     let (source, path) = match opts.source {
         interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&path).map_err(|error| {
-                // FIXME: use annotate-snippet for this error, too
-                eprintln!("error: failed to read `{}`: {error}", path.display())
+                Diag::new(format!("failed to read `{}`: {error}", path.display())).render(&cx);
             })?;
-            (source, path)
+            (source, SourcePathBuf::Real(path))
         }
-        // FIXME: Use structured paths, `SourcePath::Anon`
-        interface::Source::String(string) => (string, "<anon>".into()),
+        interface::Source::Stdin => (
+            std::io::read_to_string(std::io::stdin())
+                .map_err(|error| Diag::new(format!("failed to read stdin: {error}")).render(&cx))?,
+            SourcePathBuf::Anon,
+        ),
+        interface::Source::String(string) => (string, SourcePathBuf::Anon),
     };
 
     let source = rasur::lexer::normalize(&source);
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();
-    let cx = diagnostics::RenderCx::new(source, &path, opts.short);
+    let cx = cx.file(path.as_ref(), source);
 
     let errors = rasur::error::Buffer::default();
 
@@ -69,7 +75,7 @@ fn try_main() -> Result<(), ()> {
         if let errors = errors.into_inner()
             && !errors.is_empty()
         {
-            diagnostics::render(errors, cx);
+            errors.into_iter().for_each(|error| error.render(&cx));
             return Err(());
         }
 
@@ -87,7 +93,7 @@ fn try_main() -> Result<(), ()> {
     let result = if let errors = errors.into_inner()
         && !errors.is_empty()
     {
-        diagnostics::render(errors, cx);
+        errors.into_iter().for_each(|error| error.render(&cx));
         Err(())
     } else {
         Ok(())

@@ -79,9 +79,9 @@ pub(crate) fn opts() -> Opts {
         .get_matches();
 
     let source = matches
-        .remove_one(id::SOURCE)
-        .map(Source::String)
-        .xor(matches.remove_one(id::PATH).map(Source::Path))
+        .remove_one(id::PATH)
+        .map(|path| if &path == "-" { Source::Stdin } else { Source::Path(path) })
+        .xor(matches.remove_one(id::SOURCE).map(Source::String))
         .unwrap();
 
     Opts {
@@ -116,6 +116,7 @@ pub(crate) struct Opts {
 pub(crate) enum Source {
     String(String),
     Path(PathBuf),
+    Stdin,
 }
 
 macro_rules! parse {

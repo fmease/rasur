@@ -5,18 +5,12 @@ use rasur::{
     span::Span,
     token::{Repr, Token, TokenKind},
 };
-use std::{borrow::Cow, io::Write as _, path::Path};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
-pub(crate) fn render(errors: Vec<Error>, cx: RenderCx<'_>) {
-    let mut stderr = std::io::stderr();
-    let colorize = painter::colorize(&stderr);
-
-    for error in errors {
-        writeln!(stderr, "{}", convert(error, cx).render(colorize, cx)).unwrap();
-    }
-}
-
-fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
+fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
     match error {
         Error::AmbiguousPlus(span) => Diag::new("ambiguous `+`").highlight(span),
         Error::AutoTraitAlias => Diag::new("trait aliases cannot be marked `auto`"),
@@ -28,7 +22,7 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
         }
         Error::UnexpectedToken(actual, expected) => {
             let span = actual.span;
-            let actual = actual.to_diag_str(Some(cx.source));
+            let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
             Diag::new(format!("found {actual} but expected {}", expected.to_diag_str(())))
                 .labeled_highlight(span, "unexpected token")
         }
@@ -39,7 +33,7 @@ fn convert(error: Error, cx: RenderCx<'_>) -> Diag {
             .labeled_highlight(span, "missing delimiter(s)"),
         Error::UnexpectedClosingDelimiter(actual) => {
             let span = actual.span;
-            let actual = actual.to_diag_str(Some(cx.source));
+            let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
             Diag::new(format!("found unexpected closing delimiter {actual}"))
                 .labeled_highlight(span, "unexpected delimiter")
         }
@@ -208,13 +202,13 @@ impl ToDiagStr for ExpectedFragment {
     }
 }
 
-struct Diag {
+pub(super) struct Diag {
     title: Cow<'static, str>,
     highlight: Option<(Span, Option<Cow<'static, str>>)>,
 }
 
 impl Diag {
-    fn new(title: impl Into<Cow<'static, str>>) -> Self {
+    pub(super) fn new(title: impl Into<Cow<'static, str>>) -> Self {
         Self { title: title.into(), highlight: None }
     }
 
@@ -227,36 +221,84 @@ impl Diag {
         self.highlight = Some((span, None));
         self
     }
+}
 
-    fn render(self, colorize: bool, cx: RenderCx<'_>) -> String {
+impl RenderExt for Diag {
+    fn render(self, cx: &RenderCx<'_>) {
         let group = ann::Group::with_title(ann::Level::ERROR.title(self.title));
         let group = match self.highlight {
             Some((span, label)) => {
+                let file = cx.file.as_ref().expect("highlight requested but no source provided");
+
+                super let path = match file.path {
                 // FIXME: Being forced to use to_string_lossy is sad :(
-                super let path = cx.path.to_string_lossy();
+                    SourcePath::Real(path) => path.to_string_lossy(),
+                    SourcePath::Anon => "<anon>".into(),
+                };
+
                 let annotation = ann::AnnotationKind::Primary.span(span.range());
                 let annotation = match label {
                     Some(label) => annotation.label(label),
                     None => annotation,
                 };
-                group.element(ann::Snippet::source(cx.source).path(&path).annotation(annotation))
+                group.element(ann::Snippet::source(file.source).path(&path).annotation(annotation))
             }
             None => group,
         };
-        let renderer = if colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
-        renderer.short_message(cx.short).render(&[group])
+        let renderer = if cx.colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
+        let diag = renderer.short_message(cx.short).render(&[group]);
+        eprintln!("{diag}");
     }
 }
 
-#[derive(Clone, Copy)]
+impl RenderExt for Error {
+    fn render(self, cx: &RenderCx<'_>) {
+        convert(self, cx).render(cx);
+    }
+}
+
+pub(super) trait RenderExt {
+    fn render(self, cx: &RenderCx<'_>);
+}
+
 pub(crate) struct RenderCx<'a> {
-    source: &'a str,
-    path: &'a Path,
+    colorize: bool,
     short: bool,
+    file: Option<SourceFile<'a>>,
 }
 
 impl<'a> RenderCx<'a> {
-    pub(crate) fn new(source: &'a str, path: &'a Path, short: bool) -> Self {
-        Self { source, path, short }
+    pub(crate) fn new(short: bool) -> Self {
+        let colorize = painter::colorize(&std::io::stderr());
+
+        Self { colorize, short, file: None }
+    }
+
+    pub(crate) fn file(self, path: SourcePath<'a>, source: &'a str) -> Self {
+        Self { file: Some(SourceFile { path, source }), ..self }
+    }
+}
+
+pub struct SourceFile<'a> {
+    path: SourcePath<'a>,
+    source: &'a str,
+}
+
+pub(crate) enum SourcePath<'a> {
+    Real(&'a Path),
+    Anon,
+}
+
+pub(crate) enum SourcePathBuf {
+    Real(PathBuf),
+    Anon,
+}
+
+impl SourcePathBuf {
+    pub(super) fn as_ref(&self) -> SourcePath<'_> {
+        match self {
+            Self::Real(path) => SourcePath::Real(path),
+            Self::Anon => SourcePath::Anon,
+        }
     }
 }
