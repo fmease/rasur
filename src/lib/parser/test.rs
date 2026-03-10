@@ -3162,3 +3162,27 @@ fn unicode_17() {
         })
     );
 }
+
+#[test]
+fn ticked_idents() {
+    // Ticked keywords aren't illegal per se:
+    assert_matches!(
+        parse_item(n!("M! { 'if }"), Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
+                stream: r!([Token { kind: TokenKind::TickedIdent, .. }]),
+                ..
+            })),
+            ..
+        })
+    );
+
+    // However as lifetimes they are (except for `'_` and `'static` of course):
+    assert_matches!(
+        parse_item(n!("type T<'if>;"), Rust2015),
+        Err(r!([Error::ReservedLifetime(_)]))
+    );
+
+    // Similarly, as labels they are, too:
+    assert_matches!(parse_expr(n!("'if: loop {}"), Rust2015), Err(r!([Error::ReservedLabel(_)])));
+}

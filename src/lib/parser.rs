@@ -101,17 +101,15 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         validate: fn(TokenKind) -> bool,
         error: fn(Span) -> Error,
     ) -> Option<ast::Ident<'src>> {
-        let TokenKind::TickedIdent = self.token.kind else { return None };
-        let span = self.token.span;
-        let name = self.source(span);
+        let Token { kind: TokenKind::TickedIdent, span } = self.token else { return None };
         self.advance();
-        // For better diagnostics, we lex here in the parser instead of in the lexer.
-        // Otherwise we'd produce messages like "found invalid lifetime, expected XYZ".
-        // FIXME: Now that we have token validation on `self.advance()`, we can rethink this approach.
+
+        let name = self.source(span);
         let ident = lex_ident(&name[1..], self.edition);
         if !validate(ident) {
             self.error(error(span));
         }
+
         Some(ast::Ident::new(name, span))
     }
 
