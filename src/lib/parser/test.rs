@@ -8,8 +8,7 @@ use crate::{
     token::{Token, TokenKind},
 };
 use deref as r;
-use normalizer::{Normalized, n};
-use std::assert_matches;
+use normalizer::{Normalized, normalize};
 
 // NOTE: We're not using implicit deref patterns at the moment since rust-analyzer
 //       can't handle them yet and would color the entirely red. Use `r!(…)` for now.
@@ -19,11 +18,7 @@ type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 mod normalizer {
     use std::borrow::Cow;
 
-    pub(super) macro n($source:expr) {
-        normalize($source).as_ref()
-    }
-
-    pub fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
+    pub(super) fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
         Normalized { raw: crate::lexer::normalize(source) }
     }
 
@@ -65,6 +60,26 @@ fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_
     Ok(file.unwrap())
 }
 
+fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
+    parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
+}
+
+fn parse_ty(source: Normalized<&str>, edition: Edition) -> Result<ast::Ty<'_>> {
+    parse_via(source, edition, |this| this.parse_ty())
+}
+
+fn parse_stmt(source: Normalized<&str>, edition: Edition) -> Result<ast::Stmt<'_>> {
+    parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
+}
+
+fn parse_expr(source: Normalized<&str>, edition: Edition) -> Result<ast::Expr<'_>> {
+    parse_via(source, edition, |this| this.parse_expr())
+}
+
+fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>> {
+    parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Allowed))
+}
+
 fn parse_via<'src, T>(
     source: Normalized<&'src str>,
     edition: Edition,
@@ -91,30 +106,21 @@ fn parse_via<'src, T>(
     Ok(node.unwrap())
 }
 
-fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
-    parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
-}
-
-fn parse_ty(source: Normalized<&str>, edition: Edition) -> Result<ast::Ty<'_>> {
-    parse_via(source, edition, |this| this.parse_ty())
-}
-
-fn parse_stmt(source: Normalized<&str>, edition: Edition) -> Result<ast::Stmt<'_>> {
-    parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
-}
-
-fn parse_expr(source: Normalized<&str>, edition: Edition) -> Result<ast::Expr<'_>> {
-    parse_via(source, edition, |this| this.parse_expr())
-}
-
-fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>> {
-    parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Allowed))
+macro_rules! t {
+    ($parse:ident, $edition:ident, $source:literal, $ast:pat $(,)?) => {
+        match $parse(normalize($source).as_ref(), $edition) {
+            $ast => {}
+            ast => panic!("{:?}: {} != {:#?}", $source, stringify!($ast), ast),
+        }
+    };
 }
 
 #[test]
 fn file_empty() {
-    assert_matches!(
-        parse_file(n!(""), Rust2015),
+    t!(
+        parse_file,
+        Rust2015,
+        "",
         Ok(ast::File { shebang: None, frontmatter: None, attrs: r!([]), items: r!([]), span: _ })
     );
 }
@@ -125,8 +131,10 @@ fn file_empty() {
 fn frontmatter_crlf() {
     // See also <https://github.com/fmease/rasur/issues/15>.
 
-    assert_matches!(
-        parse_file(n!("---\t\r\n---\t\r\n"), Rust2015),
+    t!(
+        parse_file,
+        Rust2015,
+        "---\t\r\n---\t\r\n",
         Ok(ast::File {
             shebang: None,
             frontmatter: Some(ast::Frontmatter {
@@ -142,28 +150,26 @@ fn frontmatter_crlf() {
 #[test]
 fn frontmatter_cr() {
     // CR isn't "horizontal whitespace" and therefore forbidden inside infostrings.
-    assert_matches!(
-        parse_file(n!("--- \r \n---"), Rust2015),
-        Err(r!([Error::InvalidFrontmatterInfostring(_)])),
-    );
+    t!(parse_file, Rust2015, "--- \r \n---", Err(r!([Error::InvalidFrontmatterInfostring(_)])),);
 
     // CR isn't "horizontal whitespace" and therefore forbidden inside trailers.
-    assert_matches!(
-        parse_file(n!("---\n--- \r "), Rust2015),
-        Err(r!([Error::InvalidFrontmatterTrailer(_)]))
-    );
+    t!(parse_file, Rust2015, "---\n--- \r ", Err(r!([Error::InvalidFrontmatterTrailer(_)])));
 
     // "Stray" CRs inside the frontmatter body are explicitly forbidden.
-    assert_matches!(
-        parse_file(n!("---\n(\r)\n---"), Rust2015),
+    t!(
+        parse_file,
+        Rust2015,
+        "---\n(\r)\n---",
         Err(r!([Error::InvalidScalar('\r', InvalidScalarPlace::FrontmatterBody, _)]))
     );
 }
 
 #[test]
 fn tuple_struct_field_visibility() {
-    assert_matches!(
-        parse_item(n!("struct T(pub([i32; 2]));"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub([i32; 2]));",
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(r!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
@@ -177,8 +183,10 @@ fn tuple_struct_field_visibility() {
         })
     );
 
-    assert_matches!(
-        parse_item(n!("struct T(pub(crate)[i32]);"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub(crate)[i32]);",
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(r!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
@@ -194,8 +202,10 @@ fn tuple_struct_field_visibility() {
         })
     );
 
-    assert_matches!(
-        parse_item(n!("struct T(pub(self)&());"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub(self)&());",
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(r!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
@@ -212,8 +222,10 @@ fn tuple_struct_field_visibility() {
     );
 
     // issue: <https://github.com/fmease/rasur/issues/21>
-    assert_matches!(
-        parse_item(n!("struct T(pub(super::U));"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub(super::U));",
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(r!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
@@ -235,13 +247,17 @@ fn tuple_struct_field_visibility() {
         })
     );
 
-    assert_matches!(
-        parse_item(n!("struct T(pub(super::U)impl);"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub(super::U)impl);",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_item(n!("struct T(pub(in super::U)!);"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub(in super::U)!);",
         Ok(ast::Item {
             kind: ast::ItemKind::Struct(r!(ast::StructItem {
                 kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
@@ -260,8 +276,10 @@ fn tuple_struct_field_visibility() {
         })
     );
 
-    assert_matches!(
-        parse_item(n!("struct T(pub);"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T(pub);",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseRoundBracket, .. },
             ExpectedFragment::Ty
@@ -271,13 +289,17 @@ fn tuple_struct_field_visibility() {
 
 #[test]
 fn range_exprs() {
-    assert_matches!(
-        parse_expr(n!(".."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..",
         Ok(ast::Expr { kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive), .. })
     );
 
-    assert_matches!(
-        parse_expr(n!("&.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "&..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Borrow(
                 ..,
@@ -291,8 +313,10 @@ fn range_exprs() {
     );
 
     // We once used to wrongly accept this & parse it as `(..)?`.
-    assert_matches!(
-        parse_expr(n!("..?"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..?",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::QuestionMark, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
@@ -300,8 +324,10 @@ fn range_exprs() {
     );
 
     // `(!x)..`, not `!(x..)`.
-    assert_matches!(
-        parse_expr(n!("!x.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "!x..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Not, _), .. })),
@@ -313,8 +339,10 @@ fn range_exprs() {
     );
 
     // `(&0)..`, not `&(0..)`.
-    assert_matches!(
-        parse_expr(n!("&0.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "&0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr { kind: ast::ExprKind::Borrow(..), .. })),
@@ -326,8 +354,10 @@ fn range_exprs() {
     );
 
     // `..(-x)`, not `(..) - x`.
-    assert_matches!(
-        parse_expr(n!("..-x"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..-x",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -339,8 +369,10 @@ fn range_exprs() {
     );
 
     // `..(*x)`, not `(..)*x`. Inspired by <https://github.com/tree-sitter/tree-sitter-rust/issues/291>.
-    assert_matches!(
-        parse_expr(n!("..*x"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..*x",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -352,8 +384,10 @@ fn range_exprs() {
     );
 
     // `..(0?)`, not `(..0)?`.
-    assert_matches!(
-        parse_expr(n!("..0?"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..0?",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -365,8 +399,10 @@ fn range_exprs() {
     );
 
     // `(1 + 2)..(3 + 4)`, not `1 + (2..3) + 4`.
-    assert_matches!(
-        parse_expr(n!("1 + 2..3 + 4"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "1 + 2..3 + 4",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. })),
@@ -378,8 +414,10 @@ fn range_exprs() {
     );
 
     // While here we parse the `{}` as the right argument of the range as one would expect...
-    assert_matches!(
-        parse_expr(n!("..{}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..{}",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -391,8 +429,10 @@ fn range_exprs() {
     );
 
     // ...here we consider it to belong to the overarching loop construct.
-    assert_matches!(
-        parse_expr(n!("for _ in .. {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "for _ in .. {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
                 head: ast::Expr {
@@ -406,8 +446,10 @@ fn range_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("..=()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..=()",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -419,8 +461,10 @@ fn range_exprs() {
     );
 
     // `(*x)..=0`, not `*(x..=0)`.
-    assert_matches!(
-        parse_expr(n!("*x..=0"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "*x..=0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. })),
@@ -431,16 +475,20 @@ fn range_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("..="), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )])),
     );
 
-    assert_matches!(
-        parse_expr(n!("'='..="), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "'='..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
@@ -448,8 +496,10 @@ fn range_exprs() {
     );
 
     // Unlike the `..` case, `{}` gets interpreted as the right argument of the range.
-    assert_matches!(
-        parse_expr(n!("for _ in ..={} {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "for _ in ..={} {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
                 head: ast::Expr {
@@ -467,8 +517,10 @@ fn range_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!(".. .. .."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        ".. .. ..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -489,8 +541,10 @@ fn range_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("..=..=.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..=..=..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -511,32 +565,40 @@ fn range_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("0..1..2"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0..1..2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput)
         )])),
     );
 
-    assert_matches!(
-        parse_expr(n!("0..=1..2"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0..=1..2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput)
         )])),
     );
 
-    assert_matches!(
-        parse_expr(n!("0..1..=2"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0..1..=2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput)
         )])),
     );
 
-    assert_matches!(
-        parse_expr(n!("0..=1..=2"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0..=1..=2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput)
@@ -545,8 +607,10 @@ fn range_exprs() {
 
     // FIXME
     #[cfg(false)]
-    assert_matches!(
-        parse_stmt(n!("..if(){}else{}[0]"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "..if(){}else{}[0]",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::OpenSquareBracket, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
@@ -555,8 +619,10 @@ fn range_exprs() {
 
     // FIXME
     #[cfg(false)]
-    assert_matches!(
-        parse_stmt(n!("()..if(){}else{}[0]"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "()..if(){}else{}[0]",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::OpenSquareBracket, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
@@ -564,8 +630,10 @@ fn range_exprs() {
     );
 
     // ...for comparison, this does parse:
-    assert_matches!(
-        parse_expr(n!("..if(){}else{}[0]"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..if(){}else{}[0]",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -584,11 +652,13 @@ fn range_exprs() {
 
     // FIXME
     #[cfg(false)]
-    assert_matches!(parse_stmt(n!("..{}+0"), Rust2015), Err(_));
+    t!(parse_stmt, Rust2015, "..{}+0", Err(_));
 
     // ...for comparison, this does parse:
-    assert_matches!(
-        parse_expr(n!("..{}+0"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..{}+0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
@@ -610,8 +680,10 @@ fn range_exprs() {
     // (like comparison operators) and parse / recover it as `&(..=(0..))`.
     // However, it's actually to be accepted & interpreted as `(&(..=0))..`.
     // issue: <https://github.com/fmease/rasur/issues/17>
-    assert_matches!(
-        parse_expr(n!("&..=0.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "&..=0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr {
@@ -636,8 +708,10 @@ fn range_exprs() {
     );
 
     // ... this one however it to be rejected:
-    assert_matches!(
-        parse_expr(n!("..=0.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "..=0..",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
@@ -646,8 +720,10 @@ fn range_exprs() {
 
     // We once used to wrongly parse this as `(T {}) + (..(0..))` instead of `((T {}) + (..0))..`.
     // issue: <https://github.com/fmease/rasur/issues/17>
-    assert_matches!(
-        parse_expr(n!("T {} + ..0.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "T {} + ..0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 Some(r!(ast::Expr {
@@ -668,8 +744,10 @@ fn range_exprs() {
     // FIXME: We currently wrongly parse this as `return (x + ((..).y))` instead of `(return (x + (..))).y`.
     // Inspired by <https://github.com/rust-lang/rust/pull/142476#discussion_r2159721125>.
     #[cfg(false)]
-    assert_matches!(
-        parse_expr(n!("return x + .. .y"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "return x + .. .y",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr {
@@ -690,8 +768,10 @@ fn range_exprs() {
     );
 
     // Replacing `..` with a lower expr like `0` makes it get parsed more like one would expect:
-    assert_matches!(
-        parse_expr(n!("return x + 0 .y"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "return x + 0 .y",
         Ok(ast::Expr {
             kind: ast::ExprKind::Return(Some(r!(ast::Expr {
                 kind: ast::ExprKind::BinOp(
@@ -714,16 +794,20 @@ fn range_exprs() {
 
 #[test]
 fn expr_levels() {
-    assert_matches!(
-        parse_expr(n!("if(){}else{}()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if(){}else{}()",
         Ok(ast::Expr {
             kind: ast::ExprKind::Call(r!(ast::Expr { kind: ast::ExprKind::If(..), .. }), r!([])),
             ..
         }),
     );
 
-    assert_matches!(
-        parse_expr(n!("if(){}else{}as _"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if(){}else{}as _",
         Ok(ast::Expr {
             kind: ast::ExprKind::Cast(
                 r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
@@ -735,14 +819,18 @@ fn expr_levels() {
 
     // FIXME
     #[cfg(false)]
-    assert_matches!(
-        parse_expr(n!("-if 0{}else{}()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "-if 0{}else{}()",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::OpenRoundBracket, .. }, _)])),
     );
 
     // ...however, we accept this:
-    assert_matches!(
-        parse_expr(n!("1-if 0{}else{}()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "1-if 0{}else{}()",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Sub,
@@ -762,16 +850,20 @@ fn expr_levels() {
 
 #[test]
 fn expr_attrs() {
-    assert_matches!(
-        parse_expr(n!("#[a]0"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]0",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, kind: ast::AttrKind::Normal(_) }]),
             kind: ast::ExprKind::Lit(_),
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("#[a]#[b](#[c]#[d]0)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]#[b](#[c]#[d]0)",
         Ok(ast::Expr {
             attrs: r!([
                 ast::Attr {
@@ -803,8 +895,10 @@ fn expr_attrs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("#[a]*x"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]*x",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::UnOp(..)
@@ -812,22 +906,26 @@ fn expr_attrs() {
     );
 
     // issue: <https://github.com/fmease/rasur/issues/25>
-    assert_matches!(
-        parse_expr(n!("#[a]!x"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]!x",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::UnOp(..)
         })
     );
 
-    assert_matches!(parse_expr(n!("#[a].."), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..", Err(r!([Error::ForbiddenOuterAttrs])),);
 
-    assert_matches!(parse_expr(n!("#[a]..()"), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..()", Err(r!([Error::ForbiddenOuterAttrs])),);
 
-    assert_matches!(parse_expr(n!("#[a]..=_"), Rust2015), Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..=_", Err(r!([Error::ForbiddenOuterAttrs])),);
 
-    assert_matches!(
-        parse_expr(n!("#[a]&#[b]()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]&#[b]()",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Borrow(
@@ -841,8 +939,10 @@ fn expr_attrs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("#[a]&#[b]()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]&#[b]()",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Borrow(
@@ -857,8 +957,10 @@ fn expr_attrs() {
     );
 
     // issue: <https://github.com/fmease/rasur/issues/27>
-    assert_matches!(
-        parse_expr(n!("0..#[a]1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0..#[a]1",
         Ok(ast::Expr {
             attrs: r!([]),
             kind: ast::ExprKind::Range(
@@ -874,8 +976,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the inner expr, not to the cast itself.
-    assert_matches!(
-        parse_expr(n!("#[a]()as()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]()as()",
         Ok(ast::Expr {
             attrs: r!([]),
             kind: ast::ExprKind::Cast(
@@ -889,8 +993,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the inner left expr, not to the range itself.
-    assert_matches!(
-        parse_expr(n!("#[a]!0.."), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]!0..",
         Ok(ast::Expr {
             attrs: r!([]),
             kind: ast::ExprKind::Range(
@@ -906,8 +1012,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the outermost try op expr, not to any of the inner exprs.
-    assert_matches!(
-        parse_expr(n!("#[a]0??"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]0??",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Try(r!(ast::Expr {
@@ -921,8 +1029,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the (outer) call expr, not to the (inner) callee expr.
-    assert_matches!(
-        parse_expr(n!("#[a]f()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]f()",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Call(
@@ -933,8 +1043,10 @@ fn expr_attrs() {
     );
 
     // Here, the attr of course belongs to the inner path expr, not to the call expr itself.
-    assert_matches!(
-        parse_expr(n!("(#[a]f)()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "(#[a]f)()",
         Ok(ast::Expr {
             attrs: r!([]),
             kind: ast::ExprKind::Call(
@@ -951,8 +1063,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the (outer) indexing expr, not to the (inner) indexed expr.
-    assert_matches!(
-        parse_expr(n!("#[a]f[0]"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]f[0]",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Index(
@@ -963,8 +1077,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the (outer) field expr, not to the (inner) path expr.
-    assert_matches!(
-        parse_expr(n!("#[a]x.y"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]x.y",
         Ok(ast::Expr {
             attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
             kind: ast::ExprKind::Field(
@@ -975,8 +1091,10 @@ fn expr_attrs() {
     );
 
     // The outer attr belongs to the (outer) match expr, not to the (inner) scrutinee expr.
-    assert_matches!(
-        parse_expr(n!("#[a]x.match{#![b]}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]x.match{#![b]}",
         Ok(ast::Expr {
             attrs: r!([
                 ast::Attr { style: ast::AttrStyle::Outer, .. },
@@ -990,8 +1108,10 @@ fn expr_attrs() {
     );
 
     // The attr belongs to the inner left operand expr, not to the operation itself.
-    assert_matches!(
-        parse_expr(n!("#[a]-0+1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "#[a]-0+1",
         Ok(ast::Expr {
             attrs: r!([]),
             kind: ast::ExprKind::BinOp(
@@ -1008,8 +1128,10 @@ fn expr_attrs() {
     );
 
     // This used to trigger a debug assertion.
-    assert_matches!(
-        parse_stmt(n!("#[a]match x{#![b]}"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "#[a]match x{#![b]}",
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 attrs: r!([
@@ -1028,8 +1150,10 @@ fn expr_attrs() {
 
 #[test]
 fn double_borrow_and_double_borrow_expr() {
-    assert_matches!(
-        parse_expr(n!("&&0&&&&1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "&&0&&&&1",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::And,
@@ -1071,8 +1195,10 @@ fn double_borrow_and_double_borrow_expr() {
 
 #[test]
 fn or_nullary_closure_expr() {
-    assert_matches!(
-        parse_expr(n!("()||||()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "()||||()",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Or,
@@ -1095,48 +1221,60 @@ fn or_nullary_closure_expr() {
 
 #[test]
 fn num_lit_suffixes_invalid_places() {
-    assert_matches!(
-        parse_expr(n!("compound.0suffix"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "compound.0suffix",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )]))
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0suffix)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0suffix)",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::SingleDot),
         )]))
     );
 
-    assert_matches!(
-        parse_ty(n!("builtin#field_of(T, 0suffix)"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "builtin#field_of(T, 0suffix)",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::SingleDot),
         )]))
     );
 
-    assert_matches!(
-        parse_expr(n!("Compound { 0suffix: 0 }"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "Compound { 0suffix: 0 }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::SingleColon),
         )]))
     );
 
-    assert_matches!(
-        parse_pat(n!("Compound { 0suffix: 0 }"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0suffix: 0 }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::Comma),
         )]))
     );
 
-    assert_matches!(
-        parse_pat(n!("Compound { 0suffix }"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0suffix }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
             ExpectedFragment::Token(TokenKind::Comma),
@@ -1147,12 +1285,16 @@ fn num_lit_suffixes_invalid_places() {
 #[test]
 fn num_lit_exponents_invalid_places() {
     // In field exprs, "exponents" in the numeric identifier are legal...
-    assert_matches!(
-        parse_expr(n!("compound.0e1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "compound.0e1",
         Ok(ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0e1")), .. }),
     );
-    assert_matches!(
-        parse_expr(n!("compound.0.1e2"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "compound.0.1e2", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0")), .. }),
@@ -1163,37 +1305,41 @@ fn num_lit_exponents_invalid_places() {
     );
 
     // ...unless the "exponent" contains an explicit sign:
-    assert_matches!(
-        parse_expr(n!("compound.0e+1"), Rust2015),
+    t!(parse_expr, Rust2015, "compound.0e+1", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "compound.0e-1", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(
+        parse_expr,
+        Rust2015,
+        "compound.0.1e+2", // exercise float lit splitting
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
-    assert_matches!(
-        parse_expr(n!("compound.0e-1"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_expr(n!("compound.0.1e+2"), Rust2015), // exercise float lit splitting
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_expr(n!("compound.0. 1e-2"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "compound.0. 1e-2", // exercise float lit splitting
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
 
     // Similarly, in OffsetOf/FieldOf exprs, "exponents" in the numeric are legal...
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0e1)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0e1)",
         Ok(ast::Expr { kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0e1")])), .. }),
     );
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0.1e2)"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0.1e2)", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
             ..
         }),
     );
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0. 1e2)"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0. 1e2)", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
             ..
@@ -1201,54 +1347,41 @@ fn num_lit_exponents_invalid_places() {
     );
 
     // ...unless the "exponent" contains an explicit sign:
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0e+1)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0e+1)",
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0e-1)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0e-1)",
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0.1e+2)"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0.1e+2)", // exercise float lit splitting
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, 0. 1e-2)"), Rust2015), // exercise float lit splitting
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, 0. 1e-2)", // exercise float lit splitting
         Err(r!([Error::InvalidNumericIdent(_)]))
     );
 
     // In stark contrast, in struct exprs & pats  "exponents" are outright forbidden
     // regardless of whether they have an explicit sign or not:
 
-    assert_matches!(
-        parse_expr(n!("Compound { 0e1: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_expr(n!("Compound { 0e-1: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0e1: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0e+1: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0e1 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0e+1 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0e-1 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
+    t!(parse_expr, Rust2015, "Compound { 0e1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "Compound { 0e-1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0e1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0e+1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0e1 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0e+1 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0e-1 }", Err(r!([Error::InvalidNumericIdent(_)])));
 }
 
 #[test]
@@ -1257,36 +1390,20 @@ fn num_lit_fractional_part_invalid_places() {
     // However, in the cases below we require integer literals.
     // The parser needs to inspect the literal itself to detect this.
 
-    assert_matches!(
-        parse_expr(n!("Compound { 0.0: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_expr(n!("Compound { 0.: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0.0: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0.: 0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0.0 }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    assert_matches!(
-        parse_pat(n!("Compound { 0. }"), Rust2015),
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
+    t!(parse_expr, Rust2015, "Compound { 0.0: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0.0: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0.0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_pat, Rust2015, "Compound { 0. }", Err(r!([Error::InvalidNumericIdent(_)])));
 }
 
 #[test]
 fn mut_ref_mut_pat() {
-    assert_matches!(
-        parse_pat(n!("mut ref mut x"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "mut ref mut x",
         Ok(ast::Pat::Binding(r!(ast::BindingPat {
             mut_: ast::Mutability::Mut,
             by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
@@ -1298,10 +1415,12 @@ fn mut_ref_mut_pat() {
 
 #[test]
 fn false_angle_gen_args_expr() {
-    assert_matches!(parse_expr(n!("f<i32>()"), Rust2015), Err(r!([Error::ChainedComparison(_)])),);
+    t!(parse_expr, Rust2015, "f<i32>()", Err(r!([Error::ChainedComparison(_)])),);
 
-    assert_matches!(
-        parse_expr(n!("f<i32>"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "f<i32>",
         Err(r!([
             Error::ChainedComparison(_),
             Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
@@ -1311,16 +1430,20 @@ fn false_angle_gen_args_expr() {
 
 #[test]
 fn false_angle_gen_args_pat() {
-    assert_matches!(
-        parse_pat(n!("Some<i32>(0)"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "Some<i32>(0)",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 }
 
 #[test]
 fn angle_gen_args_expr() {
-    assert_matches!(
-        parse_expr(n!("f::<i32>()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "f::<i32>()",
         Ok(ast::Expr {
             kind: ast::ExprKind::Call(
                 r!(ast::Expr {
@@ -1356,8 +1479,10 @@ fn angle_gen_args_expr() {
 
 #[test]
 fn angle_gen_args_pat() {
-    assert_matches!(
-        parse_pat(n!("Some::<i32>(0)"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "Some::<i32>(0)",
         Ok(ast::Pat::TupleStruct(r!(ast::TupleStructPat {
             path: ast::ExtPath {
                 ext: None,
@@ -1388,8 +1513,10 @@ fn angle_gen_args_pat() {
 
 #[test]
 fn angle_gen_args_ty() {
-    assert_matches!(
-        parse_ty(n!("Ty<'a, (), 0>"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Ty<'a, (), 0>",
         Ok(ast::Ty::Path(r!(ast::ExtPath {
             ext: None,
             path: ast::Path {
@@ -1414,7 +1541,7 @@ fn angle_gen_args_ty() {
         })))
     );
 
-    assert_matches!(parse_ty(n!("Ty::<'a, (), 0>"), Rust2015), Ok(_)); // just a smoke test
+    t!(parse_ty, Rust2015, "Ty::<'a, (), 0>", Ok(_)); // just a smoke test
 }
 
 // While typically angle generic args have to be introduced with `::<` instead of `<`
@@ -1423,8 +1550,10 @@ fn angle_gen_args_ty() {
 // encountering just `<`.
 #[test]
 fn angle_args_in_path_ext_expr() {
-    assert_matches!(
-        parse_expr(n!("<() as TraitRef<()>>::assoc"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "<() as TraitRef<()>>::assoc",
         Ok(ast::Expr {
             kind: ast::ExprKind::Path(r!(ast::ExtPath {
                 ext: Some(ast::PathExt {
@@ -1454,8 +1583,10 @@ fn angle_args_in_path_ext_expr() {
 // pattern position but trailing `-> $Type` is also permitted.
 #[test]
 fn paren_gen_args_arrow_expr_or_pat() {
-    assert_matches!(
-        parse_expr(n!("x::()->()"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x::()->()",
         Ok(ast::Expr {
             kind: ast::ExprKind::Path(r!(ast::ExtPath {
                 ext: None,
@@ -1473,8 +1604,10 @@ fn paren_gen_args_arrow_expr_or_pat() {
         })
     );
 
-    assert_matches!(
-        parse_pat(n!("x::()->!::X"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "x::()->!::X",
         Ok(ast::Pat::Path(r!(ast::ExtPath {
             ext: None,
             path: ast::Path {
@@ -1495,21 +1628,27 @@ fn paren_gen_args_arrow_expr_or_pat() {
 
 #[test]
 fn macro_call_item_gen_args() {
-    assert_matches!(
-        parse_item(n!("path::to::<>::call!();"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "path::to::<>::call!();",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 
-    assert_matches!(
-        parse_item(n!("path::to::call<()>!();"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "path::to::call<()>!();",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
     );
 }
 
 #[test]
 fn macro_call_stmt_gen_args() {
-    assert_matches!(
-        parse_stmt(n!("path::to::<>::call::<>!();"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "path::to::<>::call::<>!();",
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 kind: ast::ExprKind::MacroCall(r!(ast::MacroCall {
@@ -1535,7 +1674,7 @@ fn macro_call_stmt_gen_args() {
         ))
     );
 
-    assert_matches!(parse_stmt(n!("path::to::<>::call::()!();"), Rust2015), Ok(_)); // just a smoke test
+    t!(parse_stmt, Rust2015, "path::to::<>::call::()!();", Ok(_)); // just a smoke test
 }
 
 #[test]
@@ -1543,8 +1682,10 @@ fn abi_strs() {
     // To borrow our lexer terms, ABI strings have to have flavor UTF-8
     // and no suffix but they can be unguarded, guarded or raw.
 
-    assert_matches!(
-        parse_ty(n!(r#"extern "ABI" fn()"#), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        r#"extern "ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
                 externness: ast::Externness::Extern(Some(r#""ABI""#)),
@@ -1554,8 +1695,10 @@ fn abi_strs() {
         })))
     );
 
-    assert_matches!(
-        parse_ty(n!(r#"extern r"ABI" fn()"#), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        r#"extern r"ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
                 externness: ast::Externness::Extern(Some(r#"r"ABI""#)),
@@ -1565,8 +1708,10 @@ fn abi_strs() {
         })))
     );
 
-    assert_matches!(
-        parse_ty(n!(r##"extern r#"ABI"# fn()"##), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        r##"extern r#"ABI"# fn()"##,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
                 externness: ast::Externness::Extern(Some(r##"r#"ABI"#"##)),
@@ -1576,32 +1721,22 @@ fn abi_strs() {
         })))
     );
 
-    assert_matches!(
-        parse_ty(n!(r#"extern b"ABI" fn()"#), Rust2015),
-        Err(r!([Error::InvalidAbiStr(_)]))
-    );
+    t!(parse_ty, Rust2015, r#"extern b"ABI" fn()"#, Err(r!([Error::InvalidAbiStr(_)])));
 
-    assert_matches!(
-        parse_ty(n!(r#"extern c"ABI" fn()"#), Rust2021),
-        Err(r!([Error::InvalidAbiStr(_)]))
-    );
+    t!(parse_ty, Rust2021, r#"extern c"ABI" fn()"#, Err(r!([Error::InvalidAbiStr(_)])));
 
-    assert_matches!(
-        parse_ty(n!(r#"extern "ABI"suffix fn()"#), Rust2018),
-        Err(r!([Error::AbiStrSuffix(_)])),
-    );
+    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err(r!([Error::AbiStrSuffix(_)])),);
 }
 
 #[test]
 fn const_block_const_item_modifier() {
-    assert_matches!(
-        parse_expr(
-            n!("{
+    t!(
+        parse_expr,
+        Rust2015,
+        "{
     const {}
     const fn f() {}
-}"),
-            Rust2015
-        ),
+}",
         Ok(ast::Expr {
             kind: ast::ExprKind::Block(
                 None,
@@ -1637,14 +1772,13 @@ fn const_block_const_item_modifier() {
         })
     );
 
-    assert_matches!(
-        parse_file(
-            n!("
+    t!(
+        parse_file,
+        Rust2015,
+        "
     const {}
     const fn f() {}
-"),
-            Rust2015
-        ),
+",
         Ok(ast::File {
             items: r!([
                 ast::Item {
@@ -1671,15 +1805,19 @@ fn const_block_const_item_modifier() {
 
 #[test]
 fn control_flow_ops_block_expr() {
-    assert_matches!(
-        parse_expr(n!("if return {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if return {}",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
             ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
         )]))
     );
-    assert_matches!(
-        parse_expr(n!("if return {} {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if return {} {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr {
@@ -1697,8 +1835,10 @@ fn control_flow_ops_block_expr() {
     );
 
     // FIXME: Explainer, once I have one.
-    assert_matches!(
-        parse_expr(n!("if break {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if break {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
@@ -1709,8 +1849,10 @@ fn control_flow_ops_block_expr() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("break {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "break {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::Break(
                 None,
@@ -1723,8 +1865,10 @@ fn control_flow_ops_block_expr() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("if continue {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "if continue {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::If(r!(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Continue(None), .. },
@@ -1745,8 +1889,10 @@ fn control_flow_ops_block_expr() {
 // FIXME: Also add `impl <$ty>::$segs {}`
 #[test]
 fn qualified_struct_pat_in_for_loop_expr() {
-    assert_matches!(
-        parse_expr(n!("for<Ty as Trait>::AssocTy {} in () {}"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "for<Ty as Trait>::AssocTy {} in () {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
                 pat: ast::Pat::Struct(ast::StructPat {
@@ -1787,8 +1933,10 @@ fn qualified_struct_pat_in_for_loop_expr() {
 // issue: <https://github.com/fmease/rasur/issues/11>
 #[test]
 fn dont_split_less_than_equals_for_angle_bracketed_lists() {
-    assert_matches!(
-        parse_expr(n!("0 as u64 <= 1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as u64 <= 1",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Le,
@@ -1799,8 +1947,10 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("x as T <<= y"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x as T <<= y",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::BitShiftLeftAssign,
@@ -1815,45 +1965,53 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
 // FIXME: More extensively test receivers & fn params! Below are just temporary smoke tests.
 #[test]
 fn method_receivers() {
-    assert_matches!(parse_item(n!("fn f(&self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&mut self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(mut self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&'a self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&'a mut self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&'a pin mut self);"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&pin const self);"), Rust2015), Ok(_));
+    t!(parse_item, Rust2015, "fn f(&self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&mut self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(mut self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&'a self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&'a mut self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&'a pin mut self);", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&pin const self);", Ok(_));
 
     // issue: <https://github.com/fmease/rasur/issues/18>
-    assert_matches!(parse_item(n!("fn f(self::T: ());"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&self::T: ());"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("fn f(&mut self::T: ());"), Rust2015), Ok(_));
+    t!(parse_item, Rust2015, "fn f(self::T: ());", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&self::T: ());", Ok(_));
+    t!(parse_item, Rust2015, "fn f(&mut self::T: ());", Ok(_));
 }
 
 #[test]
 fn bare_trait_object_tys() {
-    assert_matches!(
-        parse_ty(n!("A+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "A+",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
-    assert_matches!(parse_ty(n!("Hold<A+>"), Rust2015), Ok(_));
+    t!(parse_ty, Rust2015, "Hold<A+>", Ok(_));
 
-    assert_matches!(
-        parse_ty(n!("(A)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(A)+",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
-    assert_matches!(
-        parse_ty(n!("(A+)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(A+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )])),
     );
 
-    assert_matches!(
-        parse_ty(n!("?A"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "?A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -1865,10 +2023,12 @@ fn bare_trait_object_tys() {
 
     // MB: `?` is the only trait bound modifier that also "formally begins a type".
     //     `const`, `[const]`, `async` all don't.
-    assert_matches!(parse_ty(n!("Hold<?A>"), Rust2015), Ok(_));
+    t!(parse_ty, Rust2015, "Hold<?A>", Ok(_));
 
-    assert_matches!(
-        parse_ty(n!("(?A)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(?A)+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -1878,8 +2038,10 @@ fn bare_trait_object_tys() {
         ))
     );
 
-    assert_matches!(
-        parse_ty(n!("const A"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "const A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -1890,8 +2052,10 @@ fn bare_trait_object_tys() {
     );
 
     // See comment further up.
-    assert_matches!(
-        parse_ty(n!("Hold<const A>"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Hold<const A>",
         // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CommonIdent, .. },
@@ -1899,8 +2063,10 @@ fn bare_trait_object_tys() {
         )]))
     );
 
-    assert_matches!(
-        parse_ty(n!("(const A)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(const A)+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -1911,16 +2077,20 @@ fn bare_trait_object_tys() {
     );
 
     // This is also a bug upstream, see also <https://github.com/rust-lang/rust/issues/146122>.
-    assert_matches!(
-        parse_ty(n!("[const] A"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "[const] A",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseSquareBracket, .. },
             ExpectedFragment::Bound
         )])),
     );
 
-    assert_matches!(
-        parse_ty(n!("async A"), Rust2018),
+    t!(
+        parse_ty,
+        Rust2018,
+        "async A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -1931,60 +2101,76 @@ fn bare_trait_object_tys() {
     );
 
     // See comment further up.
-    assert_matches!(
-        parse_ty(n!("Hold<async A>"), Rust2018),
+    t!(
+        parse_ty,
+        Rust2018,
+        "Hold<async A>",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)]))
     );
 
-    assert_matches!(
-        parse_ty(n!("for<>A"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "for<>A",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
-    assert_matches!(parse_ty(n!("Hold<for<>A>"), Rust2015), Ok(_));
+    t!(parse_ty, Rust2015, "Hold<for<>A>", Ok(_));
 
-    assert_matches!(
-        parse_ty(n!("(for<>A)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(for<>A)+",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
-    assert_matches!(
-        parse_ty(n!("(for<>A+)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(for<>A+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )])),
     );
 
-    assert_matches!(
-        parse_ty(n!("for<>'a"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "for<>'a",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
             ExpectedFragment::PathSegIdent
         )])),
     );
 
-    assert_matches!(
-        parse_ty(n!("for<>'a+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "for<>'a+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
             ExpectedFragment::PathSegIdent
         )])),
     );
 
-    assert_matches!(
-        parse_ty(n!("'a+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "'a+",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Outlives(_)])))
     );
 
-    assert_matches!(parse_ty(n!("Hold<'a+>"), Rust2015), Ok(_));
+    t!(parse_ty, Rust2015, "Hold<'a+>", Ok(_));
 
-    assert_matches!(parse_ty(n!("'a"), Rust2015), Err(r!([Error::LifetimeObjectTyWithoutPlus(_)])));
+    t!(parse_ty, Rust2015, "'a", Err(r!([Error::LifetimeObjectTyWithoutPlus(_)])));
 
     // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
-    assert_matches!(
-        parse_ty(n!("('a)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "('a)+",
         Err(r!([
             Error::LifetimeObjectTyWithoutPlus(_),
             Error::UnexpectedToken(
@@ -1995,69 +2181,91 @@ fn bare_trait_object_tys() {
     );
 
     // issue: <https://github.com/fmease/rasur/issues/20>
-    assert_matches!(
-        parse_ty(n!("use<>"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "use<>",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
     );
 
     // Indeed, even though you can't parenthesize precise-capturing lists
     // in "normal" bounds, you can do so in bare trait object type bounds.
     // If find it a bit janky. Might report upstream.
-    assert_matches!(
-        parse_ty(n!("(use<>)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(use<>)+",
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
-    assert_matches!(
-        parse_ty(n!("(use<>+)+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "(use<>+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
             ExpectedFragment::Token(TokenKind::EndOfInput),
         )]))
     );
 
-    assert_matches!(
-        parse_ty(n!("Hold<use<>>"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Hold<use<>>",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_ty(n!("A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
         ))
     );
 
-    assert_matches!(
-        parse_ty(n!("&A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "&A + B",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_ty(n!("&for<>A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "&for<>A + B",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_ty(n!("*const A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "*const A + B",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_ty(n!("&A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "&A + B",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
-    assert_matches!(
-        parse_ty(n!("fn() -> A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "fn() -> A + B",
         Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
     );
 
     // Like `dyn (Fn() -> A) + B`, not like `dyn Fn() -> (dyn A + B)`.
-    assert_matches!(
-        parse_ty(n!("Fn() -> A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Fn() -> A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([
@@ -2087,8 +2295,10 @@ fn bare_trait_object_tys() {
     );
 
     // Similarly
-    assert_matches!(
-        parse_ty(n!("Fn() -> (A) + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Fn() -> (A) + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]),
@@ -2099,8 +2309,10 @@ fn bare_trait_object_tys() {
     // Normally, bare lifetimes aren't allowed in type position. At least, they need to be followed by
     // a `+` to count as a bare trait object type. However, below, the `+` doesn't actually "belong"
     // to the lifetime bound, it belongs to the parent bound list.
-    assert_matches!(
-        parse_ty(n!("Fn() -> 'a + A"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Fn() -> 'a + A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([
@@ -2126,8 +2338,10 @@ fn bare_trait_object_tys() {
 
     // The same happens here, too, in our impl but on the surface the `+` could truly belong
     // to either bare trait object type (still, it doesn't get rejected as ambiguous).
-    assert_matches!(
-        parse_ty(n!("Fn() -> 'a+"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "Fn() -> 'a+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
@@ -2149,8 +2363,10 @@ fn bare_trait_object_tys() {
     );
 
     // issue: <https://github.com/fmease/rasur/issues/23>
-    assert_matches!(
-        parse_expr(n!("0 as A + 1 as B"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as A + 1 as B",
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Add,
@@ -2173,32 +2389,40 @@ fn bare_trait_object_tys() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("0 as for<> A+"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as for<> A+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
     );
 
-    assert_matches!(
-        parse_expr(n!("0 as 'a+"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as 'a+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
     );
 
-    assert_matches!(
-        parse_expr(n!("0 as const A+"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as const A+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
         )]))
     );
 
-    assert_matches!(
-        parse_expr(n!("0 as use<>+"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "0 as use<>+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
             ExpectedFragment::Expr
@@ -2208,35 +2432,28 @@ fn bare_trait_object_tys() {
 
 #[test]
 fn ambiguous_plus() {
-    assert_matches!(parse_ty(n!("&dyn A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])),);
+    t!(parse_ty, Rust2015, "&dyn A + B", Err(r!([Error::AmbiguousPlus(_)])),);
 
-    assert_matches!(parse_ty(n!("&dyn A+"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])),);
+    t!(parse_ty, Rust2015, "&dyn A+", Err(r!([Error::AmbiguousPlus(_)])),);
 
-    assert_matches!(parse_ty(n!("&impl A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "&impl A + B", Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(parse_ty(n!("&impl A+"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "&impl A+", Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(parse_ty(n!("F() -> dyn A + B"), Rust2015), Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "F() -> dyn A + B", Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(
-        parse_ty(n!("F() -> impl A + B"), Rust2015),
-        Err(r!([Error::AmbiguousPlus(_)]))
-    );
+    t!(parse_ty, Rust2015, "F() -> impl A + B", Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(
-        parse_ty(n!("dyn F() -> impl A+"), Rust2015),
-        Err(r!([Error::AmbiguousPlus(_)]))
-    );
+    t!(parse_ty, Rust2015, "dyn F() -> impl A+", Err(r!([Error::AmbiguousPlus(_)])));
 
-    assert_matches!(
-        parse_ty(n!("impl F() -> dyn A+"), Rust2015),
-        Err(r!([Error::AmbiguousPlus(_)]))
-    );
+    t!(parse_ty, Rust2015, "impl F() -> dyn A+", Err(r!([Error::AmbiguousPlus(_)])));
 
     // Indeed, this is not (to be) flagged as ambiguous.
     // I wonder if it's an oversight or intentional?
-    assert_matches!(
-        parse_ty(n!("impl F() -> for<> A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "impl F() -> for<> A + B",
         Ok(ast::Ty::ImplTrait(r!([
             ast::Bound::Trait {
                 path: ast::Path {
@@ -2258,8 +2475,10 @@ fn ambiguous_plus() {
     );
 
     // ... after all, you could hypothetically parse it like this:
-    assert_matches!(
-        parse_ty(n!("impl F() -> (for<> A + B)"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "impl F() -> (for<> A + B)",
         Ok(ast::Ty::ImplTrait(r!([ast::Bound::Trait {
             path: ast::Path {
                 segs: r!([ast::PathSeg {
@@ -2278,8 +2497,10 @@ fn ambiguous_plus() {
     );
 
     // Not ambiguous (counterexample).
-    assert_matches!(
-        parse_ty(n!("F() -> fn() -> A + B"), Rust2015),
+    t!(
+        parse_ty,
+        Rust2015,
+        "F() -> fn() -> A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([
@@ -2303,8 +2524,10 @@ fn ambiguous_plus() {
 
 #[test]
 fn numeric_field_exprs() {
-    assert_matches!(
-        parse_expr(n!("x.0"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x.0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
@@ -2314,8 +2537,10 @@ fn numeric_field_exprs() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("x.0 .1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x.0 .1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr {
@@ -2333,8 +2558,10 @@ fn numeric_field_exprs() {
 
     // Context: Like rustc we currently lex this as [Ident(`x`), NumLit(`0.1`)] since the `0.1` gets
     // bluntly interpreted as a float literal. As a result, the parser has to split the literal.
-    assert_matches!(
-        parse_expr(n!("x.0.1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x.0.1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr {
@@ -2351,8 +2578,10 @@ fn numeric_field_exprs() {
     );
 
     // ... same thing, just with an extra space.
-    assert_matches!(
-        parse_expr(n!("x. 0.1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x. 0.1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr {
@@ -2370,8 +2599,10 @@ fn numeric_field_exprs() {
 
     // ...here we first split the `0.` & then push `.` back
     // "onto the stack" for the callee to pick up again.
-    assert_matches!(
-        parse_expr(n!("x.0. 1"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "x.0. 1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
                 r!(ast::Expr {
@@ -2388,8 +2619,10 @@ fn numeric_field_exprs() {
     );
 
     // ...similarly, we need to split the number lit `0.1` here.
-    assert_matches!(
-        parse_expr(n!("builtin#offset_of(T, x.0.1)"), Rust2015),
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#offset_of(T, x.0.1)",
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
                 _,
@@ -2411,9 +2644,10 @@ fn numeric_field_exprs() {
 
 #[test]
 fn binding_modes() {
-    assert_matches!(
-        parse_file(
-            n!("
+    t!(
+        parse_file,
+        Rust2015,
+        "
 fn main() {
     let x = ();
     let mut x = ();
@@ -2430,9 +2664,7 @@ fn main() {
     let &mut ref mut x = ();
     let &mut mut ref mut x = ();
 }
-"),
-            Rust2015
-        ),
+",
         Ok(_) // just a smoke test
     );
 }
@@ -2441,8 +2673,10 @@ fn main() {
 fn pseudo_field_binding_mode_box() {
     // issue: <https://github.com/fmease/rasur/issues/19>
 
-    assert_matches!(
-        parse_pat(n!("X { box mut ref mut x }"), Rust2015),
+    t!(
+        parse_pat,
+        Rust2015,
+        "X { box mut ref mut x }",
         Ok(ast::Pat::Struct(r!(ast::StructPat {
             fields: r!([ast::StructPatField {
                 attrs: _,
@@ -2465,9 +2699,10 @@ fn item_modifiers_in_item_ctxt() {
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
-    assert_matches!(
-        parse_file(
-            n!(r#"
+    t!(
+        parse_file,
+        Rust2024, // for `async` and `gen`
+        r#"
 async extern fn f() {}
 async fn f() {}
 async gen fn f() {}
@@ -2555,9 +2790,7 @@ unsafe static X: ();
 unsafe trait Trait {}
 use f;
 use {self::*, self::{}};
-"#),
-            Rust2024 // for `async` and `gen`
-        ),
+"#,
         Ok(_) // just a smoke test
     );
 }
@@ -2573,9 +2806,10 @@ fn item_modifiers_in_stmt_ctxt() {
     //       by either rustc or rasur but I feel like they should be
     //       supported "logically" or for consistency.
 
-    assert_matches!(
-        parse_expr(
-            n!(r#"{
+    t!(
+        parse_expr,
+        Rust2024, // for `async` and `gen`
+        r#"{
 async extern fn f() {}
 async fn f() {}
 async gen fn f() {}
@@ -2663,15 +2897,15 @@ unsafe static X: ();
 unsafe trait Trait {}
 use f;
 use {self::*, self::{}};
-}"#),
-            Rust2024 // for `async` and `gen`
-        ),
+}"#,
         Ok(_) // just a smoke test
     );
 
     // Make sure that we don't consider these weak / context-dependent keywords as item modifiers:
-    assert_matches!(
-        parse_stmt(n!("auto as _"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "auto as _",
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 kind: ast::ExprKind::Cast(
@@ -2692,8 +2926,10 @@ use {self::*, self::{}};
         ))
     );
 
-    assert_matches!(
-        parse_stmt(n!("default as _"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "default as _",
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 kind: ast::ExprKind::Cast(
@@ -2714,8 +2950,10 @@ use {self::*, self::{}};
         ))
     );
 
-    assert_matches!(
-        parse_stmt(n!("safe as _"), Rust2015),
+    t!(
+        parse_stmt,
+        Rust2015,
+        "safe as _",
         Ok(ast::Stmt::Expr(
             ast::Expr {
                 kind: ast::ExprKind::Cast(
@@ -2739,9 +2977,10 @@ use {self::*, self::{}};
 
 #[test]
 fn ty_modifiers() {
-    assert_matches!(
-        parse_ty(
-            n!(r##"(
+    t!(
+        parse_ty,
+        Rust2015,
+        r##"(
 fn(),
 for<'a> unsafe fn(),
 for<> fn(),
@@ -2752,9 +2991,7 @@ safe fn(),
 unsafe extern fn(),
 unsafe extern r#"raw"# fn(),
 unsafe fn(),
-)"##),
-            Rust2015
-        ),
+)"##,
         Ok(_) // just a smoke test
     );
 }
@@ -2767,9 +3004,10 @@ fn expr_modifiers_in_stmt_ctxt() {
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
-    assert_matches!(
-        parse_expr(
-            n!(r#"{
+    t!(
+        parse_expr,
+        Rust2024, // for `async` and `gen`
+        r#"{
 || {};
 |_| {};
 | | {};
@@ -2863,9 +3101,7 @@ async gen use {};
 async gen move || {}; // [***]
 async gen move |_| {}; // [***]
 async gen move {};
-}"#),
-            Rust2024 // for `async` and `gen`
-        ),
+}"#,
         Ok(_) // just a smoke test
     );
 }
@@ -2877,9 +3113,10 @@ fn expr_modifiers_in_expr_ctxt() {
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
-    assert_matches!(
-        parse_expr(
-            n!(r#"{
+    t!(
+        parse_expr,
+        Rust2024, // for `async` and `gen`
+        r#"{
 (|| {});
 (|_| {});
 (| | {});
@@ -2973,9 +3210,7 @@ fn expr_modifiers_in_expr_ctxt() {
 (async gen move || {});
 (async gen move |_| {});
 (async gen move {});
-}"#),
-            Rust2024 // for `async` and `gen`
-        ),
+}"#,
         Ok(_) // just a smoke test
     );
 }
@@ -2984,9 +3219,10 @@ fn expr_modifiers_in_expr_ctxt() {
 fn trait_bounds() {
     // See also <https://github.com/fmease/rasur/issues/16>.
 
-    assert_matches!(
-        parse_ty(
-            n!("(
+    t!(
+        parse_ty,
+        Rust2018, // for `async`
+        "(
 impl !Trait,
 impl (Trait),
 impl (for<> Trait),
@@ -3001,15 +3237,14 @@ impl for<> Trait,
 impl for<> const async Trait,
 impl ~const Trait,
 impl ~const async Trait,
-)"),
-            Rust2018 // for `async`
-        ),
-        Ok(_)
-    ); // just a smoke test
+)",
+        Ok(_) // just a smoke test
+    );
 
-    assert_matches!(
-        parse_file(
-            n!("
+    t!(
+        parse_file,
+        Rust2018, // for `async`
+        "
 fn f<T: !Trait>();
 fn f<T: (Trait)>();
 fn f<T: (for<> Trait)>();
@@ -3024,35 +3259,36 @@ fn f<T: for<> Trait>();
 fn f<T: for<> const async Trait>();
 fn f<T: ~const Trait>();
 fn f<T: ~const async Trait>();
-"),
-            Rust2018 // for `async`
-        ),
-        Ok(_)
-    ); // just a smoke test
+",
+        Ok(_) // just a smoke test
+    );
 }
 
 #[test]
 fn builtin_syntax() {
-    assert_matches!(
-        parse_expr(n!("builtin#unknown(1 + 2 @)"), Rust2015),
-        Err(r!([Error::UnknownBuiltinSyntax(_)])),
-    );
+    t!(parse_expr, Rust2015, "builtin#unknown(1 + 2 @)", Err(r!([Error::UnknownBuiltinSyntax(_)])),);
 
-    assert_matches!(
-        parse_expr(n!("builtin#unknown(1 + 2 @)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin#unknown(1 + 2 @)",
         Err(r!([
             Error::ReservedPrefix(_),
             Error::UnexpectedToken(Token { kind: TokenKind::At, .. }, _)
         ])),
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin # unknown(1 + 2 @)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # unknown(1 + 2 @)",
         Err(r!([Error::UnknownBuiltinSyntax(_)])),
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin # type_ascribe(0,i32)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # type_ascribe(0,i32)",
         Ok(ast::Expr {
             kind: ast::ExprKind::Ascription(
                 r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
@@ -3062,8 +3298,10 @@ fn builtin_syntax() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin # offset_of(X,0.x.y.1)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # offset_of(X,0.x.y.1)",
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
                 r!(ast::Ty::Path(ast::ExtPath {
@@ -3076,8 +3314,10 @@ fn builtin_syntax() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin # wrap_binder(&0)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # wrap_binder(&0)",
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Wrap,
@@ -3087,8 +3327,10 @@ fn builtin_syntax() {
         })
     );
 
-    assert_matches!(
-        parse_expr(n!("builtin # unwrap_binder(x)"), Rust2021),
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # unwrap_binder(x)",
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Unwrap,
@@ -3098,10 +3340,7 @@ fn builtin_syntax() {
         })
     );
 
-    assert_matches!(
-        parse_pat(n!("builtin # deref(0)"), Rust2021),
-        Ok(ast::Pat::Deref(r!(ast::Pat::Lit(..))))
-    );
+    t!(parse_pat, Rust2021, "builtin # deref(0)", Ok(ast::Pat::Deref(r!(ast::Pat::Lit(..)))));
 }
 
 #[test]
@@ -3109,33 +3348,33 @@ fn delegation() {
     // FIXME: This is just a smoke test, convert to proper tests.
     // See also <https://github.com/fmease/rasur/issues/30>
 
-    assert_matches!(parse_item(n!("reuse it;"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse self;"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse path::<>::to::<_>::something::();"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it as that;"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::*;"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::{};"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::{f, g, h};"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::{f as f, g as g};"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::{self, super, crate};"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it {}"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it { 1 + 2 * 3}"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse it::{} {}"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse <()>::it;"), Rust2015), Ok(_));
-    assert_matches!(parse_item(n!("reuse <() as Trait>::it;"), Rust2015), Ok(_));
+    t!(parse_item, Rust2015, "reuse it;", Ok(_));
+    t!(parse_item, Rust2015, "reuse self;", Ok(_));
+    t!(parse_item, Rust2015, "reuse path::<>::to::<_>::something::();", Ok(_));
+    t!(parse_item, Rust2015, "reuse it as that;", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::*;", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::{};", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::{f, g, h};", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::{f as f, g as g};", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::{self, super, crate};", Ok(_));
+    t!(parse_item, Rust2015, "reuse it {}", Ok(_));
+    t!(parse_item, Rust2015, "reuse it { 1 + 2 * 3}", Ok(_));
+    t!(parse_item, Rust2015, "reuse it::{} {}", Ok(_));
+    t!(parse_item, Rust2015, "reuse <()>::it;", Ok(_));
+    t!(parse_item, Rust2015, "reuse <() as Trait>::it;", Ok(_));
 
     // Contrary to its sibling, the use-item, these are not accepted:
-    assert_matches!(parse_item(n!("reuse *;"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse {};"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse ::it;"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse it as _;"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse it::{*};"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse it::{f::g::h};"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse it::{f::{g::{h}}};"), Rust2015), Err(_));
+    t!(parse_item, Rust2015, "reuse *;", Err(_));
+    t!(parse_item, Rust2015, "reuse {};", Err(_));
+    t!(parse_item, Rust2015, "reuse ::it;", Err(_));
+    t!(parse_item, Rust2015, "reuse it as _;", Err(_));
+    t!(parse_item, Rust2015, "reuse it::{*};", Err(_));
+    t!(parse_item, Rust2015, "reuse it::{f::g::h};", Err(_));
+    t!(parse_item, Rust2015, "reuse it::{f::{g::{h}}};", Err(_));
 
     // Some other invalid forms:
-    assert_matches!(parse_item(n!("reuse it<i32>;"), Rust2015), Err(_));
-    assert_matches!(parse_item(n!("reuse it::f<i32>;"), Rust2015), Err(_));
+    t!(parse_item, Rust2015, "reuse it<i32>;", Err(_));
+    t!(parse_item, Rust2015, "reuse it::f<i32>;", Err(_));
 }
 
 #[test]
@@ -3145,8 +3384,10 @@ fn unicode_17() {
     // <https://util.unicode.org/UnicodeJsps/list-unicodeset.jsp?a=%5B%3AU17%3AXID_Continue%3A%5D+-+%5B%3AU16%3AXID_Continue%3A%5D+-+%5B%3AXID_Start%3A%5D&g=&i=idstatus>
 
     // Since Unicode 17, U+088F is included in XID_Start.
-    assert_matches!(
-        parse_item(n!("fn \u{88f}();"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "fn \u{88f}();",
         Ok(ast::Item {
             kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("\u{88f}"), .. })),
             ..
@@ -3154,8 +3395,10 @@ fn unicode_17() {
     );
 
     // Since Unicode 17, U+10EFB is included in XID_Continue.
-    assert_matches!(
-        parse_item(n!("fn f\u{10efb}();"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "fn f\u{10efb}();",
         Ok(ast::Item {
             kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("f\u{10efb}"), .. })),
             ..
@@ -3166,8 +3409,10 @@ fn unicode_17() {
 #[test]
 fn ticked_idents() {
     // Ticked keywords aren't illegal per se:
-    assert_matches!(
-        parse_item(n!("M! { 'if }"), Rust2015),
+    t!(
+        parse_item,
+        Rust2015,
+        "M! { 'if }",
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([Token { kind: TokenKind::TickedIdent, .. }]),
@@ -3178,11 +3423,8 @@ fn ticked_idents() {
     );
 
     // However as lifetimes they are (except for `'_` and `'static` of course):
-    assert_matches!(
-        parse_item(n!("type T<'if>;"), Rust2015),
-        Err(r!([Error::ReservedLifetime(_)]))
-    );
+    t!(parse_item, Rust2015, "type T<'if>;", Err(r!([Error::ReservedLifetime(_)])));
 
     // Similarly, as labels they are, too:
-    assert_matches!(parse_expr(n!("'if: loop {}"), Rust2015), Err(r!([Error::ReservedLabel(_)])));
+    t!(parse_expr, Rust2015, "'if: loop {}", Err(r!([Error::ReservedLabel(_)])));
 }
