@@ -9,7 +9,7 @@ use crate::{
 use deref as r;
 
 #[test]
-fn num_lit_suffixes_invalid_places() {
+fn suffixes_invalid_places() {
     t!(
         parse_expr,
         Rust2015,
@@ -72,7 +72,7 @@ fn num_lit_suffixes_invalid_places() {
 }
 
 #[test]
-fn num_lit_exponents_invalid_places() {
+fn exponents_invalid_places() {
     // In field exprs, "exponents" in the numeric identifier are legal...
     t!(
         parse_expr,
@@ -174,7 +174,7 @@ fn num_lit_exponents_invalid_places() {
 }
 
 #[test]
-fn num_lit_fractional_part_invalid_places() {
+fn fractional_part_invalid_places() {
     // We lex `0.0` and `0.` as a single token, a number literal.
     // However, in the cases below we require integer literals.
     // The parser needs to inspect the literal itself to detect this.

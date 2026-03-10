@@ -95,23 +95,16 @@ pub struct PathExt<'src> {
 #[derive(Debug)]
 pub enum GenericArgs<'src> {
     Angle(Vec<AngleGenericArg<'src>>),
-    Paren { inputs: Vec<Ty<'src>>, output: Option<Ty<'src>> },
+    Paren(Vec<Ty<'src>>, Option<Ty<'src>>),
     ParenElided,
 }
 
-// FIXME: Merge AngleGenericArg & GenericArg?
-//        So we end up with { Lt, Ty, Ct, Eq, Bd }?.
 #[derive(Debug)]
 pub enum AngleGenericArg<'src> {
-    Argument(GenericArg<'src>),
-    Constraint(AssocItemConstraint<'src>),
-}
-
-#[derive(Debug)]
-pub enum GenericArg<'src> {
-    Ty(Ty<'src>),
     Const(Expr<'src>),
+    Constraint(AssocItemConstraint<'src>),
     Lifetime(Ident<'src>),
+    Ty(Ty<'src>),
 }
 
 #[derive(Debug)]

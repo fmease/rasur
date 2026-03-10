@@ -83,7 +83,7 @@ impl ast::GenericArgs<'_> {
     fn is_empty(&self) -> bool {
         match self {
             Self::Angle(args) => args.is_empty(),
-            Self::Paren { inputs, output } => inputs.is_empty() && output.is_none(),
+            Self::Paren(inputs, output) => inputs.is_empty() && output.is_none(),
             Self::ParenElided => false,
         }
     }
@@ -93,7 +93,7 @@ impl Fmt for ast::GenericArgs<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Angle(args) => args.fmt(cx),
-            Self::Paren { inputs, output } => {
+            Self::Paren(inputs, output) => {
                 fmt!(cx, "(");
                 inputs.interleave(", ").fmt(cx);
                 fmt!(cx, ")");
@@ -118,18 +118,10 @@ impl Fmt for Vec<ast::AngleGenericArg<'_>> {
 impl Fmt for ast::AngleGenericArg<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Argument(arg) => arg.fmt(cx),
-            Self::Constraint(constraint) => constraint.fmt(cx),
-        }
-    }
-}
-
-impl Fmt for ast::GenericArg<'_> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        match self {
-            Self::Ty(ty) => ty.fmt(cx),
             Self::Const(expr) => expr.fmt(cx),
+            Self::Constraint(constraint) => constraint.fmt(cx),
             Self::Lifetime(lt) => lt.fmt(cx),
+            Self::Ty(ty) => ty.fmt(cx),
         }
     }
 }

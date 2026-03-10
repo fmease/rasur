@@ -345,7 +345,7 @@ fn attrs() {
 }
 
 #[test]
-fn double_borrow_and_double_borrow_expr() {
+fn double_borrow_and_double_borrow() {
     t!(
         parse_expr,
         Rust2015,
@@ -390,7 +390,7 @@ fn double_borrow_and_double_borrow_expr() {
 }
 
 #[test]
-fn or_nullary_closure_expr() {
+fn or_nullary_closure() {
     t!(
         parse_expr,
         Rust2015,
@@ -416,7 +416,7 @@ fn or_nullary_closure_expr() {
 }
 
 #[test]
-fn control_flow_ops_block_expr() {
+fn control_flow_ops_block() {
     t!(
         parse_expr,
         Rust2015,
@@ -493,7 +493,7 @@ fn control_flow_ops_block_expr() {
 }
 
 #[test]
-fn numeric_field_exprs() {
+fn numeric_field() {
     t!(
         parse_expr,
         Rust2015,
@@ -1116,7 +1116,7 @@ fn ranges() {
 //        (`'a: for <Ty>::AssocTy {} in () {}` is valid)
 // FIXME: Also add `impl <$ty>::$segs {}`
 #[test]
-fn qualified_struct_pat_in_for_loop_expr() {
+fn qualified_struct_pat_in_for_loop() {
     t!(
         parse_expr,
         Rust2015,

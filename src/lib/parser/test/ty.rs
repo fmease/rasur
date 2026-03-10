@@ -302,15 +302,15 @@ fn bare_trait_object_tys() {
                     path: ast::Path {
                         segs: r!([ast::PathSeg {
                             ident: ast::Ident!("Fn"),
-                            args: Some(ast::GenericArgs::Paren {
-                                inputs: r!([]),
-                                output: Some(ast::Ty::Path(ast::ExtPath {
+                            args: Some(ast::GenericArgs::Paren(
+                                r!([]),
+                                Some(ast::Ty::Path(ast::ExtPath {
                                     ext: None,
                                     path: ast::Path {
                                         segs: r!([ast::PathSeg { ident: ast::Ident!("A"), .. }])
                                     }
                                 }))
-                            })
+                            ))
                         }])
                     },
                     ..
@@ -349,13 +349,13 @@ fn bare_trait_object_tys() {
                     path: ast::Path {
                         segs: r!([ast::PathSeg {
                             ident: ast::Ident!("Fn"),
-                            args: Some(ast::GenericArgs::Paren {
-                                inputs: r!([]),
-                                output: Some(ast::Ty::DynTrait(
+                            args: Some(ast::GenericArgs::Paren(
+                                r!([]),
+                                Some(ast::Ty::DynTrait(
                                     ast::DynKind::Bare,
                                     r!([ast::Bound::Outlives(_)])
                                 )),
-                            })
+                            ))
                         }])
                     },
                     ..
@@ -377,13 +377,13 @@ fn bare_trait_object_tys() {
                 path: ast::Path {
                     segs: r!([ast::PathSeg {
                         ident: ast::Ident!("Fn"),
-                        args: Some(ast::GenericArgs::Paren {
-                            inputs: r!([]),
-                            output: Some(ast::Ty::DynTrait(
+                        args: Some(ast::GenericArgs::Paren(
+                            r!([]),
+                            Some(ast::Ty::DynTrait(
                                 ast::DynKind::Bare,
                                 r!([ast::Bound::Outlives(_)])
                             )),
-                        })
+                        ))
                     }])
                 },
                 ..
@@ -488,13 +488,13 @@ fn ambiguous_plus() {
                 path: ast::Path {
                     segs: r!([ast::PathSeg {
                         ident: ast::Ident!("F"),
-                        args: Some(ast::GenericArgs::Paren {
-                            inputs: r!([]),
-                            output: Some(ast::Ty::DynTrait(
+                        args: Some(ast::GenericArgs::Paren(
+                            r!([]),
+                            Some(ast::Ty::DynTrait(
                                 ast::DynKind::Bare,
                                 r!([ast::Bound::Trait { .. }])
                             )),
-                        })
+                        ))
                     }])
                 },
                 ..
@@ -512,13 +512,13 @@ fn ambiguous_plus() {
             path: ast::Path {
                 segs: r!([ast::PathSeg {
                     ident: ast::Ident!("F"),
-                    args: Some(ast::GenericArgs::Paren {
-                        inputs: r!([]),
-                        output: Some(ast::Ty::Grouped(ast::Ty::DynTrait(
+                    args: Some(ast::GenericArgs::Paren(
+                        r!([]),
+                        Some(ast::Ty::Grouped(ast::Ty::DynTrait(
                             ast::DynKind::Bare,
                             r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
                         ))),
-                    })
+                    ))
                 }])
             },
             ..
@@ -537,10 +537,7 @@ fn ambiguous_plus() {
                     path: ast::Path {
                         segs: r!([ast::PathSeg {
                             ident: ast::Ident!("F"),
-                            args: Some(ast::GenericArgs::Paren {
-                                inputs: r!([]),
-                                output: Some(ast::Ty::FnPtr(..)),
-                            })
+                            args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::FnPtr(..))))
                         }])
                     },
                     ..

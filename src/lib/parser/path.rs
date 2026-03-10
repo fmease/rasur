@@ -134,12 +134,12 @@ impl<'src> Parser<'_, '_, 'src> {
             |this: &mut Self| {
                 let mut arg = if this.begins_ty(0) {
                     let ty = this.parse_ty()?;
-                    ast::GenericArg::Ty(ty)
+                    ast::AngleGenericArg::Ty(ty)
                 } else if let Some(lt) = this.parse_lifetime() {
-                    ast::GenericArg::Lifetime(lt)
+                    ast::AngleGenericArg::Lifetime(lt)
                 } else if this.begins_const_arg() {
                     let expr = this.parse_const_arg()?;
-                    ast::GenericArg::Const(expr)
+                    ast::AngleGenericArg::Const(expr)
                 } else {
                     return this.fatal(Error::UnexpectedToken(
                         this.token,
@@ -169,7 +169,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                     ast::AngleGenericArg::Constraint(ast::AssocItemConstraint { ident, args, kind })
                 } else {
-                    ast::AngleGenericArg::Argument(arg)
+                    arg
                 };
 
                 Ok(arg)
@@ -196,7 +196,7 @@ impl<'src> Parser<'_, '_, 'src> {
             None
         };
 
-        Ok(ast::GenericArgs::Paren { inputs, output })
+        Ok(ast::GenericArgs::Paren(inputs, output))
     }
 
     fn parse_term(&mut self) -> Result<ast::Term<'src>> {
@@ -300,9 +300,9 @@ enum GenericArgsAmbiguity {
 }
 
 fn extract_assoc_item_seg<'src>(
-    arg: &mut ast::GenericArg<'src>,
+    arg: &mut ast::AngleGenericArg<'src>,
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
-    if let ast::GenericArg::Ty(ty) = arg
+    if let ast::AngleGenericArg::Ty(ty) = arg
         && let ast::Ty::Path(deref!(path)) = ty
         && let ast::ExtPath { ext: None, path } = path
         && let ast::Path { segs: deref!([seg]) } = path

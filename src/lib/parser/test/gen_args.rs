@@ -47,17 +47,15 @@ fn angle_gen_args_expr() {
                             segs: r!([ast::PathSeg {
                                 ident: ast::Ident!("f"),
                                 args: Some(ast::GenericArgs::Angle(r!([
-                                    ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
-                                        ast::Ty::Path(ast::ExtPath {
-                                            ext: None,
-                                            path: ast::Path {
-                                                segs: r!([ast::PathSeg {
-                                                    ident: ast::Ident!("i32"),
-                                                    args: None
-                                                }])
-                                            },
-                                        })
-                                    ))
+                                    ast::AngleGenericArg::Ty(ast::Ty::Path(ast::ExtPath {
+                                        ext: None,
+                                        path: ast::Path {
+                                            segs: r!([ast::PathSeg {
+                                                ident: ast::Ident!("i32"),
+                                                args: None
+                                            }])
+                                        },
+                                    }))
                                 ])))
                             }])
                         }
@@ -83,8 +81,8 @@ fn angle_gen_args_pat() {
                 path: ast::Path {
                     segs: r!([ast::PathSeg {
                         ident: ast::Ident!("Some"),
-                        args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Argument(
-                            ast::GenericArg::Ty(ast::Ty::Path(ast::ExtPath {
+                        args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Ty(
+                            ast::Ty::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
                                     segs: r!([ast::PathSeg {
@@ -92,7 +90,7 @@ fn angle_gen_args_pat() {
                                         args: None
                                     }]),
                                 }
-                            }))
+                            })
                         )])))
                     }])
                 }
@@ -117,18 +115,16 @@ fn angle_gen_args_ty() {
                 segs: r!([ast::PathSeg {
                     ident: ast::Ident!("Ty"),
                     args: Some(ast::GenericArgs::Angle(r!([
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Lifetime(ast::Ident!(
-                            "'a"
-                        ))),
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Ty(ast::Ty::Tuple(r!([])))),
-                        ast::AngleGenericArg::Argument(ast::GenericArg::Const(ast::Expr {
+                        ast::AngleGenericArg::Lifetime(ast::Ident!("'a")),
+                        ast::AngleGenericArg::Ty(ast::Ty::Tuple(r!([]))),
+                        ast::AngleGenericArg::Const(ast::Expr {
                             kind: ast::ExprKind::Lit(r!(ast::Lit {
                                 kind: ast::LitKind::Num,
                                 value: "0",
                                 ..
                             })),
                             ..
-                        })),
+                        }),
                     ])))
                 }])
             }
@@ -155,11 +151,9 @@ fn angle_args_in_path_ext_expr() {
                     trait_ref: Some(ast::Path {
                         segs: r!([ast::PathSeg {
                             ident: ast::Ident!("TraitRef"),
-                            args: Some(ast::GenericArgs::Angle(r!([
-                                ast::AngleGenericArg::Argument(ast::GenericArg::Ty(
-                                    ast::Ty::Tuple(r!([]))
-                                ))
-                            ])))
+                            args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Ty(
+                                ast::Ty::Tuple(r!([]))
+                            )])))
                         },])
                     })
                 }),
@@ -187,10 +181,7 @@ fn paren_gen_args_arrow_expr_or_pat() {
                 path: ast::Path {
                     segs: r!([ast::PathSeg {
                         ident: ast::Ident!("x"),
-                        args: Some(ast::GenericArgs::Paren {
-                            inputs: r!([]),
-                            output: Some(ast::Ty::Tuple(r!([]))),
-                        })
+                        args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::Tuple(r!([])))))
                     }])
                 }
             })),
@@ -208,10 +199,7 @@ fn paren_gen_args_arrow_expr_or_pat() {
                 segs: r!([
                     ast::PathSeg {
                         ident: ast::Ident!("x"),
-                        args: Some(ast::GenericArgs::Paren {
-                            inputs: r!([]),
-                            output: Some(ast::Ty::Never),
-                        })
+                        args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::Never)))
                     },
                     ast::PathSeg { ident: ast::Ident!("X"), args: None }
                 ])
