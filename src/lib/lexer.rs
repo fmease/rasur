@@ -9,7 +9,6 @@ use crate::{
 };
 use cutter::Cutter;
 pub use transformer::{Frontmatter, normalize, strip_frontmatter, strip_shebang};
-use unicode_xid::UnicodeXID;
 
 pub type Tokens<'err, 'src> = impl Iterator<Item = Token>;
 
@@ -800,11 +799,11 @@ fn is_horizontal_whitespace(char: char) -> bool {
 }
 
 fn is_ident_start(char: char) -> bool {
-    char == '_' || char.is_xid_start()
+    char == '_' || unicode_ident::is_xid_start(char)
 }
 
 fn is_ident_middle(char: char) -> bool {
-    char.is_xid_continue()
+    unicode_ident::is_xid_continue(char)
 }
 
 fn is_bin_digit(char: char) -> bool {

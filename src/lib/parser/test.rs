@@ -3137,3 +3137,28 @@ fn delegation() {
     assert_matches!(parse_item(n!("reuse it<i32>;"), Rust2015), Err(_));
     assert_matches!(parse_item(n!("reuse it::f<i32>;"), Rust2015), Err(_));
 }
+
+#[test]
+fn unicode_17() {
+    // See also:
+    // <https://util.unicode.org/UnicodeJsps/list-unicodeset.jsp?a=%5B%3AU17%3AXID_Start%3A%5D+-+%5B%3AU16%3AXID_Start%3A%5D&g=&i=idstatus>
+    // <https://util.unicode.org/UnicodeJsps/list-unicodeset.jsp?a=%5B%3AU17%3AXID_Continue%3A%5D+-+%5B%3AU16%3AXID_Continue%3A%5D+-+%5B%3AXID_Start%3A%5D&g=&i=idstatus>
+
+    // Since Unicode 17, U+088F is included in XID_Start.
+    assert_matches!(
+        parse_item(n!("fn \u{88f}();"), Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("\u{88f}"), .. })),
+            ..
+        })
+    );
+
+    // Since Unicode 17, U+10EFB is included in XID_Continue.
+    assert_matches!(
+        parse_item(n!("fn f\u{10efb}();"), Rust2015),
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("f\u{10efb}"), .. })),
+            ..
+        })
+    );
+}

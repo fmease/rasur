@@ -10,7 +10,7 @@ autobins = false
 path = "src/lib/lib.rs"
 
 [dependencies]
-unicode-xid = "=0.2.6"
+unicode-ident = "=1.0.22"
 
 [workspace]
 members = ["src/cli"]
