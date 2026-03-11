@@ -425,7 +425,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
         let unticked = self.index();
         self.advance();
 
-        let mut raw = None;
         let mut count = 1usize;
 
         loop {
@@ -433,15 +432,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
                 Some(char) if is_ident_middle(char) => {
                     self.advance();
                     count += 1;
-                }
-                Some('#') if raw.is_none() && self.edition >= Edition::Rust2021 => {
-                    if let "r" = self.source(unticked) {
-                        self.advance();
-                        raw = Some(self.index());
-                    } else {
-                        self.error(Error::ReservedPrefix(self.span(unticked)));
-                        break TokenKind::Error;
-                    }
                 }
                 Some('\'') => {
                     self.advance();
@@ -452,19 +442,37 @@ impl<'err, 'src> Lexer<'err, 'src> {
                         _ => self.error(Error::MultiScalarCharLit(self.span(start))),
                     }
 
-                    break TokenKind::CharLit;
+                    return TokenKind::CharLit;
                 }
-                _ => {
-                    if let Some(start) = raw
-                        && let TokenKind::Underscore = lex_ident(self.source(start), self.edition)
+                Some('#') if self.edition >= Edition::Rust2021 => {
+                    if self.source(unticked) != "r" {
+                        self.error(Error::ReservedPrefix(self.span(unticked)));
+                        self.advance(); // `#`
+                        return TokenKind::Error;
+                    }
+
+                    self.advance();
+
+                    if !self.peek().is_some_and(is_ident_start) {
+                        self.error(Error::InvalidRawTickedIdent(self.span(start)));
+                        return TokenKind::Error;
+                    }
+
+                    let unprefixed = self.index();
+                    self.advance_while(is_ident_middle);
+
+                    if let TokenKind::Underscore = lex_ident(self.source(unprefixed), self.edition)
                     {
                         self.error(Error::InvalidRawTickedIdent(self.span(start)));
                     }
 
-                    break TokenKind::TickedIdent;
+                    break;
                 }
+                _ => break,
             }
         }
+
+        TokenKind::TickedIdent
     }
 
     fn fin_lex_char_lit(&mut self, flavor: TextLitFlavor, start: ByteIndex) -> TokenKind {
@@ -583,7 +591,7 @@ impl<'err, 'src> Lexer<'err, 'src> {
                     if let PathSegKeyword!() | TokenKind::Underscore =
                         lex_ident(self.source(unprefixed), self.edition)
                     {
-                        self.error(Error::InvalidRawIdent(self.span(unprefixed)));
+                        self.error(Error::InvalidRawIdent(self.span(start)));
                     }
 
                     return TokenKind::CommonIdent;

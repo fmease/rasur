@@ -365,4 +365,22 @@ fn raw_ticked_idents() {
     );
 
     t!(parse_item, Rust2021, "type R = &'r#_ ();", Err(r!([Error::InvalidRawTickedIdent(_)])));
+
+    // We once used to accept this by mistake!
+    t!(parse_item, Rust2021, "W!('r#0);", Err(r!([Error::InvalidRawTickedIdent(_)])));
+
+    // We once used to accept this by mistake treating it as an empty raw ticked ident!
+    t!(parse_item, Rust2021, "O!('r#);", Err(r!([Error::InvalidRawTickedIdent(_)])));
+
+    // We once used to accept this by mistake treating it as a multi-scalar char lit!
+    t!(
+        parse_item,
+        Rust2021,
+        "W!('r#');",
+        Err(r!([
+            Error::InvalidRawTickedIdent(_),
+            Error::UnterminatedCharLit(_),
+            Error::MissingClosingDelimiters(_),
+        ]))
+    );
 }
