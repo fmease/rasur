@@ -54,6 +54,7 @@ features! {
     explicit_tail_calls #112788,
     final_associated_functions #131179,
     fn_delegation #118212,
+    forced_keywords #153839,
     frontmatter #136889,
     gen_blocks #117078,
     generic_const_items #113521,

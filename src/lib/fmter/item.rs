@@ -695,11 +695,11 @@ impl Fmt for ast::UsePathTreeKind<'_> {
 
 impl Fmt for ast::MacroDef<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { binder, params, body, style } = self;
+        let Self { binder, body, style } = self;
 
-        let prefix = match style {
-            ast::MacroDefStyle::Old => "macro_rules!",
-            ast::MacroDefStyle::New => "macro",
+        let (prefix, params) = match style {
+            ast::MacroDefStyle::Old => ("macro_rules!", None),
+            ast::MacroDefStyle::New { params } => ("macro", params),
         };
 
         fmt!(cx, "{prefix} ");

@@ -44,6 +44,12 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
         ast::Ident::new(name, span)
     }
 
+    // FIXME: Janky
+    pub fn keyword(&self, span: Span) -> &'src str {
+        let source = self.source(span);
+        source.strip_prefix("k#").unwrap_or(source)
+    }
+
     pub fn advance(&mut self) {
         self.index += 1;
         if let Some(&token) = self.tokens.get(self.index) {
