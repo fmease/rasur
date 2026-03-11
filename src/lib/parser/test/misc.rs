@@ -1,3 +1,4 @@
+use super::super::Fragment;
 use super::{parse_expr, parse_file, parse_item, parse_pat, parse_ty, t};
 use crate::{
     ast,
@@ -498,5 +499,51 @@ fn char_lits_or_ticked_idents() {
         Rust2021,
         "M! { 'r#a'r#a }",
         Err([Error { kind: ErrorKind::TickFollowingRawTickedIdent, .. }])
+    );
+}
+
+#[test]
+fn stropped_keywords() {
+    t!(
+        parse_item,
+        Rust2021,
+        "k#fn diverge() -> ! { k#loop {} }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(ast::FnItem {
+                binder: ast::Ident!("diverge"),
+                body: Some(ast::BlockExpr {
+                    stmts: [ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Loop(..), .. }, _)]
+                }),
+                ..
+            }),
+            ..
+        })
+    );
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2021,
+        "Q![ k# ];",
+        Err([Error { kind: ErrorKind::InvalidStroppedKeyword, .. }])
+    );
+    t!(
+        parse_item,
+        Rust2021,
+        "Q![ k#common ];",
+        Err([Error { kind: ErrorKind::InvalidStroppedKeyword, .. }])
+    );
+
+    t!(
+        parse_expr,
+        Rust2018,
+        "k#loop {}",
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::Hash,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 }

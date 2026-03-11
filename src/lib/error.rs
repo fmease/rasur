@@ -49,6 +49,7 @@ pub enum ErrorKind {
     InvalidRawIdent(IdentKind),
     InvalidScalar(char, InvalidScalarPlace),
     InvalidStrLitDelimiter,
+    InvalidStroppedKeyword,
     InvalidTraitBoundModifier,
     InvalidTyPrefix,
     LifetimeObjectTyWithoutPlus,

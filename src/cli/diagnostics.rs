@@ -74,6 +74,7 @@ impl IntoDiag for Error {
                 diag.title(format!("invalid scalar U+{:04X}{place}", char as u32))
             }
             ErrorKind::InvalidStrLitDelimiter => diag.title("invalid string literal delimiter"),
+            ErrorKind::InvalidStroppedKeyword => diag.title("invalid stropped keyword"),
             ErrorKind::InvalidTraitBoundModifier => diag.title("invalid trait bound modifier"),
             ErrorKind::InvalidTyPrefix => diag.title("invalid type modifiers"),
             ErrorKind::LifetimeObjectTyWithoutPlus => {
