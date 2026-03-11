@@ -229,10 +229,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         loop {
             let qualifier = match self.token.kind {
-                TokenKind::CommonIdent => match self.source(self.token.span) {
-                    weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
-                    _ => break,
-                },
+                TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+                    match self.keyword(self.token.span) {
+                        weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
+                        _ => break,
+                    }
+                }
                 TokenKind::Extern => {
                     self.advance();
                     qualifiers.push(Qualifier::Extern(self.parse_abi_str()));

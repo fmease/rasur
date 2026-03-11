@@ -173,7 +173,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            TokenKind::CommonIdent if self.check(weak::Builtin) => {
+            TokenKind::CommonIdent | TokenKind::StroppedKeyword if self.check(weak::Builtin) => {
                 self.advance();
                 return self.fin_parse_builtin_syntax(
                     start,

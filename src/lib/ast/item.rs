@@ -356,7 +356,6 @@ pub enum UsePathTreeKind<'src> {
 #[derive(Debug)]
 pub struct MacroDef<'src> {
     pub binder: Ident<'src>,
-    pub params: Option<TokenStream>,
     pub body: TokenStream,
     pub style: MacroDefStyle,
 }
@@ -366,7 +365,7 @@ pub enum MacroDefStyle {
     /// Macro 1.2 aka. `macro_rules!`.
     Old,
     /// Macro 2.0.
-    New,
+    New { params: Option<TokenStream> },
 }
 
 #[derive(Debug)]

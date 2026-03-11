@@ -1,13 +1,17 @@
 //! Weak keywords.
 
+// FIXME: This is so janky: Some weak keywords come with "inherent predicates" & some don't.
+//        For the latter kind, it's expected that the caller checks for the necessary
+//        conditions.
+
 use super::{Edition, MatchAgainstArbitraryToken, Parser, Token, TokenKind, TokenPrefix};
 
 pub(super) trait Weak: Copy {
     const STR: &str;
 
     fn check(self, p: &Parser<'_, '_, '_>) -> bool {
-        p.token.kind == TokenKind::CommonIdent
-            && p.source(p.token.span) == Self::STR
+        matches!(p.token.kind, TokenKind::CommonIdent | TokenKind::StroppedKeyword)
+            && p.keyword(p.token.span) == Self::STR
             && self.qualifies(p)
     }
 
@@ -15,7 +19,8 @@ pub(super) trait Weak: Copy {
     where
         Self: MatchAgainstArbitraryToken,
     {
-        token.kind == TokenKind::CommonIdent && p.source(token.span) == Self::STR
+        matches!(token.kind, TokenKind::CommonIdent | TokenKind::StroppedKeyword)
+            && p.keyword(token.span) == Self::STR
     }
 
     fn qualifies(self, _: &Parser<'_, '_, '_>) -> bool {

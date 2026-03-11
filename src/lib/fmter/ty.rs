@@ -1,5 +1,5 @@
 use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
-use crate::{ast, fmter::BuiltinSyntax, lexer::lex_ident, token::TokenKind};
+use crate::{ast, fmter::BuiltinSyntax, lexer::lex_keyword, token::TokenKind};
 
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -298,8 +298,8 @@ impl Fmt for ast::Lifetime<'_> {
         let Self(ast::Ident { name, span: _ }) = self;
 
         fmt!(cx, "'");
-        match lex_ident(name, cx.edition) {
-            TokenKind::CommonIdent | TokenKind::Static | TokenKind::Underscore => {}
+        match lex_keyword(name, cx.edition) {
+            None | Some(TokenKind::Static | TokenKind::Underscore) => {}
             _ => fmt!(cx, "r#"),
         }
         name.fmt(cx);

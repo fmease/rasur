@@ -283,19 +283,23 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_enum_item();
             }
-            TokenKind::CommonIdent => match self.source(self.token.span) {
-                weak::Union::STR if weak::Union.qualifies(self) => {
-                    self.advance();
-                    let binder = self.ident(self.token.span);
-                    self.advance();
-                    return self.fin_parse_union_item(binder);
+            TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+                match self.keyword(self.token.span) {
+                    weak::MacroRules::STR if weak::MacroRules.qualifies(self) => {
+                        self.advance();
+                        return self.fin_parse_old_style_macro_def();
+                    }
+                    weak::Union::STR if weak::Union.qualifies(self) => {
+                        self.advance();
+                        return self.fin_parse_union_item();
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             TokenKind::Macro => {
                 self.feature(Feature::decl_macro, self.token.span);
                 self.advance();
-                return self.fin_parse_macro_def();
+                return self.fin_parse_new_style_macro_def();
             }
             TokenKind::Struct => {
                 self.advance();
@@ -332,16 +336,18 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen(self.token.span),
-                TokenKind::CommonIdent => match self.source(self.token.span) {
-                    weak::Auto::STR if weak::Auto.qualifies(self) => {
-                        Qualifier::Auto(self.token.span)
+                TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+                    match self.keyword(self.token.span) {
+                        weak::Auto::STR if weak::Auto.qualifies(self) => {
+                            Qualifier::Auto(self.token.span)
+                        }
+                        weak::Reuse::STR if weak::Reuse.qualifies(self) => {
+                            Qualifier::Reuse(self.token.span)
+                        }
+                        weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
+                        _ => return,
                     }
-                    weak::Reuse::STR if weak::Reuse.qualifies(self) => {
-                        Qualifier::Reuse(self.token.span)
-                    }
-                    weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
-                    _ => return,
-                },
+                }
                 TokenKind::Impl => {
                     let span = self.token.span;
                     self.advance();
@@ -716,8 +722,8 @@ impl<'src> Parser<'_, '_, 'src> {
         })))
     }
 
-    /// Finish parsing a macro (2.0) definition assuming the leading `macro` has been parsed already.
-    fn fin_parse_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
+    /// Finish parsing a macro 2.0 definition assuming the leading `macro` has been parsed already.
+    fn fin_parse_new_style_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = if self.consume(TokenKind::OpenRoundBracket) {
             let (_, params) = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
@@ -729,12 +735,28 @@ impl<'src> Parser<'_, '_, 'src> {
         let (_, body) = self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
         Ok(ast::ItemKind::MacroDef(Box::new(ast::MacroDef {
             binder,
-            params,
             body,
-            style: ast::MacroDefStyle::New,
+            style: ast::MacroDefStyle::New { params },
         })))
     }
 
+    /// Finish parsing a macro 1.2 definition assuming the leading `macro_rules` has been parsed already.
+    fn fin_parse_old_style_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
+        self.parse_unchecked(TokenKind::SingleBang);
+
+        let binder = self.parse_common_ident()?;
+
+        let (bracket, body) = self.parse_delimited_token_stream()?;
+        if bracket != ast::Bracket::Curly {
+            self.parse(TokenKind::Semicolon)?;
+        }
+
+        Ok(ast::ItemKind::MacroDef(Box::new(ast::MacroDef {
+            binder,
+            body,
+            style: ast::MacroDefStyle::Old,
+        })))
+    }
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
     fn fin_parse_mod_item(
         &mut self,
@@ -872,8 +894,11 @@ impl<'src> Parser<'_, '_, 'src> {
         })))
     }
 
-    /// Finish parsing a union item assuming the leading `"union" Common_Ident` has been parsed already.
-    fn fin_parse_union_item(&mut self, binder: ast::Ident<'src>) -> Result<ast::ItemKind<'src>> {
+    /// Finish parsing a union item assuming the leading `union` has been parsed already.
+    fn fin_parse_union_item(&mut self) -> Result<ast::ItemKind<'src>> {
+        let binder = self.ident(self.token.span);
+        self.advance();
+
         let generics = self.parse_generics()?;
 
         self.parse(TokenKind::OpenCurlyBracket)?;
@@ -957,30 +982,13 @@ impl<'src> Parser<'_, '_, 'src> {
         let path = self.parse_path::<ast::NoGenericArgs>(PathMode::Normal)?;
         self.parse(TokenKind::SingleBang)?;
 
-        let binder = if let [ast::PathSeg { ident: ast::Ident!(weak::MacroRules::STR), args: () }] =
-            *path.segs
-        {
-            self.consume_common_ident()
-        } else {
-            None
-        };
-
         let (bracket, body) = self.parse_delimited_token_stream()?;
 
         if bracket != ast::Bracket::Curly {
             self.parse(TokenKind::Semicolon)?;
         }
 
-        Ok(if let Some(binder) = binder {
-            ast::ItemKind::MacroDef(Box::new(ast::MacroDef {
-                binder,
-                params: None,
-                body,
-                style: ast::MacroDefStyle::Old,
-            }))
-        } else {
-            ast::ItemKind::MacroCall(Box::new(ast::MacroCall { path, bracket, stream: body }))
-        })
+        Ok(ast::ItemKind::MacroCall(Box::new(ast::MacroCall { path, bracket, stream: body })))
     }
 
     fn parse_delimited_assoc_items(
@@ -1197,7 +1205,7 @@ impl ast::ItemKind<'_> {
             //       The first part *is* mentioned in the tracking issue but only under *Unresolved Questions*.
             //       And they've actually added test marked with a fixme: `tests/ui/parser/const-block-items/pub.rs`.
             Self::ConstBlock(_) | Self::MacroCall(_) => false,
-            Self::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::New),
+            Self::MacroDef(item) => matches!(item.style, ast::MacroDefStyle::New { .. }),
         }
     }
 

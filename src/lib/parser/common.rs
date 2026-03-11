@@ -7,7 +7,7 @@ use crate::{
     ast,
     error::ErrorKind,
     feature::Feature,
-    lexer::lex_ident,
+    lexer::lex_keyword,
     parser::{MatchAgainstArbitraryToken, TokenCategory},
     span::{ByteIndex, Span},
     token::Token,
@@ -61,7 +61,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.advance();
 
         let source = &self.source(span)[const { "'".len() }..];
-        let ident = lex_ident(source, self.edition);
+        let ident = lex_keyword(source, self.edition).unwrap_or(TokenKind::CommonIdent);
         if !validate(ident) {
             self.error(error, span);
         }
@@ -309,16 +309,16 @@ impl<'src> super::Parser<'_, '_, 'src> {
         ast::Lit { kind, value, suffix }
     }
 
-    pub(super) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
+    pub(super) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind + std::fmt::Debug>(
         &mut self,
     ) -> (ast::BorrowKind<X>, ast::Mut) {
-        if let TokenKind::CommonIdent = self.token.kind
+        if let TokenKind::CommonIdent | TokenKind::StroppedKeyword = self.token.kind
             && let Some(mut_) = match self.peek(1).kind {
                 TokenKind::Mut => Some(ast::Mut::Yes),
                 TokenKind::Const => Some(ast::Mut::No),
                 _ => None,
             }
-            && let Some(kind) = match self.source(self.token.span) {
+            && let Some(kind) = match self.keyword(self.token.span) {
                 weak::Pin::STR => {
                     self.feature(Feature::pin_ergonomics, self.token.span);
                     Some(ast::BorrowKind::Pin)
@@ -366,6 +366,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.feature(Feature::builtin_syntax, start);
         self.parse(TokenKind::Hash)?;
 
+        // FIXME: rustc actually doesn't accept raw identifiers here.
         let ident = self.parse_common_ident()?;
         self.parse(TokenKind::OpenRoundBracket)?;
 
