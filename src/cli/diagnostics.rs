@@ -1,7 +1,7 @@
 use annotate_snippets as ann;
 use rasur::{
     error::{Error, ErrorKind, InvalidScalarPlace, List1},
-    lexer::IdentKind,
+    lexer::{IdentKind, IdentMode},
     parser::Fragment,
     span::{At as _, Span},
     token::{Repr, Token, TokenKind},
@@ -52,6 +52,18 @@ impl IntoDiag for Error {
             ErrorKind::InvalidFrontmatterTrailer => {
                 diag.title("extra characters after frontmatter closing")
             }
+            ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Raw) => {
+                diag.title("invalid raw identifier")
+            }
+            ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Keyword) => {
+                diag.title("invalid stropped keyword")
+            }
+            ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw) => {
+                diag.title("invalid raw ticked identifier")
+            }
+            ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Keyword) => {
+                diag.title("invalid stropped ticked keyword")
+            }
             ErrorKind::InvalidItemPrefix => diag.title("invalid item modifiers"),
             ErrorKind::InvalidLetChain => diag.title("invalid let-chain"),
             ErrorKind::InvalidLitSuffix => diag.title("invalid literal suffix"),
@@ -60,10 +72,6 @@ impl IntoDiag for Error {
                 diag.title("invalid operator following a boundary")
             }
             ErrorKind::InvalidOpAfterCast => diag.title("invalid operator following a cast"),
-            ErrorKind::InvalidRawIdent(IdentKind::Normal) => diag.title("invalid raw identifier"),
-            ErrorKind::InvalidRawIdent(IdentKind::Ticked) => {
-                diag.title("invalid raw ticked identifier")
-            }
             ErrorKind::InvalidScalar(char, place) => {
                 let place = match place {
                     InvalidScalarPlace::File => "",
@@ -74,7 +82,6 @@ impl IntoDiag for Error {
                 diag.title(format!("invalid scalar U+{:04X}{place}", char as u32))
             }
             ErrorKind::InvalidStrLitDelimiter => diag.title("invalid string literal delimiter"),
-            ErrorKind::InvalidStroppedKeyword => diag.title("invalid stropped keyword"),
             ErrorKind::InvalidTraitBoundModifier => diag.title("invalid trait bound modifier"),
             ErrorKind::InvalidTyPrefix => diag.title("invalid type modifiers"),
             ErrorKind::LifetimeObjectTyWithoutPlus => {
