@@ -244,15 +244,6 @@ fn unicode_17() {
 
 #[test]
 fn raw_idents() {
-    // FIXME: Instead of literally storing "r#loop" for (bare) raw idents in the AST, we should
-    //        just store "loop". However, we can't that do without changing their representation
-    //        from &str to sth. that is / can be owned since we can't just slice off the `r#`
-    //        from raw *ticked* idents like `'r#if` which we'd like to map to `'if` in the future.
-    //        Maybe I should just go with Cow<'_, str> for now and worry about better
-    //        representations later.
-    //        A better representation is also needed if we want to perform Unicode
-    //        normalization (duh!)
-
     t!(
         parse_expr,
         Rust2015,
@@ -261,11 +252,7 @@ fn raw_idents() {
             kind: ast::ExprKind::Struct(r!(ast::StructExpr {
                 path: ast::ExtPath {
                     ext: None,
-                    path: ast::Path {
-                        // FIXME: Strip + Unicode-normalize to `loop`.
-                        // See comment above.
-                        segs: r!([ast::PathSeg { ident: ast::Ident!("r#loop"), .. }])
-                    }
+                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("loop"), .. }]) }
                 },
                 ..
             })),
@@ -328,9 +315,7 @@ fn raw_ticked_idents() {
                 generics: ast::Generics {
                     params: r!([ast::GenericParam {
                         kind: ast::GenericParamKind::Lifetime(_),
-                        // FIXME: Transform + Unicode-normalize to `'if`.
-                        // See comment in test `raw_idents` above.
-                        binder: ast::Ident!("'r#if"),
+                        binder: ast::Ident!("if"),
                         ..
                     }]),
                     ..

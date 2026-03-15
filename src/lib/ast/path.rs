@@ -1,4 +1,4 @@
-use super::{Bound, Expr, Ty};
+use super::{Bound, Expr, Lifetime, Ty};
 use crate::span::Span;
 use std::fmt;
 
@@ -97,7 +97,7 @@ pub enum GenericArgs<'src> {
 pub enum AngleGenericArg<'src> {
     Const(Expr<'src>),
     Constraint(AssocItemConstraint<'src>),
-    Lifetime(Ident<'src>),
+    Lifetime(Lifetime<'src>),
     Ty(Ty<'src>),
 }
 

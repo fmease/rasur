@@ -48,7 +48,7 @@ pub struct FnPtrTyModifiers<'src> {
 
 #[derive(Debug)]
 pub struct RefTy<'src> {
-    pub lt: Option<Ident<'src>>,
+    pub lt: Option<Lifetime<'src>>,
     pub kind: BorrowKind<!>,
     pub mut_: Mutability,
     pub pointee: Ty<'src>,
@@ -71,7 +71,7 @@ pub struct GenericParam<'src> {
 pub enum GenericParamKind<'src> {
     Ty { bounds: Vec<Bound<'src>>, default: Option<Ty<'src>> },
     Const { ty: Ty<'src>, default: Option<Expr<'src>> },
-    Lifetime(Vec<Ident<'src>>),
+    Lifetime(Vec<Lifetime<'src>>),
 }
 
 #[derive(Debug)]
@@ -96,14 +96,14 @@ pub struct TraitPredicate<'src> {
 
 #[derive(Debug)]
 pub struct OutlivesPredicate<'src> {
-    pub lt: Ident<'src>,
-    pub bounds: Vec<Ident<'src>>,
+    pub lt: Lifetime<'src>,
+    pub bounds: Vec<Lifetime<'src>>,
 }
 
 #[derive(Debug)]
 pub enum Bound<'src> {
-    Outlives(Ident<'src>),
-    Use(Vec<Ident<'src>>),
+    Outlives(Lifetime<'src>),
+    Use(Vec<Capture<'src>>),
     Trait {
         // FIXME: Make this more type-safe: binders are
         //        incompatible with non-normal polarity
@@ -117,6 +117,12 @@ impl<'src> From<Path<'src, UnambiguousGenericArgs>> for Bound<'src> {
     fn from(path: Path<'src, UnambiguousGenericArgs>) -> Self {
         Self::Trait { bound_vars: Vec::new(), modifiers: TraitBoundModifiers::NONE, path }
     }
+}
+
+#[derive(Debug)]
+pub enum Capture<'src> {
+    Lifetime(Lifetime<'src>),
+    TyOrConst(Ident<'src>),
 }
 
 // FIXME: Make this more type-safe: non-normal polarity is
@@ -155,3 +161,6 @@ pub enum BoundPolarity {
     Negative,
     Maybe,
 }
+
+#[derive(Debug)]
+pub struct Lifetime<'src>(pub Ident<'src>);

@@ -104,12 +104,13 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         let Token { kind: TokenKind::TickedIdent, span } = self.token else { return None };
         self.advance();
 
-        let name = self.source(span);
-        let ident = lex_ident(&name[1..], self.edition);
+        let source = &self.source(span)[const { "'".len() }..];
+        let ident = lex_ident(source, self.edition);
         if !validate(ident) {
             self.error(error(span));
         }
 
+        let name = source.strip_prefix("r#").unwrap_or(source);
         Some(ast::Ident::new(name, span))
     }
 
@@ -238,7 +239,9 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
     }
 
     fn ident(&self, span: Span) -> ast::Ident<'src> {
-        ast::Ident::new(self.source(span), span)
+        let source = self.source(span);
+        let name = source.strip_prefix("r#").unwrap_or(source);
+        ast::Ident::new(name, span)
     }
 
     fn snapshot<'tmperr>(&self, errors: &'tmperr ErrorBuffer) -> Parser<'tok, 'tmperr, 'src> {

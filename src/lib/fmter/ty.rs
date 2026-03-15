@@ -1,5 +1,5 @@
 use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
-use crate::{ast, fmter::BuiltinSyntax};
+use crate::{ast, fmter::BuiltinSyntax, lexer::lex_ident, token::TokenKind};
 
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -172,7 +172,7 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Lifetime(bounds) => {
-                binder.fmt(cx);
+                ast::Lifetime(binder).fmt(cx);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.interleave(" + ").fmt(cx);
@@ -268,6 +268,15 @@ impl Fmt for ast::Bound<'_> {
     }
 }
 
+impl Fmt for ast::Capture<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Lifetime(lt) => lt.fmt(cx),
+            Self::TyOrConst(param) => param.fmt(cx),
+        }
+    }
+}
+
 impl Fmt for ast::TraitBoundModifiers {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { constness, asyncness, polarity } = self;
@@ -288,5 +297,18 @@ impl Fmt for ast::TraitBoundModifiers {
             ast::BoundPolarity::Negative => fmt!(cx, "!"),
             ast::BoundPolarity::Maybe => fmt!(cx, "?"),
         }
+    }
+}
+
+impl Fmt for ast::Lifetime<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::Ident { name, span: _ }) = self;
+
+        fmt!(cx, "'");
+        match lex_ident(name, cx.edition) {
+            TokenKind::CommonIdent | TokenKind::Static | TokenKind::Underscore => {}
+            _ => fmt!(cx, "r#"),
+        }
+        name.fmt(cx);
     }
 }

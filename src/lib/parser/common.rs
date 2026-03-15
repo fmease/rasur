@@ -62,7 +62,7 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<Option<ast::FnParam<'src>>> {
         enum ShorthandKind<'src> {
-            Ref(Option<ast::Ident<'src>>, ast::BorrowKind<!>),
+            Ref(Option<ast::Lifetime<'src>>, ast::BorrowKind<!>),
             Bare,
         }
 
@@ -288,32 +288,29 @@ impl<'src> Parser<'_, '_, 'src> {
 
         const DOT: char = '.';
 
-        let mut span = self.token.span;
-        let mut name = self.source(span);
+        let mut ident = self.ident(self.token.span);
         let mut extra = None;
 
         let numeric = matches!(self.token.kind, TokenKind::NumLit);
 
-        if numeric && let Some((left, right)) = name.split_once(DOT) {
-            let dot = span.start + ByteIndex::new(left.len());
+        if numeric && let Some((left, right)) = ident.name.split_once(DOT) {
+            let dot = ident.span.start + ByteIndex::new(left.len());
 
             if right.is_empty() {
                 self.token.kind = TokenKind::SingleDot;
                 self.token.span.start = dot;
             } else {
-                let mut span = span;
+                let mut span = ident.span;
                 span.start = dot + const { ByteIndex::new(DOT.len_utf8()) };
                 extra = Some(ast::Ident::new(right, span));
                 self.advance();
             }
 
-            span.end = dot;
-            name = left;
+            ident.span.end = dot;
+            ident.name = left;
         } else {
             self.advance();
         }
-
-        let ident = ast::Ident::new(name, span);
 
         if numeric {
             self.validate_numeric_ident(ident, ExpInNumIdentPolicy::AllowedIfUnsigned);

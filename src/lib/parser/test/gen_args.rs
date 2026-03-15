@@ -115,7 +115,7 @@ fn angle_gen_args_ty() {
                 segs: r!([ast::PathSeg {
                     ident: ast::Ident!("Ty"),
                     args: Some(ast::GenericArgs::Angle(r!([
-                        ast::AngleGenericArg::Lifetime(ast::Ident!("'a")),
+                        ast::AngleGenericArg::Lifetime(ast::Lifetime(ast::Ident!("a"))),
                         ast::AngleGenericArg::Ty(ast::Ty::Tuple(r!([]))),
                         ast::AngleGenericArg::Const(ast::Expr {
                             kind: ast::ExprKind::Lit(r!(ast::Lit {

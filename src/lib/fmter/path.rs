@@ -1,5 +1,5 @@
 use super::{Cx, Fmt, InterleaveExt as _, fmt};
-use crate::ast;
+use crate::{ast, lexer::lex_ident, token::TokenKind};
 
 impl<M: GenericArgsMode> Fmt for ast::Path<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -22,6 +22,10 @@ impl Fmt for ast::Ident<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { name, span: _ } = self;
 
+        match lex_ident(name, cx.edition) {
+            TokenKind::CommonIdent | TokenKind::Underscore => {}
+            _ => fmt!(cx, "r#"),
+        }
         fmt!(cx, "{name}");
     }
 }

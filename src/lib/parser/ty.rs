@@ -429,13 +429,13 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenPrefix::GreaterThan, SEPARATOR, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
 
-            let (binder, kind) = if let Some(lifetime) = this.parse_lifetime() {
+            let (binder, kind) = if let Some(ast::Lifetime(lt)) = this.parse_lifetime() {
                 let bounds = if this.consume(TokenKind::SingleColon) {
                     this.parse_outlives_bounds()
                 } else {
                     Vec::new()
                 };
-                (lifetime, ast::GenericParamKind::Lifetime(bounds))
+                (lt, ast::GenericParamKind::Lifetime(bounds))
             } else {
                 match this.token.kind {
                     TokenKind::Const => {
@@ -625,13 +625,13 @@ impl<'src> Parser<'_, '_, 'src> {
             let captures =
                 self.fin_parse_delim_seq(TokenPrefix::GreaterThan, TokenKind::Comma, |this| {
                     if let Some(lt) = this.parse_lifetime() {
-                        return Ok(lt);
+                        return Ok(ast::Capture::Lifetime(lt));
                     }
                     match this.token.kind {
                         TokenKind::CommonIdent | TokenKind::SelfUpper => {
-                            let ident = this.ident(this.token.span);
+                            let param = this.ident(this.token.span);
                             this.advance();
-                            Ok(ident)
+                            Ok(ast::Capture::TyOrConst(param))
                         }
                         _ => this.fatal(Error::UnexpectedToken(
                             this.token,
@@ -790,7 +790,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    fn parse_outlives_bounds(&mut self) -> Vec<ast::Ident<'src>> {
+    fn parse_outlives_bounds(&mut self) -> Vec<ast::Lifetime<'src>> {
         let mut bounds = Vec::new();
 
         while let Some(lt) = self.parse_lifetime() {
@@ -819,13 +819,13 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a lifetime.
-    pub(super) fn parse_lifetime(&mut self) -> Option<ast::Ident<'src>> {
-        self.parse_ticked_ident(
+    pub(super) fn parse_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
+        Some(ast::Lifetime(self.parse_ticked_ident(
             |kind| {
                 matches!(kind, TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static)
             },
             Error::ReservedLifetime,
-        )
+        )?))
     }
 }
 
