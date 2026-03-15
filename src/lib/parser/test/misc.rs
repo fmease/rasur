@@ -3,6 +3,7 @@ use crate::{
     ast,
     edition::Edition::*,
     error::Error,
+    lexer::IdentKind,
     token::{Token, TokenKind},
 };
 use deref as r;
@@ -277,7 +278,10 @@ fn raw_idents() {
         parse_item,
         Rust2015,
         "K!(r#self r#_);",
-        Err(r!([Error::InvalidRawIdent(_), Error::InvalidRawIdent(_)]))
+        Err(r!([
+            Error::InvalidRawIdent(IdentKind::Normal, _),
+            Error::InvalidRawIdent(IdentKind::Normal, _)
+        ]))
     );
 
     // `r#` is considered to be a malformed raw delimited string literal. That's what rustc does, too.
@@ -364,13 +368,30 @@ fn raw_ticked_idents() {
         })
     );
 
-    t!(parse_item, Rust2021, "type R = &'r#_ ();", Err(r!([Error::InvalidRawTickedIdent(_)])));
+    t!(
+        parse_item,
+        Rust2021,
+        "type R = &'r#_ ();",
+        Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)]))
+    );
 
     // We once used to accept this by mistake!
-    t!(parse_item, Rust2021, "W!('r#0);", Err(r!([Error::InvalidRawTickedIdent(_)])));
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2021,
+        "seg!('r#self 'r#Self);",
+        Err(r!([
+            Error::InvalidRawIdent(IdentKind::Ticked, _),
+            Error::InvalidRawIdent(IdentKind::Ticked, _)
+        ]))
+    );
+
+    // We once used to accept this by mistake!
+    t!(parse_item, Rust2021, "W!('r#0);", Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)])));
 
     // We once used to accept this by mistake treating it as an empty raw ticked ident!
-    t!(parse_item, Rust2021, "O!('r#);", Err(r!([Error::InvalidRawTickedIdent(_)])));
+    t!(parse_item, Rust2021, "O!('r#);", Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)])));
 
     // We once used to accept this by mistake treating it as a multi-scalar char lit!
     t!(
@@ -378,7 +399,7 @@ fn raw_ticked_idents() {
         Rust2021,
         "W!('r#');",
         Err(r!([
-            Error::InvalidRawTickedIdent(_),
+            Error::InvalidRawIdent(IdentKind::Ticked, _),
             Error::UnterminatedCharLit(_),
             Error::MissingClosingDelimiters(_),
         ]))

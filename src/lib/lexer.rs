@@ -416,7 +416,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
         TokenKind::NumLit
     }
 
-    // FIXME: Consolidate with fin_lex_char_lit smh
     fn fin_lex_ticked_ident_or_char_lit(&mut self, start: ByteIndex) -> TokenKind {
         if !self.peek().is_some_and(is_ident_start) {
             return self.fin_lex_char_lit(TextLitFlavor::Utf8, start);
@@ -450,29 +449,19 @@ impl<'err, 'src> Lexer<'err, 'src> {
                         self.advance(); // `#`
                         return TokenKind::Error;
                     }
-
                     self.advance();
 
-                    if !self.peek().is_some_and(is_ident_start) {
-                        self.error(Error::InvalidRawTickedIdent(self.span(start)));
-                        return TokenKind::Error;
-                    }
-
-                    let unprefixed = self.index();
-                    self.advance_while(is_ident_middle);
-
-                    if let TokenKind::Underscore = lex_ident(self.source(unprefixed), self.edition)
-                    {
-                        self.error(Error::InvalidRawTickedIdent(self.span(start)));
-                    }
-
-                    break;
+                    return match self.fin_lex_raw_ident(IdentKind::Ticked, start) {
+                        Some(()) => TokenKind::TickedIdent,
+                        None => {
+                            self.error(Error::InvalidRawIdent(IdentKind::Ticked, self.span(start)));
+                            TokenKind::Error
+                        }
+                    };
                 }
-                _ => break,
+                _ => return TokenKind::TickedIdent,
             }
         }
-
-        TokenKind::TickedIdent
     }
 
     fn fin_lex_char_lit(&mut self, flavor: TextLitFlavor, start: ByteIndex) -> TokenKind {
@@ -581,24 +570,6 @@ impl<'err, 'src> Lexer<'err, 'src> {
                 self.advance();
                 return self.fin_lex_char_lit(TextLitFlavor::Ascii, start);
             }
-            ("r", Some('#')) => {
-                self.advance();
-
-                let unprefixed = self.index();
-                if self.peek().is_some_and(is_ident_start) {
-                    self.advance_while(is_ident_middle);
-
-                    if let PathSegKeyword!() | TokenKind::Underscore =
-                        lex_ident(self.source(unprefixed), self.edition)
-                    {
-                        self.error(Error::InvalidRawIdent(self.span(start)));
-                    }
-
-                    return TokenKind::CommonIdent;
-                }
-
-                return self.fin_lex_raw_guarded_str_lit(start);
-            }
             ("br", Some('#')) => {
                 self.advance();
                 return self.fin_lex_raw_guarded_str_lit(start);
@@ -606,6 +577,14 @@ impl<'err, 'src> Lexer<'err, 'src> {
             ("cr", Some('#')) if self.edition >= Edition::Rust2021 => {
                 self.advance();
                 return self.fin_lex_raw_guarded_str_lit(start);
+            }
+            ("r", Some('#')) => {
+                self.advance();
+
+                return match self.fin_lex_raw_ident(IdentKind::Normal, start) {
+                    Some(()) => TokenKind::CommonIdent,
+                    None => self.fin_lex_raw_guarded_str_lit(start),
+                };
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(Error::ReservedPrefix(self.span(start)));
@@ -618,6 +597,24 @@ impl<'err, 'src> Lexer<'err, 'src> {
         };
         self.advance();
         self.fin_lex_str_lit(raw, flavor, start)
+    }
+
+    fn fin_lex_raw_ident(&mut self, kind: IdentKind, start: ByteIndex) -> Option<()> {
+        if !self.peek().is_some_and(is_ident_start) {
+            return None;
+        }
+
+        let unprefixed = self.index();
+        self.advance();
+        self.advance_while(is_ident_middle);
+
+        if let PathSegKeyword!() | TokenKind::Underscore =
+            lex_ident(self.source(unprefixed), self.edition)
+        {
+            self.error(Error::InvalidRawIdent(kind, self.span(start)));
+        }
+
+        Some(())
     }
 
     // FIXME: Consolidate with `fin_lex_str_lit` smh
@@ -769,6 +766,13 @@ impl Iterator for Lexer<'_, '_> {
         self.previous = Some(kind);
         Some(Token::new(kind, Span::new(start, self.index())))
     }
+}
+
+#[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Debug))]
+pub enum IdentKind {
+    Normal,
+    Ticked,
 }
 
 #[derive(Clone, Copy)]

@@ -1,6 +1,7 @@
 use annotate_snippets as ann;
 use rasur::{
     error::{Error, InvalidScalarPlace},
+    lexer::IdentKind,
     parser::ExpectedFragment,
     span::Span,
     token::{Repr, Token, TokenKind},
@@ -80,10 +81,12 @@ fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
         Error::UnknownBuiltinSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
         Error::InvalidLetChain(span) => Diag::new("invalid let-chain").highlight(span),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),
-        Error::InvalidRawTickedIdent(span) => {
+        Error::InvalidRawIdent(IdentKind::Normal, span) => {
+            Diag::new("invalid raw identifier").highlight(span)
+        }
+        Error::InvalidRawIdent(IdentKind::Ticked, span) => {
             Diag::new("invalid raw ticked identifier").highlight(span)
         }
-        Error::InvalidRawIdent(span) => Diag::new("invalid raw identifier").highlight(span),
         Error::UnterminatedBlockComment(span) => {
             Diag::new("unterminated block comment").highlight(span)
         }

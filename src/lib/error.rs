@@ -1,4 +1,4 @@
-use crate::{parser::ExpectedFragment, span::Span, token::Token};
+use crate::{lexer::IdentKind, parser::ExpectedFragment, span::Span, token::Token};
 use Default::default;
 use std::cell::RefCell;
 
@@ -79,8 +79,7 @@ pub enum Error {
     InvalidNumericIdent(Span),
     InvalidOpAfterCast(Span),
     InvalidParenthesizedBound,
-    InvalidRawIdent(Span),
-    InvalidRawTickedIdent(Span),
+    InvalidRawIdent(IdentKind, Span),
     InvalidScalar(char, InvalidScalarPlace, Span),
     InvalidStrLitDelimiter(Span),
     InvalidTyPrefix(Span),
