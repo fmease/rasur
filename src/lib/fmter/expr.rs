@@ -82,13 +82,15 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
             ast::ExprKind::Continue(label) => {
                 fmt!(cx, "continue");
                 if let Some(label) = label {
-                    fmt!(cx, " {label}");
+                    fmt!(cx, " ");
+                    label.fmt(cx);
                 }
             }
             ast::ExprKind::Break(label, expr) => {
                 fmt!(cx, "break");
                 if let Some(label) = label {
-                    fmt!(cx, " {label}");
+                    fmt!(cx, " ");
+                    label.fmt(cx);
                 }
                 if let Some(expr) = expr {
                     fmt!(cx, " ");
@@ -104,9 +106,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
             }
             ast::ExprKind::If(expr) => expr.fmt(cx),
             ast::ExprKind::Loop(label, body) => {
-                if let Some(label) = label {
-                    fmt!(cx, "{label}: ");
-                }
+                label.map(LoopLabel).fmt(cx);
                 fmt!(cx, "loop ");
                 (*body, attrs).fmt(cx);
             }
@@ -137,7 +137,8 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
             ast::ExprKind::Field(expr, field) => {
                 fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ").{field}");
+                fmt!(cx, ").");
+                field.fmt(cx);
             }
             ast::ExprKind::Call(expr, args) => {
                 fmt!(cx, "(");
@@ -155,9 +156,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 fmt!(cx, "]");
             }
             ast::ExprKind::Block(label, block) => {
-                if let Some(label) = label {
-                    fmt!(cx, "{label}: ");
-                }
+                label.map(LoopLabel).fmt(cx);
                 (*block, attrs).fmt(cx);
             }
             ast::ExprKind::GenBlock(kind, mode, block) => {
@@ -306,10 +305,7 @@ impl Fmt for (ast::WhileLoopExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         let (expr, attrs) = self;
         let ast::WhileLoopExpr { label, condition, body } = expr;
 
-        if let Some(label) = label {
-            fmt!(cx, "{label}: ");
-        }
-
+        label.map(LoopLabel).fmt(cx);
         fmt!(cx, "while ");
         condition.fmt(cx);
         fmt!(cx, " ");
@@ -345,7 +341,7 @@ impl Fmt for ast::StructExprField<'_> {
             fmt!(cx, " ");
         }
 
-        fmt!(cx, "{binder}");
+        binder.fmt(cx);
         if let Some(body) = body {
             fmt!(cx, ": ");
             body.fmt(cx);
@@ -451,10 +447,7 @@ impl Fmt for (ast::ForLoopExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         let (expr, attrs) = self;
         let ast::ForLoopExpr { label, awaitness, pat, head, body } = expr;
 
-        if let Some(label) = label {
-            fmt!(cx, "{label}: ");
-        }
-
+        label.map(LoopLabel).fmt(cx);
         fmt!(cx, "for ");
         match awaitness {
             ast::Awaitness::Await => fmt!(cx, "await "),
@@ -522,5 +515,16 @@ impl Fmt for ast::LetExpr<'_> {
         pat.fmt(cx);
         fmt!(cx, " = ");
         expr.fmt(cx);
+    }
+}
+
+struct LoopLabel<'src>(ast::Ident<'src>);
+
+impl Fmt for LoopLabel<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(label) = self;
+
+        label.fmt(cx);
+        fmt!(cx, ": ");
     }
 }

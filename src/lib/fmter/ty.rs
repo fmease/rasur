@@ -151,7 +151,7 @@ impl Fmt for ast::GenericParam<'_> {
 
         match kind {
             ast::GenericParamKind::Ty { bounds, default } => {
-                fmt!(cx, "{binder}");
+                binder.fmt(cx);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.fmt(cx);
@@ -162,7 +162,9 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Const { ty, default } => {
-                fmt!(cx, "const {binder}: ");
+                fmt!(cx, "const ");
+                binder.fmt(cx);
+                fmt!(cx, ": ");
                 ty.fmt(cx);
                 if let Some(expr) = default {
                     fmt!(cx, " = ");
@@ -170,7 +172,7 @@ impl Fmt for ast::GenericParam<'_> {
                 }
             }
             ast::GenericParamKind::Lifetime(bounds) => {
-                fmt!(cx, "{binder}");
+                binder.fmt(cx);
                 if !bounds.is_empty() {
                     fmt!(cx, ": ");
                     bounds.interleave(" + ").fmt(cx);

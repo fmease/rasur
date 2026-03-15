@@ -13,7 +13,7 @@ impl<M: GenericArgsMode> Fmt for ast::PathSeg<'_, M> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ident, args } = self;
 
-        fmt!(cx, "{ident}");
+        ident.fmt(cx);
         M::fmt(args, cx);
     }
 }
@@ -129,7 +129,8 @@ impl Fmt for ast::AngleGenericArg<'_> {
 impl Fmt for ast::AssocItemConstraint<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { ident, args, kind } = self;
-        fmt!(cx, "{ident}");
+
+        ident.fmt(cx);
         args.fmt(cx);
         kind.fmt(cx);
     }

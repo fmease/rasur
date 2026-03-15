@@ -73,7 +73,7 @@ impl Fmt for ast::BindingPat<'_> {
 
         mut_.trailing_space().fmt(cx);
         by_ref.trailing_space().fmt(cx);
-        fmt!(cx, "{binder}");
+        binder.fmt(cx);
 
         if let Some(pat) = pat {
             fmt!(cx, " @ ");
@@ -127,7 +127,8 @@ impl Fmt for ast::StructPatField<'_> {
         }
 
         if let Some(binder) = binder {
-            fmt!(cx, "{binder}: ");
+            binder.fmt(cx);
+            fmt!(cx, ": ");
         }
         body.fmt(cx);
     }

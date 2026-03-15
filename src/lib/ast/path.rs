@@ -51,12 +51,6 @@ impl<'src> Ident<'src> {
     }
 }
 
-impl fmt::Display for Ident<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name)
-    }
-}
-
 impl fmt::Debug for Ident<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}@{:?}", self.name, self.span)

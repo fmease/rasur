@@ -66,7 +66,8 @@ impl Fmt for ast::ConstItem<'_> {
             ast::Tyness::Ty => fmt!(cx, "type "),
             ast::Tyness::Not => {}
         }
-        fmt!(cx, "const {binder}");
+        fmt!(cx, "const ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -122,8 +123,7 @@ impl Fmt for ast::DelegationPathTreeKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Global => fmt!(cx, "*"),
-            Self::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
-            Self::Stump(None) => {}
+            Self::Stump(binder) => binder.map(Renaming).fmt(cx),
             Self::Branch(binders) => {
                 fmt!(cx, "{{");
                 binders
@@ -131,9 +131,7 @@ impl Fmt for ast::DelegationPathTreeKind<'_> {
                     .map(|(ident, binder)| {
                         super::Inline(move |cx| {
                             ident.fmt(cx);
-                            if let Some(binder) = binder {
-                                fmt!(cx, " as {binder}")
-                            }
+                            binder.map(Renaming).fmt(cx);
                         })
                     })
                     .interleave(", ")
@@ -148,7 +146,8 @@ impl Fmt for ast::EnumItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { binder, generics, variants } = self;
 
-        fmt!(cx, "enum {binder}");
+        fmt!(cx, "enum ");
+        binder.fmt(cx);
         generics.fmt(cx);
 
         fmt!(cx, " {{");
@@ -182,8 +181,7 @@ impl Fmt for ast::Variant<'_> {
 
         vis.trailing_space().fmt(cx);
 
-        fmt!(cx, "{binder}");
-
+        binder.fmt(cx);
         kind.fmt(cx);
 
         if let Some(discr) = discr {
@@ -257,7 +255,8 @@ impl Fmt for ast::StructFieldDef<'_> {
         vis.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
 
-        fmt!(cx, "{binder}: ");
+        binder.fmt(cx);
+        fmt!(cx, ": ");
         ty.fmt(cx);
         if let Some(default) = default {
             fmt!(cx, " = ");
@@ -282,9 +281,11 @@ impl Fmt for ast::ExternCrateItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { target, binder } = self;
 
-        fmt!(cx, "extern crate {target}");
+        fmt!(cx, "extern crate ");
+        target.fmt(cx);
         if let Some(binder) = binder {
-            fmt!(cx, " as {binder}");
+            fmt!(cx, " as ");
+            binder.fmt(cx);
         }
         fmt!(cx, ";");
     }
@@ -327,7 +328,8 @@ impl Fmt for (ast::FnItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         let ast::FnItem { modifiers, binder, generics, params, ret_ty, contract, body } = item;
 
         modifiers.trailing_space().fmt(cx);
-        fmt!(cx, "fn {binder}");
+        fmt!(cx, "fn ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -493,7 +495,8 @@ impl Fmt for (ast::ModItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         let ast::ModItem { safety, binder, body } = item;
 
         safety.trailing_space().fmt(cx);
-        fmt!(cx, "mod {binder}");
+        fmt!(cx, "mod ");
+        binder.fmt(cx);
         if let Some(items) = body {
             fmt!(cx, " ");
             Cluster { attrs, nodes: items }.fmt(cx);
@@ -510,7 +513,8 @@ impl Fmt for ast::StaticItem<'_> {
         safety.trailing_space().fmt(cx);
         fmt!(cx, "static ");
         mut_.trailing_space().fmt(cx);
-        fmt!(cx, "{binder}: ");
+        binder.fmt(cx);
+        fmt!(cx, ": ");
         ty.fmt(cx);
         if let Some(body) = body {
             fmt!(cx, " = ");
@@ -527,7 +531,8 @@ impl Fmt for ast::StructItem<'_> {
         let where_clause_is_trailing = matches!(kind, ast::VariantKind::Tuple(_));
         let needs_semicolon = kind.needs_semicolon();
 
-        fmt!(cx, "struct {binder}");
+        fmt!(cx, "struct ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -550,7 +555,8 @@ impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         let ast::TraitItem { modifiers, binder, generics, bounds, body } = item;
 
         modifiers.trailing_space().fmt(cx);
-        fmt!(cx, "trait {binder}");
+        fmt!(cx, "trait ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -584,7 +590,8 @@ impl Fmt for ast::TraitAliasItem<'_> {
         let Self { constness, binder, generics, bounds } = self;
 
         constness.trailing_space().fmt(cx);
-        fmt!(cx, "trait {binder}");
+        fmt!(cx, "trait ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -603,7 +610,8 @@ impl Fmt for ast::TyAliasItem<'_> {
         let Self { defaultness, binder, generics, bounds, body } = self;
 
         defaultness.trailing_space().fmt(cx);
-        fmt!(cx, "type {binder}");
+        fmt!(cx, "type ");
+        binder.fmt(cx);
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
@@ -624,7 +632,8 @@ impl Fmt for ast::UnionItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { binder, generics, fields } = self;
 
-        fmt!(cx, "union {binder}");
+        fmt!(cx, "union ");
+        binder.fmt(cx);
         generics.fmt(cx);
         fields.fmt(cx);
     }
@@ -655,8 +664,7 @@ impl Fmt for ast::UsePathTreeKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Global => fmt!(cx, "*"),
-            Self::Stump(Some(binder)) => fmt!(cx, " as {binder}"),
-            Self::Stump(None) => {}
+            Self::Stump(binder) => binder.map(Renaming).fmt(cx),
             Self::Branch(trees) => {
                 fmt!(cx, "{{");
                 trees.interleave(", ").fmt(cx);
@@ -675,7 +683,8 @@ impl Fmt for ast::MacroDef<'_> {
             ast::MacroDefStyle::New => "macro",
         };
 
-        fmt!(cx, "{prefix} {binder}");
+        fmt!(cx, "{prefix} ");
+        binder.fmt(cx);
         if let Some(params) = params {
             fmt!(cx, "(");
             params.fmt(cx);
@@ -826,5 +835,16 @@ impl Fmt for TrailingSpace<ast::Defaultness> {
             ast::Defaultness::Final => fmt!(cx, "final "),
             ast::Defaultness::Not => {}
         }
+    }
+}
+
+struct Renaming<'src>(ast::Ident<'src>);
+
+impl Fmt for Renaming<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(binder) = self;
+
+        fmt!(cx, " as ");
+        binder.fmt(cx);
     }
 }
