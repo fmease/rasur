@@ -39,7 +39,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 && this.token.kind != TokenKind::TripleDot)
                 || this.is_restricted_param_pat()
             {
-                let pat = this.parse_pat(OrPolicy::Forbidden)?;
+                let pat = this.parse_pat(OrPolicy::Yield)?;
                 this.parse(TokenKind::SingleColon)?;
                 pat
             } else {

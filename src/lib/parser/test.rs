@@ -88,7 +88,7 @@ fn parse_expr(source: Normalized<&str>, edition: Edition) -> Result<ast::Expr<'_
 }
 
 fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>> {
-    parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Allowed))
+    parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Parse))
 }
 
 fn parse_via<'src, T>(

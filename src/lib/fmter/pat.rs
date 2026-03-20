@@ -51,12 +51,13 @@ impl Fmt for ast::Pat<'_> {
                 left.fmt(cx);
                 let symbol = match kind {
                     ast::RangePatKind::Exclusive => "..",
-                    ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Normal) => "..=",
-                    ast::RangePatKind::Inclusive(ast::RangeInclusivePatKind::Legacy) => "...",
+                    ast::RangePatKind::Inclusive { legacy: false } => "..=",
+                    ast::RangePatKind::Inclusive { legacy: true } => "...",
                 };
                 fmt!(cx, "{symbol}");
                 right.fmt(cx);
             }
+            Self::Rest => fmt!(cx, ".."),
             Self::Slice(elems) => {
                 fmt!(cx, "[");
                 elems.interleave(", ").fmt(cx);

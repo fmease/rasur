@@ -46,7 +46,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 ast::Superness::Not
             };
         if self.consume(TokenKind::Let) {
-            let pat = self.parse_pat(OrPolicy::Forbidden)?;
+            let pat = self.parse_pat(OrPolicy::Yield)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
             // FIXME: Proper diagnostic for the !else_may_follow case.
             let body = if self.consume(TokenKind::SingleEquals) {

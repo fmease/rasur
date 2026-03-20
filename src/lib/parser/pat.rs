@@ -12,25 +12,27 @@ impl<'src> Parser<'_, '_, 'src> {
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
-        self.parse_pat_where(o_policy, GuardPolicy::Forbidden)
+        self.parse_pat_where(o_policy, NonLegacyRangePolicy::Parse, GuardPolicy::Yield)
     }
 
     fn parse_pat_where(
         &mut self,
         o_policy: OrPolicy,
+        r_policy: NonLegacyRangePolicy,
         g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
-        if let OrPolicy::Allowed = o_policy {
+        if let OrPolicy::Parse = o_policy {
             _ = self.consume(TokenKind::SinglePipe);
         }
 
-        self.parse_pat_at_level(Level::Initial, o_policy, g_policy)
+        self.parse_pat_at_level(Level::Initial, o_policy, r_policy, g_policy)
     }
 
     fn parse_pat_at_level(
         &mut self,
         level: Level,
         o_policy: OrPolicy,
+        r_policy: NonLegacyRangePolicy,
         g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
         // Negation and ranges aren't handled here since they don't operate on general patterns
@@ -44,15 +46,15 @@ impl<'src> Parser<'_, '_, 'src> {
             self.advance();
             self.fin_parse_prefix_op_pat(op, o_policy, g_policy)
         } else {
-            self.parse_lower_pat()
+            self.parse_lower_pat(r_policy)
         }?;
 
         loop {
             let op = match self.token.kind {
                 // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
                 // FIXME: `if` isn't really an operator; we currently wrongly permit `(_ if _ if _)`
-                TokenKind::If if let GuardPolicy::Allowed = g_policy => Op::Guard,
-                TokenKind::SinglePipe if let OrPolicy::Allowed = o_policy => Op::Or,
+                TokenKind::If if let GuardPolicy::Parse = g_policy => Op::Guard,
+                TokenKind::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
                 _ => break,
             };
 
@@ -64,7 +66,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             self.advance();
 
-            left = self.fin_parse_suffix_op_pat(op, left, o_policy, g_policy)?;
+            left = self.fin_parse_suffix_op_pat(op, left, o_policy, r_policy, g_policy)?;
         }
 
         Ok(left)
@@ -93,6 +95,7 @@ impl<'src> Parser<'_, '_, 'src> {
         op: Op,
         left: ast::Pat<'src>,
         o_policy: OrPolicy,
+        r_policy: NonLegacyRangePolicy,
         g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
         match op {
@@ -101,8 +104,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 Ok(ast::Pat::Guarded(Box::new(left), Box::new(guard)))
             }
             Op::Or => {
-                let right =
-                    self.parse_pat_at_level(op.right_level().unwrap(), o_policy, g_policy)?;
+                let right = self.parse_pat_at_level(
+                    op.right_level().unwrap(),
+                    o_policy,
+                    r_policy,
+                    g_policy,
+                )?;
                 Ok(ast::Pat::Or(Box::new(left), Box::new(right)))
             }
             _ => unreachable!(),
@@ -116,88 +123,53 @@ impl<'src> Parser<'_, '_, 'src> {
         g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
-        let pat = self.parse_pat_at_level(right_level, o_policy, g_policy)?;
+        let pat =
+            self.parse_pat_at_level(right_level, o_policy, NonLegacyRangePolicy::Yield, g_policy)?;
         Ok(ast::Pat::Borrow(kind, mut_, Box::new(pat)))
     }
 
-    fn fin_parse_range_exclusive_pat(
-        &mut self,
-        left: Option<ast::RangePatBound<'src>>,
-    ) -> Result<ast::Pat<'src>> {
-        let right =
-            self.begins_range_pat_bound().then(|| self.parse_range_pat_bound()).transpose()?;
-        Ok(ast::Pat::Range(left.map(Box::new), right.map(Box::new), ast::RangePatKind::Exclusive))
-    }
-
-    fn fin_parse_range_inclusive_pat(
-        &mut self,
-        kind: ast::RangeInclusivePatKind,
-        left: Option<ast::RangePatBound<'src>>,
-    ) -> Result<ast::Pat<'src>> {
-        let right = self.parse_range_pat_bound()?;
-        Ok(ast::Pat::Range(
-            left.map(Box::new),
-            Some(Box::new(right)),
-            ast::RangePatKind::Inclusive(kind),
-        ))
-    }
-
-    fn parse_range_pat_bound(&mut self) -> Result<ast::RangePatBound<'src>> {
-        // NOTE: To be kept in sync with `Self::begins_range_pat_bound`.
-
-        if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
-            Ok(ast::RangePatBound::Lit(sign, lit))
-        } else if self.begins_ext_path(0) {
-            let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
-            Ok(ast::RangePatBound::Path(path))
-        } else {
-            self.fatal(Error::UnexpectedToken(
-                self.token,
-                one_of![ExpectedFragment::Lit, ExpectedFragment::ExtPath],
-            ))
-        }
-    }
-
-    fn begins_range_pat_bound(&self) -> bool {
-        // NOTE: To be kept in sync with `Self::parse_range_pat_bound`.
-
-        self.begins_negatable_lit() || self.begins_ext_path(0)
-    }
-
-    fn parse_lower_pat(&mut self) -> Result<ast::Pat<'src>> {
+    fn parse_lower_pat(&mut self, r_policy: NonLegacyRangePolicy) -> Result<ast::Pat<'src>> {
         let start = self.token.span;
 
         // `TripleDot` isn't included here as the corresponding range has to be bounded on the left.
         match self.token.kind {
             TokenKind::DoubleDot => {
                 self.advance();
-                return self.fin_parse_range_exclusive_pat(None);
+                return self.fin_parse_range_or_rest_pat(
+                    DoubleDotKind::RestOrExclusiveRange(r_policy),
+                    None,
+                );
             }
-            TokenKind::DoubleDotEquals => {
+            TokenKind::DoubleDotEquals if let NonLegacyRangePolicy::Parse = r_policy => {
                 self.advance();
-                return self
-                    .fin_parse_range_inclusive_pat(ast::RangeInclusivePatKind::Normal, None);
+                return self.fin_parse_range_or_rest_pat(
+                    DoubleDotKind::InclusiveRange { legacy: false },
+                    None,
+                );
             }
             _ => {}
         }
 
         if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
             return match self.token.kind {
-                TokenKind::DoubleDot => {
+                TokenKind::DoubleDot if let NonLegacyRangePolicy::Parse = r_policy => {
                     self.advance();
-                    self.fin_parse_range_exclusive_pat(Some(ast::RangePatBound::Lit(sign, lit)))
+                    self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::ExclusiveRange,
+                        Some(ast::RangePatBound::Lit(sign, lit)),
+                    )
                 }
-                TokenKind::DoubleDotEquals => {
+                TokenKind::DoubleDotEquals if let NonLegacyRangePolicy::Parse = r_policy => {
                     self.advance();
-                    self.fin_parse_range_inclusive_pat(
-                        ast::RangeInclusivePatKind::Normal,
+                    self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::InclusiveRange { legacy: false },
                         Some(ast::RangePatBound::Lit(sign, lit)),
                     )
                 }
                 TokenKind::TripleDot => {
                     self.advance();
-                    self.fin_parse_range_inclusive_pat(
-                        ast::RangeInclusivePatKind::Legacy,
+                    self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::InclusiveRange { legacy: true },
                         Some(ast::RangePatBound::Lit(sign, lit)),
                     )
                 }
@@ -216,9 +188,14 @@ impl<'src> Parser<'_, '_, 'src> {
 
         match self.token.kind {
             // FEATURE: `box_patterns` (ungated) <https://github.com/rust-lang/rust/issues/29641>
+            // FIXME: Should this be a prefix op? Then "OrPolicy::Yield" would come for free.
             TokenKind::Box => {
                 self.advance();
-                return Ok(ast::Pat::Box(Box::new(self.parse_pat(OrPolicy::Forbidden)?)));
+                return Ok(ast::Pat::Box(Box::new(self.parse_pat_where(
+                    OrPolicy::Yield,
+                    NonLegacyRangePolicy::Yield,
+                    GuardPolicy::Yield,
+                )?)));
             }
             // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
@@ -228,7 +205,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     ast::Pat::Error,
                     |this, name| match name {
                         weak::Deref::STR => {
-                            let pat = this.parse_pat(OrPolicy::Allowed)?;
+                            let pat = this.parse_pat(OrPolicy::Parse)?;
                             this.parse(TokenKind::CloseRoundBracket)?;
                             Ok(Some(ast::Pat::Deref(Box::new(pat))))
                         }
@@ -239,7 +216,13 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 return self.fin_parse_grouped_or_tuple(
-                    |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
+                    |this| {
+                        this.parse_pat_where(
+                            OrPolicy::Parse,
+                            NonLegacyRangePolicy::Parse,
+                            GuardPolicy::Parse,
+                        )
+                    },
                     ast::Pat::Grouped,
                     ast::Pat::Tuple,
                 );
@@ -249,7 +232,13 @@ impl<'src> Parser<'_, '_, 'src> {
                 let elems = self.fin_parse_delim_seq(
                     TokenKind::CloseSquareBracket,
                     TokenKind::Comma,
-                    |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
+                    |this| {
+                        this.parse_pat_where(
+                            OrPolicy::Parse,
+                            NonLegacyRangePolicy::Parse,
+                            GuardPolicy::Parse,
+                        )
+                    },
                 )?;
                 return Ok(ast::Pat::Slice(elems));
             }
@@ -269,15 +258,17 @@ impl<'src> Parser<'_, '_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {
-                TokenKind::DoubleDot => {
+                TokenKind::DoubleDot if let NonLegacyRangePolicy::Parse = r_policy => {
                     self.advance();
-                    return self
-                        .fin_parse_range_exclusive_pat(Some(ast::RangePatBound::Path(path)));
+                    return self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::ExclusiveRange,
+                        Some(ast::RangePatBound::Path(path)),
+                    );
                 }
-                TokenKind::DoubleDotEquals => {
+                TokenKind::DoubleDotEquals if let NonLegacyRangePolicy::Parse = r_policy => {
                     self.advance();
-                    return self.fin_parse_range_inclusive_pat(
-                        ast::RangeInclusivePatKind::Normal,
+                    return self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::InclusiveRange { legacy: false },
                         Some(ast::RangePatBound::Path(path)),
                     );
                 }
@@ -317,8 +308,11 @@ impl<'src> Parser<'_, '_, 'src> {
                             (box_, mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)
                         {
-                            let body =
-                                self.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed)?;
+                            let body = self.parse_pat_where(
+                                OrPolicy::Parse,
+                                NonLegacyRangePolicy::Parse,
+                                GuardPolicy::Parse,
+                            )?;
                             (Some(binder), body)
                         } else {
                             let body = ast::Pat::Binding(Box::new(ast::BindingPat {
@@ -347,7 +341,13 @@ impl<'src> Parser<'_, '_, 'src> {
                     let fields = self.fin_parse_delim_seq(
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
-                        |this| this.parse_pat_where(OrPolicy::Allowed, GuardPolicy::Allowed),
+                        |this| {
+                            this.parse_pat_where(
+                                OrPolicy::Parse,
+                                NonLegacyRangePolicy::Parse,
+                                GuardPolicy::Parse,
+                            )
+                        },
                     )?;
                     return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
                         path,
@@ -370,8 +370,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 TokenKind::TripleDot => {
                     self.advance();
-                    return self.fin_parse_range_inclusive_pat(
-                        ast::RangeInclusivePatKind::Legacy,
+                    return self.fin_parse_range_or_rest_pat(
+                        DoubleDotKind::InclusiveRange { legacy: true },
                         Some(ast::RangePatBound::Path(path)),
                     );
                 }
@@ -390,6 +390,57 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Pat))
     }
 
+    fn fin_parse_range_or_rest_pat(
+        &mut self,
+        kind: DoubleDotKind,
+        left: Option<ast::RangePatBound<'src>>,
+    ) -> Result<ast::Pat<'src>> {
+        let right =
+            if !matches!(kind, DoubleDotKind::RestOrExclusiveRange(NonLegacyRangePolicy::Yield))
+                && (matches!(kind, DoubleDotKind::InclusiveRange { .. })
+                    || self.begins_range_pat_bound())
+            {
+                Some(self.parse_range_pat_bound()?)
+            } else {
+                None
+            };
+
+        let kind = match kind {
+            DoubleDotKind::ExclusiveRange | DoubleDotKind::RestOrExclusiveRange(_) => {
+                if left.is_none() && right.is_none() {
+                    return Ok(ast::Pat::Rest);
+                }
+
+                ast::RangePatKind::Exclusive
+            }
+            DoubleDotKind::InclusiveRange { legacy } => ast::RangePatKind::Inclusive { legacy },
+        };
+
+        Ok(ast::Pat::Range(left.map(Box::new), right.map(Box::new), kind))
+    }
+
+    fn parse_range_pat_bound(&mut self) -> Result<ast::RangePatBound<'src>> {
+        // NOTE: To be kept in sync with `Self::begins_range_pat_bound`.
+
+        if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {
+            Ok(ast::RangePatBound::Lit(sign, lit))
+        } else if self.begins_ext_path(0) {
+            let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
+            Ok(ast::RangePatBound::Path(path))
+        } else {
+            self.fatal(Error::UnexpectedToken(
+                self.token,
+                one_of![ExpectedFragment::Lit, ExpectedFragment::ExtPath],
+            ))
+        }
+    }
+
+    fn begins_range_pat_bound(&self) -> bool {
+        // NOTE: To be kept in sync with `Self::parse_range_pat_bound`.
+
+        self.begins_negatable_lit() || self.begins_ext_path(0)
+    }
+
     fn fin_parse_binding_pat(
         &mut self,
         mut_: ast::Mutability,
@@ -398,7 +449,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Pat<'src>> {
         let pat = self
             .consume(TokenKind::At)
-            .then(|| self.parse_pat(OrPolicy::Forbidden).map(Box::new))
+            .then(|| self.parse_pat(OrPolicy::Yield).map(Box::new))
             .transpose()?;
         Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })))
     }
@@ -415,14 +466,26 @@ impl<'src> Parser<'_, '_, 'src> {
 
 #[derive(Clone, Copy)]
 pub(super) enum OrPolicy {
-    Allowed,
-    Forbidden,
+    Parse,
+    Yield,
+}
+
+#[derive(Clone, Copy)]
+enum NonLegacyRangePolicy {
+    Parse,
+    Yield,
 }
 
 #[derive(Clone, Copy)]
 enum GuardPolicy {
-    Allowed,
-    Forbidden,
+    Parse,
+    Yield,
+}
+
+enum DoubleDotKind {
+    ExclusiveRange,
+    InclusiveRange { legacy: bool },
+    RestOrExclusiveRange(NonLegacyRangePolicy),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

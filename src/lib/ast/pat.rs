@@ -18,6 +18,7 @@ pub enum Pat<'src> {
     Never,
     Or(Box<Pat<'src>>, Box<Pat<'src>>),
     Path(Box<ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>>),
+    Rest,
     Range(Option<Box<RangePatBound<'src>>>, Option<Box<RangePatBound<'src>>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
@@ -80,12 +81,6 @@ pub enum RangePatBound<'src> {
 
 #[derive(Debug)]
 pub enum RangePatKind {
-    Inclusive(RangeInclusivePatKind),
     Exclusive,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum RangeInclusivePatKind {
-    Normal,
-    Legacy,
+    Inclusive { legacy: bool },
 }

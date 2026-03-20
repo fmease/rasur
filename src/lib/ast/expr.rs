@@ -355,8 +355,8 @@ pub enum YieldExpr<'src> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum RangeExprKind {
-    Inclusive,
     Exclusive,
+    Inclusive,
 }
 
 #[derive(Debug)]

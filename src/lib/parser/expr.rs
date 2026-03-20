@@ -594,7 +594,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::Let if let LetPolicy::Allowed(_) = l_policy => {
                 self.advance();
-                let pat = self.parse_pat(OrPolicy::Allowed)?;
+                let pat = self.parse_pat(OrPolicy::Parse)?;
                 self.parse(TokenKind::SingleEquals)?;
                 let body = self.parse_expr_at_level(
                     Level::AndRight,
@@ -863,7 +863,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::ExprKind<'src>> {
         let params = self.fin_parse_delim_seq(TokenPrefix::Pipe, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
-            let pat = this.parse_pat(OrPolicy::Forbidden)?;
+            let pat = this.parse_pat(OrPolicy::Yield)?;
             let ty = this.consume(TokenKind::SingleColon).then(|| this.parse_ty()).transpose()?;
 
             Ok(ast::ClosureParam { attrs, pat, ty })
@@ -898,7 +898,7 @@ impl<'src> Parser<'_, '_, 'src> {
         } else {
             ast::Awaitness::Not
         };
-        let pat = self.parse_pat(OrPolicy::Allowed)?;
+        let pat = self.parse_pat(OrPolicy::Parse)?;
         self.parse(TokenKind::In)?;
         let head = self.parse_expr_where(
             StructPolicy::Forbidden,
@@ -969,7 +969,7 @@ impl<'src> Parser<'_, '_, 'src> {
         const SEPARATOR: TokenKind = TokenKind::Comma;
         while !self.consume(DELIMITER) {
             let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-            let pat = self.parse_pat(OrPolicy::Allowed)?;
+            let pat = self.parse_pat(OrPolicy::Parse)?;
 
             let (pat, guard) = match pat {
                 ast::Pat::Grouped(deref!(ast::Pat::Guarded(pat, guard))) => {

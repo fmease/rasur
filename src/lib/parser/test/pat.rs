@@ -1,5 +1,11 @@
+use super::super::ExpectedFragment;
 use super::{parse_file, parse_pat, t};
-use crate::{ast, edition::Edition::*};
+use crate::{
+    ast,
+    edition::Edition::*,
+    error::Error,
+    token::{Token, TokenKind},
+};
 use deref as r;
 
 #[test]
@@ -66,4 +72,235 @@ fn pseudo_field_binding_mode_box() {
             ..
         })))
     );
+}
+
+#[test]
+fn ranges() {
+    // Not a range but a rest pattern.
+    t!(parse_pat, Rust2015, "..", Ok(ast::Pat::Rest));
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "..1",
+        Ok(ast::Pat::Range(
+            None,
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None })
+            ))),
+            ast::RangePatKind::Exclusive
+        ))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "-1..1",
+        Ok(ast::Pat::Range(
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::Neg,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            ast::RangePatKind::Exclusive
+        ))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "X..",
+        Ok(ast::Pat::Range(
+            Some(r!(ast::RangePatBound::Path(ast::ExtPath {
+                ext: None,
+                path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("X"), .. }]) }
+            }))),
+            None,
+            ast::RangePatKind::Exclusive
+        ))
+    );
+
+    // Inclusive ranges need an explicit upper bound:
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "..=",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "0..=",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "..=1",
+        Ok(ast::Pat::Range(
+            None,
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None })
+            ))),
+            ast::RangePatKind::Inclusive { legacy: false },
+        ))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "-1..=1",
+        Ok(ast::Pat::Range(
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::Neg,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            ast::RangePatKind::Inclusive { legacy: false },
+        ))
+    );
+
+    // Legacy ranges need an explict lower bound:
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "...",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::TripleDot, .. },
+            ExpectedFragment::Pat,
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "...1",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::TripleDot, .. },
+            ExpectedFragment::Pat,
+        )]))
+    );
+
+    // Of course, them being inclusive, they need an explicit upper bound:
+    t!(
+        parse_pat,
+        Rust2015,
+        "X...",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::EndOfInput, .. },
+            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "-1...1",
+        Ok(ast::Pat::Range(
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::Neg,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            Some(r!(ast::RangePatBound::Lit(
+                ast::Sign::None,
+                r!(ast::Lit { kind: ast::LitKind::Num, value: "1", .. })
+            ))),
+            ast::RangePatKind::Inclusive { legacy: true },
+        ))
+    );
+
+    // We once used to incorrectly accept this.
+    t!(
+        parse_pat,
+        Rust2015,
+        "&5..10",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDot, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )]))
+    );
+
+    // We once used to incorrectly accept this.
+    t!(
+        parse_pat,
+        Rust2015,
+        "&..10",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::NumLit, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    // We once used to incorrectly accept this.
+    t!(
+        parse_pat,
+        Rust2015,
+        "&5..=10",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDotEquals, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )]))
+    );
+
+    // We once used to incorrectly accept this.
+    t!(
+        parse_pat,
+        Rust2015,
+        "&..=10",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDotEquals, .. },
+            ExpectedFragment::Pat,
+        )]))
+    );
+
+    // Contrary to the non-legacy ranges, this is indeed allowed!
+    // The expr analog `&5..=10` actually gets parsed as `(&5)..=10`
+    // whereas this gets interpreted as `&(5...10)`.
+    t!(
+        parse_pat,
+        Rust2015,
+        "&5...10",
+        Ok(ast::Pat::Borrow(
+            ..,
+            r!(ast::Pat::Range(Some(_), Some(_), ast::RangePatKind::Inclusive { legacy: true }))
+        )),
+    );
+
+    // The snippets below are legal because the `..` isn't
+    // interpreted as a range but as a rest pattern.
+
+    t!(parse_pat, Rust2015, "&..", Ok(ast::Pat::Borrow(.., r!(ast::Pat::Rest))));
+
+    t!(parse_pat, Rust2015, "box ..", Ok(ast::Pat::Box(r!(ast::Pat::Rest))));
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "5..=&10",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SingleAmpersand, .. },
+            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+        )]))
+    );
+
+    // Leading bar.
+    t!(parse_pat, Rust2015, "|..1", Ok(ast::Pat::Range(..)));
 }
