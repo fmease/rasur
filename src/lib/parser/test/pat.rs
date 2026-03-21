@@ -304,3 +304,92 @@ fn ranges() {
     // Leading bar.
     t!(parse_pat, Rust2015, "|..1", Ok(ast::Pat::Range(..)));
 }
+
+#[test]
+fn guards() {
+    // Guards aren't allowed at the top-level.
+    t!(
+        parse_pat,
+        Rust2015,
+        "0 if true",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::If, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput),
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "(0 if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(
+            r!(ast::Pat::Lit(..)),
+            r!(ast::Expr { kind: ast::ExprKind::Lit(..), .. })
+        ))))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "(x if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(
+            r!(ast::Pat::Binding(..)),
+            r!(ast::Expr { kind: ast::ExprKind::Lit(..), .. })
+        ))))
+    );
+
+    // We once used to accept this due to us treating `if` as a normal operator.
+    t!(
+        parse_pat,
+        Rust2015,
+        "(0 if true if true)",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::If, .. },
+            ExpectedFragment::Token(TokenKind::Comma)
+        )]))
+    );
+
+    // Obviously, `(&0) if true` over `&(0 if true)`.
+    // Demonstrates that guards can't be a "lower pattern" but need to be an operator
+    // (that isn't allowed repeat similar to range exprs) since `&` is a prefix op.
+    t!(
+        parse_pat,
+        Rust2015,
+        "(&0 if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(
+            r!(ast::Pat::Borrow(.., r!(ast::Pat::Lit(..)))),
+            _
+        ))))
+    );
+
+    // Obviously, `(..1) if true` over `..(1 if true)`.
+    t!(
+        parse_pat,
+        Rust2015,
+        "(..1 if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(
+            r!(ast::Pat::Range(None, Some(ast::RangePatBound::Lit(..)), _)),
+            _
+        ))))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "(0.. if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(
+            r!(ast::Pat::Range(Some(ast::RangePatBound::Lit(..)), None, _)),
+            _
+        ))))
+    );
+
+    // Obviously, `(box 0) if true` over `box (0 if true)`.
+    // At the time of writing, `box` isn't a prefix op but a just lower pat unlike `&`.
+    // Guards don't need to be binops due to `box` but due to `&`.
+    t!(
+        parse_pat,
+        Rust2015,
+        "(box 0 if true)",
+        Ok(ast::Pat::Grouped(r!(ast::Pat::Guarded(r!(ast::Pat::Box(r!(ast::Pat::Lit(..)))), _))))
+    );
+}

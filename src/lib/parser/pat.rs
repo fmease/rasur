@@ -5,12 +5,13 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{ast, error::Error};
-use std::cmp::Ordering;
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a pattern.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
+    // FIXME: Experiment with turning ranges and negation back into true operators.
+    //        Might not be feasible / worth it.
     pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {
         self.parse_pat_where(o_policy, NonLegacyRangePolicy::Parse, GuardPolicy::Yield)
     }
@@ -52,21 +53,24 @@ impl<'src> Parser<'_, '_, 'src> {
         loop {
             let op = match self.token.kind {
                 // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
-                // FIXME: `if` isn't really an operator; we currently wrongly permit `(_ if _ if _)`
                 TokenKind::If if let GuardPolicy::Parse = g_policy => Op::Guard,
                 TokenKind::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
                 _ => break,
             };
 
             let left_level = op.left_level().unwrap();
-            match left_level.cmp(&level) {
-                Ordering::Less => break,
-                Ordering::Equal => unreachable!(),
-                Ordering::Greater => {}
+
+            if left_level <= level {
+                break;
             }
+
             self.advance();
 
             left = self.fin_parse_suffix_op_pat(op, left, o_policy, r_policy, g_policy)?;
+
+            if let Op::Guard = op {
+                break;
+            }
         }
 
         Ok(left)
