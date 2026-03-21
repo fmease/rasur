@@ -1156,6 +1156,42 @@ fn qualified_struct_pat_in_for_loop() {
     );
 }
 
+#[test]
+fn struct_policy() {
+    // We once used to wrongly reject this because we interpreted the `{}` as belonging to
+    // the `Struct` (as part of a struct expr) since we didn't propagate the struct policy
+    // through the closure expr.
+    //
+    // Inspired by <https://www.reddit.com/r/rust/comments/1pbbx5a/comment/nrq89xi>.
+    t!(
+        parse_expr,
+        Rust2015,
+        "while || Struct {}",
+        Ok(ast::Expr {
+            kind: ast::ExprKind::WhileLoop(r!(ast::WhileLoopExpr {
+                condition: ast::Expr {
+                    kind: ast::ExprKind::Closure(ast::ClosureExpr {
+                        body: ast::Expr {
+                            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                                ext: None,
+                                path: ast::Path {
+                                    segs: r!([ast::PathSeg { ident: ast::Ident!("Struct"), .. }])
+                                }
+                            })),
+                            ..
+                        },
+                        ..
+                    }),
+                    ..
+                },
+                body: ast::BlockExpr { stmts: r!([]) },
+                ..
+            })),
+            ..
+        })
+    );
+}
+
 // Distinguishing between items and exprs (in stmt ctxts) is quite involved since
 // they share quite a number of prefixes / modifier combinations.
 #[test]

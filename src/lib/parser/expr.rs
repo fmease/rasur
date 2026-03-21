@@ -538,7 +538,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_closure_expr(bound_vars, modifiers);
+                return self.fin_parse_closure_expr(bound_vars, modifiers, s_policy);
             }
             _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
         }
@@ -877,6 +877,7 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::ClosureExprModifiers,
+        s_policy: StructPolicy,
     ) -> Result<ast::ExprKind<'src>> {
         let params = self.fin_parse_delim_seq(TokenPrefix::Pipe, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
@@ -892,7 +893,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
             ast::Expr { attrs, kind: ast::ExprKind::Block(None, Box::new(block)) }
         } else {
-            self.parse_expr()?
+            self.parse_expr_where(s_policy, LetPolicy::Forbidden, OpPolicy::Allowed)?
         };
 
         Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr {

@@ -304,7 +304,7 @@ fn ranges_and_rest() {
     // Leading bar.
     t!(parse_pat, Rust2015, "|..1", Ok(ast::Pat::Range(..)));
 
-    // We once used to parse this as `Grouped(Rest)`.
+    // We once used to wrongly parse this as `Grouped(Rest)`.
     // Inspired by <https://www.reddit.com/r/rust/comments/1pbbx5a/comment/nrqkwto>.
     t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple(r!([ast::Pat::Rest]))));
 }
