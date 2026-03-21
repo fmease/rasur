@@ -97,6 +97,8 @@ impl<'src> Parser<'_, '_, 'src> {
         l_policy: LetPolicy,
         o_policy: OpPolicy,
     ) -> Result<ast::Expr<'src>> {
+        let mut h_policy = HigherPostfixOpPolicy::Parse;
+
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
         let op = match self.token.kind {
@@ -110,6 +112,7 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => None,
         };
         let mut left = if let Some(op) = op {
+            h_policy = HigherPostfixOpPolicy::Yield;
             self.advance();
 
             let left = self.fin_parse_prefix_op_expr(op, s_policy, o_policy, attrs)?;
@@ -189,15 +192,21 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.error(Error::ChainedComparison(self.token.span));
             }
 
-            if let ast::ExprKind::Cast(..) = left.kind
-                && let Op::Call | Op::Dot | Op::Index | Op::Try = op
-            {
-                self.error(Error::InvalidOpAfterCast(self.token.span));
+            if let Op::Call | Op::Dot | Op::Index | Op::Try = op {
+                if let HigherPostfixOpPolicy::Yield = h_policy {
+                    break;
+                }
+                if let ast::ExprKind::Cast(..) = left.kind {
+                    self.error(Error::InvalidOpAfterCast(self.token.span));
+                }
+            } else {
+                h_policy = HigherPostfixOpPolicy::Yield;
             }
 
             self.advance();
 
-            left = self.fin_parse_suffix_op_expr(op, left, s_policy, l_policy, o_policy)?;
+            left =
+                self.fin_parse_infix_or_postfix_op_expr(op, left, s_policy, l_policy, o_policy)?;
 
             if let Op::Range(_) = op {
                 break;
@@ -250,7 +259,7 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
     }
 
-    fn fin_parse_suffix_op_expr(
+    fn fin_parse_infix_or_postfix_op_expr(
         &mut self,
         op: Op,
         mut left: ast::Expr<'src>,
@@ -1161,6 +1170,11 @@ enum LetAllowance {
 pub(crate) enum OpPolicy {
     Allowed,
     Restricted(ast::CurlyBracketedMacroCallIsBoundary),
+}
+
+enum HigherPostfixOpPolicy {
+    Parse,
+    Yield,
 }
 
 pub(crate) enum AttrPolicy<'a, 'src> {

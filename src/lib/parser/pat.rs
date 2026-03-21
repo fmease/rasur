@@ -66,7 +66,8 @@ impl<'src> Parser<'_, '_, 'src> {
 
             self.advance();
 
-            left = self.fin_parse_suffix_op_pat(op, left, o_policy, r_policy, g_policy)?;
+            left =
+                self.fin_parse_infix_or_postfix_op_pat(op, left, o_policy, r_policy, g_policy)?;
 
             if let Op::Guard = op {
                 break;
@@ -94,7 +95,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    fn fin_parse_suffix_op_pat(
+    fn fin_parse_infix_or_postfix_op_pat(
         &mut self,
         op: Op,
         left: ast::Pat<'src>,

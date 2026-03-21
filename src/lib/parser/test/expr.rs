@@ -1145,9 +1145,9 @@ fn ranges() {
         })
     );
 
-    // FIXME: We currently wrongly parse this as `return (x + ((..).y))` instead of `(return (x + (..))).y`.
+    // For the longest time we used to wrongly parse this as
+    // `return (x + ((..).y))` instead of `(return (x + (..))).y`.
     // Inspired by <https://github.com/rust-lang/rust/pull/142476#discussion_r2159721125>.
-    #[cfg(false)]
     t!(
         parse_expr,
         Rust2015,
@@ -1193,6 +1193,52 @@ fn ranges() {
             }))),
             ..
         }),
+    );
+
+    // For the longest time we used to wrongly parse this as
+    // `return ((!(..)).f)` instead of `(return (!(..))).f`.
+    t!(
+        parse_expr,
+        Rust2015,
+        "return !.. .f",
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Field(
+                r!(ast::Expr {
+                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+                        kind: ast::ExprKind::UnOp(
+                            ast::UnOp::Not,
+                            r!(ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. })
+                        ),
+                        ..
+                    }))),
+                    ..
+                }),
+                ast::Ident!("f")
+            ),
+            ..
+        })
+    );
+
+    // For the longest time, we used to wrongly accept this.
+    t!(
+        parse_expr,
+        Rust2015,
+        "1 + .. .y",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SingleDot, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )]))
+    );
+
+    // For the longest time, we used to wrongly accept this.
+    t!(
+        parse_expr,
+        Rust2015,
+        "1 * .. ?",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::QuestionMark, .. },
+            ExpectedFragment::Token(TokenKind::EndOfInput)
+        )]))
     );
 }
 
