@@ -622,11 +622,28 @@ impl<'src> Parser<'_, '_, 'src> {
             TokenKind::NumLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Num)),
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_grouped_or_tuple(
-                    Self::parse_expr,
-                    ast::ExprKind::Grouped,
-                    ast::ExprKind::Tuple,
-                );
+
+                let mut exprs = Vec::new();
+
+                const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                const SEPARATOR: TokenKind = TokenKind::Comma;
+                while !self.consume(DELIMITER) {
+                    let expr = self.parse_expr()?;
+
+                    if self.token.kind == DELIMITER {
+                        if exprs.is_empty() {
+                            // This is actually a grouped node, not a tuple.
+                            self.advance();
+                            return Ok(ast::ExprKind::Grouped(Box::new(expr)));
+                        }
+                    } else {
+                        self.parse(SEPARATOR)?;
+                    }
+
+                    exprs.push(expr);
+                }
+
+                return Ok(ast::ExprKind::Tuple(exprs));
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();

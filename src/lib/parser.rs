@@ -114,36 +114,6 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         Some(ast::Ident::new(name, span))
     }
 
-    fn fin_parse_grouped_or_tuple<T, U>(
-        &mut self,
-        parse: impl Fn(&mut Self) -> Result<T>,
-        grouped: impl FnOnce(Box<T>) -> U,
-        tuple: impl FnOnce(Vec<T>) -> U,
-    ) -> Result<U> {
-        let mut nodes = Vec::new();
-
-        const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
-        const SEPARATOR: TokenKind = TokenKind::Comma;
-        while !self.consume(DELIMITER) {
-            let node = parse(self)?;
-
-            // FIXME: Is there a better way to express this?
-            if self.token.kind == DELIMITER {
-                if nodes.is_empty() {
-                    // This is actually a grouped node, not a tuple.
-                    self.advance();
-                    return Ok(grouped(Box::new(node)));
-                }
-            } else {
-                self.parse(SEPARATOR)?;
-            }
-
-            nodes.push(node);
-        }
-
-        Ok(tuple(nodes))
-    }
-
     fn fin_parse_delim_seq<T, C>(
         &mut self,
         delimiter: C,

@@ -219,17 +219,32 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_grouped_or_tuple(
-                    |this| {
-                        this.parse_pat_where(
-                            OrPolicy::Parse,
-                            NonLegacyRangePolicy::Parse,
-                            GuardPolicy::Parse,
-                        )
-                    },
-                    ast::Pat::Grouped,
-                    ast::Pat::Tuple,
-                );
+
+                let mut pats = Vec::new();
+
+                const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
+                const SEPARATOR: TokenKind = TokenKind::Comma;
+                while !self.consume(DELIMITER) {
+                    let pat = self.parse_pat_where(
+                        OrPolicy::Parse,
+                        NonLegacyRangePolicy::Parse,
+                        GuardPolicy::Parse,
+                    )?;
+
+                    if self.token.kind == DELIMITER {
+                        if pats.is_empty() && !matches!(pat, ast::Pat::Rest) {
+                            // This is actually a grouped node, not a tuple.
+                            self.advance();
+                            return Ok(ast::Pat::Grouped(Box::new(pat)));
+                        }
+                    } else {
+                        self.parse(SEPARATOR)?;
+                    }
+
+                    pats.push(pat);
+                }
+
+                return Ok(ast::Pat::Tuple(pats));
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
