@@ -4,8 +4,7 @@ use crate::ast;
 impl Fmt for ast::Stmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::Item(item) => item.fmt(cx),
-            Self::Let(stmt) => stmt.fmt(cx),
+            Self::Empty => fmt!(cx, ";"),
             Self::Expr(expr, semi) => {
                 let needs_semi = matches!(semi, ast::Semicolon::Yes if !expr.kind.is_boundary(ast::CurlyBracketedMacroCallIsBoundary::Yes));
                 expr.fmt(cx);
@@ -13,7 +12,15 @@ impl Fmt for ast::Stmt<'_> {
                     fmt!(cx, ";");
                 }
             }
-            Self::Empty => fmt!(cx, ";"),
+            Self::Item(item) => item.fmt(cx),
+            Self::MacroCall(call) => {
+                let needs_semi = call.bracket != ast::Bracket::Curly;
+                call.fmt(cx);
+                if needs_semi {
+                    fmt!(cx, ";");
+                }
+            }
+            Self::Let(stmt) => stmt.fmt(cx),
         }
     }
 }

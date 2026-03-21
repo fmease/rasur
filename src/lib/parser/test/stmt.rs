@@ -24,3 +24,37 @@ fn attrs() {
         ))
     );
 }
+
+#[test]
+fn macros() {
+    // These aren't macro call *expr* stmts but a macro call stmts:
+
+    t!(parse_stmt, Rust2015, "m!();", Ok(ast::Stmt::MacroCall(_)));
+
+    t!(parse_stmt, Rust2015, "m![];", Ok(ast::Stmt::MacroCall(_)));
+
+    t!(parse_stmt, Rust2015, "m!{};", Ok(ast::Stmt::MacroCall(_)));
+    t!(parse_stmt, Rust2015, "m!{}", Ok(ast::Stmt::MacroCall(_)));
+
+    // However, these *are* exprs:
+
+    t!(
+        parse_stmt,
+        Rust2015,
+        "m!()",
+        Ok(ast::Stmt::Expr(
+            ast::Expr { kind: ast::ExprKind::MacroCall(_), .. },
+            ast::Semicolon::No
+        ))
+    );
+
+    t!(
+        parse_stmt,
+        Rust2015,
+        "m![]",
+        Ok(ast::Stmt::Expr(
+            ast::Expr { kind: ast::ExprKind::MacroCall(_), .. },
+            ast::Semicolon::No
+        ))
+    );
+}

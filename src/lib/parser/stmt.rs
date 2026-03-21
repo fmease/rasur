@@ -12,10 +12,6 @@ impl<'src> Parser<'_, '_, 'src> {
     /// # Grammar
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
-    // NOTE: Contrary to rustc and syn, at the time of writing we represent "macro stmts" as
-    //       "macro expr stmts". I think the difference only matters if we were to perform
-    //       macro expansion. Update: However, I'm relatively sure you can deduce it from the
-    //       AST alone anyway.
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
@@ -79,15 +75,21 @@ impl<'src> Parser<'_, '_, 'src> {
             attrs.append(&mut expr.attrs);
             expr.attrs = attrs;
 
+            let is_boundary = expr.kind.is_boundary(rule);
+
             let semi = self.consume_or_parse(
                 TokenKind::Semicolon,
-                self.token.kind == delimiter || expr.kind.is_boundary(rule),
+                self.token.kind == delimiter || is_boundary,
             )?;
 
-            return Ok(ast::Stmt::Expr(
-                expr,
-                if semi { ast::Semicolon::Yes } else { ast::Semicolon::No },
-            ));
+            if (semi || is_boundary)
+                && let ast::ExprKind::MacroCall(call) = expr.kind
+            {
+                return Ok(ast::Stmt::MacroCall(call));
+            }
+
+            let semi = if semi { ast::Semicolon::Yes } else { ast::Semicolon::No };
+            return Ok(ast::Stmt::Expr(expr, semi));
         }
 
         if let TokenKind::Semicolon = self.token.kind

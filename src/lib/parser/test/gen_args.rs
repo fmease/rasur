@@ -228,29 +228,23 @@ fn macro_call_gen_args() {
         parse_stmt,
         Rust2015,
         "path::to::<>::call::<>!();",
-        Ok(ast::Stmt::Expr(
-            ast::Expr {
-                kind: ast::ExprKind::MacroCall(r!(ast::MacroCall {
-                    path: ast::Path {
-                        segs: r!([
-                            ast::PathSeg { ident: ast::Ident!("path"), args: None },
-                            ast::PathSeg {
-                                ident: ast::Ident!("to"),
-                                args: Some(ast::GenericArgs::Angle(r!([])))
-                            },
-                            ast::PathSeg {
-                                ident: ast::Ident!("call"),
-                                args: Some(ast::GenericArgs::Angle(r!([])))
-                            },
-                        ])
+        Ok(ast::Stmt::MacroCall(r!(ast::MacroCall {
+            path: ast::Path {
+                segs: r!([
+                    ast::PathSeg { ident: ast::Ident!("path"), args: None },
+                    ast::PathSeg {
+                        ident: ast::Ident!("to"),
+                        args: Some(ast::GenericArgs::Angle(r!([])))
                     },
-                    bracket: ast::Bracket::Round,
-                    stream: r!([]),
-                })),
-                ..
+                    ast::PathSeg {
+                        ident: ast::Ident!("call"),
+                        args: Some(ast::GenericArgs::Angle(r!([])))
+                    },
+                ])
             },
-            ast::Semicolon::Yes
-        ))
+            bracket: ast::Bracket::Round,
+            stream: r!([]),
+        })))
     );
 
     t!(parse_stmt, Rust2015, "path::to::<>::call::()!();", Ok(_)); // just a smoke test

@@ -1,11 +1,14 @@
-use super::{Attr, BlockExpr, Expr, Item, Pat, Ty};
+use super::{
+    Attr, BlockExpr, Expr, Item, MacroCall, ObligatorilyDisambiguatedGenericArgs, Pat, Ty,
+};
 
 #[derive(Debug)]
 pub enum Stmt<'src> {
+    Empty,
+    Expr(Expr<'src>, Semicolon),
     Item(Item<'src>),
     Let(Box<LetStmt<'src>>),
-    Expr(Expr<'src>, Semicolon),
-    Empty,
+    MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
 }
 
 #[derive(Debug)]
