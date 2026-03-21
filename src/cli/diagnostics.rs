@@ -78,6 +78,9 @@ fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
         Error::InvalidOpAfterCast(span) => {
             Diag::new("invalid operator following a cast").highlight(span)
         }
+        Error::InvalidOpAfterBoundary(span) => {
+            Diag::new("invalid operator following a boundary").highlight(span)
+        }
         Error::UnknownBuiltinSyntax(span) => Diag::new("unknown built-in syntax").highlight(span),
         Error::InvalidLetChain(span) => Diag::new("invalid let-chain").highlight(span),
         Error::ReuseInherentImpl => Diag::new("inherent impls cannot be reused"),

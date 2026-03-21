@@ -111,10 +111,13 @@ impl<'src> Parser<'_, '_, 'src> {
         };
         let mut left = if let Some(op) = op {
             self.advance();
-            let left = self.fin_parse_prefix_op_expr(op, s_policy, attrs)?;
+
+            let left = self.fin_parse_prefix_op_expr(op, s_policy, o_policy, attrs)?;
+
             if let Op::Range(_) = op {
                 return Ok(left);
             }
+
             left
         } else {
             self.parse_lower_expr(s_policy, l_policy, attrs)?
@@ -165,6 +168,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 && left.kind.is_boundary(rule)
                 && !op.overrules_boundary()
             {
+                if let Op::Call | Op::Index = op
+                    && level != Level::Initial
+                {
+                    return self.fatal(Error::InvalidOpAfterBoundary(self.token.span));
+                }
+
                 break;
             }
 
@@ -188,7 +197,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
             self.advance();
 
-            left = self.fin_parse_suffix_op_expr(op, left, s_policy, l_policy)?;
+            left = self.fin_parse_suffix_op_expr(op, left, s_policy, l_policy, o_policy)?;
 
             if let Op::Range(_) = op {
                 break;
@@ -202,13 +211,15 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         op: Op,
         s_policy: StructPolicy,
+        o_policy: OpPolicy,
         attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level().unwrap();
 
         let op = match op {
             Op::DoubleBorrow => {
-                let expr = self.fin_parse_borrow_expr(right_level, s_policy, Vec::new())?;
+                let expr =
+                    self.fin_parse_borrow_expr(right_level, s_policy, o_policy, Vec::new())?;
                 let kind = ast::ExprKind::Borrow(
                     ast::BorrowKind::Ref,
                     ast::Mutability::Not,
@@ -217,19 +228,24 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::Expr { attrs, kind });
             }
             Op::Range(kind) => {
-                return self.fin_parse_range_expr(kind, None, right_level, s_policy, attrs);
+                return self.fin_parse_range_expr(
+                    kind,
+                    None,
+                    right_level,
+                    s_policy,
+                    o_policy,
+                    attrs,
+                );
             }
-            Op::SingleBorrow => return self.fin_parse_borrow_expr(right_level, s_policy, attrs),
+            Op::SingleBorrow => {
+                return self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs);
+            }
             Op::UnOp(op) => op,
             _ => unreachable!(),
         };
 
-        let right = self.parse_expr_at_level(
-            right_level,
-            s_policy,
-            LetPolicy::Forbidden,
-            OpPolicy::Allowed,
-        )?;
+        let right =
+            self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?;
 
         Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
     }
@@ -240,6 +256,7 @@ impl<'src> Parser<'_, '_, 'src> {
         mut left: ast::Expr<'src>,
         s_policy: StructPolicy,
         l_policy: LetPolicy,
+        o_policy: OpPolicy,
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level();
 
@@ -268,6 +285,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     Some(Box::new(left)),
                     right_level.unwrap(),
                     s_policy,
+                    o_policy,
                     Vec::new(),
                 );
             }
@@ -371,15 +389,12 @@ impl<'src> Parser<'_, '_, 'src> {
         &mut self,
         right_level: Level,
         s_policy: StructPolicy,
+        o_policy: OpPolicy,
         attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
-        let expr = self.parse_expr_at_level(
-            right_level,
-            s_policy,
-            LetPolicy::Forbidden,
-            OpPolicy::Allowed,
-        )?;
+        let expr =
+            self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?;
 
         Ok(ast::Expr { attrs, kind: ast::ExprKind::Borrow(kind, mut_, Box::new(expr)) })
     }
@@ -390,6 +405,7 @@ impl<'src> Parser<'_, '_, 'src> {
         left: Option<Box<ast::Expr<'src>>>,
         right_level: Level,
         s_policy: StructPolicy,
+        o_policy: OpPolicy,
         attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
         if left.is_none() && !attrs.is_empty() {
@@ -401,12 +417,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 // NB: Indeed, we plain out ignore the level here.
                 && self.begins_expr()
         {
-            Some(self.parse_expr_at_level(
-                right_level,
-                s_policy,
-                LetPolicy::Forbidden,
-                OpPolicy::Allowed,
-            )?)
+            Some(self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?)
         } else {
             None
         };

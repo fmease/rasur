@@ -77,6 +77,7 @@ pub enum Error {
     InvalidLetChain(Span),
     InvalidLitSuffix(Span),
     InvalidNumericIdent(Span),
+    InvalidOpAfterBoundary(Span),
     InvalidOpAfterCast(Span),
     InvalidParenthesizedBound,
     InvalidRawIdent(IdentKind, Span),

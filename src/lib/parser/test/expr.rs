@@ -1,5 +1,5 @@
 use super::super::ExpectedFragment;
-use super::{parse_expr, t};
+use super::{parse_expr, parse_stmt, t};
 use crate::{
     ast,
     edition::Edition::*,
@@ -33,24 +33,16 @@ fn levels() {
         }),
     );
 
-    // FIXME
-    #[cfg(false)]
+    t!(parse_stmt, Rust2015, "-if 0{}else{}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+
+    // ...however, we accept this (expr, unary op):
     t!(
         parse_expr,
         Rust2015,
         "-if 0{}else{}()",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::OpenRoundBracket, .. }, _)])),
-    );
-
-    // ...however, we accept this:
-    t!(
-        parse_expr,
-        Rust2015,
-        "1-if 0{}else{}()",
         Ok(ast::Expr {
-            kind: ast::ExprKind::BinOp(
-                ast::BinOp::Sub,
-                r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+            kind: ast::ExprKind::UnOp(
+                ast::UnOp::Neg,
                 r!(ast::Expr {
                     kind: ast::ExprKind::Call(
                         r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
@@ -60,7 +52,57 @@ fn levels() {
                 })
             ),
             ..
-        }),
+        })
+    );
+
+    // ...and this this (expr stmt, binary op):
+    t!(
+        parse_stmt,
+        Rust2015,
+        "1-if 0{}else{}()",
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                kind: ast::ExprKind::BinOp(
+                    ast::BinOp::Sub,
+                    r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::Call(
+                            r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
+                            r!([])
+                        ),
+                        ..
+                    })
+                ),
+                ..
+            },
+            ast::Semicolon::No
+        ),),
+    );
+
+    t!(parse_stmt, Rust2015, "&if(){}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+
+    t!(parse_stmt, Rust2015, "&&{}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+
+    // Ensure that index & call operators are allowed to follow boundaries
+    // if "they start a new stmt" (i.e., the precedence level is initial).
+    //
+    // Here, the `()` is a separate stmt, a tuple expr stmt; not part of a call expr.
+    t!(
+        parse_expr,
+        Rust2015,
+        "{ if(){}() }",
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Block(
+                _,
+                r!(ast::BlockExpr {
+                    stmts: r!([
+                        ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::If(_), .. }, _),
+                        ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }, _),
+                    ])
+                })
+            ),
+            ..
+        })
     );
 }
 
@@ -921,29 +963,9 @@ fn ranges() {
         )])),
     );
 
-    // FIXME
-    #[cfg(false)]
-    t!(
-        parse_stmt,
-        Rust2015,
-        "..if(){}else{}[0]",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::OpenSquareBracket, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
-        )]))
-    );
+    t!(parse_stmt, Rust2015, "..if(){}else{}[0]", Err(r!([Error::InvalidOpAfterBoundary(_)])));
 
-    // FIXME
-    #[cfg(false)]
-    t!(
-        parse_stmt,
-        Rust2015,
-        "()..if(){}else{}[0]",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::OpenSquareBracket, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
-        )]))
-    );
+    t!(parse_stmt, Rust2015, "()..if(){}else{}[0]", Err(r!([Error::InvalidOpAfterBoundary(_)])));
 
     // ...for comparison, this does parse:
     t!(
@@ -966,9 +988,17 @@ fn ranges() {
         }),
     );
 
-    // FIXME
-    #[cfg(false)]
-    t!(parse_stmt, Rust2015, "..{}+0", Err(_));
+    // Prefix ranges propagate operator restrictions to their operand contrary to
+    // normal unary ops that unconditionally lift any such restrictions.
+    t!(
+        parse_stmt,
+        Rust2015,
+        "..{}+0",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            ExpectedFragment::Token(TokenKind::Semicolon),
+        )]))
+    );
 
     // ...for comparison, this does parse:
     t!(
@@ -978,6 +1008,64 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
+                Some(r!(ast::Expr {
+                    kind: ast::ExprKind::BinOp(
+                        ast::BinOp::Add,
+                        r!(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
+                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                    ),
+                    ..
+                })),
+                _
+            ),
+            ..
+        })
+    );
+
+    // ...so does this (unary op `-` lifts operator restrictions for its operand):
+    t!(
+        parse_stmt,
+        Rust2015,
+        "-{}+0",
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                kind: ast::ExprKind::BinOp(
+                    ast::BinOp::Add,
+                    r!(ast::Expr {
+                        kind: ast::ExprKind::UnOp(
+                            ast::UnOp::Neg,
+                            r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })
+                        ),
+                        ..
+                    }),
+                    r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })
+                ),
+                ..
+            },
+            _
+        ))
+    );
+
+    // Ranges propagate operator restrictions to their right operand contrary
+    // to normal binary ops that unconditionally lift any such restrictions.
+    t!(
+        parse_stmt,
+        Rust2015,
+        "1..{}+0",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            ExpectedFragment::Token(TokenKind::Semicolon),
+        )]))
+    );
+
+    // ...for comparison, this does parse:
+    t!(
+        parse_expr,
+        Rust2015,
+        "1..{}+0",
+        Ok(ast::Expr {
+            kind: ast::ExprKind::Range(
+                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
                 Some(r!(ast::Expr {
                     kind: ast::ExprKind::BinOp(
                         ast::BinOp::Add,
