@@ -321,10 +321,10 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         if numeric {
-            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::AllowedIfUnsigned);
+            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::ParseIfUnsigned);
         }
         if let Some(ident) = extra {
-            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::AllowedIfUnsigned);
+            self.validate_numeric_ident(ident, ExpInNumIdentPolicy::ParseIfUnsigned);
         }
 
         (ident, extra)
@@ -336,8 +336,8 @@ impl<'src> Parser<'_, '_, 'src> {
         exp_policy: ExpInNumIdentPolicy,
     ) {
         let pattern: &[_] = match exp_policy {
-            ExpInNumIdentPolicy::AllowedIfUnsigned => &['+', '-', '.'],
-            ExpInNumIdentPolicy::Forbidden => &['e', '.'],
+            ExpInNumIdentPolicy::ParseIfUnsigned => &['+', '-', '.'],
+            ExpInNumIdentPolicy::Reject => &['e', '.'],
         };
         if ident.name.contains(pattern) {
             // We could also split at the offending token and
@@ -384,8 +384,8 @@ pub(crate) enum FnParamMode {
 }
 
 pub(crate) enum ExpInNumIdentPolicy {
-    AllowedIfUnsigned,
-    Forbidden,
+    ParseIfUnsigned,
+    Reject,
 }
 
 pub(crate) trait ParseBorrowKind: Sized {

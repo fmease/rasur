@@ -321,7 +321,7 @@ impl<'src> Parser<'_, '_, 'src> {
                         //     in struct pats contrary to struct exprs.
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         if numeric {
-                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Forbidden);
+                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
                         }
 
                         let (binder, body) = if let (false, ast::Mutability::Not, ast::ByRef::No) =

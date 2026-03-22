@@ -68,9 +68,9 @@ impl<'src> Parser<'_, '_, 'src> {
             let rule = ast::CurlyBracketedMacroCallIsBoundary::Yes;
 
             let mut expr = self.parse_expr_where(
-                StructPolicy::Allowed,
-                LetPolicy::Forbidden,
-                OpPolicy::Restricted(rule),
+                StructPolicy::Parse,
+                LetPolicy::YieldOrReject,
+                OpPolicy::YieldOnBoundary(rule),
             )?;
             attrs.append(&mut expr.attrs);
             expr.attrs = attrs;

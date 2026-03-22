@@ -17,7 +17,7 @@ impl<'src> Parser<'_, '_, 'src> {
     pub(crate) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
-        self.parse_expr_where(StructPolicy::Allowed, LetPolicy::Forbidden, OpPolicy::Allowed)
+        self.parse_expr_where(StructPolicy::Parse, LetPolicy::YieldOrReject, OpPolicy::Parse)
     }
 
     pub(crate) fn parse_expr_where(
@@ -167,7 +167,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 _ => break,
             };
 
-            if let OpPolicy::Restricted(rule) = o_policy
+            if let OpPolicy::YieldOnBoundary(rule) = o_policy
                 && left.kind.is_boundary(rule)
                 && !op.overrules_boundary()
             {
@@ -254,7 +254,7 @@ impl<'src> Parser<'_, '_, 'src> {
         };
 
         let right =
-            self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?;
+            self.parse_expr_at_level(right_level, s_policy, LetPolicy::YieldOrReject, o_policy)?;
 
         Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
     }
@@ -307,11 +307,11 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let l_policy = match op {
             ast::BinOp::And => l_policy,
-            _ => LetPolicy::Forbidden,
+            _ => LetPolicy::YieldOrReject,
         };
 
         let right =
-            self.parse_expr_at_level(right_level.unwrap(), s_policy, l_policy, OpPolicy::Allowed)?;
+            self.parse_expr_at_level(right_level.unwrap(), s_policy, l_policy, OpPolicy::Parse)?;
 
         Ok(ast::ExprKind::BinOp(op, Box::new(left), Box::new(right)).into())
     }
@@ -403,7 +403,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let expr =
-            self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?;
+            self.parse_expr_at_level(right_level, s_policy, LetPolicy::YieldOrReject, o_policy)?;
 
         Ok(ast::Expr { attrs, kind: ast::ExprKind::Borrow(kind, mut_, Box::new(expr)) })
     }
@@ -422,11 +422,16 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         let right = if matches!(kind, ast::RangeExprKind::Inclusive)
-            || (s_policy == StructPolicy::Allowed || self.token.kind != TokenKind::OpenCurlyBracket)
+            || (s_policy == StructPolicy::Parse || self.token.kind != TokenKind::OpenCurlyBracket)
                 // NB: Indeed, we plain out ignore the level here.
                 && self.begins_expr()
         {
-            Some(self.parse_expr_at_level(right_level, s_policy, LetPolicy::Forbidden, o_policy)?)
+            Some(self.parse_expr_at_level(
+                right_level,
+                s_policy,
+                LetPolicy::YieldOrReject,
+                o_policy,
+            )?)
         } else {
             None
         };
@@ -573,7 +578,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 let label = self.parse_label();
                 let expr = if (self.token.kind != TokenKind::OpenCurlyBracket
-                    || s_policy == StructPolicy::Allowed)
+                    || s_policy == StructPolicy::Parse)
                     && self.begins_expr()
                 {
                     // NOTE: Re. StructPolicy::Allowed -- yes, indeed!
@@ -612,15 +617,15 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_if_expr();
             }
-            TokenKind::Let if let LetPolicy::Allowed(_) = l_policy => {
+            TokenKind::Let if let LetPolicy::Parse(_) = l_policy => {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Parse)?;
                 self.parse(TokenKind::SingleEquals)?;
                 let body = self.parse_expr_at_level(
                     Level::AndRight,
                     s_policy,
-                    LetPolicy::Forbidden,
-                    OpPolicy::Allowed,
+                    LetPolicy::YieldOrReject,
+                    OpPolicy::Parse,
                 )?;
                 return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body })));
             }
@@ -632,9 +637,9 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
 
                 let scrutinee = self.parse_expr_where(
-                    StructPolicy::Forbidden,
-                    LetPolicy::Forbidden,
-                    OpPolicy::Allowed,
+                    StructPolicy::Yield,
+                    LetPolicy::YieldOrReject,
+                    OpPolicy::Parse,
                 )?;
 
                 return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix, attrs);
@@ -736,7 +741,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 // If the path is extended, then it's
                 // FEATURE: `more_qualified_paths` <https://github.com/rust-lang/rust/issues/86935>
-                TokenKind::OpenCurlyBracket if let StructPolicy::Allowed = s_policy => {
+                TokenKind::OpenCurlyBracket if let StructPolicy::Parse = s_policy => {
                     self.advance();
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
@@ -759,7 +764,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
                         if numeric {
-                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Forbidden);
+                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
                         }
 
                         // NB: Shorthand numeric fields are not permitted
@@ -913,7 +918,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
             ast::Expr { attrs, kind: ast::ExprKind::Block(None, Box::new(block)) }
         } else {
-            self.parse_expr_where(s_policy, LetPolicy::Forbidden, OpPolicy::Allowed)?
+            self.parse_expr_where(s_policy, LetPolicy::YieldOrReject, OpPolicy::Parse)?
         };
 
         Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr {
@@ -938,11 +943,8 @@ impl<'src> Parser<'_, '_, 'src> {
         };
         let pat = self.parse_pat(OrPolicy::Parse)?;
         self.parse(TokenKind::In)?;
-        let head = self.parse_expr_where(
-            StructPolicy::Forbidden,
-            LetPolicy::Forbidden,
-            OpPolicy::Allowed,
-        )?;
+        let head =
+            self.parse_expr_where(StructPolicy::Yield, LetPolicy::YieldOrReject, OpPolicy::Parse)?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, awaitness, pat, head, body })))
@@ -950,9 +952,9 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
         let condition = self.parse_expr_where(
-            StructPolicy::Forbidden,
-            LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024),
-            OpPolicy::Allowed,
+            StructPolicy::Yield,
+            LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            OpPolicy::Parse,
         )?;
         let consequent = self.parse_block_expr(AttrPolicy::Reject)?;
 
@@ -1018,9 +1020,9 @@ impl<'src> Parser<'_, '_, 'src> {
                 _ if self.consume(TokenKind::If) => (
                     pat,
                     Some(self.parse_expr_where(
-                        StructPolicy::Allowed,
-                        LetPolicy::Allowed(LetAllowance::Unconditional),
-                        OpPolicy::Allowed,
+                        StructPolicy::Parse,
+                        LetPolicy::Parse(LetAllowance::Unconditional),
+                        OpPolicy::Parse,
                     )?),
                 ),
                 _ => (pat, None),
@@ -1039,9 +1041,9 @@ impl<'src> Parser<'_, '_, 'src> {
                 .consume_or_parse(TokenKind::WideArrow, is_body_optional)?
                 .then(|| {
                     self.parse_expr_where(
-                        StructPolicy::Allowed,
-                        LetPolicy::Forbidden,
-                        OpPolicy::Restricted(rule),
+                        StructPolicy::Parse,
+                        LetPolicy::YieldOrReject,
+                        OpPolicy::YieldOnBoundary(rule),
                     )
                 })
                 .transpose()?;
@@ -1064,9 +1066,9 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         let condition = self.parse_expr_where(
-            StructPolicy::Forbidden,
-            LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024),
-            OpPolicy::Allowed,
+            StructPolicy::Yield,
+            LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            OpPolicy::Parse,
         )?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
@@ -1113,7 +1115,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn validate_let_chain(&self, expr: &ast::Expr<'src>, span: Span, l_policy: LetPolicy) {
         // If the let policy was forbidden, we would've already failed while (actually) parsing.
-        if let LetPolicy::Allowed(_) = l_policy
+        if let LetPolicy::Parse(_) = l_policy
             && !self.is_valid_let_chain(expr, true, l_policy)
         {
             // FIXME: Fake an UnexpectedToken(Let|&&|.., ExpectedFragment::Expr) in the
@@ -1127,22 +1129,22 @@ impl<'src> Parser<'_, '_, 'src> {
 
         match &expr.kind {
             ast::ExprKind::Let(_) => match l_policy {
-                LetPolicy::Allowed(LetAllowance::Unconditional) => true,
-                LetPolicy::Allowed(LetAllowance::AtTopLevelOnlyPriorTo2024) => {
+                LetPolicy::Parse(LetAllowance::Unconditional) => true,
+                LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024) => {
                     root || self.edition >= Edition::Rust2024
                 }
-                LetPolicy::Forbidden => false,
+                LetPolicy::YieldOrReject => false,
             },
             ast::ExprKind::BinOp(ast::BinOp::And, left, right) => {
                 self.is_valid_let_chain(left, false, l_policy)
                     && self.is_valid_let_chain(right, false, l_policy)
             }
             ast::ExprKind::BinOp(ast::BinOp::Or | ast::AssignOp!(), left, right) => {
-                self.is_valid_let_chain(left, false, LetPolicy::Forbidden)
-                    && self.is_valid_let_chain(right, false, LetPolicy::Forbidden)
+                self.is_valid_let_chain(left, false, LetPolicy::YieldOrReject)
+                    && self.is_valid_let_chain(right, false, LetPolicy::YieldOrReject)
             }
             ast::ExprKind::Range(Some(left), _right, _) => {
-                self.is_valid_let_chain(left, false, LetPolicy::Forbidden)
+                self.is_valid_let_chain(left, false, LetPolicy::YieldOrReject)
             }
             _ => true,
         }
@@ -1184,15 +1186,15 @@ impl ast::Pat<'_> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StructPolicy {
-    Allowed,
-    Forbidden,
+    Parse,
+    Yield,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum LetPolicy {
     #[expect(private_interfaces)] // nobody should use this variant outside of this module
-    Allowed(LetAllowance),
-    Forbidden,
+    Parse(LetAllowance),
+    YieldOrReject,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1203,8 +1205,8 @@ enum LetAllowance {
 
 #[derive(Clone, Copy)]
 pub(crate) enum OpPolicy {
-    Allowed,
-    Restricted(ast::CurlyBracketedMacroCallIsBoundary),
+    Parse,
+    YieldOnBoundary(ast::CurlyBracketedMacroCallIsBoundary),
 }
 
 enum HigherPostfixOpPolicy {
