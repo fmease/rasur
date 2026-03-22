@@ -1028,8 +1028,15 @@ impl<'src> Parser<'_, '_, 'src> {
 
             let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
 
+            // NOTE: I'm really unhappy about the existence of this complex condition and
+            //       would like to see it gone as soon as possible.
+            //       Reported upstream: <https://github.com/rust-lang/rust/issues/153134>.
+            let is_body_optional = self.token.kind == DELIMITER
+                || guard.is_some()
+                || pat.contains_never_or_macro_call();
+
             let body = self
-                .consume(TokenKind::WideArrow)
+                .consume_or_parse(TokenKind::WideArrow, is_body_optional)?
                 .then(|| {
                     self.parse_expr_where(
                         StructPolicy::Allowed,
@@ -1144,6 +1151,34 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Optionally parse a label.
     fn parse_label(&mut self) -> Option<ast::Ident<'src>> {
         self.parse_ticked_ident(|kind| matches!(kind, TokenKind::CommonIdent), Error::ReservedLabel)
+    }
+}
+
+impl ast::Pat<'_> {
+    fn contains_never_or_macro_call(&self) -> bool {
+        match self {
+            Self::Never | Self::MacroCall(_) => true,
+            | Self::Binding(_)
+            | Self::Error(_)
+            | Self::Lit(..)
+            | Self::Path(_)
+            | Self::Range(..)
+            | Self::Rest
+            | Self::Wildcard(_) => false,
+            | Self::Borrow(.., pat)
+            | Self::Box(pat)
+            | Self::Deref(pat)
+            | Self::Grouped(pat)
+            | Self::Guarded(pat, _)
+            | Self::Or(_, pat) => pat.contains_never_or_macro_call(),
+            Self::Slice(pats) | Self::Tuple(pats) => {
+                pats.iter().any(Self::contains_never_or_macro_call)
+            }
+            Self::Struct(pat) => {
+                pat.fields.iter().any(|field| field.body.contains_never_or_macro_call())
+            }
+            Self::TupleStruct(pat) => pat.fields.iter().any(Self::contains_never_or_macro_call),
+        }
     }
 }
 
