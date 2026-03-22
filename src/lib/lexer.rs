@@ -452,7 +452,16 @@ impl<'err, 'src> Lexer<'err, 'src> {
                     self.advance();
 
                     return match self.fin_lex_raw_ident(IdentKind::Ticked, start) {
-                        Some(()) => TokenKind::TickedIdent,
+                        Some(()) => {
+                            // This is considered to be a 'reservation'.
+                            if let Some('\'') = self.peek() {
+                                self.error(Error::TickFollowingRawTickedIdent(
+                                    self.span(self.index()),
+                                ));
+                            }
+
+                            TokenKind::TickedIdent
+                        }
                         None => {
                             self.error(Error::InvalidRawIdent(IdentKind::Ticked, self.span(start)));
                             TokenKind::Error

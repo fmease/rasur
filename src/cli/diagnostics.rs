@@ -140,6 +140,9 @@ fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
         Error::ForbiddenOuterAttrs => Diag::new("outer attributes are forbidden in this context"),
         Error::InvalidNumericIdent(span) => Diag::new("invalid numeric identifier").highlight(span),
         Error::AbiStrSuffix(span) => Diag::new("suffix on ABI string").highlight(span),
+        Error::TickFollowingRawTickedIdent(span) => {
+            Diag::new("tick immediately following raw ticked identifier").highlight(span)
+        }
     }
 }
 

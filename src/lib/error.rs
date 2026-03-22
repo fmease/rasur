@@ -109,6 +109,7 @@ pub enum Error {
     UnterminatedFrontmatter(Span),
     UnterminatedStrLit(Span),
     VisibilityOnInvalidItem(Span),
+    TickFollowingRawTickedIdent(Span),
 }
 
 #[derive(Clone, Copy, Debug)]

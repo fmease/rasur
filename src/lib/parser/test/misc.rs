@@ -377,8 +377,62 @@ fn raw_ticked_idents() {
 
     // We once used to accept this by mistake treating it as an empty raw ticked ident!
     t!(parse_item, Rust2021, "O!('r#);", Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)])));
+}
 
-    // We once used to accept this by mistake treating it as a multi-scalar char lit!
+#[test]
+fn char_lits_or_ticked_idents() {
+    t!(
+        parse_item,
+        Rust2015,
+        "M! { 'a'a }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
+                stream: r!([
+                    Token { kind: TokenKind::CharLit, .. },
+                    Token { kind: TokenKind::LitSuffix, .. }
+                ]),
+                ..
+            })),
+            ..
+        })
+    );
+
+    t!(
+        parse_item,
+        Rust2015,
+        "M! { 'a 'a }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
+                stream: r!([
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::TickedIdent, .. }
+                ]),
+                ..
+            })),
+            ..
+        })
+    );
+
+    t!(parse_item, Rust2015, "M! { '?a'a }", Err(r!([Error::MultiScalarCharLit(_)])));
+
+    t!(
+        parse_item,
+        Rust2015,
+        "M! { 'a?'a }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
+                stream: r!([
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::QuestionMark, .. },
+                    Token { kind: TokenKind::TickedIdent, .. }
+                ]),
+                ..
+            })),
+            ..
+        })
+    );
+
+    // We once used to accept this by mistake treating it as a "legal" multi-scalar char lit!
     t!(
         parse_item,
         Rust2021,
@@ -389,4 +443,10 @@ fn raw_ticked_idents() {
             Error::MissingClosingDelimiters(_),
         ]))
     );
+
+    // We once used to accidentally accept this & lex it as two consecutive ticked idents.
+    t!(parse_item, Rust2021, "M! { 'r#a'a }", Err(r!([Error::TickFollowingRawTickedIdent(_)])));
+
+    // We once used to accidentally accept this & lex it as two consecutive ticked idents.
+    t!(parse_item, Rust2021, "M! { 'r#a'r#a }", Err(r!([Error::TickFollowingRawTickedIdent(_)])));
 }
