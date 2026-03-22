@@ -388,11 +388,6 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee })))
     }
 
-    pub(super) fn parse_ty_annotation(&mut self) -> Result<ast::Ty<'src>> {
-        self.parse(TokenKind::SingleColon)?;
-        self.parse_ty()
-    }
-
     /// Optionally parse generics (generic parameter list followed by a where-clause).
     ///
     /// # Grammar

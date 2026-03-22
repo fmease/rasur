@@ -11,6 +11,14 @@ use crate::{
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
+    pub(crate) fn parse_ty_annotation(&mut self) -> Result<ast::Ty<'src>> {
+        if self.parse(TokenKind::SingleColon).is_err() {
+            return Ok(ast::Ty::Error(self.token.span.start().into()));
+        }
+
+        self.parse_ty()
+    }
+
     /// Parse a list of function parameters.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
