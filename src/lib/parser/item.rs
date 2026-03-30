@@ -93,8 +93,8 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         if let TokenKind::Use = self.token.kind {
-            // NOTE: We need to disqualify `use |…` which denotes a closure under
-            //       FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>.
+            // NOTE: We need to disqualify `use |…` which denotes a closure
+            //       under feature `ergonomic_clones`.
             //       We didn't turn `Use` into an `ItemQualifier` that could be discarded below
             //       since the rules are slightly more complex, so it's not worth it.
             //       E.g., while `async use {}` is an expr, `use {}` is an item.
@@ -123,7 +123,6 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::SinglePipe
             | TokenKind::DoublePipe
             | TokenKind::Move
-            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             | TokenKind::Use = token
             {
                 return false;
@@ -136,12 +135,12 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_defaultness(&mut self) -> ast::Defaultness {
-        // FEATURE: `specialization` / `min_specialization` (ungated) <https://github.com/rust-lang/rust/issues/31844>
         if self.consume(weak::Default) {
+            // FIXME: replace with `MinSpecialization` if the item ends up being a fn.
+            self.feature_no_span_fixme(Feature::Specialization);
             ast::Defaultness::Default
-        }
-        // FEATURE: `final_associated_functions` <https://github.com/rust-lang/rust/issues/131179>
-        else if self.consume(TokenKind::Final) {
+        } else if self.consume(TokenKind::Final) {
+            self.feature_no_span_fixme(Feature::FinalAssociatedFunctions);
             ast::Defaultness::Final
         } else {
             ast::Defaultness::Not
@@ -165,16 +164,19 @@ impl<'src> Parser<'_, '_, 'src> {
         match qualifiers.as_mut_slice() {
             [] => {}
             [Qualifier::Type] => return self.fin_parse_ty_alias_item(defaultness),
-            // FEATURE: `const_block_items` <https://github.com/rust-lang/rust/issues/149226>
             [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
+                self.feature_no_span_fixme(Feature::ConstBlockItems);
                 return self.fin_parse_const_block_item();
             }
             [qualifiers @ .., Qualifier::Const] => {
-                // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
                 let (tyness, qualifiers) = match qualifiers {
                     [Qualifier::Type, qualifiers @ ..] => (ast::Tyness::Ty, qualifiers),
                     _ => (ast::Tyness::Not, qualifiers),
                 };
+                if let ast::Tyness::Ty = tyness {
+                    // FIXME: There's also `mgca_type_const_syntax`.
+                    self.feature_no_span_fixme(Feature::MinGenericConstArgs);
+                }
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
@@ -185,8 +187,10 @@ impl<'src> Parser<'_, '_, 'src> {
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
             }
-            // FEATURE: `fn_delegation` <https://github.com/rust-lang/rust/issues/118212>
-            [Qualifier::Reuse] => return self.fin_parse_delegation_item(),
+            [Qualifier::Reuse] => {
+                self.feature_no_span_fixme(Feature::FnDelegation);
+                return self.fin_parse_delegation_item();
+            }
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
@@ -211,11 +215,13 @@ impl<'src> Parser<'_, '_, 'src> {
                     [Qualifier::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
                     _ => (ast::Asyncness::Not, qualifiers),
                 };
-                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 (modifiers.genness, qualifiers) = match qualifiers {
                     [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
                     _ => (ast::Genness::Not, qualifiers),
                 };
+                if let ast::Genness::Gen = modifiers.genness {
+                    self.feature_no_span_fixme(Feature::GenBlocks);
+                }
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
@@ -227,16 +233,21 @@ impl<'src> Parser<'_, '_, 'src> {
             &mut [mut ref mut qualifiers @ .., Qualifier::Trait] => {
                 let mut modifiers = ast::TraitItemModifiers::default();
 
-                // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
                 (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
+                if let ast::Constness::Const = modifiers.constness {
+                    self.feature_no_span_fixme(Feature::ConstTraitImpl);
+                }
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
-                // FEATURE: `auto_traits` (ungated) <https://github.com/rust-lang/rust/issues/13231>
                 (modifiers.autoness, qualifiers) = match qualifiers {
                     [Qualifier::Auto, qualifiers @ ..] => (ast::Autoness::Auto, qualifiers),
                     _ => (ast::Autoness::Not, qualifiers),
                 };
+                if let ast::Autoness::Auto = modifiers.autoness {
+                    self.feature_no_span_fixme(Feature::AutoTraits);
+                }
                 (modifiers.impl_restriction, qualifiers) = match qualifiers {
                     [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
+                        self.feature_no_span_fixme(Feature::ImplRestriction);
                         let Ok(path) = path else { return Err(()) };
                         (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
                     }
@@ -250,12 +261,16 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             [qualifiers @ .., Qualifier::Impl] => {
                 let (kind, qualifiers) = match qualifiers {
-                    // FEATURE: `fn_delegation` <https://github.com/rust-lang/rust/issues/118212>
                     [Qualifier::Reuse, qualifiers @ ..] => (ImplKind::Delegation, qualifiers),
                     _ => (ImplKind::Normal, qualifiers),
                 };
-                // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
+                if let ImplKind::Delegation = kind {
+                    self.feature_no_span_fixme(Feature::FnDelegation);
+                }
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
+                if let ast::Constness::Const = constness {
+                    self.feature_no_span_fixme(Feature::ConstTraitImpl);
+                }
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
@@ -290,8 +305,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 _ => {}
             },
-            // FEATURE: `decl_macro` (ungated) <https://github.com/rust-lang/rust/issues/39412>
             TokenKind::Macro => {
+                self.feature(Feature::DeclMacro, self.token.span);
                 self.advance();
                 return self.fin_parse_macro_def();
             }
@@ -324,12 +339,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Fn => Qualifier::Fn,
-                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::CommonIdent => match self.source(self.token.span) {
-                    // FEATURE: `auto_traits` (ungated) <https://github.com/rust-lang/rust/issues/13231>
                     weak::Auto::STR if weak::Auto.qualifies(self) => Qualifier::Auto,
-                    // FEATURE: `fn_delegation` <https://github.com/rust-lang/rust/issues/118212>
                     weak::Reuse::STR if weak::Reuse.qualifies(self) => Qualifier::Reuse,
                     weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
                     _ => return,
@@ -337,7 +349,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Impl => {
                     self.advance();
 
-                    // FEATURE: `impl_restriction` <https://github.com/rust-lang/rust/issues/105077>
                     if let Some(path) = self.parse_restriction(Some(TokenKind::Trait)) {
                         yield (Qualifier::ImplRestriction(Box::new(path)), self.token.kind);
                         continue;
@@ -400,12 +411,16 @@ impl<'src> Parser<'_, '_, 'src> {
         tyness: ast::Tyness,
     ) -> Result<ast::ItemKind<'src>> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
-        // FEATURE: `generic_const_items` <https://github.com/rust-lang/rust/issues/113521>
-        let params = self.parse_generic_param_list()?;
+        let params = self
+            .parse_generic_param_list()?
+            .inspect(|_| self.feature_no_span_fixme(Feature::GenericConstItems))
+            .unwrap_or_default();
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
-        // FEATURE: `generic_const_items` <https://github.com/rust-lang/rust/issues/113521>
-        let preds = self.parse_where_clause()?;
+        let preds = self
+            .parse_where_clause()?
+            .inspect(|_| self.feature_no_span_fixme(Feature::GenericConstItems))
+            .unwrap_or_default();
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
@@ -480,9 +495,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
             let ty = this.parse_ty()?;
-            // FEATURE: `default_field_values` <https://github.com/rust-lang/rust/issues/132162>
-            let default =
-                this.consume(TokenKind::SingleEquals).then(|| this.parse_expr()).transpose()?;
+            let default = this.parse_field_default()?;
             Ok(ast::TupleFieldDef { attrs, vis, ty, default })
         })
     }
@@ -491,19 +504,26 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
-            // FEATURE: `unsafe_fields` <https://github.com/rust-lang/rust/issues/132922>
             let safety = if this.consume(TokenKind::Unsafe) {
+                this.feature_no_span_fixme(Feature::UnsafeFields);
                 ast::Safety::Unsafe
             } else {
                 ast::Safety::Inherited
             };
             let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
-            // FEATURE: `default_field_values` <https://github.com/rust-lang/rust/issues/132162>
-            let default =
-                this.consume(TokenKind::SingleEquals).then(|| this.parse_expr()).transpose()?;
+            let default = this.parse_field_default()?;
             Ok(ast::StructFieldDef { attrs, vis, safety, binder, ty, default })
         })
+    }
+
+    fn parse_field_default(&mut self) -> Result<Option<ast::Expr<'src>>> {
+        if self.consume(TokenKind::SingleEquals) {
+            self.feature_no_span_fixme(Feature::DefaultFieldValues);
+            self.parse_expr().map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit?` has been parsed already.
@@ -585,15 +605,14 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let gen_params = self.parse_generic_param_list()?;
+        let gen_params = self.parse_generic_param_list()?.unwrap_or_default();
         let params = self.parse_fn_param_list(match (cx, self.edition) {
             (ItemCx::Trait, Edition::Rust2015) => FnParamMode::Optional,
             _ => FnParamMode::Required,
         })?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
-        // FEATURE: `contracts_internals` <https://github.com/rust-lang/rust/issues/128044>
         let contract = self.parse_contract()?;
-        let preds = self.parse_where_clause()?;
+        let preds = self.parse_where_clause()?.unwrap_or_default();
 
         let body = if self.consume(TokenKind::OpenCurlyBracket) {
             Some(self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?)
@@ -625,6 +644,10 @@ impl<'src> Parser<'_, '_, 'src> {
             contract.ensures = Some(Box::new(self.parse_expr()?));
         }
 
+        if contract.requires.is_some() || contract.ensures.is_some() {
+            self.feature_no_span_fixme(Feature::ContractInternals);
+        }
+
         Ok(contract)
     }
 
@@ -640,15 +663,15 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let params = if self.pick_generic_param_list_over_ext_path(0) {
-            self.parse_generic_param_list()?
+            self.parse_generic_param_list()?.unwrap_or_default()
         } else {
             Vec::new()
         };
 
-        // FEATURE: `fn_delegation` <https://github.com/rust-lang/rust/issues/118212>
         let constness = if let ast::Constness::Not = constness
             && self.consume(TokenKind::Const)
         {
+            self.feature_no_span_fixme(Feature::ConstTraitImpl);
             ast::Constness::Const
         } else {
             constness
@@ -688,7 +711,7 @@ impl<'src> Parser<'_, '_, 'src> {
             (None, ty)
         };
 
-        let preds = self.parse_where_clause()?;
+        let preds = self.parse_where_clause()?.unwrap_or_default();
 
         let trait_ref = if let Some(path) = trait_ref {
             Some(ast::ImplTraitRef { defaultness, safety, polarity, path })
@@ -810,7 +833,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let kind = self.parse_variant_kind()?;
         if let ast::VariantKind::Tuple(_) = kind {
             debug_assert!(generics.preds.is_empty());
-            generics.preds = self.parse_where_clause()?;
+            generics.preds = self.parse_where_clause()?.unwrap_or_default();
         }
         if kind.needs_semicolon() {
             self.parse(TokenKind::Semicolon)?;
@@ -827,16 +850,16 @@ impl<'src> Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let params = self.parse_generic_param_list()?;
+        let params = self.parse_generic_param_list()?.unwrap_or_default();
 
-        // FEATURE: `trait_alias` (ungated) <https://github.com/rust-lang/rust/issues/41517>
         if self.consume(TokenKind::SingleEquals) {
+            self.feature_no_span_fixme(Feature::TraitAlias);
             return self.fin_parse_trait_alias_item(modifiers, binder, params);
         }
 
         let bounds =
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
-        let preds = self.parse_where_clause()?;
+        let preds = self.parse_where_clause()?.unwrap_or_default();
 
         let body = self.parse_delimited_assoc_items(ItemCx::Trait, attrs)?;
 
@@ -857,7 +880,7 @@ impl<'src> Parser<'_, '_, 'src> {
         params: Vec<ast::GenericParam<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
         let bounds = self.parse_bounds()?;
-        let preds = self.parse_where_clause()?;
+        let preds = self.parse_where_clause()?.unwrap_or_default();
 
         self.parse(TokenKind::Semicolon)?;
 
@@ -902,13 +925,13 @@ impl<'src> Parser<'_, '_, 'src> {
         defaultness: ast::Defaultness,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
-        let params = self.parse_generic_param_list()?;
+        let params = self.parse_generic_param_list()?.unwrap_or_default();
         let bounds =
             if self.consume(TokenKind::SingleColon) { self.parse_bounds()? } else { Vec::new() };
-        let mut preds = self.parse_where_clause()?;
+        let mut preds = self.parse_where_clause()?.unwrap_or_default();
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_ty()).transpose()?;
         if body.is_some() {
-            preds.append(&mut self.parse_where_clause()?);
+            preds.append(&mut self.parse_where_clause()?.unwrap_or_default());
         }
         self.parse(TokenKind::Semicolon)?;
 

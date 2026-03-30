@@ -6,6 +6,7 @@ use super::{
 use crate::{
     ast,
     error::Error,
+    feature::Feature,
     span::{ByteIndex, Span},
 };
 use std::mem;
@@ -210,11 +211,6 @@ impl<'src> Parser<'_, '_, 'src> {
         let value = self.source(self.token.span);
         self.advance();
 
-        let value = match kind {
-            // ast::LitKind::Str => todo!(), // XXX
-            _ => value,
-        };
-
         let suffix = if let TokenKind::LitSuffix = self.token.kind {
             let source = self.source(self.token.span);
             self.advance();
@@ -235,9 +231,11 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Const => Some(ast::Mutability::Not),
                 _ => None,
             }
-            // FEATURE: `pin_ergonomics` <https://github.com/rust-lang/rust/issues/130494>
             && let Some(kind) = match self.source(self.token.span) {
-                weak::Pin::STR => Some(ast::BorrowKind::Pin),
+                weak::Pin::STR => {
+                    self.feature(Feature::PinErgonomics, self.token.span);
+                    Some(ast::BorrowKind::Pin)
+                }
                 source => X::parse(source),
             }
         {
@@ -278,6 +276,7 @@ impl<'src> Parser<'_, '_, 'src> {
         error: impl FnOnce(Span) -> T,
         parse: impl FnOnce(&mut Self, &'src str) -> Result<Option<T>>,
     ) -> Result<T> {
+        self.feature(Feature::BuiltinSyntax, start);
         self.parse(TokenKind::Hash)?;
 
         let ident = self.parse_common_ident()?;

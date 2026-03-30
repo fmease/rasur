@@ -73,9 +73,7 @@ fn try_main() -> Result<(), ()> {
             tokens.for_each(drop);
         }
 
-        report(store, opts.gatekeep, &cx)?;
-
-        return Ok(());
+        return report(store, opts.gatekeep, &cx);
     }
 
     let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &store);
@@ -123,9 +121,12 @@ fn report(
             } else {
                 annotate_snippets::Level::WARNING
             };
-            Diag::new(level, format!("use of experimental feature `{feature}`"))
-                .highlight(span)
-                .render(cx);
+            let diag = Diag::new(level, format!("use of experimental feature `{feature}`"));
+            let diag = match span {
+                Some(span) => diag.highlight(span),
+                None => diag,
+            };
+            diag.render(cx);
         }
     }
 

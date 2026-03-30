@@ -5,6 +5,7 @@ use super::{
 use crate::{
     ast,
     error::Error,
+    feature::Feature,
     parser::weak::Weak,
     span::Span,
     token::{PathSegIdent, Token},
@@ -89,7 +90,6 @@ impl<'src> Parser<'_, '_, 'src> {
 
         match self.token.kind {
             TokenKind::CommonIdent => match () {
-                // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
                 () if self.check(weak::Builtin) => {
                     self.advance();
                     return self.fin_parse_builtin_ty(start);
@@ -182,8 +182,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::Ty::Inferred);
             }
-            // FEATURE: `unsafe_binders` <https://github.com/rust-lang/rust/issues/130516>
             TokenKind::Unsafe => {
+                self.feature(Feature::UnsafeBinders, self.token.span);
                 self.advance();
                 self.parse(TokenPrefix::LessThan)?;
                 let bound_vars = self.fin_parse_generic_param_list()?;
@@ -396,8 +396,8 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Generics ::= Generic_Param_List Where_Clause?
     /// ```
     pub(super) fn parse_generics(&mut self) -> Result<ast::Generics<'src>> {
-        let params = self.parse_generic_param_list()?;
-        let preds = self.parse_where_clause()?;
+        let params = self.parse_generic_param_list()?.unwrap_or_default();
+        let preds = self.parse_where_clause()?.unwrap_or_default();
         Ok(ast::Generics { params, preds })
     }
 
@@ -412,11 +412,13 @@ impl<'src> Parser<'_, '_, 'src> {
     ///     | "const" Common_Ident ":" Type ("=" Const_Arg)?
     ///     | Common_Ident (":" Bounds)? ("=" Ty)?
     /// ```
-    pub(super) fn parse_generic_param_list(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
+    pub(super) fn parse_generic_param_list(
+        &mut self,
+    ) -> Result<Option<Vec<ast::GenericParam<'src>>>> {
         if !self.consume(TokenPrefix::LessThan) {
-            return Ok(Vec::new());
+            return Ok(None);
         }
-        self.fin_parse_generic_param_list()
+        self.fin_parse_generic_param_list().map(Some)
     }
 
     pub(super) fn fin_parse_generic_param_list(&mut self) -> Result<Vec<ast::GenericParam<'src>>> {
@@ -485,11 +487,9 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Predicate ::=
     ///     | Ty ":" Bounds
     /// ```
-    pub(super) fn parse_where_clause(&mut self) -> Result<Vec<ast::Predicate<'src>>> {
-        let mut preds = Vec::new();
-
+    pub(super) fn parse_where_clause(&mut self) -> Result<Option<Vec<ast::Predicate<'src>>>> {
         if !self.consume(TokenKind::Where) {
-            return Ok(preds);
+            return Ok(None);
         }
 
         if self.pick_generic_param_list_over_ext_path(0) {
@@ -497,6 +497,8 @@ impl<'src> Parser<'_, '_, 'src> {
             let _bound_vars = self.parse_generic_param_list()?;
             self.error(Error::ParametrizedWhereClause(start.until(self.token.span)));
         }
+
+        let mut preds = Vec::new();
 
         while self.begins_predicate() {
             preds.push(self.parse_predicate()?);
@@ -506,14 +508,17 @@ impl<'src> Parser<'_, '_, 'src> {
             }
         }
 
-        Ok(preds)
+        Ok(Some(preds))
     }
 
     fn parse_predicate(&mut self) -> Result<ast::Predicate<'src>> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
-        // FEATURE: `where_clause_attrs` <https://github.com/rust-lang/rust/issues/115590>
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        if !attrs.is_empty() {
+            self.feature_no_span_fixme(Feature::WhereClauseAttrs);
+        }
+
         let bound_vars = self.parse_for_binder()?;
 
         let kind = if bound_vars.is_some() || self.begins_ty(0) {
@@ -560,7 +565,6 @@ impl<'src> Parser<'_, '_, 'src> {
 
         matches!(self.token.kind, TokenKind::TickedIdent | TokenKind::For)
             || self.begins_ty(0)
-            // FEATURE: `where_clause_attrs` <https://github.com/rust-lang/rust/issues/115590>
             || self.begins_outer_attr()
     }
 
@@ -712,7 +716,6 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
-        // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
         let constness = match self.token.kind {
             TokenKind::Const => {
                 self.advance();
@@ -731,9 +734,12 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             _ => ast::BoundConstness::Never,
         };
+        if let ast::BoundConstness::Always | ast::BoundConstness::Maybe = constness {
+            self.feature_no_span_fixme(Feature::ConstTraitImpl);
+        }
 
-        // FEATURE: `async_trait_bounds` <https://github.com/rust-lang/rust/issues/62290>
         let asyncness = if self.consume(TokenKind::Async) {
+            self.feature_no_span_fixme(Feature::AsyncTraitBounds);
             ast::BoundAsyncness::Always
         } else {
             ast::BoundAsyncness::Never
@@ -745,8 +751,8 @@ impl<'src> Parser<'_, '_, 'src> {
             && let ast::BoundAsyncness::Never = asyncness
         {
             match self.token.kind {
-                // FEATURE: `negative_bounds`
                 TokenKind::SingleBang => {
+                    self.feature(Feature::NegativeBounds, self.token.span);
                     self.advance();
                     ast::BoundPolarity::Negative
                 }
@@ -767,16 +773,11 @@ impl<'src> Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::parse_trait_bound_modifiers`.
 
         match self.peek(offset).kind {
-            // FEATURE: `async_trait_bounds` <https://github.com/rust-lang/rust/issues/62290>
             | TokenKind::Async
-            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             | TokenKind::Const
             | TokenKind::QuestionMark
-            // FEATURE: `negative_bounds`
             | TokenKind::SingleBang
-            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             | TokenKind::Tilde => true,
-            // FEATURE: `const_trait_impl` <https://github.com/rust-lang/rust/issues/143874>
             TokenKind::OpenSquareBracket => {
                 self.peek(offset + 1).kind == TokenKind::Const
                     && self.peek(offset + 2).kind == TokenKind::CloseSquareBracket

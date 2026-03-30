@@ -5,7 +5,8 @@ use std::cell::RefCell;
 #[derive(Default)]
 pub struct Store {
     pub errors: Buffer<Error>,
-    pub features: Buffer<(Feature, Span)>,
+    // FIXME: All feature usages should have a span.
+    pub features: Buffer<(Feature, Option<Span>)>,
 }
 
 impl Store {

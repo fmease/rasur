@@ -2,7 +2,7 @@ use super::{
     ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, one_of,
     ty::PlusPolicy,
 };
-use crate::{ast, error::Error, token::PathSegIdent};
+use crate::{ast, error::Error, feature::Feature, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
@@ -178,8 +178,8 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        // FEATURE: `return_type_notation` <https://github.com/rust-lang/rust/issues/109417>
         if self.consume(TokenKind::DoubleDot) {
+            self.feature_no_span_fixme(Feature::ReturnTypeNotation);
             self.parse(TokenKind::CloseRoundBracket)?;
 
             return Ok(ast::GenericArgs::ParenElided);
@@ -202,9 +202,8 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_term(&mut self) -> Result<ast::Term<'src>> {
         if self.begins_ty(0) {
             Ok(ast::Term::Ty(self.parse_ty()?))
-        }
-        // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
-        else if self.begins_const_arg() {
+        } else if self.begins_const_arg() {
+            self.feature(Feature::MinGenericConstArgs, self.token.span);
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
             self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Term))
@@ -230,8 +229,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
-            // FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
             TokenKind::Const => {
+                self.feature(Feature::MinGenericConstArgs, self.token.span);
                 self.advance();
                 let mut attrs = Vec::new();
                 let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
@@ -254,7 +253,6 @@ impl<'src> Parser<'_, '_, 'src> {
     fn begins_const_arg(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_const_arg`.
 
-        // Re. `const`, FEATURE: `min_generic_const_args` <https://github.com/rust-lang/rust/issues/132980>
         matches!(self.token.kind, TokenKind::OpenCurlyBracket | TokenKind::Const)
             || self.begins_negatable_lit()
     }

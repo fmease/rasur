@@ -4,7 +4,7 @@ use super::{
     one_of,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::Error};
+use crate::{ast, error::Error, feature::Feature};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a pattern.
@@ -52,6 +52,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         loop {
             let op = match self.token.kind {
+                // FIXME: Register feature w/o triggering on stable match guards.
                 // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
                 TokenKind::If if let GuardPolicy::Parse = g_policy => Op::Guard,
                 TokenKind::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
@@ -182,19 +183,21 @@ impl<'src> Parser<'_, '_, 'src> {
             };
         }
 
-        // FEATURE: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>
         match (self.parse_mutability(), self.parse_by_ref()) {
             (ast::Mutability::Not, ast::ByRef::No) => {}
             (mut_, by_ref) => {
+                if let ast::Mutability::Mut = mut_ {
+                    self.feature_no_span_fixme(Feature::MutRef);
+                }
                 let binder = self.parse_common_ident()?;
                 return self.fin_parse_binding_pat(mut_, by_ref, binder);
             }
         }
 
         match self.token.kind {
-            // FEATURE: `box_patterns` (ungated) <https://github.com/rust-lang/rust/issues/29641>
             // FIXME: Should this be a prefix op? Then "OrPolicy::Yield" would come for free.
             TokenKind::Box => {
+                self.feature(Feature::BoxPatterns, self.token.span);
                 self.advance();
                 return Ok(ast::Pat::Box(Box::new(self.parse_pat_where(
                     OrPolicy::Yield,
@@ -202,7 +205,6 @@ impl<'src> Parser<'_, '_, 'src> {
                     GuardPolicy::Yield,
                 )?)));
             }
-            // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
                 return self.fin_parse_builtin_syntax(
@@ -262,8 +264,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 )?;
                 return Ok(ast::Pat::Slice(elems));
             }
-            // FEATURE: `never_patterns` <https://github.com/rust-lang/rust/issues/118155>
             TokenKind::SingleBang => {
+                self.feature(Feature::NeverPatterns, self.token.span);
                 self.advance();
                 return Ok(ast::Pat::Never);
             }
@@ -292,10 +294,12 @@ impl<'src> Parser<'_, '_, 'src> {
                         Some(ast::RangePatBound::Path(path)),
                     );
                 }
-                // If the path is extended, then it's
-                // FEATURE: `more_qualified_paths` <https://github.com/rust-lang/rust/issues/86935>
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
+
+                    if path.ext.is_some() {
+                        self.feature_no_span_fixme(Feature::MoreQualifiedPaths);
+                    }
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     const SEPARATOR: TokenKind = TokenKind::Comma;
@@ -311,10 +315,14 @@ impl<'src> Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        // FEATURE: `box_patterns` (ungated) <https://github.com/rust-lang/rust/issues/29641>
                         let box_ = self.consume(TokenKind::Box);
-                        // FEATURE: `mut_ref` <https://github.com/rust-lang/rust/issues/123076>
+                        if box_ {
+                            self.feature_no_span_fixme(Feature::BoxPatterns);
+                        }
                         let mut_ = self.parse_mutability();
+                        if let ast::Mutability::Mut = mut_ {
+                            self.feature_no_span_fixme(Feature::MutRef);
+                        }
                         let by_ref = self.parse_by_ref();
 
                         // NB: Shorthand numeric fields are permitted

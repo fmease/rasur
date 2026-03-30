@@ -150,7 +150,12 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
     }
 
     fn feature(&self, feature: Feature, span: Span) {
-        self.store.features.add((feature, span));
+        self.store.features.add((feature, Some(span)));
+    }
+
+    // FIXME: Gradually get rid of this.
+    fn feature_no_span_fixme(&self, feature: Feature) {
+        self.store.features.add((feature, None));
     }
 
     // FIXME: Overload the ret ty to allow for `-> Option<Span>`

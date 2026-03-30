@@ -7,7 +7,7 @@ use super::{
     ty::PlusPolicy,
     weak::{self, Weak as _},
 };
-use crate::{ast, edition::Edition, error::Error, span::Span};
+use crate::{ast, edition::Edition, error::Error, feature::Feature, span::Span};
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
@@ -42,13 +42,11 @@ impl<'src> Parser<'_, '_, 'src> {
         // `TokenKind::Let` isn't included here because let-exprs are but an impl detail.
         match self.token.kind {
             | TokenKind::Async
-            // FEATURE: `explicit_tail_calls` <https://github.com/rust-lang/rust/issues/112788>
             | TokenKind::Become
             | TokenKind::Break
             | TokenKind::CharLit
             | TokenKind::Const
             | TokenKind::Continue
-            // FEATURE: `yeet_expr` <https://github.com/rust-lang/rust/issues/96373>
             | TokenKind::Do
             | TokenKind::DoubleAmpersand
             | TokenKind::DoubleDot
@@ -56,7 +54,6 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::DoublePipe
             | TokenKind::False
             | TokenKind::For
-            // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
             | TokenKind::Gen
             | TokenKind::If
             | TokenKind::Loop
@@ -72,19 +69,15 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::SingleBang
             | TokenKind::SingleHyphen
             | TokenKind::SinglePipe
-            // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Static
             | TokenKind::StrLit
             | TokenKind::TickedIdent
             | TokenKind::True
-            // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
             | TokenKind::Try
             | TokenKind::Underscore
-            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             | TokenKind::Use
             | TokenKind::Unsafe
             | TokenKind::While
-            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             | TokenKind::Yield => true,
             _ => self.begins_ext_path(0) || self.begins_outer_attr(),
         }
@@ -325,20 +318,20 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::Expr { attrs, kind: ast::ExprKind::Await(Box::new(left)) });
             }
             TokenKind::CommonIdent => false,
-            // FEATURE: `postfix_match` <https://github.com/rust-lang/rust/issues/121618>
             TokenKind::Match => {
+                self.feature(Feature::PostfixMatch, self.token.span);
                 self.advance();
                 let kind = self.fin_parse_match_expr(left, ast::MatchKind::Postfix, &mut attrs)?;
                 return Ok(ast::Expr { attrs, kind });
             }
             TokenKind::NumLit => true,
-            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             TokenKind::Use => {
+                self.feature(Feature::ErgonomicClones, self.token.span);
                 self.advance();
                 return Ok(ast::Expr { attrs, kind: ast::ExprKind::Use(Box::new(left)) });
             }
-            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
+                self.feature(Feature::YieldExpr, self.token.span);
                 self.advance();
                 let kind = ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left)));
                 return Ok(ast::Expr { attrs, kind });
@@ -497,9 +490,14 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
                 if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
-                    // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                    if let ast::Genness::Gen = genness {
+                        self.feature_no_span_fixme(Feature::GenBlocks);
+                    }
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
+                    if let ast::CaptureMode::Use = mode {
+                        self.feature_no_span_fixme(Feature::ErgonomicClones);
+                    }
                     if !qualifiers.is_empty() {
                         self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
@@ -517,8 +515,11 @@ impl<'src> Parser<'_, '_, 'src> {
                     [qualifiers @ .., Qualifier::Const] => {
                         (Some(ast::SpecialBlockKind::Const), qualifiers)
                     }
-                    // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
                     [qualifiers @ .., Qualifier::Try(ty)] => {
+                        self.feature_no_span_fixme(match ty {
+                            Some(_) => Feature::TryBlocksHeterogeneous,
+                            None => Feature::TryBlocks,
+                        });
                         (Some(ast::SpecialBlockKind::Try(mem::take(ty))), qualifiers)
                     }
                     [qualifiers @ .., Qualifier::Unsafe] => {
@@ -538,6 +539,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Pipe] => {
                 let mut modifiers = ast::ClosureExprModifiers::default();
 
+                // FIXME: Register feature.
                 // FEATURE: `closure_lifetime_binder` <https://github.com/rust-lang/rust/issues/97362>
                 let (bound_vars, mut qualifiers) = match qualifiers {
                     [Qualifier::ForBinder(bound_vars), qualifiers @ ..] => {
@@ -545,20 +547,29 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                     _ => (Vec::new(), &*qualifiers),
                 };
-                // FEATURE: `const_closures` <https://github.com/rust-lang/rust/issues/106003>
                 (modifiers.constness, qualifiers) = match qualifiers {
                     [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
                     _ => (ast::Constness::Not, qualifiers),
                 };
-                // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
+                if let ast::Constness::Const = modifiers.constness {
+                    self.feature_no_span_fixme(Feature::ConstClosures);
+                }
                 (modifiers.staticness, qualifiers) = match qualifiers {
                     [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
                     _ => (ast::Staticness::Not, qualifiers),
                 };
+                if let ast::Staticness::Static = modifiers.staticness {
+                    self.feature_no_span_fixme(Feature::Coroutines);
+                }
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
-                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
+                if let ast::Genness::Gen = modifiers.genness {
+                    self.feature_no_span_fixme(Feature::GenBlocks);
+                }
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
+                if let ast::CaptureMode::Use = modifiers.mode {
+                    self.feature_no_span_fixme(Feature::ErgonomicClones);
+                }
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
@@ -569,8 +580,8 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            // FEATURE: `explicit_tail_calls` <https://github.com/rust-lang/rust/issues/112788>
             TokenKind::Become => {
+                self.feature(Feature::ExplicitTailCalls, self.token.span);
                 self.advance();
                 return Ok(ast::ExprKind::Become(Box::new(self.parse_expr()?)));
             }
@@ -591,7 +602,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Break(label, expr));
             }
             TokenKind::CharLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Char)),
-            // FEATURE: `builtin_syntax` <https://github.com/rust-lang/rust/issues/110680>
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
                 return self.fin_parse_builtin_expr(start);
@@ -600,8 +610,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()));
             }
-            // FEATURE: `yeet_expr` <https://github.com/rust-lang/rust/issues/96373>
             TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
+                self.feature(Feature::YeetExpr, self.token.span);
                 self.advance();
                 self.advance();
                 let expr =
@@ -711,8 +721,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_while_loop_expr(None, attrs);
             }
-            // FEATURE: `yield_expr` <https://github.com/rust-lang/rust/issues/43122>
             TokenKind::Yield => {
+                self.feature(Feature::YieldExpr, self.token.span);
                 self.advance();
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
@@ -739,10 +749,12 @@ impl<'src> Parser<'_, '_, 'src> {
                         stream,
                     })));
                 }
-                // If the path is extended, then it's
-                // FEATURE: `more_qualified_paths` <https://github.com/rust-lang/rust/issues/86935>
                 TokenKind::OpenCurlyBracket if let StructPolicy::Parse = s_policy => {
                     self.advance();
+
+                    if path.ext.is_some() {
+                        self.feature_no_span_fixme(Feature::MoreQualifiedPaths);
+                    }
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     const SEPARATOR: TokenKind = TokenKind::Comma;
@@ -818,7 +830,6 @@ impl<'src> Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::ForBinder(bound_vars));
                     continue;
                 }
-                // FEATURE: `gen_blocks` <https://github.com/rust-lang/rust/issues/117078>
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::Move => Qualifier::Move,
                 TokenKind::OpenCurlyBracket => {
@@ -831,12 +842,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
-                // FEATURE: `coroutines` <https://github.com/rust-lang/rust/issues/43122>
                 TokenKind::Static => Qualifier::Static,
-                // FEATURE: `try_blocks` (ungated) <https://github.com/rust-lang/rust/issues/31436>
                 TokenKind::Try => {
                     self.advance();
-                    // FEATURE: `try_blocks_heterogeneous` <https://github.com/rust-lang/rust/issues/149488>
                     let ty = self
                         .consume(weak::Bikeshed)
                         .then(|| self.parse_ty().map(Box::new))
@@ -845,7 +853,6 @@ impl<'src> Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Unsafe => Qualifier::Unsafe,
-                // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
                 TokenKind::Use => Qualifier::Use,
                 _ => break,
             };
@@ -935,8 +942,8 @@ impl<'src> Parser<'_, '_, 'src> {
         label: Option<ast::Ident<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        // FEATURE: `async_for_loop` <https://github.com/rust-lang/rust/issues/118898>
         let awaitness = if self.consume(TokenKind::Await) {
+            self.feature_no_span_fixme(Feature::AsyncForLoop);
             ast::Awaitness::Await
         } else {
             ast::Awaitness::Not
@@ -1047,6 +1054,10 @@ impl<'src> Parser<'_, '_, 'src> {
                     )
                 })
                 .transpose()?;
+
+            if body.is_none() {
+                self.feature_no_span_fixme(Feature::NeverPatterns);
+            }
 
             self.consume_or_parse(
                 SEPARATOR,
@@ -1354,7 +1365,6 @@ impl Qualifier<'_> {
     fn strip_capture_mode(qualifiers: &[Self]) -> (ast::CaptureMode, &[Self]) {
         match qualifiers {
             [Self::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
-            // FEATURE: `ergonomic_clones` <https://github.com/rust-lang/rust/issues/132290>
             [Self::Use, qualifiers @ ..] => (ast::CaptureMode::Use, qualifiers),
             _ => (ast::CaptureMode::Ref, qualifiers),
         }
