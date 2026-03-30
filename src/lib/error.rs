@@ -1,47 +1,4 @@
 use crate::{lexer::IdentKind, parser::ExpectedFragment, span::Span, token::Token};
-use Default::default;
-use std::cell::RefCell;
-
-pub struct Buffer {
-    raw: RawBuffer,
-}
-
-impl Buffer {
-    pub const fn sealed() -> Self {
-        Self { raw: RawBuffer::Seal }
-    }
-
-    pub(crate) fn add(&self, error: Error) {
-        match &self.raw {
-            RawBuffer::Seal => {}
-            RawBuffer::Hold(errors) => errors.borrow_mut().push(error),
-        }
-    }
-
-    pub(crate) fn extend(&self, other: Buffer) {
-        let RawBuffer::Hold(this) = &self.raw else { return };
-        let RawBuffer::Hold(that) = &other.raw else { return };
-        this.borrow_mut().append(&mut *that.borrow_mut());
-    }
-
-    pub fn into_inner(self) -> Vec<Error> {
-        match self.raw {
-            RawBuffer::Seal => Vec::new(),
-            RawBuffer::Hold(errors) => errors.into_inner(),
-        }
-    }
-}
-
-impl Default for Buffer {
-    fn default() -> Self {
-        Self { raw: RawBuffer::Hold(default()) }
-    }
-}
-
-enum RawBuffer {
-    Seal,
-    Hold(RefCell<Vec<Error>>),
-}
 
 // FIXME: Overhaul this error type; most of the variants are just placeholders.
 // FIXME: All errors should have spans

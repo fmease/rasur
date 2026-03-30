@@ -13,8 +13,9 @@ mod ty;
 use super::Parser;
 use crate::{
     ast,
+    buffer::Buffer,
     edition::Edition,
-    error::{Buffer as ErrorBuffer, Error},
+    error::Error,
     lexer::{self, lex},
     span::ByteIndex,
     token::TokenKind,
@@ -53,14 +54,15 @@ mod normalizer {
 
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
     let source = source.into_inner();
-    let errors = ErrorBuffer::default();
+    let errors = Buffer::default();
+    let features = Buffer::sealed();
 
     let mut offset = ByteIndex::default();
     let shebang = lexer::strip_shebang(source, &mut offset, edition);
-    let frontmatter = lexer::strip_frontmatter(source, &mut offset, &errors);
+    let frontmatter = lexer::strip_frontmatter(source, &mut offset, &errors, &features);
 
-    let tokens = lex(source, offset, edition, &errors);
-    let file = super::parse(tokens, shebang, frontmatter, source, edition, &errors);
+    let tokens = lex(source, offset, edition, &errors, &features);
+    let file = super::parse(tokens, shebang, frontmatter, source, edition, &errors, &features);
 
     if let errors = errors.into_inner()
         && !errors.is_empty()
@@ -97,11 +99,12 @@ fn parse_via<'src, T>(
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
     let source = source.into_inner();
-    let errors = ErrorBuffer::default();
+    let errors = Buffer::default();
+    let features = Buffer::sealed();
 
-    let tokens = lex(source, ByteIndex::default(), edition, &errors);
+    let tokens = lex(source, ByteIndex::default(), edition, &errors, &features);
     let tokens = super::prepare(tokens);
-    let mut p = Parser::new(&tokens, source, edition, &errors);
+    let mut p = Parser::new(&tokens, source, edition, &errors, &features);
 
     let node = parse(&mut p).and_then(|r| {
         p.parse(TokenKind::EndOfInput)?;

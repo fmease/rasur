@@ -33,13 +33,14 @@ fn try_main() -> Result<(), ()> {
     let (source, path) = match opts.source {
         interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&path).map_err(|error| {
-                Diag::new(format!("failed to read `{}`: {error}", path.display())).render(&cx);
+                Diag::error(format!("failed to read `{}`: {error}", path.display())).render(&cx);
             })?;
             (source, SourcePathBuf::Real(path))
         }
         interface::Source::Stdin => (
-            std::io::read_to_string(std::io::stdin())
-                .map_err(|error| Diag::new(format!("failed to read stdin: {error}")).render(&cx))?,
+            std::io::read_to_string(std::io::stdin()).map_err(|error| {
+                Diag::error(format!("failed to read stdin: {error}")).render(&cx)
+            })?,
             SourcePathBuf::Anon,
         ),
         interface::Source::String(string) => (string, SourcePathBuf::Anon),
@@ -51,7 +52,8 @@ fn try_main() -> Result<(), ()> {
     let edition = opts.edition.unwrap_or_default();
     let cx = cx.file(path.as_ref(), source);
 
-    let errors = rasur::error::Buffer::default();
+    let errors = rasur::buffer::Buffer::default();
+    let features = rasur::buffer::Buffer::default();
 
     let mut offset = rasur::span::ByteIndex::default();
     let shebang = opts
@@ -60,9 +62,9 @@ fn try_main() -> Result<(), ()> {
         .flatten();
     let frontmatter = opts
         .strip_frontmatter
-        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &errors))
+        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &errors, &features))
         .flatten();
-    let tokens = rasur::lexer::lex(source, offset, edition, &errors);
+    let tokens = rasur::lexer::lex(source, offset, edition, &errors, &features);
 
     // FIXME: Make it possible again to continue parsing after emitting tokens.
     if opts.emit_tokens || opts.lex_only {
@@ -72,17 +74,13 @@ fn try_main() -> Result<(), ()> {
             tokens.for_each(drop);
         }
 
-        if let errors = errors.into_inner()
-            && !errors.is_empty()
-        {
-            errors.into_iter().for_each(|error| error.render(&cx));
-            return Err(());
-        }
+        report(errors, features, opts.gatekeep, &cx)?;
 
         return Ok(());
     }
 
-    let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &errors);
+    let file =
+        rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &errors, &features);
 
     if let Ok(file) = &file
         && opts.emit_ast
@@ -90,14 +88,7 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let result = if let errors = errors.into_inner()
-        && !errors.is_empty()
-    {
-        errors.into_iter().for_each(|error| error.render(&cx));
-        Err(())
-    } else {
-        Ok(())
-    };
+    let result = report(errors, features, opts.gatekeep, &cx);
 
     if opts.fmt
         && let Ok(file) = file
@@ -109,6 +100,36 @@ fn try_main() -> Result<(), ()> {
             rasur::fmter::Cfg { skip_marker: opts.skip_marker, ..default() },
         );
         println!("{result}");
+    }
+
+    result
+}
+
+fn report(
+    errors: rasur::buffer::Buffer<rasur::error::Error>,
+    features: rasur::buffer::Buffer<(rasur::feature::Feature, rasur::span::Span)>,
+    gatekeep: bool,
+    cx: &diagnostics::RenderCx<'_>,
+) -> Result<(), ()> {
+    let mut result = Ok(());
+
+    for error in errors {
+        result = Err(());
+        error.render(cx);
+    }
+
+    if gatekeep {
+        for (feature, span) in features {
+            let level = if feature.protected() {
+                result = Err(());
+                annotate_snippets::Level::ERROR
+            } else {
+                annotate_snippets::Level::WARNING
+            };
+            Diag::new(level, format!("use of experimental feature `{feature}`"))
+                .highlight(span)
+                .render(cx);
+        }
     }
 
     result

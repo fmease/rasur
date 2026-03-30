@@ -2,8 +2,10 @@ use super::{
     Cutter, is_horizontal_whitespace, is_ident_middle, is_ident_start, is_whitespace, lex,
 };
 use crate::{
+    buffer::Buffer,
     edition::Edition,
-    error::{Buffer as ErrorBuffer, Error, InvalidScalarPlace},
+    error::{Error, InvalidScalarPlace},
+    feature::Feature,
     span::{ByteIndex, Span},
     token::TokenKind,
 };
@@ -18,8 +20,9 @@ pub fn normalize(source: &str) -> Cow<'_, str> {
 pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> Option<Span> {
     let suffix = source.strip_prefix("#!")?;
 
-    let errors = ErrorBuffer::sealed();
-    for token in lex(suffix, *offset, edition, &errors) {
+    let errors = Buffer::sealed();
+    let features = Buffer::sealed();
+    for token in lex(suffix, *offset, edition, &errors, &features) {
         match token.kind {
             TokenKind::Comment | TokenKind::Whitespace => {}
             TokenKind::OpenSquareBracket => return None,
@@ -40,7 +43,8 @@ pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> 
 pub fn strip_frontmatter(
     source: &str,
     offset: &mut ByteIndex,
-    errors: &ErrorBuffer,
+    errors: &Buffer<Error>,
+    features: &Buffer<(Feature, Span)>,
 ) -> Option<Frontmatter> {
     let mut cutter = Cutter::new(source, *offset);
 
@@ -163,6 +167,8 @@ pub fn strip_frontmatter(
     if !terminated {
         errors.add(Error::UnterminatedFrontmatter(span));
     }
+
+    features.add((Feature::Frontmatter, span));
 
     *offset = cutter.index();
     Some(Frontmatter { infostring, content, span })

@@ -7,10 +7,7 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{
-    ast,
-    edition::Edition,
-    error::{Buffer as ErrorBuffer, Error},
-    span::Span,
+    ast, buffer::Buffer, edition::Edition, error::Error, feature::Feature, span::Span,
     token::PathSegIdent,
 };
 use std::mem;
@@ -113,8 +110,9 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         let mut qualified = false;
-        let mut errors = ErrorBuffer::sealed();
-        for (qualifier, token) in self.snapshot(&mut errors).parse_item_qualifiers() {
+        let errors = Buffer::sealed();
+        let features = Buffer::sealed();
+        for (qualifier, token) in self.snapshot(&errors, &features).parse_item_qualifiers() {
             match qualifier {
                 Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
                 _ => return true,
@@ -657,10 +655,10 @@ impl<'src> Parser<'_, '_, 'src> {
             constness
         };
 
-        // FEATURE: `negative_impls` <https://github.com/rust-lang/rust/issues/68318>
         let polarity = if self.token.kind == TokenKind::SingleBang
             && self.peek(1).kind != TokenKind::OpenCurlyBracket
         {
+            self.feature(Feature::NegativeImpls, self.token.span);
             self.advance();
             ast::ImplPolarity::Negative
         } else {

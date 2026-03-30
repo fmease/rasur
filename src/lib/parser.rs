@@ -13,8 +13,10 @@ mod weak;
 
 use crate::{
     ast,
+    buffer::Buffer,
     edition::Edition,
-    error::{Buffer as ErrorBuffer, Error},
+    error::Error,
+    feature::Feature,
     lexer::{Frontmatter, Tokens, lex_ident},
     span::{ByteIndex, Span, Spanned},
     token::{Token, TokenKind},
@@ -24,16 +26,17 @@ type Result<T, E = ()> = std::result::Result<T, E>;
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
 #[expect(clippy::result_unit_err)] // handled via an out-parameter
-pub fn parse<'err, 'src>(
-    tokens: Tokens<'err, 'src>,
+pub fn parse<'buf, 'src>(
+    tokens: Tokens<'buf, 'src>,
     shebang: Option<Span>,
     frontmatter: Option<Frontmatter>,
     source: &'src str,
     edition: Edition,
-    errors: &'err ErrorBuffer,
+    errors: &'buf Buffer<Error>,
+    features: &'buf Buffer<(Feature, Span)>,
 ) -> Result<ast::File<'src>> {
     let tokens = prepare(tokens);
-    let mut this = Parser::new(&tokens, source, edition, errors);
+    let mut this = Parser::new(&tokens, source, edition, errors, features);
     let file = this.parse_file()?;
 
     Ok(ast::File {
@@ -57,9 +60,10 @@ fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {
         .collect()
 }
 
-struct Parser<'tok, 'err, 'src> {
+struct Parser<'tok, 'buf, 'src> {
     tokens: &'tok [Token],
-    errors: &'err ErrorBuffer,
+    errors: &'buf Buffer<Error>,
+    features: &'buf Buffer<(Feature, Span)>,
     token: Token,
     index: usize,
     source: &'src str,
@@ -73,11 +77,12 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         tokens: &'tok [Token],
         source: &'src str,
         edition: Edition,
-        errors: &'err ErrorBuffer,
+        errors: &'err Buffer<Error>,
+        features: &'err Buffer<(Feature, Span)>,
     ) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, errors, token, index, source, edition }
+        Self { tokens, errors, features, token, index, source, edition }
     }
 
     /// Parse a source file.
@@ -152,6 +157,10 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         Err(())
     }
 
+    fn feature(&self, feature: Feature, span: Span) {
+        self.features.add((feature, span));
+    }
+
     // FIXME: Overload the ret ty to allow for `-> Option<Span>`
     #[must_use]
     fn consume(&mut self, category: impl TokenCategory) -> bool {
@@ -214,24 +223,38 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         ast::Ident::new(name, span)
     }
 
-    fn snapshot<'tmperr>(&self, errors: &'tmperr ErrorBuffer) -> Parser<'tok, 'tmperr, 'src> {
-        Parser { errors, ..*self }
+    fn snapshot<'tmpbuf>(
+        &self,
+        errors: &'tmpbuf Buffer<Error>,
+        features: &'tmpbuf Buffer<(Feature, Span)>,
+    ) -> Parser<'tok, 'tmpbuf, 'src> {
+        Parser { errors, features, ..*self }
     }
 
     fn probe<T>(
         &mut self,
         parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> Option<T>,
     ) -> Option<T> {
-        let errors = ErrorBuffer::default();
-        let mut this = self.snapshot(&errors);
+        let errors = Buffer::default();
+        let features = Buffer::default();
+        let mut this = self.snapshot(&errors, &features);
         parse(&mut this).inspect(|_| {
-            let Self { tokens: _, errors: _, token: _, index: _, source: _, edition: _ };
+            let Self {
+                tokens: _,
+                errors: _,
+                features: _,
+                token: _,
+                index: _,
+                source: _,
+                edition: _,
+            };
             self.tokens = this.tokens;
             self.token = this.token;
             self.index = this.index;
             self.source = this.source;
             self.edition = this.edition;
             self.errors.extend(errors);
+            self.features.extend(features);
         })
     }
 

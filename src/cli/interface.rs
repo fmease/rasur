@@ -55,6 +55,13 @@ pub(crate) fn opts() -> Opts {
                 .help("Don't strip shebang"),
         )
         .arg(
+            Arg::new(id::GATEKEEP)
+                .short('G')
+                .long("gatekeep")
+                .action(SetTrue)
+                .help("Forbid the use of unstable features"),
+        )
+        .arg(
             Arg::new(id::SKIP_MARKER)
                 .long("skip-marker")
                 .requires(id::FMT)
@@ -94,6 +101,7 @@ pub(crate) fn opts() -> Opts {
         skip_marker: matches.remove_one(id::SKIP_MARKER).unwrap_or_default(),
         strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
         strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
+        gatekeep: matches.remove_one(id::GATEKEEP).unwrap_or_default(),
         short: matches.remove_one(id::SHORT).unwrap_or_default(),
         color: matches.remove_one(id::COLOR).unwrap(),
     }
@@ -109,6 +117,7 @@ pub(crate) struct Opts {
     pub(crate) skip_marker: rasur::fmter::SkipMarker,
     pub(crate) strip_frontmatter: bool,
     pub(crate) strip_shebang: bool,
+    pub(crate) gatekeep: bool,
     pub(crate) short: bool,
     pub(crate) color: clap::ColorChoice,
 }
@@ -161,7 +170,7 @@ macro_rules! ids {
 
 #[rustfmt::skip]
 ids! {
-    AST, COLOR, EDITION, FMT, LEX_ONLY,
+    AST, COLOR, EDITION, FMT, GATEKEEP, LEX_ONLY,
     NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
     PATH, SHORT, SKIP_MARKER, SOURCE, TOKENS,
 }

@@ -210,6 +210,11 @@ impl<'src> Parser<'_, '_, 'src> {
         let value = self.source(self.token.span);
         self.advance();
 
+        let value = match kind {
+            // ast::LitKind::Str => todo!(), // XXX
+            _ => value,
+        };
+
         let suffix = if let TokenKind::LitSuffix = self.token.kind {
             let source = self.source(self.token.span);
             self.advance();

@@ -22,7 +22,7 @@ impl<'src> Parser<'_, '_, 'src> {
     // FIXME: Find ways to get rid of this function or make it return something richer that
     //        can then be used inside `parse_ty` to perform less work / avoid prefix rechecking.
     pub(super) fn begins_ty(&self, offset: usize) -> bool {
-        // FIXME: To be kept in sync with `Self::parse_ty`.
+        // NOTE: To be kept in sync with `Self::parse_ty`.
 
         match self.peek(offset).kind {
             | TokenKind::DoubleAmpersand
