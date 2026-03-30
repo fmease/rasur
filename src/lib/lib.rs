@@ -32,7 +32,6 @@
 #![allow(clippy::unnested_or_patterns)] // <https://github.com/rust-lang/rust-clippy/issues/9899>
 
 pub mod ast;
-pub mod buffer;
 pub mod edition;
 pub mod error;
 pub mod feature;
@@ -40,4 +39,5 @@ pub mod fmter;
 pub mod lexer;
 pub mod parser;
 pub mod span;
+pub mod store;
 pub mod token;

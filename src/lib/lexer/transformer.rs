@@ -2,11 +2,11 @@ use super::{
     Cutter, is_horizontal_whitespace, is_ident_middle, is_ident_start, is_whitespace, lex,
 };
 use crate::{
-    buffer::Buffer,
     edition::Edition,
     error::{Error, InvalidScalarPlace},
     feature::Feature,
     span::{ByteIndex, Span},
+    store::Store,
     token::TokenKind,
 };
 use std::borrow::Cow;
@@ -20,9 +20,8 @@ pub fn normalize(source: &str) -> Cow<'_, str> {
 pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> Option<Span> {
     let suffix = source.strip_prefix("#!")?;
 
-    let errors = Buffer::sealed();
-    let features = Buffer::sealed();
-    for token in lex(suffix, *offset, edition, &errors, &features) {
+    let store = Store::sealed();
+    for token in lex(suffix, *offset, edition, &store) {
         match token.kind {
             TokenKind::Comment | TokenKind::Whitespace => {}
             TokenKind::OpenSquareBracket => return None,
@@ -43,8 +42,7 @@ pub fn strip_shebang(source: &str, offset: &mut ByteIndex, edition: Edition) -> 
 pub fn strip_frontmatter(
     source: &str,
     offset: &mut ByteIndex,
-    errors: &Buffer<Error>,
-    features: &Buffer<(Feature, Span)>,
+    store: &Store,
 ) -> Option<Frontmatter> {
     let mut cutter = Cutter::new(source, *offset);
 
@@ -74,7 +72,7 @@ pub fn strip_frontmatter(
     }
 
     if leading_dashes > 255 {
-        errors.add(Error::FrontmatterOpeningTooLarge(cutter.span(start)));
+        store.errors.add(Error::FrontmatterOpeningTooLarge(cutter.span(start)));
     }
 
     let infostring = {
@@ -103,7 +101,7 @@ pub fn strip_frontmatter(
         let span = Span::new(start, end);
 
         if !valid {
-            errors.add(Error::InvalidFrontmatterInfostring(span));
+            store.errors.add(Error::InvalidFrontmatterInfostring(span));
         }
 
         span
@@ -124,7 +122,7 @@ pub fn strip_frontmatter(
         }
 
         if char == '\r' {
-            errors.add(Error::InvalidScalar(
+            store.errors.add(Error::InvalidScalar(
                 char,
                 InvalidScalarPlace::FrontmatterBody,
                 cutter.span(index),
@@ -160,15 +158,15 @@ pub fn strip_frontmatter(
 
         if !valid {
             // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
-            errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
+            store.errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
         }
     }
 
     if !terminated {
-        errors.add(Error::UnterminatedFrontmatter(span));
+        store.errors.add(Error::UnterminatedFrontmatter(span));
     }
 
-    features.add((Feature::Frontmatter, span));
+    store.features.add((Feature::Frontmatter, span));
 
     *offset = cutter.index();
     Some(Frontmatter { infostring, content, span })

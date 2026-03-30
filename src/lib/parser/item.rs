@@ -7,7 +7,7 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{
-    ast, buffer::Buffer, edition::Edition, error::Error, feature::Feature, span::Span,
+    ast, edition::Edition, error::Error, feature::Feature, span::Span, store::Store,
     token::PathSegIdent,
 };
 use std::mem;
@@ -110,9 +110,8 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         let mut qualified = false;
-        let errors = Buffer::sealed();
-        let features = Buffer::sealed();
-        for (qualifier, token) in self.snapshot(&errors, &features).parse_item_qualifiers() {
+        let store = Store::sealed();
+        for (qualifier, token) in self.snapshot(&store).parse_item_qualifiers() {
             match qualifier {
                 Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
                 _ => return true,

@@ -13,12 +13,12 @@ mod weak;
 
 use crate::{
     ast,
-    buffer::Buffer,
     edition::Edition,
     error::Error,
     feature::Feature,
     lexer::{Frontmatter, Tokens, lex_ident},
     span::{ByteIndex, Span, Spanned},
+    store::Store,
     token::{Token, TokenKind},
 };
 
@@ -26,17 +26,16 @@ type Result<T, E = ()> = std::result::Result<T, E>;
 
 #[expect(clippy::missing_errors_doc)] // FIXME: TODO
 #[expect(clippy::result_unit_err)] // handled via an out-parameter
-pub fn parse<'buf, 'src>(
-    tokens: Tokens<'buf, 'src>,
+pub fn parse<'sto, 'src>(
+    tokens: Tokens<'sto, 'src>,
     shebang: Option<Span>,
     frontmatter: Option<Frontmatter>,
     source: &'src str,
     edition: Edition,
-    errors: &'buf Buffer<Error>,
-    features: &'buf Buffer<(Feature, Span)>,
+    store: &'sto Store,
 ) -> Result<ast::File<'src>> {
     let tokens = prepare(tokens);
-    let mut this = Parser::new(&tokens, source, edition, errors, features);
+    let mut this = Parser::new(&tokens, source, edition, store);
     let file = this.parse_file()?;
 
     Ok(ast::File {
@@ -60,10 +59,9 @@ fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {
         .collect()
 }
 
-struct Parser<'tok, 'buf, 'src> {
+struct Parser<'tok, 'sto, 'src> {
     tokens: &'tok [Token],
-    errors: &'buf Buffer<Error>,
-    features: &'buf Buffer<(Feature, Span)>,
+    store: &'sto Store,
     token: Token,
     index: usize,
     source: &'src str,
@@ -72,17 +70,11 @@ struct Parser<'tok, 'buf, 'src> {
 
 // FIXME: Move some parsing methods into mod common.
 
-impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
-    fn new(
-        tokens: &'tok [Token],
-        source: &'src str,
-        edition: Edition,
-        errors: &'err Buffer<Error>,
-        features: &'err Buffer<(Feature, Span)>,
-    ) -> Self {
+impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
+    fn new(tokens: &'tok [Token], source: &'src str, edition: Edition, store: &'sto Store) -> Self {
         let index = 0;
         let token = tokens[index];
-        Self { tokens, errors, features, token, index, source, edition }
+        Self { tokens, store, token, index, source, edition }
     }
 
     /// Parse a source file.
@@ -149,7 +141,7 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
     }
 
     fn error(&self, error: Error) {
-        self.errors.add(error);
+        self.store.errors.add(error);
     }
 
     fn fatal<T>(&self, error: Error) -> Result<T> {
@@ -158,7 +150,7 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
     }
 
     fn feature(&self, feature: Feature, span: Span) {
-        self.features.add((feature, span));
+        self.store.features.add((feature, span));
     }
 
     // FIXME: Overload the ret ty to allow for `-> Option<Span>`
@@ -223,38 +215,27 @@ impl<'tok, 'err, 'src> Parser<'tok, 'err, 'src> {
         ast::Ident::new(name, span)
     }
 
-    fn snapshot<'tmpbuf>(
-        &self,
-        errors: &'tmpbuf Buffer<Error>,
-        features: &'tmpbuf Buffer<(Feature, Span)>,
-    ) -> Parser<'tok, 'tmpbuf, 'src> {
-        Parser { errors, features, ..*self }
+    fn snapshot<'tmpsto>(&self, store: &'tmpsto Store) -> Parser<'tok, 'tmpsto, 'src> {
+        Parser { store, ..*self }
     }
 
     fn probe<T>(
         &mut self,
         parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> Option<T>,
     ) -> Option<T> {
-        let errors = Buffer::default();
-        let features = Buffer::default();
-        let mut this = self.snapshot(&errors, &features);
+        let store = Store::default();
+        let mut this = self.snapshot(&store);
         parse(&mut this).inspect(|_| {
-            let Self {
-                tokens: _,
-                errors: _,
-                features: _,
-                token: _,
-                index: _,
-                source: _,
-                edition: _,
-            };
+            let Self { tokens: _, store: _, token: _, index: _, source: _, edition: _ };
+            let Store { errors: _, features: _ };
+
             self.tokens = this.tokens;
             self.token = this.token;
             self.index = this.index;
             self.source = this.source;
             self.edition = this.edition;
-            self.errors.extend(errors);
-            self.features.extend(features);
+            self.store.errors.extend(store.errors);
+            self.store.features.extend(store.features);
         })
     }
 

@@ -52,8 +52,7 @@ fn try_main() -> Result<(), ()> {
     let edition = opts.edition.unwrap_or_default();
     let cx = cx.file(path.as_ref(), source);
 
-    let errors = rasur::buffer::Buffer::default();
-    let features = rasur::buffer::Buffer::default();
+    let store = rasur::store::Store::default();
 
     let mut offset = rasur::span::ByteIndex::default();
     let shebang = opts
@@ -62,9 +61,9 @@ fn try_main() -> Result<(), ()> {
         .flatten();
     let frontmatter = opts
         .strip_frontmatter
-        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &errors, &features))
+        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &store))
         .flatten();
-    let tokens = rasur::lexer::lex(source, offset, edition, &errors, &features);
+    let tokens = rasur::lexer::lex(source, offset, edition, &store);
 
     // FIXME: Make it possible again to continue parsing after emitting tokens.
     if opts.emit_tokens || opts.lex_only {
@@ -74,13 +73,12 @@ fn try_main() -> Result<(), ()> {
             tokens.for_each(drop);
         }
 
-        report(errors, features, opts.gatekeep, &cx)?;
+        report(store, opts.gatekeep, &cx)?;
 
         return Ok(());
     }
 
-    let file =
-        rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &errors, &features);
+    let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &store);
 
     if let Ok(file) = &file
         && opts.emit_ast
@@ -88,7 +86,7 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let result = report(errors, features, opts.gatekeep, &cx);
+    let result = report(store, opts.gatekeep, &cx);
 
     if opts.fmt
         && let Ok(file) = file
@@ -106,20 +104,19 @@ fn try_main() -> Result<(), ()> {
 }
 
 fn report(
-    errors: rasur::buffer::Buffer<rasur::error::Error>,
-    features: rasur::buffer::Buffer<(rasur::feature::Feature, rasur::span::Span)>,
+    store: rasur::store::Store,
     gatekeep: bool,
     cx: &diagnostics::RenderCx<'_>,
 ) -> Result<(), ()> {
     let mut result = Ok(());
 
-    for error in errors {
+    for error in store.errors {
         result = Err(());
         error.render(cx);
     }
 
     if gatekeep {
-        for (feature, span) in features {
+        for (feature, span) in store.features {
             let level = if feature.protected() {
                 result = Err(());
                 annotate_snippets::Level::ERROR

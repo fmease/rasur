@@ -13,11 +13,11 @@ mod ty;
 use super::Parser;
 use crate::{
     ast,
-    buffer::Buffer,
     edition::Edition,
     error::Error,
     lexer::{self, lex},
     span::ByteIndex,
+    store::{Buffer, Store},
     token::TokenKind,
 };
 use normalizer::{Normalized, normalize};
@@ -54,17 +54,16 @@ mod normalizer {
 
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
     let source = source.into_inner();
-    let errors = Buffer::default();
-    let features = Buffer::sealed();
+    let store = Store { errors: Buffer::default(), features: Buffer::sealed() };
 
     let mut offset = ByteIndex::default();
     let shebang = lexer::strip_shebang(source, &mut offset, edition);
-    let frontmatter = lexer::strip_frontmatter(source, &mut offset, &errors, &features);
+    let frontmatter = lexer::strip_frontmatter(source, &mut offset, &store);
 
-    let tokens = lex(source, offset, edition, &errors, &features);
-    let file = super::parse(tokens, shebang, frontmatter, source, edition, &errors, &features);
+    let tokens = lex(source, offset, edition, &store);
+    let file = super::parse(tokens, shebang, frontmatter, source, edition, &store);
 
-    if let errors = errors.into_inner()
+    if let errors = store.errors.into_inner()
         && !errors.is_empty()
     {
         return Err(errors);
@@ -99,19 +98,18 @@ fn parse_via<'src, T>(
     parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
     let source = source.into_inner();
-    let errors = Buffer::default();
-    let features = Buffer::sealed();
+    let store = Store { errors: Buffer::default(), features: Buffer::sealed() };
 
-    let tokens = lex(source, ByteIndex::default(), edition, &errors, &features);
+    let tokens = lex(source, ByteIndex::default(), edition, &store);
     let tokens = super::prepare(tokens);
-    let mut p = Parser::new(&tokens, source, edition, &errors, &features);
+    let mut p = Parser::new(&tokens, source, edition, &store);
 
     let node = parse(&mut p).and_then(|r| {
         p.parse(TokenKind::EndOfInput)?;
         Ok(r)
     });
 
-    if let errors = errors.into_inner()
+    if let errors = store.errors.into_inner()
         && !errors.is_empty()
     {
         return Err(errors);

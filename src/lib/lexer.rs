@@ -2,40 +2,36 @@ mod cutter;
 mod transformer;
 
 use crate::{
-    buffer::Buffer,
     edition::Edition,
     error::{Error, InvalidScalarPlace},
-    feature::Feature,
     span::{ByteIndex, Span},
+    store::Store,
     token::{PathSegKeyword, Token, TokenKind},
 };
 use cutter::Cutter;
 pub use transformer::{Frontmatter, normalize, strip_frontmatter, strip_shebang};
 
-pub type Tokens<'err, 'src> = impl Iterator<Item = Token>;
+pub type Tokens<'sto, 'src> = impl Iterator<Item = Token>;
 
 #[define_opaque(Tokens)]
-pub fn lex<'buf, 'src>(
+pub fn lex<'sto, 'src>(
     source: &'src str,
     offset: ByteIndex,
     edition: Edition,
-    errors: &'buf Buffer<Error>,
-    features: &'buf Buffer<(Feature, Span)>,
-) -> Tokens<'buf, 'src> {
-    Lexer { source, edition, cutter: Cutter::new(source, offset), previous: None, errors, features }
+    store: &'sto Store,
+) -> Tokens<'sto, 'src> {
+    Lexer { source, edition, store, cutter: Cutter::new(source, offset), previous: None }
 }
 
-struct Lexer<'buf, 'src> {
+struct Lexer<'sto, 'src> {
     source: &'src str,
     edition: Edition,
+    store: &'sto Store,
     cutter: Cutter<'src>,
     previous: Option<TokenKind>,
-    errors: &'buf Buffer<Error>,
-    #[expect(dead_code)] // future proofing
-    features: &'buf Buffer<(Feature, Span)>,
 }
 
-impl<'buf, 'src> Lexer<'buf, 'src> {
+impl<'sto, 'src> Lexer<'sto, 'src> {
     fn fin_lex_token(&mut self, char: char, start: ByteIndex) -> TokenKind {
         match char {
             _ if is_whitespace(char) => {
@@ -750,7 +746,7 @@ impl<'buf, 'src> Lexer<'buf, 'src> {
     }
 
     fn error(&self, error: Error) {
-        self.errors.add(error);
+        self.store.errors.add(error);
     }
 }
 

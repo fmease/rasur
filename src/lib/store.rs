@@ -1,5 +1,18 @@
+use crate::{error::Error, feature::Feature, span::Span};
 use Default::default;
 use std::cell::RefCell;
+
+#[derive(Default)]
+pub struct Store {
+    pub errors: Buffer<Error>,
+    pub features: Buffer<(Feature, Span)>,
+}
+
+impl Store {
+    pub const fn sealed() -> Self {
+        Self { errors: Buffer::sealed(), features: Buffer::sealed() }
+    }
+}
 
 pub struct Buffer<T> {
     raw: RawBuffer<T>,
