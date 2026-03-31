@@ -126,6 +126,7 @@ pub(crate) enum Source {
 pub(crate) enum ArtifactType {
     Tokens,
     Ast,
+    Features,
     Fmt,
 }
 
@@ -154,6 +155,7 @@ fn parse_artifact_type(source: &str) -> Result<ArtifactType, String> {
     parse!(
         "tokens" => ArtifactType::Tokens,
         "ast" => ArtifactType::Ast,
+        "features" => ArtifactType::Features,
         "fmt" => ArtifactType::Fmt,
     )(source)
 }

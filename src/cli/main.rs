@@ -13,7 +13,7 @@ use crate::{
 };
 use Default::default;
 use painter::Painter;
-use std::process::ExitCode;
+use std::{io::Write, mem, process::ExitCode};
 
 fn main() -> ExitCode {
     match try_main() {
@@ -23,7 +23,7 @@ fn main() -> ExitCode {
 }
 
 fn try_main() -> Result<(), ()> {
-    let opts = interface::opts();
+    let mut opts = interface::opts();
 
     match opts.color {
         clap::ColorChoice::Always => painter::ColorChoice::Always.write_global(),
@@ -34,11 +34,11 @@ fn try_main() -> Result<(), ()> {
     let cx = diagnostics::RenderCx::new(opts.short);
 
     let (source, path) = match opts.source {
-        interface::Source::Path(path) => {
-            let source = std::fs::read_to_string(&path).map_err(|error| {
+        interface::Source::Path(ref mut path) => {
+            let source = std::fs::read_to_string(&*path).map_err(|error| {
                 Diag::error(format!("failed to read `{}`: {error}", path.display())).render(&cx);
             })?;
-            (source, SourcePathBuf::Real(path))
+            (source, SourcePathBuf::Real(mem::take(path)))
         }
         interface::Source::Stdin => (
             std::io::read_to_string(std::io::stdin()).map_err(|error| {
@@ -46,7 +46,7 @@ fn try_main() -> Result<(), ()> {
             })?,
             SourcePathBuf::Anon,
         ),
-        interface::Source::String(string) => (string, SourcePathBuf::Anon),
+        interface::Source::String(ref mut string) => (mem::take(string), SourcePathBuf::Anon),
     };
 
     let source = rasur::lexer::normalize(&source);
@@ -76,7 +76,7 @@ fn try_main() -> Result<(), ()> {
             emit_tokens(tokens, shebang, frontmatter, source).unwrap();
         }
 
-        return report(store, opts.gatekeep, &cx);
+        return report(store, &opts, &cx);
     }
 
     let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &store);
@@ -87,7 +87,7 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let result = report(store, opts.gatekeep, &cx);
+    let result = report(store, &opts, &cx);
 
     if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
@@ -106,7 +106,7 @@ fn try_main() -> Result<(), ()> {
 
 fn report(
     store: rasur::store::Store,
-    gatekeep: bool,
+    opts: &interface::Opts,
     cx: &diagnostics::RenderCx<'_>,
 ) -> Result<(), ()> {
     let mut result = Ok(());
@@ -116,7 +116,7 @@ fn report(
         error.render(cx);
     }
 
-    if gatekeep {
+    if opts.gatekeep {
         for (feature, span) in store.features {
             let level = if feature.protected() {
                 result = Err(());
@@ -131,6 +131,15 @@ fn report(
             };
             diag.render(cx);
         }
+    } else if let Some(ArtifactType::Features) = opts.emit {
+        let mut stdout = std::io::BufWriter::new(std::io::stdout().lock());
+        for (feature, _) in store.features {
+            if !feature.protected() {
+                continue;
+            }
+            writeln!(stdout, "{feature}").unwrap();
+        }
+        stdout.flush().unwrap();
     }
 
     result
