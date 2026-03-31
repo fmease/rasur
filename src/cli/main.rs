@@ -7,7 +7,10 @@
 mod diagnostics;
 mod interface;
 
-use crate::diagnostics::{Diag, RenderExt as _, SourcePathBuf};
+use crate::{
+    diagnostics::{Diag, RenderExt as _, SourcePathBuf},
+    interface::ArtifactType,
+};
 use Default::default;
 use painter::Painter;
 use std::process::ExitCode;
@@ -66,11 +69,11 @@ fn try_main() -> Result<(), ()> {
     let tokens = rasur::lexer::lex(source, offset, edition, &store);
 
     // FIXME: Make it possible again to continue parsing after emitting tokens.
-    if opts.emit_tokens || opts.lex_only {
-        if opts.emit_tokens {
-            emit_tokens(tokens, shebang, frontmatter, source).unwrap();
-        } else {
+    if opts.lex_only || matches!(opts.emit, Some(ArtifactType::Tokens)) {
+        if opts.lex_only {
             tokens.for_each(drop);
+        } else {
+            emit_tokens(tokens, shebang, frontmatter, source).unwrap();
         }
 
         return report(store, opts.gatekeep, &cx);
@@ -79,14 +82,14 @@ fn try_main() -> Result<(), ()> {
     let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &store);
 
     if let Ok(file) = &file
-        && opts.emit_ast
+        && let Some(ArtifactType::Ast) = opts.emit
     {
         eprintln!("{file:#?}");
     }
 
     let result = report(store, opts.gatekeep, &cx);
 
-    if opts.fmt
+    if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
     {
         let result = rasur::fmter::fmt(

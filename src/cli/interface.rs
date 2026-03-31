@@ -29,13 +29,12 @@ pub(crate) fn opts() -> Opts {
                 .help("Set the edition of the source file"),
         )
         .arg(
-            Arg::new(id::FMT)
-                .long("fmt")
-                .action(SetTrue)
-                .help("Render the source code as derived from the AST"),
+            Arg::new(id::EMIT)
+                .long("emit")
+                .value_name("TYPE")
+                .value_parser(parse_artifact_type)
+                .help("Emit the given artifact type"),
         )
-        .arg(Arg::new(id::AST).long("ast").action(SetTrue).help("Emit the abstract syntax tree"))
-        .arg(Arg::new(id::TOKENS).long("tokens").action(SetTrue).help("Emit the tokens"))
         .arg(
             Arg::new(id::LEX_ONLY)
                 .long("lex-only")
@@ -64,7 +63,6 @@ pub(crate) fn opts() -> Opts {
         .arg(
             Arg::new(id::SKIP_MARKER)
                 .long("skip-marker")
-                .requires(id::FMT)
                 .value_parser(parse_skip_marker)
                 .value_name("MARKER")
                 .help("Set the skip markers the pretty-printer should look out for"),
@@ -94,9 +92,7 @@ pub(crate) fn opts() -> Opts {
     Opts {
         source,
         edition: matches.remove_one(id::EDITION),
-        emit_ast: matches.remove_one(id::AST).unwrap_or_default(),
-        emit_tokens: matches.remove_one(id::TOKENS).unwrap_or_default(),
-        fmt: matches.remove_one(id::FMT).unwrap_or_default(),
+        emit: matches.remove_one(id::EMIT),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
         skip_marker: matches.remove_one(id::SKIP_MARKER).unwrap_or_default(),
         strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
@@ -110,9 +106,7 @@ pub(crate) fn opts() -> Opts {
 pub(crate) struct Opts {
     pub(crate) source: Source,
     pub(crate) edition: Option<Edition>,
-    pub(crate) emit_ast: bool,
-    pub(crate) emit_tokens: bool,
-    pub(crate) fmt: bool,
+    pub(crate) emit: Option<ArtifactType>,
     pub(crate) lex_only: bool,
     pub(crate) skip_marker: rasur::fmter::SkipMarker,
     pub(crate) strip_frontmatter: bool,
@@ -126,6 +120,13 @@ pub(crate) enum Source {
     String(String),
     Path(PathBuf),
     Stdin,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ArtifactType {
+    Tokens,
+    Ast,
+    Fmt,
 }
 
 macro_rules! parse {
@@ -149,6 +150,14 @@ fn parse_edition(source: &str) -> Result<Edition, String> {
     })
 }
 
+fn parse_artifact_type(source: &str) -> Result<ArtifactType, String> {
+    parse!(
+        "tokens" => ArtifactType::Tokens,
+        "ast" => ArtifactType::Ast,
+        "fmt" => ArtifactType::Fmt,
+    )(source)
+}
+
 fn parse_skip_marker(source: &str) -> Result<rasur::fmter::SkipMarker, String> {
     use rasur::fmter::SkipMarker::*;
 
@@ -170,7 +179,7 @@ macro_rules! ids {
 
 #[rustfmt::skip]
 ids! {
-    AST, COLOR, EDITION, FMT, GATEKEEP, LEX_ONLY,
+    COLOR, EDITION, EMIT, GATEKEEP, LEX_ONLY,
     NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
-    PATH, SHORT, SKIP_MARKER, SOURCE, TOKENS,
+    PATH, SHORT, SKIP_MARKER, SOURCE,
 }
