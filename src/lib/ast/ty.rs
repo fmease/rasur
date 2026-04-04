@@ -92,7 +92,6 @@ pub struct Predicate<'src> {
 pub enum PredicateKind<'src> {
     Trait(TraitPredicate<'src>),
     Outlives(OutlivesPredicate<'src>),
-    Equality(Ty<'src>, Ty<'src>),
 }
 
 #[derive(Debug)]

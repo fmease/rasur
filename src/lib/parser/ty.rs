@@ -509,32 +509,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         let kind = if bound_vars.is_some() || self.begins_ty(0) {
             let ty = self.parse_ty()?;
-
-            match self.token.kind {
-                TokenKind::SingleColon => {
-                    self.advance();
-                    let bounds = self.parse_bounds()?;
-                    ast::PredicateKind::Trait(ast::TraitPredicate {
-                        bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
-                        ty,
-                        bounds,
-                    })
-                }
-                TokenKind::SingleEquals | TokenKind::DoubleEquals => {
-                    self.advance();
-                    ast::PredicateKind::Equality(ty, self.parse_ty()?)
-                }
-                _ => {
-                    return self.fatal(Error::UnexpectedToken(
-                        self.token,
-                        frags![
-                            TokenKind::SingleColon,
-                            TokenKind::SingleEquals,
-                            TokenKind::DoubleEquals
-                        ],
-                    ));
-                }
-            }
+            self.parse(TokenKind::SingleColon)?;
+            let bounds = self.parse_bounds()?;
+            ast::PredicateKind::Trait(ast::TraitPredicate {
+                bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
+                ty,
+                bounds,
+            })
         } else if let Some(lt) = self.parse_lifetime() {
             self.parse(TokenKind::SingleColon)?;
             let bounds = self.parse_outlives_bounds();

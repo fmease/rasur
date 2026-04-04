@@ -247,11 +247,6 @@ impl Fmt for ast::PredicateKind<'_> {
                 }
                 bounds.interleave(" + ").fmt(cx);
             }
-            Self::Equality(lhs, rhs) => {
-                lhs.fmt(cx);
-                fmt!(cx, " == ");
-                rhs.fmt(cx);
-            }
         }
     }
 }
