@@ -4,10 +4,10 @@ mod item;
 mod pat;
 mod path;
 mod stmt;
+mod stream;
 mod ty;
 
 use crate::span::{Span, Spanned};
-use crate::token::Token;
 pub use attr::*;
 pub use expr::*;
 pub use item::*;
@@ -15,6 +15,7 @@ pub use pat::*;
 pub use path::*;
 use std::fmt;
 pub use stmt::*;
+pub use stream::*;
 pub use ty::*;
 
 #[derive(Debug)]
@@ -36,7 +37,7 @@ pub struct Frontmatter<'src> {
 pub struct MacroCall<'src, M: GenericArgsMode> {
     pub path: Path<'src, M>,
     pub bracket: Bracket,
-    pub stream: TokenStream,
+    pub stream: TokenStream<'src>,
 }
 
 impl<M: GenericArgsMode> fmt::Debug for MacroCall<'_, M> {
@@ -57,8 +58,6 @@ pub enum Bracket {
     Square,
     Curly,
 }
-
-pub type TokenStream = Vec<Token>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {

@@ -60,8 +60,8 @@ print -P '%S-- RASUR --------------------------------%s'
   $([[ -z $FILE ]] && echo --source) "$SOURCE" \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -z $VERBOSE ]] && echo --short) \
-  $([[ -n $FORMAT ]] && echo --fmt) \
-  $([[ -n $AST ]] && echo --ast)
+  $([[ -n $FORMAT ]] && echo --emit=fmt) \
+  $([[ -n $AST ]] && echo --emit=ast)
 RASUR_RESULT="$?"
 
 RESULT=$(( $RUSTC_RESULT != $RASUR_RESULT ))

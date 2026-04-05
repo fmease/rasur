@@ -357,8 +357,8 @@ pub enum UsePathTreeKind<'src> {
 #[derive(Debug)]
 pub struct MacroDef<'src> {
     pub binder: Ident<'src>,
-    pub params: Option<TokenStream>,
-    pub body: TokenStream,
+    pub params: Option<TokenStream<'src>>,
+    pub body: TokenStream<'src>,
     pub style: MacroDefStyle,
 }
 

@@ -6,7 +6,7 @@ mod path;
 mod stmt;
 mod ty;
 
-use crate::{ast, edition::Edition, span::Span, token};
+use crate::{ast, edition::Edition, span::Span};
 use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.
@@ -138,20 +138,18 @@ impl Fmt for ast::Lit<'_> {
     }
 }
 
-impl Fmt for ast::TokenStream {
+impl Fmt for ast::TokenStream<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        // FIXME: Actually just print the source temporarily.
+        // FIXME: That's really naive (and wrong in the case of LitSuffix).
         self.interleave(" ").fmt(cx);
     }
 }
 
-impl Fmt for token::Token {
+impl Fmt for ast::Token<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let str = match self.kind.repr() {
-            token::Repr::Src(src) => src,
-            token::Repr::Tag(_) => cx.source(self.span),
-        };
-        fmt!(cx, "{str}");
+        let Self { kind: _, source } = self;
+
+        source.fmt(cx);
     }
 }
 

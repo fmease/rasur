@@ -1,10 +1,10 @@
 use super::{Error, Parser, Result, TokenKind, one_of};
 use crate::ast;
 
-impl Parser<'_, '_, '_> {
+impl<'src> Parser<'_, '_, 'src> {
     pub(super) fn parse_delimited_token_stream(
         &mut self,
-    ) -> Result<(ast::Bracket, ast::TokenStream)> {
+    ) -> Result<(ast::Bracket, ast::TokenStream<'src>)> {
         match self.token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -32,7 +32,7 @@ impl Parser<'_, '_, '_> {
     pub(super) fn fin_parse_delimited_token_stream(
         &mut self,
         bracket: ast::Bracket,
-    ) -> Result<(ast::Bracket, ast::TokenStream)> {
+    ) -> Result<(ast::Bracket, ast::TokenStream<'src>)> {
         let stream = self.parse_token_stream(bracket)?;
         self.parse(match bracket {
             ast::Bracket::Round => TokenKind::CloseRoundBracket,
@@ -42,7 +42,10 @@ impl Parser<'_, '_, '_> {
         Ok((bracket, stream))
     }
 
-    fn parse_token_stream(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
+    fn parse_token_stream(
+        &mut self,
+        exp_close_delim: ast::Bracket,
+    ) -> Result<ast::TokenStream<'src>> {
         let mut tokens = Vec::new();
         let mut stack = Vec::new();
         let mut is_delimited = false;
@@ -80,7 +83,7 @@ impl Parser<'_, '_, '_> {
                 }
             }
 
-            tokens.push(self.token);
+            tokens.push(ast::Token { kind: self.token.kind, source: self.source(self.token.span) });
             self.advance();
         }
 
