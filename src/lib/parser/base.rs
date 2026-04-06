@@ -63,6 +63,11 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
         self.fatal(Error::UnexpectedToken(self.token, frags![category.fragment()]))
     }
 
+    pub(super) fn parse_unchecked(&mut self, category: impl TokenCategory) {
+        let consumed = self.consume(category);
+        debug_assert!(consumed);
+    }
+
     // FIXME: better name
     pub(super) fn consume_or_parse(&mut self, kind: TokenKind, condition: bool) -> Result<bool> {
         match condition {

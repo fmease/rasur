@@ -324,8 +324,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             _ => return Ok(None),
         };
 
-        // FIXME: self.parse_unchecked(TokenPrefix::Plus);
-        self.parse(TokenPrefix::Plus).unwrap();
+        self.parse_unchecked(TokenPrefix::Plus);
 
         let mut bounds = vec![bound];
         self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;

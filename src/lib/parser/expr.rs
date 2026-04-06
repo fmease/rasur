@@ -819,8 +819,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 TokenKind::Async => Qualifier::Async,
                 TokenKind::Const => Qualifier::Const,
                 TokenKind::DoublePipe => {
-                    // FIXME: parse_unchecked
-                    self.parse(TokenPrefix::Pipe).unwrap();
+                    self.parse_unchecked(TokenPrefix::Pipe);
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
