@@ -48,7 +48,7 @@ pub fn strip_frontmatter(
 
     let mut start = *offset;
     let mut line_start = true;
-    let mut leading_dashes = 0;
+    let mut leading_dashes = 0usize;
 
     while let Some((index, char)) = cutter.advance() {
         if char == '-' && line_start {
@@ -169,12 +169,26 @@ pub fn strip_frontmatter(
     store.features.add((Feature::Frontmatter, Some(span)));
 
     *offset = cutter.index();
-    Some(Frontmatter { infostring, content, span })
+
+    let fence = Fence { raw: leading_dashes as _ };
+    Some(Frontmatter { fence, infostring, content, span })
 }
 
 #[derive(Clone, Copy)]
 pub struct Frontmatter {
+    pub fence: Fence,
     pub infostring: Span,
     pub content: Span,
     pub span: Span,
+}
+
+#[derive(Clone, Copy)]
+pub struct Fence {
+    raw: u8,
+}
+
+impl Fence {
+    pub fn into_inner(self) -> u8 {
+        self.raw
+    }
 }

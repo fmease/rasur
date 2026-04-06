@@ -118,15 +118,16 @@ impl Fmt for ast::File<'_> {
             LineBreak.fmt(cx);
         }
 
-        if let Some(Frontmatter { infostring, content, span: _ }) = cx.frontmatter {
-            // FIXME: Proper amount of dashes!
-            fmt!(cx, "---");
+        if let Some(Frontmatter { fence, infostring, content, span: _ }) = cx.frontmatter {
+            let fence = usize::from(fence.into_inner());
+
+            fmt!(cx, "{:->fence$}", "");
             if !infostring.is_empty() {
                 fmt!(cx, " {}", cx.source(infostring));
             }
             LineBreak.fmt(cx);
             fmt!(cx, "{}", cx.source(content));
-            fmt!(cx, "---");
+            fmt!(cx, "{:->fence$}", "");
             LineBreak.fmt(cx);
         }
 
