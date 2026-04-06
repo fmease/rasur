@@ -70,6 +70,10 @@ impl Span {
         (self.end.raw - self.start.raw) as _
     }
 
+    pub fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+
     pub const fn start(self) -> ByteIndex {
         self.start
     }

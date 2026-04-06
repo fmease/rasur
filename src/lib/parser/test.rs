@@ -16,7 +16,7 @@ use crate::{
     edition::Edition,
     error::Error,
     lexer::{self, lex},
-    span::ByteIndex,
+    span::{ByteIndex, Span},
     store::{Buffer, Store},
     token::TokenKind,
 };
@@ -53,6 +53,27 @@ mod normalizer {
 }
 
 fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_>> {
+    parse_file_raw(source, edition).map(|(.., file)| file)
+}
+
+fn parse_file_full(source: Normalized<&str>, edition: Edition) -> Result<FullFile<'_>> {
+    let (shebang, frontmatter, file) = parse_file_raw(source, edition)?;
+    let source = source.into_inner();
+
+    Ok(FullFile {
+        shebang: shebang.map(|span| &source[span.range()]),
+        frontmatter: frontmatter.map(|frontmatter| Frontmatter {
+            infostring: &source[frontmatter.infostring.range()],
+            content: &source[frontmatter.content.range()],
+        }),
+        file,
+    })
+}
+
+fn parse_file_raw(
+    source: Normalized<&str>,
+    edition: Edition,
+) -> Result<(Option<Span>, Option<lexer::Frontmatter>, ast::File<'_>)> {
     let source = source.into_inner();
     let store = Store { errors: Buffer::default(), features: Buffer::sealed() };
 
@@ -61,7 +82,7 @@ fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_
     let frontmatter = lexer::strip_frontmatter(source, &mut offset, &store);
 
     let tokens = lex(source, offset, edition, &store);
-    let file = super::parse(tokens, shebang, frontmatter, source, edition, &store);
+    let file = super::parse(tokens, source, edition, &store);
 
     if let errors = store.errors.into_inner()
         && !errors.is_empty()
@@ -69,7 +90,21 @@ fn parse_file(source: Normalized<&str>, edition: Edition) -> Result<ast::File<'_
         return Err(errors);
     }
 
-    Ok(file.unwrap())
+    Ok((shebang, frontmatter, file.unwrap()))
+}
+
+#[derive(Debug)]
+struct FullFile<'src> {
+    shebang: Option<&'src str>,
+    frontmatter: Option<Frontmatter<'src>>,
+    #[allow(dead_code)]
+    file: ast::File<'src>,
+}
+
+#[derive(Debug)]
+struct Frontmatter<'src> {
+    infostring: &'src str,
+    content: &'src str,
 }
 
 fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {

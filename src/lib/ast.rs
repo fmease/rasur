@@ -7,7 +7,7 @@ mod stmt;
 mod stream;
 mod ty;
 
-use crate::span::{Span, Spanned};
+use crate::span::Span;
 pub use attr::*;
 pub use expr::*;
 pub use item::*;
@@ -20,18 +20,8 @@ pub use ty::*;
 
 #[derive(Debug)]
 pub struct File<'src> {
-    pub shebang: Option<&'src str>,
-    pub frontmatter: Option<Frontmatter<'src>>,
     pub attrs: Vec<Attr<'src>>,
     pub items: Vec<Item<'src>>,
-    pub span: Span,
-}
-
-#[derive(Debug)]
-pub struct Frontmatter<'src> {
-    pub infostring: Spanned<&'src str>,
-    pub content: Spanned<&'src str>,
-    pub span: Span,
 }
 
 pub struct MacroCall<'src, M: GenericArgsMode> {

@@ -16,8 +16,7 @@ use crate::{
     ast,
     edition::Edition,
     error::Error,
-    lexer::{Frontmatter, Tokens},
-    span::Span,
+    lexer::Tokens,
     store::Store,
     token::{Token, TokenKind},
 };
@@ -30,16 +29,13 @@ type Result<T, E = ()> = std::result::Result<T, E>;
 #[expect(clippy::result_unit_err)] // handled via an out-parameter
 pub fn parse<'sto, 'src>(
     tokens: Tokens<'sto, 'src>,
-    shebang: Option<Span>,
-    frontmatter: Option<Frontmatter>,
     source: &'src str,
     edition: Edition,
     store: &'sto Store,
 ) -> Result<ast::File<'src>> {
     let tokens = prepare(tokens);
     let mut p = Parser::new(&tokens, source, edition, store);
-    let file = p.parse_file()?;
-    Ok(file.lower(shebang, frontmatter, &p))
+    p.parse_file()
 }
 
 pub fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {

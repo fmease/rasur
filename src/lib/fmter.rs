@@ -6,7 +6,7 @@ mod path;
 mod stmt;
 mod ty;
 
-use crate::{ast, edition::Edition, span::Span};
+use crate::{ast, edition::Edition, lexer::Frontmatter, span::Span};
 use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.
@@ -37,9 +37,16 @@ macro fmt($cx:ident, $($arg:tt)*) {
 }
 
 #[must_use]
-pub fn fmt(file: ast::File<'_>, source: &str, edition: Edition, cfg: Cfg) -> String {
+pub fn fmt(
+    file: ast::File<'_>,
+    source: &str,
+    shebang: Option<Span>,
+    frontmatter: Option<Frontmatter>,
+    edition: Edition,
+    cfg: Cfg,
+) -> String {
     let output = String::with_capacity(source.len()); // FIXME: better heuristic
-    let mut cx = Cx { cfg, source, edition, indent: 0, output };
+    let mut cx = Cx { cfg, source, shebang, frontmatter, edition, indent: 0, output };
     file.fmt(&mut cx);
     cx.output
 }
@@ -47,6 +54,8 @@ pub fn fmt(file: ast::File<'_>, source: &str, edition: Edition, cfg: Cfg) -> Str
 struct Cx<'src> {
     cfg: Cfg,
     source: &'src str,
+    shebang: Option<Span>,
+    frontmatter: Option<Frontmatter>,
     edition: Edition,
     indent: usize,
     output: String,
@@ -97,26 +106,26 @@ impl<'src> Cx<'src> {
 
 impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { shebang, frontmatter, attrs, items, span } = self;
+        let Self { attrs, items } = self;
 
         if cx.skip(&attrs) {
-            fmt!(cx, "{}", cx.source(span));
+            cx.source.fmt(cx);
             return;
         }
 
-        if let Some(shebang) = shebang {
-            fmt!(cx, "{shebang}");
+        if let Some(shebang) = cx.shebang {
+            fmt!(cx, "{}", cx.source(shebang));
             LineBreak.fmt(cx);
         }
 
-        if let Some(ast::Frontmatter { infostring, content, span: _ }) = frontmatter {
+        if let Some(Frontmatter { infostring, content, span: _ }) = cx.frontmatter {
             // FIXME: Proper amount of dashes!
             fmt!(cx, "---");
-            if !infostring.bare.is_empty() {
-                fmt!(cx, " {}", infostring.bare);
+            if !infostring.is_empty() {
+                fmt!(cx, " {}", cx.source(infostring));
             }
             LineBreak.fmt(cx);
-            fmt!(cx, "{}", content.bare);
+            fmt!(cx, "{}", cx.source(content));
             fmt!(cx, "---");
             LineBreak.fmt(cx);
         }

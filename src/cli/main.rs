@@ -79,7 +79,7 @@ fn try_main() -> Result<(), ()> {
         return report(store, &opts, &cx);
     }
 
-    let file = rasur::parser::parse(tokens, shebang, frontmatter, source, edition, &store);
+    let file = rasur::parser::parse(tokens, source, edition, &store);
 
     if let Ok(file) = &file
         && let Some(ArtifactType::Ast) = opts.emit
@@ -95,6 +95,8 @@ fn try_main() -> Result<(), ()> {
         let result = rasur::fmter::fmt(
             file,
             source,
+            shebang,
+            frontmatter,
             edition,
             rasur::fmter::Cfg { skip_marker: opts.skip_marker, ..default() },
         );
