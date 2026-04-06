@@ -24,10 +24,10 @@ impl<T> Buffer<T> {
         Self { raw: RawBuffer::Seal }
     }
 
-    pub(crate) fn add(&self, error: T) {
+    pub(crate) fn add(&self, item: T) {
         match &self.raw {
             RawBuffer::Seal => {}
-            RawBuffer::Hold(errors) => errors.borrow_mut().push(error),
+            RawBuffer::Hold(items) => items.borrow_mut().push(item),
         }
     }
 
@@ -40,7 +40,7 @@ impl<T> Buffer<T> {
     pub fn into_inner(self) -> Vec<T> {
         match self.raw {
             RawBuffer::Seal => Vec::new(),
-            RawBuffer::Hold(errors) => errors.into_inner(),
+            RawBuffer::Hold(items) => items.into_inner(),
         }
     }
 }

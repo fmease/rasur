@@ -7,12 +7,34 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{
-    ast, edition::Edition, error::Error, feature::Feature, span::Span, store::Store,
+    ast,
+    edition::Edition,
+    error::Error,
+    feature::Feature,
+    lexer::Frontmatter,
+    span::{Span, Spanned},
+    store::Store,
     token::PathSegIdent,
 };
 use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
+    /// Parse a source file.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
+    /// ```
+    pub(super) fn parse_file(&mut self) -> Result<File<'src>> {
+        let start = self.token.span;
+        let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
+        let items = self.parse_items(ItemCx::Boring, TokenKind::EndOfInput)?;
+        let span = self.prev_token().map_or(start, |token| start.to(token.span));
+
+        Ok(File { attrs, items, span })
+    }
+
     /// Parse a sequence of items.
     ///
     /// # Grammar
@@ -1351,4 +1373,31 @@ impl<'src> Qualifier<'src> {
 enum ImplKind {
     Normal,
     Delegation,
+}
+
+pub(super) struct File<'src> {
+    attrs: Vec<ast::Attr<'src>>,
+    items: Vec<ast::Item<'src>>,
+    span: Span,
+}
+
+impl<'src> File<'src> {
+    pub(super) fn lower(
+        self,
+        shebang: Option<Span>,
+        frontmatter: Option<Frontmatter>,
+        p: &Parser<'_, '_, 'src>,
+    ) -> ast::File<'src> {
+        ast::File {
+            shebang: shebang.map(|shebang| p.source(shebang)),
+            frontmatter: frontmatter.map(|frontmatter| ast::Frontmatter {
+                infostring: Spanned::new(p.source(frontmatter.infostring), frontmatter.infostring),
+                content: Spanned::new(p.source(frontmatter.content), frontmatter.content),
+                span: frontmatter.span,
+            }),
+            attrs: self.attrs,
+            items: self.items,
+            span: self.span,
+        }
+    }
 }

@@ -95,7 +95,7 @@ fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>>
 fn parse_via<'src, T>(
     source: Normalized<&'src str>,
     edition: Edition,
-    parse: impl FnOnce(&mut super::Parser<'_, '_, 'src>) -> super::Result<T>,
+    parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> super::Result<T>,
 ) -> Result<T> {
     let source = source.into_inner();
     let store = Store { errors: Buffer::default(), features: Buffer::sealed() };

@@ -106,7 +106,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let disambiguated = if let TokenKind::DoubleColon = self.token.kind
             && let token = self.peek(1)
             && (token.kind == TokenKind::OpenRoundBracket
-                || TokenPrefix::LessThan.matches(token.kind))
+                || self.matches(TokenPrefix::LessThan, token))
         {
             self.advance();
             true
@@ -210,7 +210,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    pub(crate) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
+    pub(super) fn parse_const_arg(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_const_arg`.
 
         if let Some((sign, lit)) = self.opt_parse_negatable_lit()? {

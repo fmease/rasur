@@ -64,7 +64,7 @@ weak! {
     Reuse "reuse" |p| {
         let token = p.peek(1);
         token.kind.is_ident()
-            || TokenPrefix::LessThan.matches(token.kind)
+            || p.matches(TokenPrefix::LessThan, token)
             && p.begins_ty(2)
     },
     // Alternatively, we could check `$kind.is_ident() && $kind != TokenKind::As`

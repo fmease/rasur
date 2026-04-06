@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, one_of,
+    ExpectedFragment, Result, TokenKind, one_of,
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
@@ -7,12 +7,99 @@ use crate::{
     ast,
     error::Error,
     feature::Feature,
+    lexer::lex_ident,
+    parser::{MatchAgainstArbitraryToken, TokenCategory},
     span::{ByteIndex, Span},
+    token::Token,
 };
 use std::mem;
 
-impl<'src> Parser<'_, '_, 'src> {
-    pub(crate) fn parse_ty_annotation(&mut self) -> Result<ast::Ty<'src>> {
+impl<'src> super::Parser<'_, '_, 'src> {
+    pub(super) fn parse_mutability(&mut self) -> ast::Mutability {
+        match self.consume(TokenKind::Mut) {
+            true => ast::Mutability::Mut,
+            false => ast::Mutability::Not,
+        }
+    }
+
+    // FIXME: Temporary API
+    pub(super) fn parse_common_ident_or(
+        &mut self,
+        exception: TokenKind,
+    ) -> Result<(ast::Ident<'src>, bool)> {
+        let exception = if self.token.kind == TokenKind::CommonIdent {
+            false
+        } else if self.token.kind == exception {
+            true
+        } else {
+            return self.fatal(Error::UnexpectedToken(
+                self.token,
+                one_of![ExpectedFragment::CommonIdent, exception],
+            ));
+        };
+
+        let ident = self.ident(self.token.span);
+        self.advance();
+        Ok((ident, exception))
+    }
+
+    // FIXME: Temporary API, replace with parse(CommonIdent)
+    pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
+        match self.consume_common_ident() {
+            Some(ident) => Ok(ident),
+            None => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::CommonIdent)),
+        }
+    }
+
+    // FIXME: Temporary API, replace with consume(CommonIdent)
+    pub(super) fn consume_common_ident(&mut self) -> Option<ast::Ident<'src>> {
+        let TokenKind::CommonIdent = self.token.kind else { return None };
+        let ident = self.ident(self.token.span);
+        self.advance();
+        Some(ident)
+    }
+
+    pub(super) fn parse_ticked_ident(
+        &mut self,
+        validate: fn(TokenKind) -> bool,
+        error: fn(Span) -> Error,
+    ) -> Option<ast::Ident<'src>> {
+        let Token { kind: TokenKind::TickedIdent, span } = self.token else { return None };
+        self.advance();
+
+        let source = &self.source(span)[const { "'".len() }..];
+        let ident = lex_ident(source, self.edition);
+        if !validate(ident) {
+            self.error(error(span));
+        }
+
+        let name = source.strip_prefix("r#").unwrap_or(source);
+        Some(ast::Ident::new(name, span))
+    }
+
+    pub(super) fn fin_parse_delim_seq<T, C>(
+        &mut self,
+        delimiter: C,
+        separator: TokenKind,
+        mut parse: impl FnMut(&mut Self) -> Result<T>,
+    ) -> Result<Vec<T>>
+    where
+        C: TokenCategory + MatchAgainstArbitraryToken,
+    {
+        let mut nodes = Vec::new();
+
+        while !self.consume(delimiter) {
+            nodes.push(parse(self)?);
+
+            if !self.matches(delimiter, self.token) {
+                self.parse(separator)?;
+            }
+        }
+
+        Ok(nodes)
+    }
+
+    pub(super) fn parse_ty_annotation(&mut self) -> Result<ast::Ty<'src>> {
         if self.parse(TokenKind::SingleColon).is_err() {
             return Ok(ast::Ty::Error(self.token.span.start().into()));
         }
@@ -23,7 +110,7 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Parse a list of function parameters.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
-    pub(crate) fn parse_fn_param_list(
+    pub(super) fn parse_fn_param_list(
         &mut self,
         mode: FnParamMode,
     ) -> Result<Vec<ast::FnParam<'src>>> {
@@ -143,7 +230,7 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     // FIXME: Rewrite this using "probe2"?
-    pub(crate) fn pick_generic_param_list_over_ext_path(&self, offset: usize) -> bool {
+    pub(super) fn pick_generic_param_list_over_ext_path(&self, offset: usize) -> bool {
         if self.peek(offset).kind != TokenKind::SingleLessThan {
             return false;
         }
@@ -167,7 +254,7 @@ impl<'src> Parser<'_, '_, 'src> {
         false
     }
 
-    pub(crate) fn opt_parse_negatable_lit(
+    pub(super) fn opt_parse_negatable_lit(
         &mut self,
     ) -> Result<Option<(ast::Sign, Box<ast::Lit<'src>>)>> {
         // NOTE: To be kept in sync with `Self::begins_negatable_lit`.
@@ -192,7 +279,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    pub(crate) fn begins_negatable_lit(&self) -> bool {
+    pub(super) fn begins_negatable_lit(&self) -> bool {
         // NOTE: To be kept in sync with `Self::opt_parse_negatable_lit`.
 
         #[expect(clippy::match_like_matches_macro)] // a match looks better here
@@ -207,7 +294,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    pub(crate) fn fin_parse_lit(&mut self, kind: ast::LitKind) -> ast::Lit<'src> {
+    pub(super) fn fin_parse_lit(&mut self, kind: ast::LitKind) -> ast::Lit<'src> {
         let value = self.source(self.token.span);
         self.advance();
 
@@ -222,7 +309,7 @@ impl<'src> Parser<'_, '_, 'src> {
         ast::Lit { kind, value, suffix }
     }
 
-    pub(crate) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
+    pub(super) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
         &mut self,
     ) -> (ast::BorrowKind<X>, ast::Mutability) {
         if let TokenKind::CommonIdent = self.token.kind
@@ -334,7 +421,7 @@ impl<'src> Parser<'_, '_, 'src> {
         (ident, extra)
     }
 
-    pub(crate) fn validate_numeric_ident(
+    pub(super) fn validate_numeric_ident(
         &self,
         ident: ast::Ident<'src>,
         exp_policy: ExpInNumIdentPolicy,
@@ -382,17 +469,17 @@ impl<'src> Parser<'_, '_, 'src> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum FnParamMode {
+pub(super) enum FnParamMode {
     Required,
     Optional,
 }
 
-pub(crate) enum ExpInNumIdentPolicy {
+pub(super) enum ExpInNumIdentPolicy {
     ParseIfUnsigned,
     Reject,
 }
 
-pub(crate) trait ParseBorrowKind: Sized {
+pub(super) trait ParseBorrowKind: Sized {
     fn parse(source: &str) -> Option<ast::BorrowKind<Self>>;
 }
 

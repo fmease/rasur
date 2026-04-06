@@ -1,12 +1,12 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind,
+    ExpectedFragment, Result, TokenKind,
     common::ExpInNumIdentPolicy,
     one_of,
     weak::{self, Weak as _},
 };
 use crate::{ast, error::Error, feature::Feature};
 
-impl<'src> Parser<'_, '_, 'src> {
+impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a pattern.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->

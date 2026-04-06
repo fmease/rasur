@@ -1,6 +1,6 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, common::FnParamMode, one_of,
-    path::PathMode, weak,
+    ExpectedFragment, Result, TokenKind, TokenPrefix, common::FnParamMode, one_of, path::PathMode,
+    weak,
 };
 use crate::{
     ast,
@@ -12,7 +12,7 @@ use crate::{
 };
 use std::mem;
 
-impl<'src> Parser<'_, '_, 'src> {
+impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a type.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
@@ -41,7 +41,7 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::SingleBang
             | TokenKind::Underscore
             | TokenKind::Unsafe => true,
-            TokenKind::TickedIdent => TokenPrefix::Plus.matches(self.peek(offset + 1).kind),
+            TokenKind::TickedIdent => self.matches(TokenPrefix::Plus, self.peek(offset + 1)),
             _ => self.begins_ext_path(offset),
         }
     }
@@ -826,7 +826,7 @@ impl<'src> Parser<'_, '_, 'src> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum PlusPolicy<X = !> {
+pub(super) enum PlusPolicy<X = !> {
     Parse,
     Yield,
     Reject(X),

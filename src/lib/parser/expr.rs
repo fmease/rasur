@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
+    ExpectedFragment, Result, TokenKind, TokenPrefix,
     common::ExpInNumIdentPolicy,
     one_of,
     pat::OrPolicy,
@@ -10,17 +10,17 @@ use super::{
 use crate::{ast, edition::Edition, error::Error, feature::Feature, span::Span};
 use std::mem;
 
-impl<'src> Parser<'_, '_, 'src> {
+impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse an expression.
     ///
     /// <!-- FIXME: Add an EBNF section back in -->
-    pub(crate) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
+    pub(super) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
         self.parse_expr_where(StructPolicy::Parse, LetPolicy::YieldOrReject, OpPolicy::Parse)
     }
 
-    pub(crate) fn parse_expr_where(
+    pub(super) fn parse_expr_where(
         &mut self,
         s_policy: StructPolicy,
         l_policy: LetPolicy,
@@ -819,7 +819,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Async => Qualifier::Async,
                 TokenKind::Const => Qualifier::Const,
                 TokenKind::DoublePipe => {
-                    self.modify_in_place(TokenKind::SinglePipe);
+                    // FIXME: parse_unchecked
+                    self.parse(TokenPrefix::Pipe).unwrap();
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
