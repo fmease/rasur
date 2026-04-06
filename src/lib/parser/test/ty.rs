@@ -1,4 +1,4 @@
-use super::super::ExpectedFragment;
+use super::super::Fragment;
 use super::{parse_expr, parse_file, parse_ty, t};
 use crate::{
     ast,
@@ -33,7 +33,7 @@ fn bare_trait_object_tys() {
         "(A+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )])),
     );
 
@@ -88,7 +88,7 @@ fn bare_trait_object_tys() {
         // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CommonIdent, .. },
-            ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
+            r!([Fragment::Token(TokenKind::OpenCurlyBracket)]),
         )]))
     );
 
@@ -112,7 +112,7 @@ fn bare_trait_object_tys() {
         "[const] A",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseSquareBracket, .. },
-            ExpectedFragment::Bound
+            r!([Fragment::Bound])
         )])),
     );
 
@@ -160,7 +160,7 @@ fn bare_trait_object_tys() {
         "(for<>A+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )])),
     );
 
@@ -170,7 +170,7 @@ fn bare_trait_object_tys() {
         "for<>'a",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
-            ExpectedFragment::PathSegIdent
+            r!([Fragment::PathSegIdent])
         )])),
     );
 
@@ -180,7 +180,7 @@ fn bare_trait_object_tys() {
         "for<>'a+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
-            ExpectedFragment::PathSegIdent
+            r!([Fragment::PathSegIdent])
         )])),
     );
 
@@ -204,7 +204,7 @@ fn bare_trait_object_tys() {
             Error::LifetimeObjectTyWithoutPlus(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::SinglePlus, .. },
-                ExpectedFragment::Token(TokenKind::EndOfInput)
+                r!([Fragment::Token(TokenKind::EndOfInput)])
             )
         ]))
     );
@@ -234,7 +234,7 @@ fn bare_trait_object_tys() {
         "(use<>+)+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )]))
     );
 
@@ -424,7 +424,7 @@ fn bare_trait_object_tys() {
         "0 as for<> A+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )]))
     );
 
@@ -434,7 +434,7 @@ fn bare_trait_object_tys() {
         "0 as 'a+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )]))
     );
 
@@ -444,7 +444,7 @@ fn bare_trait_object_tys() {
         "0 as const A+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )]))
     );
 
@@ -454,7 +454,7 @@ fn bare_trait_object_tys() {
         "0 as use<>+",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )]))
     );
 }

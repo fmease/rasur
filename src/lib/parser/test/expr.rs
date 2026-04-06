@@ -1,4 +1,4 @@
-use super::super::ExpectedFragment;
+use super::super::Fragment;
 use super::{parse_expr, parse_stmt, t};
 use crate::{
     ast,
@@ -465,7 +465,7 @@ fn control_flow_ops_block() {
         "if return {}",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
-            ExpectedFragment::Token(TokenKind::OpenCurlyBracket),
+            r!([Fragment::Token(TokenKind::OpenCurlyBracket)]),
         )]))
     );
     t!(
@@ -677,7 +677,7 @@ fn ranges() {
         "..?",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::QuestionMark, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )])),
     );
 
@@ -839,7 +839,7 @@ fn ranges() {
         "..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )])),
     );
 
@@ -849,7 +849,7 @@ fn ranges() {
         "'='..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::Expr
+            r!([Fragment::Expr])
         )])),
     );
 
@@ -929,7 +929,7 @@ fn ranges() {
         "0..1..2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )])),
     );
 
@@ -939,7 +939,7 @@ fn ranges() {
         "0..=1..2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )])),
     );
 
@@ -949,7 +949,7 @@ fn ranges() {
         "0..1..=2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )])),
     );
 
@@ -959,7 +959,7 @@ fn ranges() {
         "0..=1..=2",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )])),
     );
 
@@ -996,7 +996,7 @@ fn ranges() {
         "..{}+0",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            ExpectedFragment::Token(TokenKind::Semicolon),
+            r!([Fragment::Token(TokenKind::Semicolon)]),
         )]))
     );
 
@@ -1054,7 +1054,7 @@ fn ranges() {
         "1..{}+0",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            ExpectedFragment::Token(TokenKind::Semicolon),
+            r!([Fragment::Token(TokenKind::Semicolon)]),
         )]))
     );
 
@@ -1118,7 +1118,7 @@ fn ranges() {
         "..=0..",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )])),
     );
 
@@ -1226,7 +1226,7 @@ fn ranges() {
         "1 + .. .y",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleDot, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )]))
     );
 
@@ -1237,7 +1237,7 @@ fn ranges() {
         "1 * .. ?",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::QuestionMark, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )]))
     );
 }

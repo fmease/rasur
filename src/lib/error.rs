@@ -1,4 +1,5 @@
-use crate::{lexer::IdentKind, parser::ExpectedFragment, span::Span, token::Token};
+use crate::{lexer::IdentKind, parser::Fragment, span::Span, token::Token};
+pub use utility::List1;
 
 // FIXME: Overhaul this error type; most of the variants are just placeholders.
 // FIXME: All errors should have spans
@@ -58,7 +59,7 @@ pub enum Error {
     TraitImplModifierInInherentImpl(&'static str),
     TyRelMacroCall(Span),
     UnexpectedClosingDelimiter(Token),
-    UnexpectedToken(Token, ExpectedFragment),
+    UnexpectedToken(Token, List1<Fragment>),
     UnknownBuiltinSyntax(Span),
     UnsafeTraitAlias,
     UnterminatedBlockComment(Span),

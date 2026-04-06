@@ -1,6 +1,5 @@
 use super::{
-    ExpectedFragment, Result, TokenKind, TokenPrefix, common::FnParamMode, one_of, path::PathMode,
-    weak,
+    Fragment, Result, TokenKind, TokenPrefix, common::FnParamMode, frags, path::PathMode, weak,
 };
 use crate::{
     ast,
@@ -152,7 +151,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => {
                         return self.fatal(Error::UnexpectedToken(
                             self.token,
-                            one_of![TokenKind::Mut, TokenKind::Const],
+                            frags![TokenKind::Mut, TokenKind::Const],
                         ));
                     }
                 };
@@ -222,7 +221,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Ty))
+        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Ty]))
     }
 
     fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -462,11 +461,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => {
                         return this.fatal(Error::UnexpectedToken(
                             this.token,
-                            one_of![
-                                ExpectedFragment::GenericParam,
-                                SEPARATOR,
-                                TokenKind::SingleGreaterThan
-                            ],
+                            frags![Fragment::GenericParam, SEPARATOR, TokenKind::SingleGreaterThan],
                         ));
                     }
                 }
@@ -541,7 +536,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 _ => {
                     return self.fatal(Error::UnexpectedToken(
                         self.token,
-                        one_of![
+                        frags![
                             TokenKind::SingleColon,
                             TokenKind::SingleEquals,
                             TokenKind::DoubleEquals
@@ -554,7 +549,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let bounds = self.parse_outlives_bounds();
             ast::PredicateKind::Outlives(ast::OutlivesPredicate { lt, bounds })
         } else {
-            return self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Predicate));
+            return self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Predicate]));
         };
 
         Ok(ast::Predicate { attrs, kind })
@@ -634,7 +629,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         }
                         _ => this.fatal(Error::UnexpectedToken(
                             this.token,
-                            ExpectedFragment::GenericParam,
+                            frags![Fragment::GenericParam],
                         )),
                     }
                 })?;
@@ -658,7 +653,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             });
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Bound))
+        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Bound]))
     }
 
     #[allow(clippy::needless_pass_by_value)] // the callers want to dispose of the bad binder

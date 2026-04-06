@@ -1,4 +1,4 @@
-use super::super::ExpectedFragment;
+use super::super::Fragment;
 use super::{parse_file, parse_pat, t};
 use crate::{
     ast,
@@ -132,7 +132,7 @@ fn ranges_and_rest() {
         "..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+            r!([Fragment::Lit, Fragment::ExtPath]),
         )]))
     );
 
@@ -142,7 +142,7 @@ fn ranges_and_rest() {
         "0..=",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+            r!([Fragment::Lit, Fragment::ExtPath]),
         )]))
     );
 
@@ -185,7 +185,7 @@ fn ranges_and_rest() {
         "...",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TripleDot, .. },
-            ExpectedFragment::Pat,
+            r!([Fragment::Pat]),
         )]))
     );
 
@@ -195,7 +195,7 @@ fn ranges_and_rest() {
         "...1",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::TripleDot, .. },
-            ExpectedFragment::Pat,
+            r!([Fragment::Pat]),
         )]))
     );
 
@@ -206,7 +206,7 @@ fn ranges_and_rest() {
         "X...",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, .. },
-            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+            r!([Fragment::Lit, Fragment::ExtPath]),
         )]))
     );
 
@@ -234,7 +234,7 @@ fn ranges_and_rest() {
         "&5..10",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )]))
     );
 
@@ -245,7 +245,7 @@ fn ranges_and_rest() {
         "&..10",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::NumLit, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )]))
     );
 
@@ -256,7 +256,7 @@ fn ranges_and_rest() {
         "&5..=10",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput)
+            r!([Fragment::Token(TokenKind::EndOfInput)])
         )]))
     );
 
@@ -267,7 +267,7 @@ fn ranges_and_rest() {
         "&..=10",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            ExpectedFragment::Pat,
+            r!([Fragment::Pat]),
         )]))
     );
 
@@ -297,7 +297,7 @@ fn ranges_and_rest() {
         "5..=&10",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleAmpersand, .. },
-            ExpectedFragment::OneOf(r!([ExpectedFragment::Lit, ExpectedFragment::ExtPath])),
+            r!([Fragment::Lit, Fragment::ExtPath]),
         )]))
     );
 
@@ -318,7 +318,7 @@ fn guards() {
         "0 if true",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::If, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )]))
     );
 
@@ -349,7 +349,7 @@ fn guards() {
         "(0 if true if true)",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::If, .. },
-            ExpectedFragment::Token(TokenKind::Comma)
+            r!([Fragment::Token(TokenKind::Comma)])
         )]))
     );
 

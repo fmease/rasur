@@ -1,5 +1,5 @@
 use super::{
-    ExpectedFragment, Result, TokenKind, one_of,
+    Fragment, Result, TokenKind, frags,
     pat::OrPolicy,
     weak::{self, Weak as _},
 };
@@ -34,7 +34,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         } else {
             return self.fatal(Error::UnexpectedToken(
                 self.token,
-                one_of![ExpectedFragment::CommonIdent, exception],
+                frags![TokenKind::CommonIdent, exception],
             ));
         };
 
@@ -47,7 +47,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         match self.consume_common_ident() {
             Some(ident) => Ok(ident),
-            None => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::CommonIdent)),
+            None => self.fatal(Error::UnexpectedToken(self.token, frags![TokenKind::CommonIdent])),
         }
     }
 
@@ -273,7 +273,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if let Some(kind) = lit {
             Ok(Some((sign, Box::new(self.fin_parse_lit(kind)))))
         } else if let ast::Sign::Neg = sign {
-            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Lit))
+            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Lit]))
         } else {
             Ok(None)
         }
@@ -446,7 +446,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let (TokenKind::CommonIdent | TokenKind::NumLit) = self.token.kind else {
                 return self.fatal(Error::UnexpectedToken(
                     self.token,
-                    one_of![TokenKind::CommonIdent, TokenKind::NumLit],
+                    frags![TokenKind::CommonIdent, TokenKind::NumLit],
                 ));
             };
 

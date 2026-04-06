@@ -1,7 +1,7 @@
 use super::{
-    ExpectedFragment, Result, TokenKind, TokenPrefix,
+    Fragment, Result, TokenKind, TokenPrefix,
     common::ExpInNumIdentPolicy,
-    one_of,
+    frags,
     pat::OrPolicy,
     path::GenericArgsMode,
     ty::PlusPolicy,
@@ -339,7 +339,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             _ => {
                 return self.fatal(Error::UnexpectedToken(
                     self.token,
-                    one_of![
+                    frags![
                         TokenKind::Await,
                         TokenKind::CommonIdent,
                         TokenKind::Match,
@@ -474,7 +474,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
                 _ => self.fatal(Error::UnexpectedToken(
                     self.token,
-                    one_of![
+                    frags![
                         TokenKind::For,
                         TokenKind::Loop,
                         TokenKind::OpenCurlyBracket,
@@ -806,7 +806,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return Ok(ast::ExprKind::Path(Box::new(path)));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Expr))
+        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Expr]))
     }
 
     fn parse_expr_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -982,7 +982,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => {
                         return self.fatal(Error::UnexpectedToken(
                             self.token,
-                            one_of![TokenKind::OpenCurlyBracket, TokenKind::If],
+                            frags![TokenKind::OpenCurlyBracket, TokenKind::If],
                         ));
                     }
                 },
@@ -1130,7 +1130,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if let LetPolicy::Parse(_) = l_policy
             && !self.is_valid_let_chain(expr, true, l_policy)
         {
-            // FIXME: Fake an UnexpectedToken(Let|&&|.., ExpectedFragment::Expr) in the
+            // FIXME: Fake an UnexpectedToken(Let|&&|.., Fragment::Expr) in the
             // relevant cases for uniformity with the corresp. parser diagnostic.
             self.error(Error::InvalidLetChain(span));
         }

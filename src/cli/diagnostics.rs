@@ -1,8 +1,8 @@
 use annotate_snippets as ann;
 use rasur::{
-    error::{Error, InvalidScalarPlace},
+    error::{Error, InvalidScalarPlace, List1},
     lexer::IdentKind,
-    parser::ExpectedFragment,
+    parser::Fragment,
     span::Span,
     token::{Repr, Token, TokenKind},
 };
@@ -191,13 +191,24 @@ impl ToDiagStr for TokenKind {
     }
 }
 
-impl ToDiagStr for ExpectedFragment {
+impl ToDiagStr for List1<Fragment> {
+    type Cx<'a> = ();
+
+    fn to_diag_str(&self, _: ()) -> Cow<'static, str> {
+        self.iter()
+            .map(|frag| frag.to_diag_str(()))
+            .intersperse(Cow::Borrowed(" or "))
+            .collect::<String>()
+            .into()
+    }
+}
+
+impl ToDiagStr for Fragment {
     type Cx<'a> = ();
 
     fn to_diag_str(&self, _: ()) -> Cow<'static, str> {
         match self {
             Self::Bound => "bound",
-            Self::CommonIdent => "common identifier",
             Self::ConstArg => "const argument",
             Self::Expr => "expression",
             Self::ExtPath => "extended path",
@@ -205,14 +216,6 @@ impl ToDiagStr for ExpectedFragment {
             Self::GenericParam => "generic parameter",
             Self::Item => "item",
             Self::Lit => "literal",
-            Self::OneOf(frags) => {
-                return frags
-                    .iter()
-                    .map(|frag| frag.to_diag_str(()))
-                    .intersperse(Cow::Borrowed(" or "))
-                    .collect::<String>()
-                    .into();
-            }
             Self::Pat => "pattern",
             Self::PathSegIdent => "path segment",
             Self::Predicate => "predicate",

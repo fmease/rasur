@@ -1,6 +1,5 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, one_of,
-    ty::PlusPolicy,
+    Fragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, frags, ty::PlusPolicy,
 };
 use crate::{ast, error::Error, feature::Feature, token::PathSegIdent};
 
@@ -95,7 +94,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 Ok(ast::PathSeg { ident, args: M::parse(self)? })
             }
-            _ => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::PathSegIdent)),
+            _ => self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::PathSegIdent])),
         }
     }
 
@@ -143,8 +142,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 } else {
                     return this.fatal(Error::UnexpectedToken(
                         this.token,
-                        one_of![
-                            ExpectedFragment::GenericArg,
+                        frags![
+                            Fragment::GenericArg,
                             SEPARATOR,
                             /*delimiter*/ TokenKind::SingleGreaterThan
                         ],
@@ -206,7 +205,7 @@ impl<'src> Parser<'_, '_, 'src> {
             self.feature(Feature::MinGenericConstArgs, self.token.span);
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
-            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Term))
+            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Term]))
         }
     }
 
@@ -245,7 +244,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let kind = ast::ExprKind::Block(None, Box::new(block));
                 Ok(ast::Expr { attrs, kind })
             }
-            _ => self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::ConstArg)),
+            _ => self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::ConstArg])),
         }
     }
 

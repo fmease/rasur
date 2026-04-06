@@ -1,6 +1,7 @@
 use super::{
-    ExpectedFragment, Result, TokenKind,
+    Fragment, Result, TokenKind,
     expr::{AttrPolicy, LetPolicy, OpPolicy, StructPolicy},
+    frags,
     item::ItemCx,
     pat::OrPolicy,
 };
@@ -98,7 +99,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.advance();
             Ok(ast::Stmt::Empty)
         } else {
-            self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Stmt))
+            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Stmt]))
         }
     }
 }

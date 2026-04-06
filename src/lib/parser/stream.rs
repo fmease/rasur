@@ -1,4 +1,4 @@
-use super::{Error, Result, TokenKind, one_of};
+use super::{Error, Result, TokenKind, frags};
 use crate::ast;
 
 impl<'src> super::Parser<'_, '_, 'src> {
@@ -20,7 +20,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             _ => self.fatal(Error::UnexpectedToken(
                 self.token,
-                one_of![
+                frags![
                     TokenKind::OpenRoundBracket,
                     TokenKind::OpenSquareBracket,
                     TokenKind::OpenCurlyBracket,

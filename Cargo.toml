@@ -11,9 +11,10 @@ path = "src/lib/lib.rs"
 
 [dependencies]
 unicode-ident = "=1.0.22"
+utility = { path = "etc/lib/utility" }
 
 [workspace]
-members = ["src/cli"]
+members = ["etc/lib/utility","src/cli"]
 default-members = ["src/cli"]
 
 [workspace.package]

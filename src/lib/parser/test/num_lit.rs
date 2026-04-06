@@ -1,4 +1,4 @@
-use super::super::ExpectedFragment;
+use super::super::Fragment;
 use super::{parse_expr, parse_pat, parse_ty, t};
 use crate::{
     ast,
@@ -16,7 +16,7 @@ fn suffixes_invalid_places() {
         "compound.0suffix",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::EndOfInput),
+            r!([Fragment::Token(TokenKind::EndOfInput)]),
         )]))
     );
 
@@ -26,7 +26,7 @@ fn suffixes_invalid_places() {
         "builtin#offset_of(T, 0suffix)",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::SingleDot),
+            r!([Fragment::Token(TokenKind::SingleDot)]),
         )]))
     );
 
@@ -36,7 +36,7 @@ fn suffixes_invalid_places() {
         "builtin#field_of(T, 0suffix)",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::SingleDot),
+            r!([Fragment::Token(TokenKind::SingleDot)]),
         )]))
     );
 
@@ -46,7 +46,7 @@ fn suffixes_invalid_places() {
         "Compound { 0suffix: 0 }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::SingleColon),
+            r!([Fragment::Token(TokenKind::SingleColon)]),
         )]))
     );
 
@@ -56,7 +56,7 @@ fn suffixes_invalid_places() {
         "Compound { 0suffix: 0 }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::Comma),
+            r!([Fragment::Token(TokenKind::Comma)]),
         )]))
     );
 
@@ -66,7 +66,7 @@ fn suffixes_invalid_places() {
         "Compound { 0suffix }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            ExpectedFragment::Token(TokenKind::Comma),
+            r!([Fragment::Token(TokenKind::Comma)]),
         )]))
     );
 }

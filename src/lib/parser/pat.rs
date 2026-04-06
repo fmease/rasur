@@ -1,7 +1,7 @@
 use super::{
-    ExpectedFragment, Result, TokenKind,
+    Fragment, Result, TokenKind,
     common::ExpInNumIdentPolicy,
-    one_of,
+    frags,
     weak::{self, Weak as _},
 };
 use crate::{ast, error::Error, feature::Feature};
@@ -415,7 +415,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Pat))
+        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Pat]))
     }
 
     fn fin_parse_range_or_rest_pat(
@@ -456,10 +456,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
             Ok(ast::RangePatBound::Path(path))
         } else {
-            self.fatal(Error::UnexpectedToken(
-                self.token,
-                one_of![ExpectedFragment::Lit, ExpectedFragment::ExtPath],
-            ))
+            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Lit, Fragment::ExtPath]))
         }
     }
 

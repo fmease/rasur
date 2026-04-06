@@ -1,8 +1,8 @@
 use super::{
-    ExpectedFragment, Parser, Result, TokenKind, TokenPrefix,
+    Fragment, Parser, Result, TokenKind, TokenPrefix,
     common::FnParamMode,
     expr::AttrPolicy,
-    one_of,
+    frags,
     path::{GenericArgsMode, PathMode},
     weak::{self, Weak as _},
 };
@@ -347,7 +347,7 @@ impl<'src> Parser<'_, '_, 'src> {
             return self.parse_macro_call_item();
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, ExpectedFragment::Item))
+        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Item]))
     }
 
     gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
@@ -1043,8 +1043,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 return self.fatal(Error::UnexpectedToken(
                     self.token,
                     // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
-                    one_of![
-                        ExpectedFragment::PathSegIdent,
+                    frags![
+                        Fragment::PathSegIdent,
                         TokenKind::OpenCurlyBracket,
                         TokenKind::SingleAsterisk
                     ],
@@ -1184,8 +1184,8 @@ impl<'src> Parser<'_, '_, 'src> {
             _ => {
                 return self.fatal(Error::UnexpectedToken(
                     self.token,
-                    one_of![
-                        ExpectedFragment::PathSegIdent,
+                    frags![
+                        Fragment::PathSegIdent,
                         TokenKind::OpenCurlyBracket,
                         TokenKind::SingleAsterisk
                     ],

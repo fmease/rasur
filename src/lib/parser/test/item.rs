@@ -1,4 +1,4 @@
-use super::super::ExpectedFragment;
+use super::super::Fragment;
 use super::{parse_expr, parse_file, parse_item, parse_stmt, t};
 use crate::{
     ast,
@@ -126,7 +126,7 @@ fn tuple_struct_field_visibility() {
         "struct T(pub);",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseRoundBracket, .. },
-            ExpectedFragment::Ty
+            r!([Fragment::Ty])
         )]))
     );
 }

@@ -51,15 +51,14 @@ pub fn prepare(tokens: Tokens<'_, '_>) -> Vec<Token> {
         .collect()
 }
 
-macro one_of($( $frag:expr ),+ $(,)?) {
-    ExpectedFragment::OneOf(Box::new([$( ExpectedFragment::from($frag) ),+]))
+macro frags($( $frag:expr ),+ $(,)?) {
+    utility::list1![$( Fragment::from($frag) ),+]
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[cfg_attr(test, derive(Debug))]
-pub enum ExpectedFragment {
+pub enum Fragment {
     Bound,
-    CommonIdent,
     ConstArg,
     Expr,
     ExtPath,
@@ -67,7 +66,6 @@ pub enum ExpectedFragment {
     GenericParam,
     Item,
     Lit,
-    OneOf(Box<[Self]>),
     Pat,
     PathSegIdent,
     Predicate,
@@ -77,7 +75,7 @@ pub enum ExpectedFragment {
     Ty,
 }
 
-impl From<TokenKind> for ExpectedFragment {
+impl From<TokenKind> for Fragment {
     fn from(token: TokenKind) -> Self {
         Self::Token(token)
     }

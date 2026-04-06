@@ -1,6 +1,6 @@
 pub use anstream::{ColorChoice, stream::RawStream};
 pub use anstyle::{AnsiColor, Effects, Style};
-use std::{io, slice};
+use std::io;
 
 pub fn colorize(stream: &impl RawStream) -> bool {
     anstream::AutoStream::choice(stream) != ColorChoice::Never
@@ -9,13 +9,13 @@ pub fn colorize(stream: &impl RawStream) -> bool {
 pub struct Painter<W: io::Write> {
     writer: W,
     colorize: bool,
-    stack: Stack<Style>,
+    stack: utility::List1<Style>,
 }
 
 impl<W: io::Write> Painter<W> {
     pub fn new<S: RawStream>(stream: S, construct: impl FnOnce(S) -> W) -> Self {
         let colorize = colorize(&stream);
-        Self { writer: construct(stream), colorize, stack: Stack::default() }
+        Self { writer: construct(stream), colorize, stack: Default::default() }
     }
 }
 
@@ -86,44 +86,5 @@ impl IntoStyle for AnsiColor {
 impl IntoStyle for Effects {
     fn into_style(self) -> Style {
         Style::new().effects(self)
-    }
-}
-
-// "SmallVec<T,1> at home"
-enum Stack<T> {
-    Inline(Option<T>),
-    OutOfLine(Vec<T>),
-}
-
-impl<T> Stack<T> {
-    fn push(&mut self, item: T) {
-        match self {
-            Self::Inline(place) => match place.take() {
-                None => *place = Some(item),
-                Some(first) => *self = Self::OutOfLine(vec![first, item]),
-            },
-            Self::OutOfLine(items) => items.push(item),
-        }
-    }
-
-    fn pop(&mut self) -> Option<T> {
-        match self {
-            Self::Inline(place) => place.take(),
-            Self::OutOfLine(items) => items.pop(),
-        }
-    }
-
-    fn as_slice(&self) -> &[T] {
-        match self {
-            Self::Inline(None) => &[],
-            Self::Inline(Some(item)) => slice::from_ref(item),
-            Self::OutOfLine(items) => items,
-        }
-    }
-}
-
-impl<T> Default for Stack<T> {
-    fn default() -> Self {
-        Self::Inline(None)
     }
 }

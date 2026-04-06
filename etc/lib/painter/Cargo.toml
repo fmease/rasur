@@ -6,3 +6,8 @@ publish = false
 [dependencies]
 anstream = "1.0.0"
 anstyle = "1.0.13"
+utility = { path = "../utility" }
+
+[lib]
+name = "painter"
+path = "lib.rs"

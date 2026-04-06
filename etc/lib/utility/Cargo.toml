@@ -1,0 +1,8 @@
+[package]
+name = "utility"
+edition = "2024"
+publish = false
+
+[lib]
+name = "utility"
+path = "lib.rs"

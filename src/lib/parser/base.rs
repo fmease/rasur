@@ -1,4 +1,4 @@
-use super::{ExpectedFragment, Result, weak};
+use super::{Fragment, Result, frags, weak};
 use crate::{
     ast,
     edition::Edition,
@@ -60,7 +60,7 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
             return Ok(());
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, category.fragment()))
+        self.fatal(Error::UnexpectedToken(self.token, frags![category.fragment()]))
     }
 
     // FIXME: better name
@@ -160,7 +160,7 @@ pub trait TokenCategory: Copy {
         false
     }
 
-    fn fragment(self) -> ExpectedFragment;
+    fn fragment(self) -> Fragment;
 }
 
 #[diagnostic::on_unimplemented(
@@ -178,7 +178,7 @@ impl TokenCategory for TokenKind {
         self == token.kind
     }
 
-    fn fragment(self) -> ExpectedFragment {
+    fn fragment(self) -> Fragment {
         self.into()
     }
 }
@@ -206,7 +206,7 @@ impl TokenCategory for TokenPrefix {
         true
     }
 
-    fn fragment(self) -> ExpectedFragment {
+    fn fragment(self) -> Fragment {
         // FIXME: Should we list all possible tokens or keep it under wraps?
         self.single().into()
     }
@@ -226,7 +226,7 @@ impl<W: weak::Weak> TokenCategory for W {
         weak::Weak::matches(self, token, p)
     }
 
-    fn fragment(self) -> ExpectedFragment {
+    fn fragment(self) -> Fragment {
         // FIXME: Ideally, we'd just disable this method
         unimplemented!()
     }
