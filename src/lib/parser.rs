@@ -51,8 +51,7 @@ macro frags($( $frag:expr ),+ $(,)?) {
     utility::list1![$( Fragment::from($frag) ),+]
 }
 
-#[derive(Clone, Copy)]
-#[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Copy, Debug)]
 pub enum Fragment {
     Bound,
     ConstArg,

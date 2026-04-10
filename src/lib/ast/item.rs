@@ -5,6 +5,12 @@ use super::{
 };
 use Default::default;
 
+#[derive(Debug)]
+pub struct File<'src> {
+    pub attrs: Vec<Attr<'src>>,
+    pub items: Vec<Item<'src>>,
+}
+
 // FIXME: Maybe represent as Item<Free>?
 #[derive(Debug)]
 pub struct Item<'src> {
@@ -357,8 +363,8 @@ pub enum UsePathTreeKind<'src> {
 #[derive(Debug)]
 pub struct MacroDef<'src> {
     pub binder: Ident<'src>,
-    pub params: Option<TokenStream<'src>>,
-    pub body: TokenStream<'src>,
+    pub params: Option<TokenStream>,
+    pub body: TokenStream,
     pub style: MacroDefStyle,
 }
 

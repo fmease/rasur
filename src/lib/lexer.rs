@@ -778,8 +778,7 @@ impl Iterator for Lexer<'_, '_> {
     }
 }
 
-#[derive(Clone, Copy)]
-#[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Copy, Debug)]
 pub enum IdentKind {
     Normal,
     Ticked,

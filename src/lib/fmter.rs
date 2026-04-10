@@ -148,18 +148,18 @@ impl Fmt for ast::Lit<'_> {
     }
 }
 
-impl Fmt for ast::TokenStream<'_> {
+impl Fmt for ast::TokenStream {
     fn fmt(self, cx: &mut Cx<'_>) {
         // FIXME: That's really naive (and wrong in the case of LitSuffix).
         self.interleave(" ").fmt(cx);
     }
 }
 
-impl Fmt for ast::Token<'_> {
+impl Fmt for ast::Token {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { kind: _, source } = self;
+        let Self { kind: _, span } = self;
 
-        source.fmt(cx);
+        cx.source(span).fmt(cx);
     }
 }
 

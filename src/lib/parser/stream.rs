@@ -4,7 +4,7 @@ use crate::ast;
 impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_delimited_token_stream(
         &mut self,
-    ) -> Result<(ast::Bracket, ast::TokenStream<'src>)> {
+    ) -> Result<(ast::Bracket, ast::TokenStream)> {
         match self.token.kind {
             TokenKind::OpenRoundBracket => {
                 self.advance();
@@ -32,7 +32,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn fin_parse_delimited_token_stream(
         &mut self,
         bracket: ast::Bracket,
-    ) -> Result<(ast::Bracket, ast::TokenStream<'src>)> {
+    ) -> Result<(ast::Bracket, ast::TokenStream)> {
         let stream = self.parse_token_stream(bracket)?;
         self.parse(match bracket {
             ast::Bracket::Round => TokenKind::CloseRoundBracket,
@@ -42,13 +42,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok((bracket, stream))
     }
 
-    fn parse_token_stream(
-        &mut self,
-        exp_close_delim: ast::Bracket,
-    ) -> Result<ast::TokenStream<'src>> {
+    fn parse_token_stream(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
         let mut tokens = Vec::new();
-        let mut stack = Vec::new();
-        let mut is_delimited = false;
+        let mut stack = vec![exp_close_delim];
 
         #[expect(clippy::enum_glob_use)]
         loop {
@@ -69,28 +65,27 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
 
             if let Some((act_delim, orient)) = act_delim {
-                if stack.is_empty() && (act_delim, orient) == (exp_close_delim, Close) {
-                    is_delimited = true;
-                    break;
-                }
-
                 match orient {
                     Open => stack.push(act_delim),
                     Close => match stack.pop() {
-                        Some(open_delim) if act_delim == open_delim => {}
+                        Some(open_delim) if act_delim == open_delim => {
+                            if stack.is_empty() {
+                                break;
+                            }
+                        }
                         _ => return self.fatal(Error::UnexpectedClosingDelimiter(self.token)),
                     },
                 }
             }
 
-            tokens.push(ast::Token { kind: self.token.kind, source: self.source(self.token.span) });
+            tokens.push(self.token);
             self.advance();
         }
 
-        if is_delimited && stack.is_empty() {
-            Ok(tokens)
-        } else {
-            self.fatal(Error::MissingClosingDelimiters(self.token.span))
+        if !stack.is_empty() {
+            return self.fatal(Error::MissingClosingDelimiters(self.token.span));
         }
+
+        Ok(tokens)
     }
 }

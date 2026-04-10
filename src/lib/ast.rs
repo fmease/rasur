@@ -4,10 +4,10 @@ mod item;
 mod pat;
 mod path;
 mod stmt;
-mod stream;
 mod ty;
 
 use crate::span::Span;
+pub use crate::token::{Token, TokenKind};
 pub use attr::*;
 pub use expr::*;
 pub use item::*;
@@ -15,19 +15,14 @@ pub use pat::*;
 pub use path::*;
 use std::fmt;
 pub use stmt::*;
-pub use stream::*;
 pub use ty::*;
 
-#[derive(Debug)]
-pub struct File<'src> {
-    pub attrs: Vec<Attr<'src>>,
-    pub items: Vec<Item<'src>>,
-}
+pub type TokenStream = Vec<crate::token::Token>;
 
 pub struct MacroCall<'src, M: GenericArgsMode> {
     pub path: Path<'src, M>,
     pub bracket: Bracket,
-    pub stream: TokenStream<'src>,
+    pub stream: TokenStream,
 }
 
 impl<M: GenericArgsMode> fmt::Debug for MacroCall<'_, M> {

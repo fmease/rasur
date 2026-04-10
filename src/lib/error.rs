@@ -3,8 +3,7 @@ pub use utility::List1;
 
 // FIXME: Overhaul this error type; most of the variants are just placeholders.
 // FIXME: All errors should have spans
-#[derive(Clone)]
-#[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Debug)]
 pub enum Error {
     AbiStrSuffix(Span),
     AmbiguousPlus(Span),

@@ -290,7 +290,7 @@ fn ticked_idents() {
         "M! { 'if }",
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([ast::Token { kind: ast::TokenKind::TickedIdent, source: "'if" }]),
+                stream: r!([ast::Token { kind: ast::TokenKind::TickedIdent, .. }]),
                 ..
             })),
             ..
@@ -343,7 +343,7 @@ fn raw_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, source: "'r" },
+                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
                     ast::Token { kind: ast::TokenKind::Hash, .. },
                     ast::Token { kind: ast::TokenKind::If, .. }
                 ]),
@@ -388,8 +388,8 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::CharLit, source: "'a'" },
-                    ast::Token { kind: ast::TokenKind::LitSuffix, source: "a" }
+                    ast::Token { kind: ast::TokenKind::CharLit, .. },
+                    ast::Token { kind: ast::TokenKind::LitSuffix, .. }
                 ]),
                 ..
             })),
@@ -404,8 +404,8 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, source: "'a" },
-                    ast::Token { kind: ast::TokenKind::TickedIdent, source: "'a" }
+                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
+                    ast::Token { kind: ast::TokenKind::TickedIdent, .. }
                 ]),
                 ..
             })),
@@ -422,9 +422,9 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, source: "'a" },
+                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
                     ast::Token { kind: ast::TokenKind::QuestionMark, .. },
-                    ast::Token { kind: ast::TokenKind::TickedIdent, source: "'a" }
+                    ast::Token { kind: ast::TokenKind::TickedIdent, .. }
                 ]),
                 ..
             })),

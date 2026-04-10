@@ -49,7 +49,7 @@ pub struct NormalAttr<'src> {
 #[derive(Debug)]
 pub enum AttrArgs<'src> {
     Unit,
-    Call(Bracket, TokenStream<'src>),
+    Call(Bracket, TokenStream),
     Assign(Expr<'src>),
 }
 
