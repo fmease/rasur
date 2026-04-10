@@ -18,16 +18,16 @@ impl Fmt for ast::Attr<'_, ast::AnyAttrStyle> {
         let Self { style, kind } = self;
 
         match kind {
-            ast::AttrKind::Normal(attr) => (attr, style).fmt(cx),
+            ast::AttrKind::Regular(attr) => (attr, style).fmt(cx),
             ast::AttrKind::DocComment(span) => fmt!(cx, "{}", cx.source(span)),
         }
     }
 }
 
-impl Fmt for (ast::NormalAttr<'_>, ast::AttrStyle) {
+impl Fmt for (ast::Meta<'_>, ast::AttrStyle) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (attr, style) = self;
-        let ast::NormalAttr { safety, path, args: kind } = attr;
+        let ast::Meta { safety, path, args: kind } = attr;
 
         fmt!(cx, "#");
         match style {
@@ -44,13 +44,13 @@ impl Fmt for (ast::NormalAttr<'_>, ast::AttrStyle) {
         path.fmt(cx);
 
         match kind {
-            ast::AttrArgs::Unit => {}
-            ast::AttrArgs::Call(bracket, stream) => {
+            ast::MetaArgs::Unit => {}
+            ast::MetaArgs::Call(bracket, stream) => {
                 (bracket, ast::Orientation::Open).fmt(cx);
                 stream.fmt(cx);
                 (bracket, ast::Orientation::Close).fmt(cx);
             }
-            ast::AttrArgs::Assign(expr) => {
+            ast::MetaArgs::Assign(expr) => {
                 fmt!(cx, " = ");
                 expr.fmt(cx);
             }

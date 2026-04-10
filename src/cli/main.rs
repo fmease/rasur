@@ -1,19 +1,28 @@
+// Features
+#![feature(const_default)]
+#![feature(const_trait_impl)]
+#![feature(deref_patterns)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
+#![feature(never_type)]
 #![feature(super_let)]
 #![feature(type_alias_impl_trait)]
+// Lints
 #![deny(unused_must_use, rust_2018_idioms)]
+#![expect(incomplete_features, reason = "deref_patterns")]
 
 mod diagnostics;
+mod feature;
 mod interface;
 
 use crate::{
-    diagnostics::{Diag, RenderExt as _, SourcePathBuf},
+    diagnostics::{Diag, IntoDiag, SourcePathBuf},
     interface::ArtifactType,
 };
 use Default::default;
 use painter::Painter;
-use std::{io::Write, mem, process::ExitCode};
+use rasur::span::At as _;
+use std::{collections::HashSet, io::Write, mem, process::ExitCode};
 
 fn main() -> ExitCode {
     match try_main() {
@@ -76,7 +85,7 @@ fn try_main() -> Result<(), ()> {
             emit_tokens(tokens, shebang, frontmatter, source).unwrap();
         }
 
-        return report(store, &opts, &cx);
+        return report(store, default(), &opts, &cx);
     }
 
     let file = rasur::parser::parse(tokens, source, edition, &store);
@@ -87,7 +96,19 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let result = report(store, &opts, &cx);
+    let enabled_features = if opts.gatekeep
+        && let Ok(file) = &file
+    {
+        let (features, errors) = feature::enabled_features(file, source, edition);
+        for error in errors {
+            error.into_diag(&cx).render(&cx);
+        }
+        features
+    } else {
+        default()
+    };
+
+    let result = report(store, enabled_features, &opts, &cx);
 
     if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
@@ -108,6 +129,7 @@ fn try_main() -> Result<(), ()> {
 
 fn report(
     store: rasur::store::Store,
+    enabled_features: HashSet<rasur::feature::Feature>,
     opts: &interface::Opts,
     cx: &diagnostics::RenderCx<'_>,
 ) -> Result<(), ()> {
@@ -115,11 +137,15 @@ fn report(
 
     for error in store.errors {
         result = Err(());
-        error.render(cx);
+        error.into_diag(cx).render(cx);
     }
 
     if opts.gatekeep {
         for (feature, span) in store.features {
+            if enabled_features.contains(&feature) {
+                continue;
+            }
+
             let level = if feature.protected() {
                 result = Err(());
                 annotate_snippets::Level::ERROR
@@ -160,7 +186,7 @@ fn emit_tokens(
 
     let render = |p: &mut Painter<_>, span: rasur::span::Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
-        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", &source[span.range()]))
+        p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", source.at(span)))
     };
 
     if let Some(shebang) = shebang {

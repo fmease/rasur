@@ -151,10 +151,10 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_defaultness(&mut self) -> ast::Defaultness {
         if self.consume(weak::Default) {
             // FIXME: replace with `MinSpecialization` if the item ends up being a fn.
-            self.feature_no_span_fixme(Feature::Specialization);
+            self.feature_no_span_fixme(Feature::specialization);
             ast::Defaultness::Default
         } else if self.consume(TokenKind::Final) {
-            self.feature_no_span_fixme(Feature::FinalAssociatedFunctions);
+            self.feature_no_span_fixme(Feature::final_associated_functions);
             ast::Defaultness::Final
         } else {
             ast::Defaultness::Not
@@ -179,7 +179,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [] => {}
             [Qualifier::Type] => return self.fin_parse_ty_alias_item(defaultness),
             [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
-                self.feature_no_span_fixme(Feature::ConstBlockItems);
+                self.feature_no_span_fixme(Feature::const_block_items);
                 return self.fin_parse_const_block_item();
             }
             [qualifiers @ .., Qualifier::Const] => {
@@ -189,7 +189,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 };
                 if let ast::Tyness::Ty = tyness {
                     // FIXME: There's also `mgca_type_const_syntax`.
-                    self.feature_no_span_fixme(Feature::MinGenericConstArgs);
+                    self.feature_no_span_fixme(Feature::min_generic_const_args);
                 }
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
@@ -202,7 +202,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 return self.fin_parse_extern_crate_item();
             }
             [Qualifier::Reuse] => {
-                self.feature_no_span_fixme(Feature::FnDelegation);
+                self.feature_no_span_fixme(Feature::fn_delegation);
                 return self.fin_parse_delegation_item();
             }
             [qualifiers @ .., Qualifier::Mod] => {
@@ -234,7 +234,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Genness::Not, qualifiers),
                 };
                 if let ast::Genness::Gen = modifiers.genness {
-                    self.feature_no_span_fixme(Feature::GenBlocks);
+                    self.feature_no_span_fixme(Feature::gen_blocks);
                 }
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
@@ -249,7 +249,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
                 (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 if let ast::Constness::Const = modifiers.constness {
-                    self.feature_no_span_fixme(Feature::ConstTraitImpl);
+                    self.feature_no_span_fixme(Feature::const_trait_impl);
                 }
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 (modifiers.autoness, qualifiers) = match qualifiers {
@@ -257,11 +257,11 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Autoness::Not, qualifiers),
                 };
                 if let ast::Autoness::Auto = modifiers.autoness {
-                    self.feature_no_span_fixme(Feature::AutoTraits);
+                    self.feature_no_span_fixme(Feature::auto_traits);
                 }
                 (modifiers.impl_restriction, qualifiers) = match qualifiers {
                     [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
-                        self.feature_no_span_fixme(Feature::ImplRestriction);
+                        self.feature_no_span_fixme(Feature::impl_restriction);
                         let Ok(path) = path else { return Err(()) };
                         (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
                     }
@@ -279,11 +279,11 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ImplKind::Normal, qualifiers),
                 };
                 if let ImplKind::Delegation = kind {
-                    self.feature_no_span_fixme(Feature::FnDelegation);
+                    self.feature_no_span_fixme(Feature::fn_delegation);
                 }
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 if let ast::Constness::Const = constness {
-                    self.feature_no_span_fixme(Feature::ConstTraitImpl);
+                    self.feature_no_span_fixme(Feature::const_trait_impl);
                 }
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
@@ -320,7 +320,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 _ => {}
             },
             TokenKind::Macro => {
-                self.feature(Feature::DeclMacro, self.token.span);
+                self.feature(Feature::decl_macro, self.token.span);
                 self.advance();
                 return self.fin_parse_macro_def();
             }
@@ -427,13 +427,13 @@ impl<'src> Parser<'_, '_, 'src> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
         let params = self
             .parse_generic_param_list()?
-            .inspect(|_| self.feature_no_span_fixme(Feature::GenericConstItems))
+            .inspect(|_| self.feature_no_span_fixme(Feature::generic_const_items))
             .unwrap_or_default();
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         let preds = self
             .parse_where_clause()?
-            .inspect(|_| self.feature_no_span_fixme(Feature::GenericConstItems))
+            .inspect(|_| self.feature_no_span_fixme(Feature::generic_const_items))
             .unwrap_or_default();
         self.parse(TokenKind::Semicolon)?;
 
@@ -519,7 +519,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
             let safety = if this.consume(TokenKind::Unsafe) {
-                this.feature_no_span_fixme(Feature::UnsafeFields);
+                this.feature_no_span_fixme(Feature::unsafe_fields);
                 ast::Safety::Unsafe
             } else {
                 ast::Safety::Inherited
@@ -533,7 +533,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn parse_field_default(&mut self) -> Result<Option<ast::Expr<'src>>> {
         if self.consume(TokenKind::SingleEquals) {
-            self.feature_no_span_fixme(Feature::DefaultFieldValues);
+            self.feature_no_span_fixme(Feature::default_field_values);
             self.parse_expr().map(Some)
         } else {
             Ok(None)
@@ -659,7 +659,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         if contract.requires.is_some() || contract.ensures.is_some() {
-            self.feature_no_span_fixme(Feature::ContractInternals);
+            self.feature_no_span_fixme(Feature::contract_internals);
         }
 
         Ok(contract)
@@ -685,7 +685,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let constness = if let ast::Constness::Not = constness
             && self.consume(TokenKind::Const)
         {
-            self.feature_no_span_fixme(Feature::ConstTraitImpl);
+            self.feature_no_span_fixme(Feature::const_trait_impl);
             ast::Constness::Const
         } else {
             constness
@@ -694,7 +694,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let polarity = if self.token.kind == TokenKind::SingleBang
             && self.peek(1).kind != TokenKind::OpenCurlyBracket
         {
-            self.feature(Feature::NegativeImpls, self.token.span);
+            self.feature(Feature::negative_impls, self.token.span);
             self.advance();
             ast::ImplPolarity::Negative
         } else {
@@ -863,7 +863,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let params = self.parse_generic_param_list()?.unwrap_or_default();
 
         if self.consume(TokenKind::SingleEquals) {
-            self.feature_no_span_fixme(Feature::TraitAlias);
+            self.feature_no_span_fixme(Feature::trait_alias);
             return self.fin_parse_trait_alias_item(modifiers, binder, params);
         }
 

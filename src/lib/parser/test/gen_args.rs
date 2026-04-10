@@ -243,7 +243,7 @@ fn macro_call_gen_args() {
                 ])
             },
             bracket: ast::Bracket::Round,
-            stream: r!([]),
+            stream: r!([Token { kind: TokenKind::EndOfInput, .. }]),
         })))
     );
 

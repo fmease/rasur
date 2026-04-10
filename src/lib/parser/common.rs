@@ -44,7 +44,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     // FIXME: Temporary API, replace with parse(CommonIdent)
-    pub(super) fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
+    pub fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
         match self.consume_common_ident() {
             Some(ident) => Ok(ident),
             None => self.fatal(Error::UnexpectedToken(self.token, frags![TokenKind::CommonIdent])),
@@ -77,7 +77,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Some(ast::Ident::new(name, span))
     }
 
-    pub(super) fn fin_parse_delim_seq<T, C>(
+    pub fn fin_parse_delim_seq<T, C>(
         &mut self,
         delimiter: C,
         separator: TokenKind,
@@ -320,7 +320,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             && let Some(kind) = match self.source(self.token.span) {
                 weak::Pin::STR => {
-                    self.feature(Feature::PinErgonomics, self.token.span);
+                    self.feature(Feature::pin_ergonomics, self.token.span);
                     Some(ast::BorrowKind::Pin)
                 }
                 source => X::parse(source),
@@ -363,7 +363,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         error: impl FnOnce(Span) -> T,
         parse: impl FnOnce(&mut Self, &'src str) -> Result<Option<T>>,
     ) -> Result<T> {
-        self.feature(Feature::BuiltinSyntax, start);
+        self.feature(Feature::builtin_syntax, start);
         self.parse(TokenKind::Hash)?;
 
         let ident = self.parse_common_ident()?;

@@ -1,8 +1,9 @@
-use std::{fmt, ops::Range};
+use std::fmt;
 
 type RawByteIndex = u32;
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive_const(Default)]
 pub struct ByteIndex {
     raw: RawByteIndex,
 }
@@ -40,7 +41,8 @@ impl std::ops::AddAssign for ByteIndex {
 }
 
 // FIXME: Make the fields fully private.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
+#[derive_const(Default)]
 pub struct Span {
     pub(crate) start: ByteIndex,
     pub(crate) end: ByteIndex,
@@ -59,11 +61,6 @@ impl Span {
 
     pub fn until(self, other: Span) -> Span {
         Self::new(self.start, other.start)
-    }
-
-    #[must_use]
-    pub const fn range(self) -> Range<usize> {
-        self.start.raw as usize..self.end.raw as usize
     }
 
     pub fn len(self) -> usize {
@@ -95,6 +92,12 @@ impl fmt::Debug for Span {
     }
 }
 
+impl From<Span> for std::ops::Range<usize> {
+    fn from(span: Span) -> Self {
+        span.start.raw as usize..span.end.raw as usize
+    }
+}
+
 pub struct Spanned<T> {
     pub bare: T,
     pub span: Span,
@@ -109,5 +112,15 @@ impl<T> Spanned<T> {
 impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}@{:?}", self.bare, self.span)
+    }
+}
+
+pub trait At {
+    fn at(&self, span: Span) -> &Self;
+}
+
+impl At for str {
+    fn at(&self, span: Span) -> &Self {
+        &self[std::ops::Range::from(span)]
     }
 }

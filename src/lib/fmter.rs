@@ -6,7 +6,12 @@ mod path;
 mod stmt;
 mod ty;
 
-use crate::{ast, edition::Edition, lexer::Frontmatter, span::Span};
+use crate::{
+    ast,
+    edition::Edition,
+    lexer::Frontmatter,
+    span::{At as _, Span},
+};
 use std::fmt::Write as _;
 
 // FIXME: Reproduce comments.
@@ -63,7 +68,7 @@ struct Cx<'src> {
 
 impl<'src> Cx<'src> {
     fn source(&self, span: Span) -> &'src str {
-        &self.source[span.range()]
+        self.source.at(span)
     }
 
     fn indent(&mut self) {
@@ -83,8 +88,8 @@ impl<'src> Cx<'src> {
         // FIXME: Look into cfg_attrs, too
         // FIXME: Support rustfmt_skip or whatever that legacy attr is called
         attrs.iter().any(|attr| {
-            let ast::AttrKind::Normal(attr) = &attr.kind else { return false };
-            let ast::AttrArgs::Unit = attr.args else { return false };
+            let ast::AttrKind::Regular(attr) = &attr.kind else { return false };
+            let ast::MetaArgs::Unit = attr.args else { return false };
 
             let &[
                 ast::PathSeg { ident: ast::Ident!(tool), args: () },

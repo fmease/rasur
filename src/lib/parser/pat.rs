@@ -187,7 +187,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             (ast::Mutability::Not, ast::ByRef::No) => {}
             (mut_, by_ref) => {
                 if let ast::Mutability::Mut = mut_ {
-                    self.feature_no_span_fixme(Feature::MutRef);
+                    self.feature_no_span_fixme(Feature::mut_ref);
                 }
                 let binder = self.parse_common_ident()?;
                 return self.fin_parse_binding_pat(mut_, by_ref, binder);
@@ -197,7 +197,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         match self.token.kind {
             // FIXME: Should this be a prefix op? Then "OrPolicy::Yield" would come for free.
             TokenKind::Box => {
-                self.feature(Feature::BoxPatterns, self.token.span);
+                self.feature(Feature::box_patterns, self.token.span);
                 self.advance();
                 return Ok(ast::Pat::Box(Box::new(self.parse_pat_where(
                     OrPolicy::Yield,
@@ -265,7 +265,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::Pat::Slice(elems));
             }
             TokenKind::SingleBang => {
-                self.feature(Feature::NeverPatterns, self.token.span);
+                self.feature(Feature::never_patterns, self.token.span);
                 self.advance();
                 return Ok(ast::Pat::Never);
             }
@@ -298,7 +298,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     self.advance();
 
                     if path.ext.is_some() {
-                        self.feature_no_span_fixme(Feature::MoreQualifiedPaths);
+                        self.feature_no_span_fixme(Feature::more_qualified_paths);
                     }
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
@@ -317,11 +317,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         let box_ = self.consume(TokenKind::Box);
                         if box_ {
-                            self.feature_no_span_fixme(Feature::BoxPatterns);
+                            self.feature_no_span_fixme(Feature::box_patterns);
                         }
                         let mut_ = self.parse_mutability();
                         if let ast::Mutability::Mut = mut_ {
-                            self.feature_no_span_fixme(Feature::MutRef);
+                            self.feature_no_span_fixme(Feature::mut_ref);
                         }
                         let by_ref = self.parse_by_ref();
 

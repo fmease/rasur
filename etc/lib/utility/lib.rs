@@ -73,11 +73,11 @@ unsafe impl<T> std::ops::DerefPure for List1<T> {}
 
 impl<T: fmt::Debug> fmt::Debug for List1<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.raw.fmt(f)
+        self.as_slice().fmt(f)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum RawList1<T> {
     Inline(Option<T>),
     OutOfLine(Vec<T>),

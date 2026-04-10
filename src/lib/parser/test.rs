@@ -16,7 +16,7 @@ use crate::{
     edition::Edition,
     error::Error,
     lexer::{self, lex},
-    span::{ByteIndex, Span},
+    span::{At as _, ByteIndex, Span},
     store::{Buffer, Store},
     token::TokenKind,
 };
@@ -61,10 +61,10 @@ fn parse_file_full(source: Normalized<&str>, edition: Edition) -> Result<FullFil
     let source = source.into_inner();
 
     Ok(FullFile {
-        shebang: shebang.map(|span| &source[span.range()]),
+        shebang: shebang.map(|span| source.at(span)),
         frontmatter: frontmatter.map(|frontmatter| Frontmatter {
-            infostring: &source[frontmatter.infostring.range()],
-            content: &source[frontmatter.content.range()],
+            infostring: source.at(frontmatter.infostring),
+            content: source.at(frontmatter.content),
         }),
         file,
     })

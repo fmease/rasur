@@ -290,7 +290,10 @@ fn ticked_idents() {
         "M! { 'if }",
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([ast::Token { kind: ast::TokenKind::TickedIdent, .. }]),
+                stream: r!([
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::EndOfInput, .. }
+                ]),
                 ..
             })),
             ..
@@ -343,9 +346,10 @@ fn raw_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
-                    ast::Token { kind: ast::TokenKind::Hash, .. },
-                    ast::Token { kind: ast::TokenKind::If, .. }
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::Hash, .. },
+                    Token { kind: TokenKind::If, .. },
+                    Token { kind: TokenKind::EndOfInput, .. }
                 ]),
                 ..
             })),
@@ -388,8 +392,9 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::CharLit, .. },
-                    ast::Token { kind: ast::TokenKind::LitSuffix, .. }
+                    Token { kind: TokenKind::CharLit, .. },
+                    Token { kind: TokenKind::LitSuffix, .. },
+                    Token { kind: TokenKind::EndOfInput, .. }
                 ]),
                 ..
             })),
@@ -404,8 +409,9 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
-                    ast::Token { kind: ast::TokenKind::TickedIdent, .. }
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::EndOfInput, .. }
                 ]),
                 ..
             })),
@@ -422,9 +428,10 @@ fn char_lits_or_ticked_idents() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
                 stream: r!([
-                    ast::Token { kind: ast::TokenKind::TickedIdent, .. },
-                    ast::Token { kind: ast::TokenKind::QuestionMark, .. },
-                    ast::Token { kind: ast::TokenKind::TickedIdent, .. }
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::QuestionMark, .. },
+                    Token { kind: TokenKind::TickedIdent, .. },
+                    Token { kind: TokenKind::EndOfInput, .. }
                 ]),
                 ..
             })),

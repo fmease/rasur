@@ -155,6 +155,7 @@ dependencies = [
  "clap",
  "painter",
  "rasur",
+ "utility",
 ]
 
 [[package]]

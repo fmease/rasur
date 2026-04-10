@@ -4,18 +4,19 @@ use crate::{
     edition::Edition,
     error::Error,
     feature::Feature,
-    span::{ByteIndex, Span},
+    span::{At as _, ByteIndex, Span},
     store::Store,
     token::{Token, TokenKind},
 };
 
 pub struct Parser<'tok, 'sto, 'src> {
     tokens: &'tok [Token],
-    store: &'sto Store,
+    pub store: &'sto Store,
     // FIXME: pub mut(self)
     pub token: Token,
     index: usize,
-    source: &'src str,
+    // FIXME: pub mut(self)
+    pub source: &'src str,
     // FIXME: pub mut(self)
     pub edition: Edition,
 }
@@ -33,7 +34,7 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
     }
 
     pub fn source(&self, span: Span) -> &'src str {
-        &self.source[span.range()]
+        self.source.at(span)
     }
 
     pub(super) fn ident(&self, span: Span) -> ast::Ident<'src> {
@@ -135,7 +136,7 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
         self.store.errors.add(error);
     }
 
-    pub(super) fn fatal<T>(&self, error: Error) -> Result<T> {
+    pub fn fatal<T>(&self, error: Error) -> Result<T> {
         self.error(error);
         Err(())
     }

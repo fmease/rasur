@@ -113,7 +113,10 @@ fn attrs() {
         Rust2015,
         "#[a]0",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, kind: ast::AttrKind::Normal(_) }]),
+            attrs: r!([ast::Attr {
+                style: ast::AttrStyle::Outer,
+                kind: ast::AttrKind::Regular(_)
+            }]),
             kind: ast::ExprKind::Lit(_),
         })
     );
@@ -126,7 +129,7 @@ fn attrs() {
             attrs: r!([
                 ast::Attr {
                     style: ast::AttrStyle::Outer,
-                    kind: ast::AttrKind::Normal(ast::NormalAttr {
+                    kind: ast::AttrKind::Regular(ast::Meta {
                         path: ast::Path {
                             segs: r!([ast::PathSeg { ident: ast::Ident!("a"), .. }])
                         },
@@ -135,7 +138,7 @@ fn attrs() {
                 },
                 ast::Attr {
                     style: ast::AttrStyle::Outer,
-                    kind: ast::AttrKind::Normal(ast::NormalAttr {
+                    kind: ast::AttrKind::Regular(ast::Meta {
                         path: ast::Path {
                             segs: r!([ast::PathSeg { ident: ast::Ident!("b"), .. }])
                         },

@@ -1,148 +1,130 @@
 use std::fmt;
 
-#[derive(Clone, Copy)]
-pub enum Feature {
-    /// <https://github.com/rust-lang/rust/issues/118898>.
-    AsyncForLoop,
-    /// <https://github.com/rust-lang/rust/issues/62290>.
-    AsyncTraitBounds,
-    /// <https://github.com/rust-lang/rust/issues/13231>.
-    AutoTraits,
-    /// <https://github.com/rust-lang/rust/issues/29641>.
-    BoxPatterns,
-    /// <https://github.com/rust-lang/rust/issues/110680>.
-    BuiltinSyntax,
-    /// <https://github.com/rust-lang/rust/issues/97362>.
-    ClosureLifetimeBinder,
-    /// <https://github.com/rust-lang/rust/issues/149226>.
-    ConstBlockItems,
-    /// <https://github.com/rust-lang/rust/issues/106003>.
-    ConstClosures,
-    /// <https://github.com/rust-lang/rust/issues/143874>.
-    ConstTraitImpl,
-    /// <https://github.com/rust-lang/rust/issues/128044>.
-    ContractInternals,
-    /// <https://github.com/rust-lang/rust/issues/43122>.
-    Coroutines,
-    /// <https://github.com/rust-lang/rust/issues/39412>.
-    DeclMacro,
-    /// <https://github.com/rust-lang/rust/issues/132162>.
-    DefaultFieldValues,
-    /// <https://github.com/rust-lang/rust/issues/132290>.
-    ErgonomicClones,
-    /// <https://github.com/rust-lang/rust/issues/112788>.
-    ExplicitTailCalls,
-    /// <https://github.com/rust-lang/rust/issues/131179>.
-    FinalAssociatedFunctions,
-    /// <https://github.com/rust-lang/rust/issues/118212>.
-    FnDelegation,
-    /// <https://github.com/rust-lang/rust/issues/136889>.
-    Frontmatter,
-    /// <https://github.com/rust-lang/rust/issues/117078>.
-    GenBlocks,
-    /// <https://github.com/rust-lang/rust/issues/129967>.
-    GuardPatterns,
-    /// <https://github.com/rust-lang/rust/issues/113521>.
-    GenericConstItems,
-    /// <https://github.com/rust-lang/rust/issues/105077>.
-    ImplRestriction,
-    /// <https://github.com/rust-lang/rust/issues/132980>.
-    MinGenericConstArgs,
-    /// <https://github.com/rust-lang/rust/issues/31844>.
-    MinSpecialization,
-    /// <https://github.com/rust-lang/rust/issues/86935>.
-    MoreQualifiedPaths,
-    /// <https://github.com/rust-lang/rust/issues/123076>.
-    MutRef,
-    NegativeBounds,
-    /// <https://github.com/rust-lang/rust/issues/68318>.
-    NegativeImpls,
-    /// <https://github.com/rust-lang/rust/issues/118155>.
-    NeverPatterns,
-    /// <https://github.com/rust-lang/rust/issues/130494>.
-    PinErgonomics,
-    /// <https://github.com/rust-lang/rust/issues/121618>.
-    PostfixMatch,
-    /// <https://github.com/rust-lang/rust/issues/109417>.
-    ReturnTypeNotation,
-    /// <https://github.com/rust-lang/rust/issues/31844>.
-    Specialization,
-    /// <https://github.com/rust-lang/rust/issues/41517>.
-    TraitAlias,
-    /// <https://github.com/rust-lang/rust/issues/31436>.
-    TryBlocks,
-    /// <https://github.com/rust-lang/rust/issues/149488>.
-    TryBlocksHeterogeneous,
-    /// <https://github.com/rust-lang/rust/issues/130516>.
-    UnsafeBinders,
-    /// <https://github.com/rust-lang/rust/issues/132922>.
-    UnsafeFields,
-    /// <https://github.com/rust-lang/rust/issues/115590>.
-    WhereClauseAttrs,
-    /// <https://github.com/rust-lang/rust/issues/96373>.
-    YeetExpr,
-    /// <https://github.com/rust-lang/rust/issues/43122>.
-    YieldExpr,
+macro_rules! features {
+    ($( $name:ident ),+ $(,)?)  => {
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[allow(nonstandard_style)]
+        pub enum Feature {
+            $( $name ),+
+        }
+
+        impl Feature {
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $( Self::$name => stringify!($name) ),+
+                }
+            }
+        }
+
+        impl std::str::FromStr for Feature {
+            type Err = ();
+
+            fn from_str(source: &str) -> Result<Self, Self::Err> {
+                Ok(match source {
+                    $( stringify!($name) => Self::$name,)+
+                    _ => return Err(()),
+                })
+            }
+        }
+    }
+}
+
+features! {
+    // <https://github.com/rust-lang/rust/issues/118898>.
+    async_for_loop,
+    // <https://github.com/rust-lang/rust/issues/62290>.
+    async_trait_bounds,
+    // <https://github.com/rust-lang/rust/issues/13231>.
+    auto_traits,
+    // <https://github.com/rust-lang/rust/issues/29641>.
+    box_patterns,
+    // <https://github.com/rust-lang/rust/issues/110680>.
+    builtin_syntax,
+    // <https://github.com/rust-lang/rust/issues/97362>.
+    closure_lifetime_binder,
+    // <https://github.com/rust-lang/rust/issues/149226>.
+    const_block_items,
+    // <https://github.com/rust-lang/rust/issues/106003>.
+    const_closures,
+    // <https://github.com/rust-lang/rust/issues/143874>.
+    const_trait_impl,
+    // <https://github.com/rust-lang/rust/issues/128044>.
+    contract_internals,
+    // <https://github.com/rust-lang/rust/issues/43122>.
+    coroutines,
+    // <https://github.com/rust-lang/rust/issues/39412>.
+    decl_macro,
+    // <https://github.com/rust-lang/rust/issues/132162>.
+    default_field_values,
+    // <https://github.com/rust-lang/rust/issues/132290>.
+    ergonomic_clones,
+    // <https://github.com/rust-lang/rust/issues/112788>.
+    explicit_tail_calls,
+    // <https://github.com/rust-lang/rust/issues/131179>.
+    final_associated_functions,
+    // <https://github.com/rust-lang/rust/issues/118212>.
+    fn_delegation,
+    // <https://github.com/rust-lang/rust/issues/136889>.
+    frontmatter,
+    // <https://github.com/rust-lang/rust/issues/117078>.
+    gen_blocks,
+    // <https://github.com/rust-lang/rust/issues/129967>.
+    guard_patterns,
+    // <https://github.com/rust-lang/rust/issues/113521>.
+    generic_const_items,
+    // <https://github.com/rust-lang/rust/issues/105077>.
+    impl_restriction,
+    // <https://github.com/rust-lang/rust/issues/132980>.
+    min_generic_const_args,
+    // <https://github.com/rust-lang/rust/issues/31844>.
+    min_specialization,
+    // <https://github.com/rust-lang/rust/issues/86935>.
+    more_qualified_paths,
+    // <https://github.com/rust-lang/rust/issues/123076>.
+    mut_ref,
+    negative_bounds,
+    // <https://github.com/rust-lang/rust/issues/68318>.
+    negative_impls,
+    // <https://github.com/rust-lang/rust/issues/118155>.
+    never_patterns,
+    // <https://github.com/rust-lang/rust/issues/130494>.
+    pin_ergonomics,
+    // <https://github.com/rust-lang/rust/issues/121618>.
+    postfix_match,
+    // <https://github.com/rust-lang/rust/issues/109417>.
+    return_type_notation,
+    // <https://github.com/rust-lang/rust/issues/31844>.
+    specialization,
+    // <https://github.com/rust-lang/rust/issues/41517>.
+    trait_alias,
+    // <https://github.com/rust-lang/rust/issues/31436>.
+    try_blocks,
+    // <https://github.com/rust-lang/rust/issues/149488>.
+    try_blocks_heterogeneous,
+    // <https://github.com/rust-lang/rust/issues/130516>.
+    unsafe_binders,
+    // <https://github.com/rust-lang/rust/issues/132922>.
+    unsafe_fields,
+    // <https://github.com/rust-lang/rust/issues/115590>.
+    where_clause_attrs,
+    // <https://github.com/rust-lang/rust/issues/96373>.
+    yeet_expr,
+    // <https://github.com/rust-lang/rust/issues/43122>.
+    yield_expr,
 }
 
 impl Feature {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::AsyncForLoop => "async_for_loop",
-            Self::AsyncTraitBounds => "async_trait_bounds",
-            Self::AutoTraits => "auto_traits",
-            Self::BoxPatterns => "box_patterns",
-            Self::BuiltinSyntax => "builtin_syntax",
-            Self::ClosureLifetimeBinder => "closure_lifetime_binder",
-            Self::ConstBlockItems => "const_block_items",
-            Self::ConstClosures => "const_closures",
-            Self::ConstTraitImpl => "const_trait_impl",
-            Self::ContractInternals => "contract_internals",
-            Self::Coroutines => "coroutines",
-            Self::DeclMacro => "decl_macro",
-            Self::DefaultFieldValues => "default_field_values",
-            Self::ErgonomicClones => "ergonomic_clones",
-            Self::ExplicitTailCalls => "explicit_tail_calls",
-            Self::FinalAssociatedFunctions => "final_associated_functions",
-            Self::FnDelegation => "fn_delegation",
-            Self::Frontmatter => "frontmatter",
-            Self::GenBlocks => "gen_blocks",
-            Self::GenericConstItems => "generic_const_items",
-            Self::GuardPatterns => "guard_patterns",
-            Self::ImplRestriction => "impl_restriction",
-            Self::MinGenericConstArgs => "min_generic_const_args",
-            Self::MinSpecialization => "min_specialization",
-            Self::MoreQualifiedPaths => "more_qualified_paths",
-            Self::MutRef => "mut_ref",
-            Self::NegativeBounds => "negative_bounds",
-            Self::NegativeImpls => "negative_impls",
-            Self::NeverPatterns => "never_patterns",
-            Self::PinErgonomics => "pin_ergonomics",
-            Self::PostfixMatch => "postfix_match",
-            Self::ReturnTypeNotation => "return_type_notation",
-            Self::Specialization => "specialization",
-            Self::TraitAlias => "trait_alias",
-            Self::TryBlocks => "try_blocks",
-            Self::TryBlocksHeterogeneous => "try_blocks_heterogeneous",
-            Self::UnsafeBinders => "unsafe_binders",
-            Self::UnsafeFields => "unsafe_fields",
-            Self::WhereClauseAttrs => "where_clause_attrs",
-            Self::YeetExpr => "yeet_expr",
-            Self::YieldExpr => "yield_expr",
-        }
-    }
-
-    /// See also <https://github.com/rust-lang/rust/issues/154045>.
+    // See also <https://github.com/rust-lang/rust/issues/154045>.
     pub const fn protected(self) -> bool {
         match self {
-            | Self::AutoTraits
-            | Self::BoxPatterns
-            | Self::DeclMacro
-            | Self::MinSpecialization
-            | Self::NegativeImpls
-            | Self::Specialization
-            | Self::TraitAlias
-            | Self::TryBlocks => false,
+            | Self::auto_traits
+            | Self::box_patterns
+            | Self::decl_macro
+            | Self::min_specialization
+            | Self::negative_impls
+            | Self::specialization
+            | Self::trait_alias
+            | Self::try_blocks => false,
             _ => true,
         }
     }

@@ -182,7 +182,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::Ty::Inferred);
             }
             TokenKind::Unsafe => {
-                self.feature(Feature::UnsafeBinders, self.token.span);
+                self.feature(Feature::unsafe_binders, self.token.span);
                 self.advance();
                 self.parse(TokenPrefix::LessThan)?;
                 let bound_vars = self.fin_parse_generic_param_list()?;
@@ -510,7 +510,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         if !attrs.is_empty() {
-            self.feature_no_span_fixme(Feature::WhereClauseAttrs);
+            self.feature_no_span_fixme(Feature::where_clause_attrs);
         }
 
         let bound_vars = self.parse_for_binder()?;
@@ -729,11 +729,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
             _ => ast::BoundConstness::Never,
         };
         if let ast::BoundConstness::Always | ast::BoundConstness::Maybe = constness {
-            self.feature_no_span_fixme(Feature::ConstTraitImpl);
+            self.feature_no_span_fixme(Feature::const_trait_impl);
         }
 
         let asyncness = if self.consume(TokenKind::Async) {
-            self.feature_no_span_fixme(Feature::AsyncTraitBounds);
+            self.feature_no_span_fixme(Feature::async_trait_bounds);
             ast::BoundAsyncness::Always
         } else {
             ast::BoundAsyncness::Never
@@ -746,7 +746,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         {
             match self.token.kind {
                 TokenKind::SingleBang => {
-                    self.feature(Feature::NegativeBounds, self.token.span);
+                    self.feature(Feature::negative_bounds, self.token.span);
                     self.advance();
                     ast::BoundPolarity::Negative
                 }

@@ -3,7 +3,7 @@ use rasur::{
     error::{Error, InvalidScalarPlace, List1},
     lexer::IdentKind,
     parser::Fragment,
-    span::Span,
+    span::{At as _, Span},
     token::{Repr, Token, TokenKind},
 };
 use std::{
@@ -11,156 +11,178 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn convert(error: Error, cx: &RenderCx<'_>) -> Diag {
-    match error {
-        Error::AmbiguousPlus(span) => Diag::error("ambiguous `+`").highlight(span),
-        Error::AutoTraitAlias => Diag::error("trait aliases cannot be marked `auto`"),
-        Error::DefaultOnInvalidItem(span) => {
-            Diag::error("this item kind may not be marked with `default`").highlight(span)
-        }
-        Error::FinalOnInvalidItem(span) => {
-            Diag::error("this item kind may not be marked with `final`").highlight(span)
-        }
-        Error::UnexpectedToken(actual, expected) => {
-            let span = actual.span;
-            let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
-            Diag::error(format!("found {actual} but expected {}", expected.to_diag_str(())))
-                .labeled_highlight(span, "unexpected token")
-        }
-        Error::InvalidAssocItemKind(span) => {
-            Diag::error("invalid associated item kind").highlight(span)
-        }
-        Error::MissingClosingDelimiters(span) => Diag::error("missing closing delimiter(s)")
-            .labeled_highlight(span, "missing delimiter(s)"),
-        Error::UnexpectedClosingDelimiter(actual) => {
-            let span = actual.span;
-            let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
-            Diag::error(format!("found unexpected closing delimiter {actual}"))
-                .labeled_highlight(span, "unexpected delimiter")
-        }
-        Error::InvalidExternItemKind(span) => {
-            Diag::error("invalid extern item kind").highlight(span)
-        }
-        Error::LifetimeObjectTyWithoutPlus(span) => {
-            Diag::error("lifetime object type without plus").highlight(span)
-        }
-        Error::ExpectedTraitFoundTy(span) => {
-            Diag::error("found type expected trait").highlight(span)
-        }
-        Error::ModifiersOnInvalidBound => Diag::error("this bound kind may not have modifiers"),
-        Error::HigherRankedBinderOnInvalidBound(span) => {
-            Diag::error("this bound kind may not have a binder").highlight(span)
-        }
-        Error::MisplacedReceiver(span) => Diag::error("misplaced receiver").highlight(span),
-        Error::ChainedComparison(span) => {
-            Diag::error("comparison operators cannot be chained").highlight(span)
-        }
-        Error::TyRelMacroCall(span) => Diag::error("type-relative macro call").highlight(span),
-        Error::InvalidExtraFieldProjections(span) => {
-            Diag::error("invalid extra field accesses").highlight(span)
-        }
-        Error::ReservedLabel(span) => Diag::error("reserved label").highlight(span),
-        Error::ReservedLifetime(span) => Diag::error("reserved lifetime").highlight(span),
-        Error::ReservedPrefix(span) => Diag::error("reserved prefix").highlight(span),
-        Error::GenericArgsOnFieldExpr(span) => {
-            Diag::error("generic args on field expression").highlight(span)
-        }
-        Error::InvalidItemPrefix(span) => Diag::error("invalid item modifiers").highlight(span),
-        Error::InvalidTyPrefix(span) => Diag::error("invalid type modifiers").highlight(span),
-        Error::InvalidExprPrefix(span) => {
-            Diag::error("invalid expression modifiers").highlight(span)
-        }
-        Error::TraitImplModifierInInherentImpl(modifier) => {
-            Diag::error(format!("trait impl modifier `{modifier}` in inherent impl"))
-        }
-        Error::UnsafeTraitAlias => Diag::error("trait aliases cannot be marked `unsafe`"),
-        Error::InvalidParenthesizedBound => Diag::error("this bound kind may not be parenthesized"),
-        Error::VisibilityOnInvalidItem(span) => {
-            Diag::error("this item kind may not be marked with visibility").highlight(span)
-        }
-        Error::ParametrizedWhereClause(span) => {
-            Diag::error("generic parameter lists on where-clauses are reserved").highlight(span)
-        }
-        Error::InvalidOpAfterCast(span) => {
-            Diag::error("invalid operator following a cast").highlight(span)
-        }
-        Error::InvalidOpAfterBoundary(span) => {
-            Diag::error("invalid operator following a boundary").highlight(span)
-        }
-        Error::UnknownBuiltinSyntax(span) => Diag::error("unknown built-in syntax").highlight(span),
-        Error::InvalidLetChain(span) => Diag::error("invalid let-chain").highlight(span),
-        Error::ReuseInherentImpl => Diag::error("inherent impls cannot be reused"),
-        Error::InvalidRawIdent(IdentKind::Normal, span) => {
-            Diag::error("invalid raw identifier").highlight(span)
-        }
-        Error::InvalidRawIdent(IdentKind::Ticked, span) => {
-            Diag::error("invalid raw ticked identifier").highlight(span)
-        }
-        Error::UnterminatedBlockComment(span) => {
-            Diag::error("unterminated block comment").highlight(span)
-        }
-        Error::UnterminatedCharLit(span) => {
-            Diag::error("unterminated char literal").highlight(span)
-        }
-        Error::UnterminatedStrLit(span) => {
-            Diag::error("unterminated string literal").highlight(span)
-        }
-        Error::StrLitGuardTooLarge(span) => {
-            Diag::error("string literal guard too large").highlight(span)
-        }
-        Error::ReservedMultiHash(span) => Diag::error("reserved multi-hash").highlight(span),
-        Error::ImplRestrictedTraitAlias => Diag::error("trait aliases cannot be impl-restricted"),
-        Error::InvalidEscapeSequence(span) => {
-            Diag::error("invalid escape sequence").highlight(span)
-        }
-        Error::EmptyCharLit(span) => Diag::error("empty char literal").highlight(span),
-        Error::MultiScalarCharLit(span) => Diag::error("multi-scalar char literal").highlight(span),
-        Error::InvalidScalar(char, place, span) => {
-            let place = match place {
-                InvalidScalarPlace::File => "",
-                InvalidScalarPlace::FrontmatterBody => " in frontmatter body",
-                InvalidScalarPlace::DocComment => " in doc comment",
-                InvalidScalarPlace::Lit => " in literal",
-            };
-            Diag::error(format!("invalid scalar U+{:04X}{place}", char as u32)).highlight(span)
-        }
-        Error::InvalidStrLitDelimiter(span) => {
-            Diag::error("invalid string literal delimiter").highlight(span)
-        }
-        Error::EmptyNumLit(span) => Diag::error("empty number literal").highlight(span),
-        Error::InvalidDigit(span) => Diag::error("invalid digit").highlight(span),
-        Error::InvalidAbiStr(span) => Diag::error("invalid ABI string").highlight(span),
-        Error::InvalidLitSuffix(span) => Diag::error("invalid literal suffix").highlight(span),
-        Error::NonDecFloatLit(span) => Diag::error("non-decimal float literal").highlight(span),
-        Error::ParenthesizedGuardedPatInMatch => {
-            Diag::error("parenthesized guarded pattern in match expression")
-        }
-        Error::EmptyExponent(span) => Diag::error("empty exponent").highlight(span),
-        Error::InvalidFrontmatterInfostring(span) => {
-            Diag::error("invalid frontmatter infostring").highlight(span)
-        }
-        Error::FrontmatterOpeningTooLarge(span) => {
-            Diag::error("frontmatter opening too large").highlight(span)
-        }
-        Error::UnterminatedFrontmatter(span) => {
-            Diag::error("unterminated frontmatter").highlight(span)
-        }
-        Error::InvalidFrontmatterTrailer(span) => {
-            Diag::error("extra characters after frontmatter closing").highlight(span)
-        }
-        Error::ForbiddenInnerAttrs => Diag::error("inner attributes are forbidden in this context"),
-        Error::ForbiddenOuterAttrs => Diag::error("outer attributes are forbidden in this context"),
-        Error::InvalidNumericIdent(span) => {
-            Diag::error("invalid numeric identifier").highlight(span)
-        }
-        Error::AbiStrSuffix(span) => Diag::error("suffix on ABI string").highlight(span),
-        Error::TickFollowingRawTickedIdent(span) => {
-            Diag::error("tick immediately following raw ticked identifier").highlight(span)
+impl IntoDiag for Error {
+    fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
+        match self {
+            Self::AmbiguousPlus(span) => Diag::error("ambiguous `+`").highlight(span),
+            Self::AutoTraitAlias => Diag::error("trait aliases cannot be marked `auto`"),
+            Self::DefaultOnInvalidItem(span) => {
+                Diag::error("this item kind may not be marked with `default`").highlight(span)
+            }
+            Self::FinalOnInvalidItem(span) => {
+                Diag::error("this item kind may not be marked with `final`").highlight(span)
+            }
+            Self::UnexpectedToken(actual, expected) => {
+                unexpected_token(actual, &expected.to_diag_str(()), cx)
+            }
+            Self::InvalidAssocItemKind(span) => {
+                Diag::error("invalid associated item kind").highlight(span)
+            }
+            Self::MissingClosingDelimiters(span) => Diag::error("missing closing delimiter(s)")
+                .labeled_highlight(span, "missing delimiter(s)"),
+            Self::UnexpectedClosingDelimiter(actual) => {
+                let span = actual.span;
+                let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
+                Diag::error(format!("found unexpected closing delimiter {actual}"))
+                    .labeled_highlight(span, "unexpected delimiter")
+            }
+            Self::InvalidExternItemKind(span) => {
+                Diag::error("invalid extern item kind").highlight(span)
+            }
+            Self::LifetimeObjectTyWithoutPlus(span) => {
+                Diag::error("lifetime object type without plus").highlight(span)
+            }
+            Self::ExpectedTraitFoundTy(span) => {
+                Diag::error("found type expected trait").highlight(span)
+            }
+            Self::ModifiersOnInvalidBound => Diag::error("this bound kind may not have modifiers"),
+            Self::HigherRankedBinderOnInvalidBound(span) => {
+                Diag::error("this bound kind may not have a binder").highlight(span)
+            }
+            Self::MisplacedReceiver(span) => Diag::error("misplaced receiver").highlight(span),
+            Self::ChainedComparison(span) => {
+                Diag::error("comparison operators cannot be chained").highlight(span)
+            }
+            Self::TyRelMacroCall(span) => Diag::error("type-relative macro call").highlight(span),
+            Self::InvalidExtraFieldProjections(span) => {
+                Diag::error("invalid extra field accesses").highlight(span)
+            }
+            Self::ReservedLabel(span) => Diag::error("reserved label").highlight(span),
+            Self::ReservedLifetime(span) => Diag::error("reserved lifetime").highlight(span),
+            Self::ReservedPrefix(span) => Diag::error("reserved prefix").highlight(span),
+            Self::GenericArgsOnFieldExpr(span) => {
+                Diag::error("generic args on field expression").highlight(span)
+            }
+            Self::InvalidItemPrefix(span) => Diag::error("invalid item modifiers").highlight(span),
+            Self::InvalidTyPrefix(span) => Diag::error("invalid type modifiers").highlight(span),
+            Self::InvalidExprPrefix(span) => {
+                Diag::error("invalid expression modifiers").highlight(span)
+            }
+            Self::TraitImplModifierInInherentImpl(modifier) => {
+                Diag::error(format!("trait impl modifier `{modifier}` in inherent impl"))
+            }
+            Self::UnsafeTraitAlias => Diag::error("trait aliases cannot be marked `unsafe`"),
+            Self::InvalidParenthesizedBound => {
+                Diag::error("this bound kind may not be parenthesized")
+            }
+            Self::VisibilityOnInvalidItem(span) => {
+                Diag::error("this item kind may not be marked with visibility").highlight(span)
+            }
+            Self::ParametrizedWhereClause(span) => {
+                Diag::error("generic parameter lists on where-clauses are reserved").highlight(span)
+            }
+            Self::InvalidOpAfterCast(span) => {
+                Diag::error("invalid operator following a cast").highlight(span)
+            }
+            Self::InvalidOpAfterBoundary(span) => {
+                Diag::error("invalid operator following a boundary").highlight(span)
+            }
+            Self::UnknownBuiltinSyntax(span) => {
+                Diag::error("unknown built-in syntax").highlight(span)
+            }
+            Self::InvalidLetChain(span) => Diag::error("invalid let-chain").highlight(span),
+            Self::ReuseInherentImpl => Diag::error("inherent impls cannot be reused"),
+            Self::InvalidRawIdent(IdentKind::Normal, span) => {
+                Diag::error("invalid raw identifier").highlight(span)
+            }
+            Self::InvalidRawIdent(IdentKind::Ticked, span) => {
+                Diag::error("invalid raw ticked identifier").highlight(span)
+            }
+            Self::UnterminatedBlockComment(span) => {
+                Diag::error("unterminated block comment").highlight(span)
+            }
+            Self::UnterminatedCharLit(span) => {
+                Diag::error("unterminated char literal").highlight(span)
+            }
+            Self::UnterminatedStrLit(span) => {
+                Diag::error("unterminated string literal").highlight(span)
+            }
+            Self::StrLitGuardTooLarge(span) => {
+                Diag::error("string literal guard too large").highlight(span)
+            }
+            Self::ReservedMultiHash(span) => Diag::error("reserved multi-hash").highlight(span),
+            Self::ImplRestrictedTraitAlias => {
+                Diag::error("trait aliases cannot be impl-restricted")
+            }
+            Self::InvalidEscapeSequence(span) => {
+                Diag::error("invalid escape sequence").highlight(span)
+            }
+            Self::EmptyCharLit(span) => Diag::error("empty char literal").highlight(span),
+            Self::MultiScalarCharLit(span) => {
+                Diag::error("multi-scalar char literal").highlight(span)
+            }
+            Self::InvalidScalar(char, place, span) => {
+                let place = match place {
+                    InvalidScalarPlace::File => "",
+                    InvalidScalarPlace::FrontmatterBody => " in frontmatter body",
+                    InvalidScalarPlace::DocComment => " in doc comment",
+                    InvalidScalarPlace::Lit => " in literal",
+                };
+                Diag::error(format!("invalid scalar U+{:04X}{place}", char as u32)).highlight(span)
+            }
+            Self::InvalidStrLitDelimiter(span) => {
+                Diag::error("invalid string literal delimiter").highlight(span)
+            }
+            Self::EmptyNumLit(span) => Diag::error("empty number literal").highlight(span),
+            Self::InvalidDigit(span) => Diag::error("invalid digit").highlight(span),
+            Self::InvalidAbiStr(span) => Diag::error("invalid ABI string").highlight(span),
+            Self::InvalidLitSuffix(span) => Diag::error("invalid literal suffix").highlight(span),
+            Self::NonDecFloatLit(span) => Diag::error("non-decimal float literal").highlight(span),
+            Self::ParenthesizedGuardedPatInMatch => {
+                Diag::error("parenthesized guarded pattern in match expression")
+            }
+            Self::EmptyExponent(span) => Diag::error("empty exponent").highlight(span),
+            Self::InvalidFrontmatterInfostring(span) => {
+                Diag::error("invalid frontmatter infostring").highlight(span)
+            }
+            Self::FrontmatterOpeningTooLarge(span) => {
+                Diag::error("frontmatter opening too large").highlight(span)
+            }
+            Self::UnterminatedFrontmatter(span) => {
+                Diag::error("unterminated frontmatter").highlight(span)
+            }
+            Self::InvalidFrontmatterTrailer(span) => {
+                Diag::error("extra characters after frontmatter closing").highlight(span)
+            }
+            Self::ForbiddenInnerAttrs => {
+                Diag::error("inner attributes are forbidden in this context")
+            }
+            Self::ForbiddenOuterAttrs => {
+                Diag::error("outer attributes are forbidden in this context")
+            }
+            Self::InvalidNumericIdent(span) => {
+                Diag::error("invalid numeric identifier").highlight(span)
+            }
+            Self::AbiStrSuffix(span) => Diag::error("suffix on ABI string").highlight(span),
+            Self::TickFollowingRawTickedIdent(span) => {
+                Diag::error("tick immediately following raw ticked identifier").highlight(span)
+            }
         }
     }
 }
 
-trait ToDiagStr {
+pub(crate) fn unexpected_token(actual: Token, expected: &str, cx: &RenderCx<'_>) -> Diag {
+    let span = actual.span;
+    let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
+    Diag::error(format!("found {actual} but expected {expected}"))
+        .labeled_highlight(span, "unexpected token")
+}
+
+pub(super) trait IntoDiag {
+    fn into_diag(self, cx: &RenderCx<'_>) -> Diag;
+}
+
+pub(super) trait ToDiagStr {
     type Cx<'a>;
 
     fn to_diag_str(&self, cx: Self::Cx<'_>) -> Cow<'static, str>;
@@ -172,8 +194,7 @@ impl ToDiagStr for Token {
     fn to_diag_str(&self, source: Option<&str>) -> Cow<'static, str> {
         match (self.kind, source) {
             (TokenKind::CommonIdent, Some(source)) => {
-                let ident = &source[self.span.range()];
-                format!("identifier `{ident}`").into()
+                format!("identifier `{}`", source.at(self.span)).into()
             }
             _ => self.kind.to_diag_str(()),
         }
@@ -191,7 +212,7 @@ impl ToDiagStr for TokenKind {
     }
 }
 
-impl ToDiagStr for List1<Fragment> {
+impl<T: for<'a> ToDiagStr<Cx<'a> = ()>> ToDiagStr for List1<T> {
     type Cx<'a> = ();
 
     fn to_diag_str(&self, _: ()) -> Cow<'static, str> {
@@ -252,10 +273,8 @@ impl Diag {
         self.highlight = Some((span, None));
         self
     }
-}
 
-impl RenderExt for Diag {
-    fn render(self, cx: &RenderCx<'_>) {
+    pub(super) fn render(self, cx: &RenderCx<'_>) {
         let group = ann::Group::with_title(self.level.title(self.title));
         let group = match self.highlight {
             Some((span, label)) => {
@@ -267,7 +286,7 @@ impl RenderExt for Diag {
                     SourcePath::Anon => "<anon>".into(),
                 };
 
-                let annotation = ann::AnnotationKind::Primary.span(span.range());
+                let annotation = ann::AnnotationKind::Primary.span(span.into());
                 let annotation = match label {
                     Some(label) => annotation.label(label),
                     None => annotation,
@@ -280,16 +299,6 @@ impl RenderExt for Diag {
         let diag = renderer.short_message(cx.short).render(&[group]);
         eprintln!("{diag}");
     }
-}
-
-impl RenderExt for Error {
-    fn render(self, cx: &RenderCx<'_>) {
-        convert(self, cx).render(cx);
-    }
-}
-
-pub(super) trait RenderExt {
-    fn render(self, cx: &RenderCx<'_>);
 }
 
 pub(crate) struct RenderCx<'a> {

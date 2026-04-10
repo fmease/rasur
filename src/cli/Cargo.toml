@@ -13,3 +13,4 @@ annotate-snippets = { git = "https://github.com/rust-lang/annotate-snippets-rs.g
 clap = "4.5.58"
 painter = { path = "../../etc/lib/painter" }
 rasur = { path = "../.." }
+utility = { path = "../../etc/lib/utility" }

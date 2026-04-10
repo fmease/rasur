@@ -43,7 +43,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     fn parse_token_stream(&mut self, exp_close_delim: ast::Bracket) -> Result<ast::TokenStream> {
-        let mut tokens = Vec::new();
+        let mut stream = Vec::new();
         let mut stack = vec![exp_close_delim];
 
         #[expect(clippy::enum_glob_use)]
@@ -78,7 +78,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
             }
 
-            tokens.push(self.token);
+            stream.push(self.token);
             self.advance();
         }
 
@@ -86,6 +86,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return self.fatal(Error::MissingClosingDelimiters(self.token.span));
         }
 
-        Ok(tokens)
+        stream.push(ast::Token { kind: TokenKind::EndOfInput, span: self.token.span.start.into() });
+
+        Ok(stream)
     }
 }

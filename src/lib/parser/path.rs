@@ -178,7 +178,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
         if self.consume(TokenKind::DoubleDot) {
-            self.feature_no_span_fixme(Feature::ReturnTypeNotation);
+            self.feature_no_span_fixme(Feature::return_type_notation);
             self.parse(TokenKind::CloseRoundBracket)?;
 
             return Ok(ast::GenericArgs::ParenElided);
@@ -202,7 +202,7 @@ impl<'src> Parser<'_, '_, 'src> {
         if self.begins_ty(0) {
             Ok(ast::Term::Ty(self.parse_ty()?))
         } else if self.begins_const_arg() {
-            self.feature(Feature::MinGenericConstArgs, self.token.span);
+            self.feature(Feature::min_generic_const_args, self.token.span);
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
             self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Term]))
@@ -229,7 +229,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
             }
             TokenKind::Const => {
-                self.feature(Feature::MinGenericConstArgs, self.token.span);
+                self.feature(Feature::min_generic_const_args, self.token.span);
                 self.advance();
                 let mut attrs = Vec::new();
                 let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;

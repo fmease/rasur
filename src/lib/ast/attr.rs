@@ -35,19 +35,19 @@ pub enum AttrStyle {
 
 #[derive(Debug)]
 pub enum AttrKind<'src> {
-    Normal(NormalAttr<'src>),
+    Regular(Meta<'src>),
     DocComment(Span),
 }
 
 #[derive(Debug)]
-pub struct NormalAttr<'src> {
-    pub safety: Safety,
+pub struct Meta<'src> {
+    pub safety: Safety<!>,
     pub path: Path<'src, NoGenericArgs>,
-    pub args: AttrArgs<'src>,
+    pub args: MetaArgs<'src>,
 }
 
 #[derive(Debug)]
-pub enum AttrArgs<'src> {
+pub enum MetaArgs<'src> {
     Unit,
     Call(Bracket, TokenStream),
     Assign(Expr<'src>),

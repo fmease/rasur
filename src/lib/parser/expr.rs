@@ -319,19 +319,19 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             TokenKind::CommonIdent => false,
             TokenKind::Match => {
-                self.feature(Feature::PostfixMatch, self.token.span);
+                self.feature(Feature::postfix_match, self.token.span);
                 self.advance();
                 let kind = self.fin_parse_match_expr(left, ast::MatchKind::Postfix, &mut attrs)?;
                 return Ok(ast::Expr { attrs, kind });
             }
             TokenKind::NumLit => true,
             TokenKind::Use => {
-                self.feature(Feature::ErgonomicClones, self.token.span);
+                self.feature(Feature::ergonomic_clones, self.token.span);
                 self.advance();
                 return Ok(ast::Expr { attrs, kind: ast::ExprKind::Use(Box::new(left)) });
             }
             TokenKind::Yield => {
-                self.feature(Feature::YieldExpr, self.token.span);
+                self.feature(Feature::yield_expr, self.token.span);
                 self.advance();
                 let kind = ast::ExprKind::Yield(ast::YieldExpr::Postfix(Box::new(left)));
                 return Ok(ast::Expr { attrs, kind });
@@ -492,11 +492,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                     let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                     if let ast::Genness::Gen = genness {
-                        self.feature_no_span_fixme(Feature::GenBlocks);
+                        self.feature_no_span_fixme(Feature::gen_blocks);
                     }
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                     if let ast::CaptureMode::Use = mode {
-                        self.feature_no_span_fixme(Feature::ErgonomicClones);
+                        self.feature_no_span_fixme(Feature::ergonomic_clones);
                     }
                     if !qualifiers.is_empty() {
                         self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
@@ -517,8 +517,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     }
                     [qualifiers @ .., Qualifier::Try(ty)] => {
                         self.feature_no_span_fixme(match ty {
-                            Some(_) => Feature::TryBlocksHeterogeneous,
-                            None => Feature::TryBlocks,
+                            Some(_) => Feature::try_blocks_heterogeneous,
+                            None => Feature::try_blocks,
                         });
                         (Some(ast::SpecialBlockKind::Try(mem::take(ty))), qualifiers)
                     }
@@ -552,23 +552,23 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (ast::Constness::Not, qualifiers),
                 };
                 if let ast::Constness::Const = modifiers.constness {
-                    self.feature_no_span_fixme(Feature::ConstClosures);
+                    self.feature_no_span_fixme(Feature::const_closures);
                 }
                 (modifiers.staticness, qualifiers) = match qualifiers {
                     [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
                     _ => (ast::Staticness::Not, qualifiers),
                 };
                 if let ast::Staticness::Static = modifiers.staticness {
-                    self.feature_no_span_fixme(Feature::Coroutines);
+                    self.feature_no_span_fixme(Feature::coroutines);
                 }
                 (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
                 (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
                 if let ast::Genness::Gen = modifiers.genness {
-                    self.feature_no_span_fixme(Feature::GenBlocks);
+                    self.feature_no_span_fixme(Feature::gen_blocks);
                 }
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                 if let ast::CaptureMode::Use = modifiers.mode {
-                    self.feature_no_span_fixme(Feature::ErgonomicClones);
+                    self.feature_no_span_fixme(Feature::ergonomic_clones);
                 }
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
@@ -581,7 +581,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         match self.token.kind {
             TokenKind::Become => {
-                self.feature(Feature::ExplicitTailCalls, self.token.span);
+                self.feature(Feature::explicit_tail_calls, self.token.span);
                 self.advance();
                 return Ok(ast::ExprKind::Become(Box::new(self.parse_expr()?)));
             }
@@ -611,7 +611,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Continue(self.parse_label()));
             }
             TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
-                self.feature(Feature::YeetExpr, self.token.span);
+                self.feature(Feature::yeet_expr, self.token.span);
                 self.advance();
                 self.advance();
                 let expr =
@@ -722,7 +722,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return self.fin_parse_while_loop_expr(None, attrs);
             }
             TokenKind::Yield => {
-                self.feature(Feature::YieldExpr, self.token.span);
+                self.feature(Feature::yield_expr, self.token.span);
                 self.advance();
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
@@ -753,7 +753,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     self.advance();
 
                     if path.ext.is_some() {
-                        self.feature_no_span_fixme(Feature::MoreQualifiedPaths);
+                        self.feature_no_span_fixme(Feature::more_qualified_paths);
                     }
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
@@ -943,7 +943,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         let awaitness = if self.consume(TokenKind::Await) {
-            self.feature_no_span_fixme(Feature::AsyncForLoop);
+            self.feature_no_span_fixme(Feature::async_for_loop);
             ast::Awaitness::Await
         } else {
             ast::Awaitness::Not
@@ -1056,7 +1056,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 .transpose()?;
 
             if body.is_none() {
-                self.feature_no_span_fixme(Feature::NeverPatterns);
+                self.feature_no_span_fixme(Feature::never_patterns);
             }
 
             self.consume_or_parse(

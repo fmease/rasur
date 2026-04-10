@@ -4,7 +4,7 @@ mod transformer;
 use crate::{
     edition::Edition,
     error::{Error, InvalidScalarPlace},
-    span::{ByteIndex, Span},
+    span::{At as _, ByteIndex, Span},
     store::Store,
     token::{PathSegKeyword, Token, TokenKind},
 };
@@ -742,7 +742,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
     }
 
     fn source(&self, start: ByteIndex) -> &'src str {
-        &self.source[self.span(start).range()]
+        self.source.at(self.span(start))
     }
 
     fn error(&self, error: Error) {

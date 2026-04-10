@@ -44,7 +44,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             }
                         }
                     }
-                    ast::AttrKind::Normal(self.fin_parse_normal_attr()?)
+
+                    self.parse(TokenKind::OpenSquareBracket)?;
+                    let meta = self.parse_meta()?;
+                    self.parse(TokenKind::CloseSquareBracket)?;
+
+                    ast::AttrKind::Regular(meta)
                 }
                 TokenKind::OuterDocComment if let ast::AttrStyle::Outer = style => {
                     let span = self.token.span;
@@ -70,9 +75,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         matches!(self.token.kind, TokenKind::Hash | TokenKind::OuterDocComment)
     }
 
-    fn fin_parse_normal_attr(&mut self) -> Result<ast::NormalAttr<'src>> {
-        self.parse(TokenKind::OpenSquareBracket)?;
-
+    pub fn parse_meta(&mut self) -> Result<ast::Meta<'src>> {
         let safety = if self.consume(TokenKind::Unsafe) {
             self.parse(TokenKind::OpenRoundBracket)?;
             ast::Safety::Unsafe
@@ -86,28 +89,28 @@ impl<'src> super::Parser<'_, '_, 'src> {
             TokenKind::SingleEquals => {
                 self.advance();
                 let expr = self.parse_expr()?;
-                ast::AttrArgs::Assign(expr)
+                ast::MetaArgs::Assign(expr)
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                ast::AttrArgs::Call(bracket, stream)
+                ast::MetaArgs::Call(bracket, stream)
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Square)?;
-                ast::AttrArgs::Call(bracket, stream)
+                ast::MetaArgs::Call(bracket, stream)
             }
             TokenKind::OpenCurlyBracket => {
                 self.advance();
                 let (bracket, stream) =
                     self.fin_parse_delimited_token_stream(ast::Bracket::Curly)?;
-                ast::AttrArgs::Call(bracket, stream)
+                ast::MetaArgs::Call(bracket, stream)
             }
             // FIXME: Better expectation for `#[x@]` where `@` is a bad token.
-            _ => ast::AttrArgs::Unit,
+            _ => ast::MetaArgs::Unit,
         };
 
         match safety {
@@ -115,8 +118,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
             ast::Safety::Unsafe => self.parse(TokenKind::CloseRoundBracket)?,
         }
 
-        self.parse(TokenKind::CloseSquareBracket)?;
-
-        Ok(ast::NormalAttr { safety, path, args })
+        Ok(ast::Meta { safety, path, args })
     }
 }
