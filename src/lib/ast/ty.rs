@@ -6,6 +6,13 @@ use crate::span::Span;
 
 #[derive(Debug)]
 pub enum Ty<'src> {
+    /// The `..` in `impl Trait for .. {}`, formerly called *default impls*[^1], an ancient predecessor to auto traits.
+    ///
+    /// This used to be part of the now removed unstable feature `optin_builtin_traits`.
+    /// Upstream issue that tracks its planned removal: <https://github.com/rust-lang/rust/issues/154045>.
+    ///
+    /// [^1]: Not to be confused with specialization's default impls `default impl Trait for Type {}`.
+    All,
     Array(Box<Ty<'src>>, Expr<'src>),
     CVariadics,
     DynTrait(DynKind, Vec<Bound<'src>>),

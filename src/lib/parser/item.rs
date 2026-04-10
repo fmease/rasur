@@ -707,12 +707,8 @@ impl<'src> Parser<'_, '_, 'src> {
         let ty_span = ty_start.until(self.token.span);
 
         let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
-            let start = self.token.span;
-            let self_ty = match self.consume(TokenKind::DoubleDot) {
-                // Legacy syntax for auto trait impls that are still permitted if cfg'ed out.
-                true => ast::Ty::Error(start.until(self.token.span)),
-                false => self.parse_ty()?,
-            };
+            let self_ty =
+                if self.consume(TokenKind::DoubleDot) { ast::Ty::All } else { self.parse_ty()? };
             let trait_ref =
                 if let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty {
                     Some(trait_ref)
