@@ -946,8 +946,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
         label: Option<ast::Ident<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        let awaitness = if self.consume(TokenKind::Await) {
-            self.feature_no_span_fixme(Feature::async_for_loop);
+        let awaitness = if let span = self.token.span
+            && self.consume(TokenKind::Await)
+        {
+            self.feature(Feature::async_for_loop, span);
             ast::Awaitness::Await
         } else {
             ast::Awaitness::Not

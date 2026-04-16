@@ -149,12 +149,13 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_defaultness(&mut self) -> ast::Defaultness {
+        let span = self.token.span;
         if self.consume(weak::Default) {
             // FIXME: replace with `MinSpecialization` if the item ends up being a fn.
-            self.feature_no_span_fixme(Feature::specialization);
+            self.feature(Feature::specialization, span);
             ast::Defaultness::Default
         } else if self.consume(TokenKind::Final) {
-            self.feature_no_span_fixme(Feature::final_associated_functions);
+            self.feature(Feature::final_associated_functions, span);
             ast::Defaultness::Final
         } else {
             ast::Defaultness::Not
@@ -177,20 +178,20 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_mut_slice() {
             [] => {}
-            [Qualifier::Type] => return self.fin_parse_ty_alias_item(defaultness),
+            [Qualifier::Type(_)] => return self.fin_parse_ty_alias_item(defaultness),
             [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
-                self.feature_no_span_fixme(Feature::const_block_items);
+                self.feature(Feature::const_block_items, start);
                 return self.fin_parse_const_block_item();
             }
             [qualifiers @ .., Qualifier::Const] => {
                 let (tyness, qualifiers) = match qualifiers {
-                    [Qualifier::Type, qualifiers @ ..] => (ast::Tyness::Ty, qualifiers),
+                    [Qualifier::Type(span), qualifiers @ ..] => {
+                        // FIXME: There's also feature gate `mgca_type_const_syntax`.
+                        self.feature(Feature::min_generic_const_args, *span);
+                        (ast::Tyness::Ty, qualifiers)
+                    }
                     _ => (ast::Tyness::Not, qualifiers),
                 };
-                if let ast::Tyness::Ty = tyness {
-                    // FIXME: There's also `mgca_type_const_syntax`.
-                    self.feature_no_span_fixme(Feature::min_generic_const_args);
-                }
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
@@ -201,8 +202,8 @@ impl<'src> Parser<'_, '_, 'src> {
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
                 return self.fin_parse_extern_crate_item();
             }
-            [Qualifier::Reuse] => {
-                self.feature_no_span_fixme(Feature::fn_delegation);
+            [Qualifier::Reuse(span)] => {
+                self.feature(Feature::fn_delegation, *span);
                 return self.fin_parse_delegation_item();
             }
             [qualifiers @ .., Qualifier::Mod] => {
@@ -253,12 +254,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 (modifiers.autoness, qualifiers) = match qualifiers {
-                    [Qualifier::Auto, qualifiers @ ..] => (ast::Autoness::Auto, qualifiers),
+                    [Qualifier::Auto(span), qualifiers @ ..] => {
+                        self.feature(Feature::auto_traits, *span);
+                        (ast::Autoness::Auto, qualifiers)
+                    }
                     _ => (ast::Autoness::Not, qualifiers),
                 };
-                if let ast::Autoness::Auto = modifiers.autoness {
-                    self.feature_no_span_fixme(Feature::auto_traits);
-                }
                 (modifiers.impl_restriction, qualifiers) = match qualifiers {
                     [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
                         self.feature_no_span_fixme(Feature::impl_restriction);
@@ -275,12 +276,12 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             [qualifiers @ .., Qualifier::Impl] => {
                 let (kind, qualifiers) = match qualifiers {
-                    [Qualifier::Reuse, qualifiers @ ..] => (ImplKind::Delegation, qualifiers),
+                    [Qualifier::Reuse(span), qualifiers @ ..] => {
+                        self.feature(Feature::fn_delegation, *span);
+                        (ImplKind::Delegation, qualifiers)
+                    }
                     _ => (ImplKind::Normal, qualifiers),
                 };
-                if let ImplKind::Delegation = kind {
-                    self.feature_no_span_fixme(Feature::fn_delegation);
-                }
                 let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
                 if let ast::Constness::Const = constness {
                     self.feature_no_span_fixme(Feature::const_trait_impl);
@@ -355,8 +356,12 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen,
                 TokenKind::CommonIdent => match self.source(self.token.span) {
-                    weak::Auto::STR if weak::Auto.qualifies(self) => Qualifier::Auto,
-                    weak::Reuse::STR if weak::Reuse.qualifies(self) => Qualifier::Reuse,
+                    weak::Auto::STR if weak::Auto.qualifies(self) => {
+                        Qualifier::Auto(self.token.span)
+                    }
+                    weak::Reuse::STR if weak::Reuse.qualifies(self) => {
+                        Qualifier::Reuse(self.token.span)
+                    }
                     weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
                     _ => return,
                 },
@@ -395,7 +400,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Mod => Qualifier::Mod,
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
-                TokenKind::Type => Qualifier::Type,
+                TokenKind::Type => Qualifier::Type(self.token.span),
                 TokenKind::Unsafe if self.peek(1).kind != TokenKind::OpenCurlyBracket => {
                     Qualifier::Unsafe
                 }
@@ -862,8 +867,10 @@ impl<'src> Parser<'_, '_, 'src> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?.unwrap_or_default();
 
-        if self.consume(TokenKind::SingleEquals) {
-            self.feature_no_span_fixme(Feature::trait_alias);
+        if let span = self.token.span
+            && self.consume(TokenKind::SingleEquals)
+        {
+            self.feature(Feature::trait_alias, span);
             return self.fin_parse_trait_alias_item(modifiers, binder, params);
         }
 
@@ -1310,7 +1317,7 @@ pub(super) enum ItemCx {
 
 enum Qualifier<'src> {
     Async,
-    Auto,
+    Auto(Span),
     Const,
     Extern(Option<&'src str>),
     Fn,
@@ -1318,11 +1325,11 @@ enum Qualifier<'src> {
     Impl,
     ImplRestriction(Box<Result<ast::Path<'src, ast::NoGenericArgs>>>),
     Mod,
-    Reuse,
+    Reuse(Span),
     Safe,
     Static,
     Trait,
-    Type,
+    Type(Span),
     Unsafe,
 }
 

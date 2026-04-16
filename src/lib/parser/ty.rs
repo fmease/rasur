@@ -733,8 +733,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.feature_no_span_fixme(Feature::const_trait_impl);
         }
 
-        let asyncness = if self.consume(TokenKind::Async) {
-            self.feature_no_span_fixme(Feature::async_trait_bounds);
+        let asyncness = if let span = self.token.span
+            && self.consume(TokenKind::Async)
+        {
+            self.feature(Feature::async_trait_bounds, span);
             ast::BoundAsyncness::Always
         } else {
             ast::BoundAsyncness::Never

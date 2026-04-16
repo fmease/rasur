@@ -177,8 +177,10 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn fin_parse_paren_generic_args(&mut self) -> Result<ast::GenericArgs<'src>> {
-        if self.consume(TokenKind::DoubleDot) {
-            self.feature_no_span_fixme(Feature::return_type_notation);
+        if let span = self.token.span
+            && self.consume(TokenKind::DoubleDot)
+        {
+            self.feature(Feature::return_type_notation, span);
             self.parse(TokenKind::CloseRoundBracket)?;
 
             return Ok(ast::GenericArgs::ParenElided);
