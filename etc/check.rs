@@ -323,7 +323,7 @@ fn check(
     let mut subfailures = Vec::new();
 
     for &edition in &opts.editions {
-        let rasur = run_rasur(path, edition, rasur_path);
+        let rasur = run_rasur(path, edition, opts.measure, rasur_path);
         let rustc = run_rustc(path, edition, opts.measure, rustc_path);
 
         if (rasur == rustc) == opts.invert {
@@ -338,12 +338,10 @@ fn check(
 
 fn run_rustc(path: &Path, edition: Edition, measure: Measure, rustc_path: &Path) -> ExitStatus {
     let mut cmd = Command::new(rustc_path);
-
-    cmd.stdout(Stdio::null()).stderr(Stdio::null()).arg(path).args([
-        "--edition",
-        edition.to_str(),
-        "-Zunstable-options",
-    ]);
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
+    cmd.arg(path);
+    cmd.args(["--edition", edition.to_str(), "-Zunstable-options"]);
 
     match measure {
         Measure::ParseOnly => cmd.arg("-Zparse-crate-root-only"),
@@ -359,14 +357,21 @@ fn run_rustc(path: &Path, edition: Edition, measure: Measure, rustc_path: &Path)
     cmd.status().expect("failed to execute `rustc`")
 }
 
-fn run_rasur(path: &Path, edition: Edition, rasur_path: &Path) -> ExitStatus {
-    Command::new(rasur_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .arg(path)
-        .args(["--edition", edition.to_str()])
-        .status()
-        .expect("failed to execute `rasur`")
+fn run_rasur(path: &Path, edition: Edition, measure: Measure, rasur_path: &Path) -> ExitStatus {
+    let mut cmd = Command::new(rasur_path);
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
+    cmd.arg(path);
+    cmd.args(["--edition", edition.to_str()]);
+
+    match measure {
+        Measure::ParseOnly => {}
+        Measure::CfgFalse => {
+            cmd.arg("--gatekeep");
+        }
+    }
+
+    cmd.status().expect("failed to execute `rasur`")
 }
 
 struct TestOpts {

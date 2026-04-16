@@ -17,13 +17,15 @@ do case "$1" in
   [[ -z "$TOOLCHAIN" ]] && die 'missing argument `TOOLCHAIN` for option `--toolchain`'
   shift
   ;;
-  -v | --verbose) VERBOSE=1
+  --terse) TERSE=1
   ;;
   -f | --file) FILE=1
   ;;
   --format | --fmt) FORMAT=1
   ;;
   --ast) AST=1
+  ;;
+  --alt) ALT=1
   ;;
   *) if [[ -n $SOURCE ]]; then
     die "unexpected extra argument \`$1\`"
@@ -44,22 +46,23 @@ fi
 
 print
 
-print -P '%S-- RUSTC --------------------------------%s'
+print -P '%S-- RUSTC ----------------------------------------------------------------%s'
 printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc \
   +$([[ -n "$TOOLCHAIN" ]] && echo "$TOOLCHAIN" || echo nightly) \
   $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
-  -Zparse-crate-root-only \
+  $([[ -z $ALT ]] && echo -Zparse-crate-root-only || echo -Zcrate-attr='cfg(false)' --crate-type=lib) \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
-  $([[ -z $VERBOSE ]] && echo --error-format=short) \
+  $([[ -n $TERSE ]] && echo --error-format=short) \
   $([[ -n $FORMAT ]] && echo -Zunpretty=normal) \
   $([[ -n $AST ]] && echo -Zunpretty=ast-tree)
 RUSTC_RESULT="$?"
 
-print -P '%S-- RASUR --------------------------------%s'
+print -P '%S-- RASUR ----------------------------------------------------------------%s'
 ./rasur \
   $([[ -z $FILE ]] && echo --source) "$SOURCE" \
+  $([[ -n $ALT ]] && echo -G) \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
-  $([[ -z $VERBOSE ]] && echo --short) \
+  $([[ -n $TERSE ]] && echo --short) \
   $([[ -n $FORMAT ]] && echo --emit=fmt) \
   $([[ -n $AST ]] && echo --emit=ast)
 RASUR_RESULT="$?"
@@ -67,9 +70,9 @@ RASUR_RESULT="$?"
 RESULT=$(( $RUSTC_RESULT != $RASUR_RESULT ))
 
 if [[ $RESULT != 0 ]]; then
-  print -P '%S%F{red}.. MISMATCH! ............................%f%s'
+  print -P '%S%F{red}.. MISMATCH! ............................................................%f%s'
 else
-  print -P '%S%F{green}.. MATCH! ...............................%f%s'
+  print -P '%S%F{green}.. MATCH! ...............................................................%f%s'
 fi
 
 print

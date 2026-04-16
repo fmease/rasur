@@ -1,6 +1,6 @@
 [package]
 name = "utility"
-edition.workspace = true
+edition = "2024"
 publish = false
 
 [lib]
