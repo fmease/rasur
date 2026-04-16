@@ -183,12 +183,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
         }
 
-        match (self.parse_mutability(), self.parse_by_ref()) {
+        match self.parse_mut_by_ref() {
             (ast::Mutability::Not, ast::ByRef::No) => {}
             (mut_, by_ref) => {
-                if let ast::Mutability::Mut = mut_ {
-                    self.feature_no_span_fixme(Feature::mut_ref);
-                }
                 let binder = self.parse_common_ident()?;
                 return self.fin_parse_binding_pat(mut_, by_ref, binder);
             }
@@ -315,15 +312,15 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        let box_ = self.consume(TokenKind::Box);
-                        if box_ {
-                            self.feature_no_span_fixme(Feature::box_patterns);
-                        }
-                        let mut_ = self.parse_mutability();
-                        if let ast::Mutability::Mut = mut_ {
-                            self.feature_no_span_fixme(Feature::mut_ref);
-                        }
-                        let by_ref = self.parse_by_ref();
+                        let box_ = if let span = self.token.span
+                            && self.consume(TokenKind::Box)
+                        {
+                            self.feature(Feature::box_patterns, span);
+                            true
+                        } else {
+                            false
+                        };
+                        let (mut_, by_ref) = self.parse_mut_by_ref();
 
                         // NB: Shorthand numeric fields are permitted
                         //     in struct pats contrary to struct exprs.
@@ -479,13 +476,24 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })))
     }
 
-    fn parse_by_ref(&mut self) -> ast::ByRef {
-        if self.consume(TokenKind::Ref) {
+    fn parse_mut_by_ref(&mut self) -> (ast::Mutability, ast::ByRef) {
+        let start = self.token.span;
+        let mut_ = self.parse_mutability();
+
+        let by_ref = if self.consume(TokenKind::Ref) {
             let (kind, mut_) = self.parse_borrow_kind_and_mutability();
             ast::ByRef::Yes(kind, mut_)
         } else {
             ast::ByRef::No
+        };
+
+        if let ast::Mutability::Mut = mut_
+            && let ast::ByRef::Yes(..) = by_ref
+        {
+            self.feature(Feature::mut_ref, start);
         }
+
+        (mut_, by_ref)
     }
 }
 
