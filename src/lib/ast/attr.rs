@@ -5,6 +5,7 @@ use std::fmt;
 pub struct Attr<'src, M: AttrMode = AnyAttrStyle> {
     pub style: M::Style,
     pub kind: AttrKind<'src>,
+    pub span: Span,
 }
 
 impl<'src> Attr<'src, OuterAttrStyle> {
@@ -21,9 +22,13 @@ impl<'src> Attr<'src, InnerAttrStyle> {
 
 impl<M: AttrMode> fmt::Debug for Attr<'_, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { style, kind } = self;
+        let Self { style, kind, span } = self;
 
-        f.debug_struct("Attr").field("style", style).field("kind", kind).finish()
+        f.debug_struct("Attr")
+            .field("style", style)
+            .field("kind", kind)
+            .field("span", span)
+            .finish()
     }
 }
 
@@ -36,7 +41,7 @@ pub enum AttrStyle {
 #[derive(Debug)]
 pub enum AttrKind<'src> {
     Regular(Meta<'src>),
-    DocComment(Span),
+    DocComment,
 }
 
 #[derive(Debug)]

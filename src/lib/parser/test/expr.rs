@@ -115,7 +115,8 @@ fn attrs() {
         Ok(ast::Expr {
             attrs: r!([ast::Attr {
                 style: ast::AttrStyle::Outer,
-                kind: ast::AttrKind::Regular(_)
+                kind: ast::AttrKind::Regular(_),
+                ..
             }]),
             kind: ast::ExprKind::Lit(_),
         })
@@ -134,7 +135,8 @@ fn attrs() {
                             segs: r!([ast::PathSeg { ident: ast::Ident!("a"), .. }])
                         },
                         ..
-                    })
+                    }),
+                    ..
                 },
                 ast::Attr {
                     style: ast::AttrStyle::Outer,
@@ -143,7 +145,8 @@ fn attrs() {
                             segs: r!([ast::PathSeg { ident: ast::Ident!("b"), .. }])
                         },
                         ..
-                    })
+                    }),
+                    ..
                 },
             ]),
             kind: ast::ExprKind::Grouped(r!(ast::Expr {
@@ -177,11 +180,11 @@ fn attrs() {
         })
     );
 
-    t!(parse_expr, Rust2015, "#[a]..", Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..", Err(r!([Error::ForbiddenOuterAttrs(_)])));
 
-    t!(parse_expr, Rust2015, "#[a]..()", Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..()", Err(r!([Error::ForbiddenOuterAttrs(_)])));
 
-    t!(parse_expr, Rust2015, "#[a]..=_", Err(r!([Error::ForbiddenOuterAttrs])),);
+    t!(parse_expr, Rust2015, "#[a]..=_", Err(r!([Error::ForbiddenOuterAttrs(_)])));
 
     t!(
         parse_expr,

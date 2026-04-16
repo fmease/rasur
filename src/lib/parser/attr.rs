@@ -29,8 +29,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_outer_attr`.
 
         loop {
-            let kind = match self.token.kind {
+            attrs.push(match self.token.kind {
                 TokenKind::Hash => {
+                    let start = self.token.span;
+
                     match style {
                         ast::AttrStyle::Outer => self.advance(),
                         // We don't *expect* a bang here because the caller may want to
@@ -47,23 +49,24 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                     self.parse(TokenKind::OpenSquareBracket)?;
                     let meta = self.parse_meta()?;
+                    // FIXME: Hacky way to obtain the span
+                    let span = start.to(self.token.span);
                     self.parse(TokenKind::CloseSquareBracket)?;
 
-                    ast::AttrKind::Regular(meta)
+                    ast::Attr { style, kind: ast::AttrKind::Regular(meta), span }
                 }
                 TokenKind::OuterDocComment if let ast::AttrStyle::Outer = style => {
                     let span = self.token.span;
                     self.advance();
-                    ast::AttrKind::DocComment(span)
+                    ast::Attr { style, kind: ast::AttrKind::DocComment, span }
                 }
                 TokenKind::InnerDocComment if let ast::AttrStyle::Inner = style => {
                     let span = self.token.span;
                     self.advance();
-                    ast::AttrKind::DocComment(span)
+                    ast::Attr { style, kind: ast::AttrKind::DocComment, span }
                 }
                 _ => break,
-            };
-            attrs.push(ast::Attr { style, kind });
+            });
         }
 
         Ok(())

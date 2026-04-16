@@ -15,11 +15,11 @@ impl Fmt for ast::Attr<'_, ast::InnerAttrStyle> {
 
 impl Fmt for ast::Attr<'_, ast::AnyAttrStyle> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { style, kind } = self;
+        let Self { style, kind, span } = self;
 
         match kind {
             ast::AttrKind::Regular(attr) => (attr, style).fmt(cx),
-            ast::AttrKind::DocComment(span) => fmt!(cx, "{}", cx.source(span)),
+            ast::AttrKind::DocComment => fmt!(cx, "{}", cx.source(span)),
         }
     }
 }

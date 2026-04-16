@@ -509,8 +509,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_predicate`.
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        if !attrs.is_empty() {
-            self.feature_no_span_fixme(Feature::where_clause_attrs);
+        if let Some(attr) = attrs.first() {
+            let span = attr.span.to(attrs.last().unwrap().span);
+            self.feature(Feature::where_clause_attrs, span);
         }
 
         let bound_vars = self.parse_for_binder()?;

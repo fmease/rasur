@@ -410,8 +410,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
         o_policy: OpPolicy,
         attrs: Vec<ast::Attr<'src>>,
     ) -> Result<ast::Expr<'src>> {
-        if left.is_none() && !attrs.is_empty() {
-            self.error(Error::ForbiddenOuterAttrs);
+        if left.is_none()
+            && let Some(attr) = attrs.first()
+        {
+            let span = attr.span.to(attrs.last().unwrap().span);
+            self.error(Error::ForbiddenOuterAttrs(span));
         }
 
         let right = if matches!(kind, ast::RangeExprKind::Inclusive)
@@ -891,8 +894,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
             AttrPolicy::Reject => (&mut Vec::new(), true),
         };
         self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
-        if reject && !attrs.is_empty() {
-            self.error(Error::ForbiddenInnerAttrs);
+        if reject && let Some(attr) = attrs.first() {
+            let span = attr.span.to(attrs.last().unwrap().span);
+            self.error(Error::ForbiddenInnerAttrs(span));
         }
 
         let mut stmts = Vec::new();

@@ -154,11 +154,11 @@ impl IntoDiag for Error {
             Self::InvalidFrontmatterTrailer(span) => {
                 Diag::error("extra characters after frontmatter closing").highlight(span)
             }
-            Self::ForbiddenInnerAttrs => {
-                Diag::error("inner attributes are forbidden in this context")
+            Self::ForbiddenInnerAttrs(span) => {
+                Diag::error("inner attributes are forbidden in this context").highlight(span)
             }
-            Self::ForbiddenOuterAttrs => {
-                Diag::error("outer attributes are forbidden in this context")
+            Self::ForbiddenOuterAttrs(span) => {
+                Diag::error("outer attributes are forbidden in this context").highlight(span)
             }
             Self::InvalidNumericIdent(span) => {
                 Diag::error("invalid numeric identifier").highlight(span)
