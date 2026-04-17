@@ -30,7 +30,11 @@ pub fn enabled_features<'src>(
         }
     }
 
-    let features = p.features;
+    let mut features = p.features;
+
+    if features.contains(&Feature::coroutines) || features.contains(&Feature::gen_blocks) {
+        features.insert(Feature::yield_expr);
+    }
 
     let mut errors = p.errors;
     errors.extend(store.errors.into_inner().into_iter().map(Error::Parse));
@@ -213,7 +217,7 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
             for ident in idents {
                 match ident.name.parse::<Feature>() {
-                    Ok(feature) if this.features.insert(feature) => return Ok(()),
+                    Ok(feature) if this.features.insert(feature) => {}
                     Ok(feature) => this.error(Error::FeatureAlreadyEnabled(feature, ident.span)),
                     Err(()) => this.error(Error::UnknownFeature(ident.name)),
                 }
