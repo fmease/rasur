@@ -232,6 +232,14 @@ impl<'src> Parser<'_, '_, 'src> {
             &mut [mut ref mut qualifiers @ .., Qualifier::Trait] => {
                 let mut modifiers = ast::TraitItemModifiers::default();
 
+                (modifiers.impl_restriction, qualifiers) = match qualifiers {
+                    [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
+                        self.feature_no_span_fixme(Feature::impl_restriction);
+                        let Ok(path) = path else { return Err(()) };
+                        (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
+                    }
+                    _ => (None, qualifiers),
+                };
                 (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers);
                 if let ast::Const::Yes = modifiers.const_ {
                     self.feature_no_span_fixme(Feature::const_trait_impl);
@@ -243,14 +251,6 @@ impl<'src> Parser<'_, '_, 'src> {
                         (ast::Auto::Yes, qualifiers)
                     }
                     _ => (ast::Auto::No, qualifiers),
-                };
-                (modifiers.impl_restriction, qualifiers) = match qualifiers {
-                    [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
-                        self.feature_no_span_fixme(Feature::impl_restriction);
-                        let Ok(path) = path else { return Err(()) };
-                        (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
-                    }
-                    _ => (None, qualifiers),
                 };
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
@@ -352,7 +352,11 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Impl => {
                     self.advance();
 
-                    if let Some(path) = self.parse_restriction(Some(TokenKind::Trait)) {
+                    // We disqualify sequences like `impl(crate) {` which should be
+                    // interpreted as impl blocks instead.
+                    if let Some(path) =
+                        self.parse_restriction(|kind| kind != TokenKind::OpenCurlyBracket)
+                    {
                         yield (Qualifier::ImplRestriction(Box::new(path)), self.token.kind);
                         continue;
                     }
@@ -819,7 +823,11 @@ impl<'src> Parser<'_, '_, 'src> {
 
         self.parse(TokenKind::Semicolon)?;
 
-        let ast::TraitItemModifiers { const_, safety, auto, impl_restriction } = modifiers;
+        let ast::TraitItemModifiers { impl_restriction, const_, safety, auto } = modifiers;
+
+        if impl_restriction.is_some() {
+            self.error(Error::ImplRestrictedTraitAlias);
+        }
 
         match safety {
             ast::Safety::Inherited => {}
@@ -829,10 +837,6 @@ impl<'src> Parser<'_, '_, 'src> {
         match auto {
             ast::Auto::Yes => self.error(Error::AutoTraitAlias),
             ast::Auto::No => {}
-        }
-
-        if impl_restriction.is_some() {
-            self.error(Error::ImplRestrictedTraitAlias);
         }
 
         Ok(ast::ItemKind::TraitAlias(Box::new(ast::TraitAliasItem {
@@ -1103,7 +1107,7 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Visibility::Inherited);
         }
 
-        if let Some(path) = self.parse_restriction(None) {
+        if let Some(path) = self.parse_restriction(|_| true) {
             return Ok(ast::Visibility::Restricted(path?));
         }
 
@@ -1118,7 +1122,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     fn parse_restriction(
         &mut self,
-        disambiguator: Option<TokenKind>,
+        may_follow: fn(TokenKind) -> bool,
     ) -> Option<Result<ast::Path<'src, ast::NoGenericArgs>>> {
         enum Herald {
             In,
@@ -1130,7 +1134,7 @@ impl<'src> Parser<'_, '_, 'src> {
             && let Some(herald) = match token.kind {
                 TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower
                     if let TokenKind::CloseRoundBracket = self.peek(2).kind
-                        && disambiguator.is_none_or(|t| self.peek(3).kind == t) =>
+                        && may_follow(self.peek(3).kind) =>
                 {
                     Some(Herald::CrateSuperSelf(token.span))
                 }

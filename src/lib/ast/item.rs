@@ -293,10 +293,10 @@ pub struct TraitAliasItem<'src> {
 
 #[derive(Default, Debug)]
 pub struct TraitItemModifiers<'src> {
+    pub impl_restriction: Option<Path<'src, NoGenericArgs>>,
     pub const_: Const,
     pub safety: Safety,
     pub auto: Auto,
-    pub impl_restriction: Option<Path<'src, NoGenericArgs>>,
 }
 
 #[derive(Default, Debug)]

@@ -575,16 +575,16 @@ impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
 
 impl Fmt for TrailingSpace<ast::TraitItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::TraitItemModifiers { const_, safety, auto, impl_restriction }) = self;
+        let Self(ast::TraitItemModifiers { impl_restriction, const_, safety, auto }) = self;
 
-        const_.trailing_space().fmt(cx);
-        safety.trailing_space().fmt(cx);
-        auto.trailing_space().fmt(cx);
         if let Some(path) = impl_restriction {
             fmt!(cx, "impl");
             Restriction(path).fmt(cx);
             fmt!(cx, " ");
         }
+        const_.trailing_space().fmt(cx);
+        safety.trailing_space().fmt(cx);
+        auto.trailing_space().fmt(cx);
     }
 }
 
