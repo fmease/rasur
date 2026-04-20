@@ -36,32 +36,15 @@ impl<'src> super::Parser<'_, '_, 'src> {
         r_policy: NonLegacyRangePolicy,
         g_policy: GuardPolicy,
     ) -> Result<ast::Pat<'src>> {
-        // Negation and ranges aren't handled here since they don't operate on general patterns
-        // but on literals and range bounds, respectively.
-        let op = match self.token.kind {
-            TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
-            TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
-            _ => None,
-        };
-        let mut left = if let Some(op) = op {
+        let mut left = if let Some(op) = self.token.kind.as_prefix_pat_op() {
             self.advance();
             self.fin_parse_prefix_op_pat(op, o_policy, g_policy)
         } else {
             self.parse_lower_pat(r_policy)
         }?;
 
-        loop {
-            let op = match self.token.kind {
-                // FIXME: Register feature w/o triggering on stable match guards.
-                // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
-                TokenKind::If if let GuardPolicy::Parse = g_policy => Op::Guard,
-                TokenKind::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
-                _ => break,
-            };
-
-            let left_level = op.left_level().unwrap();
-
-            if left_level <= level {
+        while let Some(op) = self.token.kind.as_infix_or_postfix_pat_op(o_policy, g_policy) {
+            if op.left_level().unwrap() <= level {
                 break;
             }
 
@@ -530,6 +513,8 @@ enum Level {
     Prefix,
 }
 
+// Negation and ranges aren't included here since they don't operate on
+// general patterns but on literals and range bounds, respectively.
 #[derive(Clone, Copy, Debug)]
 enum Op {
     DoubleBorrow,
@@ -552,6 +537,26 @@ impl Op {
             Self::Guard => return None,
             Self::Or => Level::OrRight,
             Self::SingleBorrow | Self::DoubleBorrow => Level::Prefix,
+        })
+    }
+}
+
+impl TokenKind {
+    fn as_prefix_pat_op(self) -> Option<Op> {
+        Some(match self {
+            Self::SingleAmpersand => Op::SingleBorrow,
+            Self::DoubleAmpersand => Op::DoubleBorrow,
+            _ => return None,
+        })
+    }
+
+    fn as_infix_or_postfix_pat_op(self, o_policy: OrPolicy, g_policy: GuardPolicy) -> Option<Op> {
+        Some(match self {
+            // FIXME: Register feature w/o triggering on stable match guards.
+            // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
+            Self::If if let GuardPolicy::Parse = g_policy => Op::Guard,
+            Self::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
+            _ => return None,
         })
     }
 }

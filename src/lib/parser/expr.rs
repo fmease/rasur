@@ -94,17 +94,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-        let op = match self.token.kind {
-            TokenKind::DoubleAmpersand => Some(Op::DoubleBorrow),
-            TokenKind::DoubleDot => Some(Op::Range(ast::RangeExprKind::Exclusive)),
-            TokenKind::DoubleDotEquals => Some(Op::Range(ast::RangeExprKind::Inclusive)),
-            TokenKind::SingleAmpersand => Some(Op::SingleBorrow),
-            TokenKind::SingleAsterisk => Some(Op::UnOp(ast::UnOp::Deref)),
-            TokenKind::SingleBang => Some(Op::UnOp(ast::UnOp::Not)),
-            TokenKind::SingleHyphen => Some(Op::UnOp(ast::UnOp::Neg)),
-            _ => None,
-        };
-        let mut left = if let Some(op) = op {
+        let mut left = if let Some(op) = self.token.kind.as_prefix_expr_op() {
             h_policy = HigherPostfixOpPolicy::Yield;
             self.advance();
 
@@ -119,47 +109,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.parse_lower_expr(s_policy, l_policy, attrs)?
         };
 
-        loop {
-            let op = match self.token.kind {
-                TokenKind::AmpersandEquals => Op::BinOp(ast::BinOp::BitAndAssign),
-                TokenKind::As => Op::Cast,
-                TokenKind::AsteriskEquals => Op::BinOp(ast::BinOp::MulAssign),
-                TokenKind::BangEquals => Op::BinOp(ast::BinOp::Ne),
-                TokenKind::CaretEquals => Op::BinOp(ast::BinOp::BitXorAssign),
-                TokenKind::DoubleAmpersand => Op::BinOp(ast::BinOp::And),
-                TokenKind::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
-                TokenKind::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
-                TokenKind::DoubleEquals => Op::BinOp(ast::BinOp::Eq),
-                TokenKind::DoubleGreaterThan => Op::BinOp(ast::BinOp::BitShiftRight),
-                TokenKind::DoubleGreaterThanEquals => Op::BinOp(ast::BinOp::BitShiftRightAssign),
-                TokenKind::DoubleLessThan => Op::BinOp(ast::BinOp::BitShiftLeft),
-                TokenKind::DoubleLessThanEquals => Op::BinOp(ast::BinOp::BitShiftLeftAssign),
-                TokenKind::DoublePipe => Op::BinOp(ast::BinOp::Or),
-                TokenKind::GreaterThanEquals => Op::BinOp(ast::BinOp::Ge),
-                TokenKind::HypenEquals => Op::BinOp(ast::BinOp::SubAssign),
-                TokenKind::LessThanEquals => Op::BinOp(ast::BinOp::Le),
-                TokenKind::OpenRoundBracket => Op::Call,
-                TokenKind::OpenSquareBracket => Op::Index,
-                TokenKind::PercentEquals => Op::BinOp(ast::BinOp::RemAssign),
-                TokenKind::PipeEquals => Op::BinOp(ast::BinOp::BitOrAssign),
-                TokenKind::PlusEquals => Op::BinOp(ast::BinOp::AddAssign),
-                TokenKind::QuestionMark => Op::Try,
-                TokenKind::SingleAmpersand => Op::BinOp(ast::BinOp::BitAnd),
-                TokenKind::SingleAsterisk => Op::BinOp(ast::BinOp::Mul),
-                TokenKind::SingleCaret => Op::BinOp(ast::BinOp::BitXor),
-                TokenKind::SingleDot => Op::Dot,
-                TokenKind::SingleEquals => Op::BinOp(ast::BinOp::Assign),
-                TokenKind::SingleGreaterThan => Op::BinOp(ast::BinOp::Gt),
-                TokenKind::SingleHyphen => Op::BinOp(ast::BinOp::Sub),
-                TokenKind::SingleLessThan => Op::BinOp(ast::BinOp::Lt),
-                TokenKind::SinglePercent => Op::BinOp(ast::BinOp::Rem),
-                TokenKind::SinglePipe => Op::BinOp(ast::BinOp::BitOr),
-                TokenKind::SinglePlus => Op::BinOp(ast::BinOp::Add),
-                TokenKind::SingleSlash => Op::BinOp(ast::BinOp::Div),
-                TokenKind::SlashEquals => Op::BinOp(ast::BinOp::DivAssign),
-                _ => break,
-            };
-
+        while let Some(op) = self.token.kind.as_infix_or_postfix_expr_op() {
             if let OpPolicy::YieldOnBoundary(rule) = o_policy
                 && left.kind.is_boundary(rule)
                 && !op.overrules_boundary()
@@ -174,7 +124,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
 
             let left_level = op.left_level().unwrap();
-
             if left_level <= level {
                 break;
             }
@@ -1306,6 +1255,63 @@ impl ast::BinOp {
             ast::AssignOp!() => Level::AssignRight,
             ast::CompareOp!() => Level::Compare,
         }
+    }
+}
+
+impl TokenKind {
+    fn as_prefix_expr_op(self) -> Option<Op> {
+        Some(match self {
+            Self::DoubleAmpersand => Op::DoubleBorrow,
+            Self::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
+            Self::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
+            Self::SingleAmpersand => Op::SingleBorrow,
+            Self::SingleAsterisk => Op::UnOp(ast::UnOp::Deref),
+            Self::SingleBang => Op::UnOp(ast::UnOp::Not),
+            Self::SingleHyphen => Op::UnOp(ast::UnOp::Neg),
+            _ => return None,
+        })
+    }
+
+    fn as_infix_or_postfix_expr_op(self) -> Option<Op> {
+        Some(match self {
+            Self::AmpersandEquals => Op::BinOp(ast::BinOp::BitAndAssign),
+            Self::As => Op::Cast,
+            Self::AsteriskEquals => Op::BinOp(ast::BinOp::MulAssign),
+            Self::BangEquals => Op::BinOp(ast::BinOp::Ne),
+            Self::CaretEquals => Op::BinOp(ast::BinOp::BitXorAssign),
+            Self::DoubleAmpersand => Op::BinOp(ast::BinOp::And),
+            Self::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
+            Self::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
+            Self::DoubleEquals => Op::BinOp(ast::BinOp::Eq),
+            Self::DoubleGreaterThan => Op::BinOp(ast::BinOp::BitShiftRight),
+            Self::DoubleGreaterThanEquals => Op::BinOp(ast::BinOp::BitShiftRightAssign),
+            Self::DoubleLessThan => Op::BinOp(ast::BinOp::BitShiftLeft),
+            Self::DoubleLessThanEquals => Op::BinOp(ast::BinOp::BitShiftLeftAssign),
+            Self::DoublePipe => Op::BinOp(ast::BinOp::Or),
+            Self::GreaterThanEquals => Op::BinOp(ast::BinOp::Ge),
+            Self::HypenEquals => Op::BinOp(ast::BinOp::SubAssign),
+            Self::LessThanEquals => Op::BinOp(ast::BinOp::Le),
+            Self::OpenRoundBracket => Op::Call,
+            Self::OpenSquareBracket => Op::Index,
+            Self::PercentEquals => Op::BinOp(ast::BinOp::RemAssign),
+            Self::PipeEquals => Op::BinOp(ast::BinOp::BitOrAssign),
+            Self::PlusEquals => Op::BinOp(ast::BinOp::AddAssign),
+            Self::QuestionMark => Op::Try,
+            Self::SingleAmpersand => Op::BinOp(ast::BinOp::BitAnd),
+            Self::SingleAsterisk => Op::BinOp(ast::BinOp::Mul),
+            Self::SingleCaret => Op::BinOp(ast::BinOp::BitXor),
+            Self::SingleDot => Op::Dot,
+            Self::SingleEquals => Op::BinOp(ast::BinOp::Assign),
+            Self::SingleGreaterThan => Op::BinOp(ast::BinOp::Gt),
+            Self::SingleHyphen => Op::BinOp(ast::BinOp::Sub),
+            Self::SingleLessThan => Op::BinOp(ast::BinOp::Lt),
+            Self::SinglePercent => Op::BinOp(ast::BinOp::Rem),
+            Self::SinglePipe => Op::BinOp(ast::BinOp::BitOr),
+            Self::SinglePlus => Op::BinOp(ast::BinOp::Add),
+            Self::SingleSlash => Op::BinOp(ast::BinOp::Div),
+            Self::SlashEquals => Op::BinOp(ast::BinOp::DivAssign),
+            _ => return None,
+        })
     }
 }
 
