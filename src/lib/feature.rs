@@ -80,6 +80,8 @@ features! {
     min_specialization,
     // <https://github.com/rust-lang/rust/issues/86935>.
     more_qualified_paths,
+    // <https://github.com/rust-lang/rust/issues/155050>.
+    move_expr,
     // <https://github.com/rust-lang/rust/issues/123076>.
     mut_ref,
     // (internal)

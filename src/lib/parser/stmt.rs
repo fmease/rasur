@@ -116,6 +116,7 @@ impl ast::ExprKind<'_> {
             | Self::Index(..)
             | Self::Lit(_)
             | Self::MethodCall(_)
+            | Self::Move(_)
             | Self::OffsetOf(..)
             | Self::Path(_)
             | Self::Repeat(..)

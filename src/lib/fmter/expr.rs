@@ -111,6 +111,11 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 (*body, attrs).fmt(cx);
             }
             ast::ExprKind::Match(expr) => (*expr, attrs).fmt(cx),
+            ast::ExprKind::Move(expr) => {
+                fmt!(cx, "move(");
+                expr.fmt(cx);
+                fmt!(cx, ")");
+            }
             ast::ExprKind::OffsetOf(ty, fields) => {
                 BuiltinSyntax("offset_of", |cx| {
                     ty.fmt(cx);

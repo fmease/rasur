@@ -508,6 +508,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                 return self.fin_parse_closure_expr(bound_vars, modifiers, s_policy);
             }
+            [Qualifier::Move(span)] => {
+                self.feature(Feature::move_expr, *span);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::ExprKind::Move(Box::new(expr)));
+            }
             _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
         }
 
@@ -761,7 +768,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Gen => Qualifier::Gen(self.token.span),
-                TokenKind::Move => Qualifier::Move,
+                TokenKind::Move => Qualifier::Move(self.token.span),
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
                     qualifiers.push(Qualifier::OpenCurlyBracket);
@@ -1322,7 +1329,7 @@ enum Qualifier<'src> {
     Const(Span),
     ForBinder(Vec<ast::GenericParam<'src>>),
     Gen(Span),
-    Move,
+    Move(Span),
     OpenCurlyBracket,
     Pipe,
     Static(Span),
@@ -1357,7 +1364,7 @@ impl Qualifier<'_> {
         p: &super::Parser<'_, '_, '_>,
     ) -> (ast::CaptureMode, &'q [Self]) {
         match qualifiers {
-            [Self::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
+            [Self::Move(_), qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
             [Self::Use(span), qualifiers @ ..] => {
                 p.feature(Feature::ergonomic_clones, *span);
                 (ast::CaptureMode::Use, qualifiers)
