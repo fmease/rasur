@@ -167,8 +167,6 @@ async safe extern fn f() {}
 async safe fn f() {}
 async unsafe extern fn f() {}
 async unsafe fn f() {}
-auto impl(crate) trait Trait {}
-auto impl(in crate) trait Trait {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
@@ -210,8 +208,13 @@ gen extern fn f() {}
 gen fn f() {}
 gen unsafe fn f() {}
 impl !Trait for () {}
+impl (crate) {}
 impl Trait for () {}
 impl const Trait for () {}
+impl(crate) auto trait Trait {}
+impl(in crate) auto trait Trait {}
+impl(self) trait Trait {}
+impl(super) const trait Trait {}
 pub const extern "C" fn f() {}
 pub const fn f() {}
 pub const unsafe extern "C" fn f() {}
@@ -274,8 +277,6 @@ async safe extern fn f() {}
 async safe fn f() {}
 async unsafe extern fn f() {}
 async unsafe fn f() {}
-auto impl(crate) trait Trait {}
-auto impl(in crate) trait Trait {}
 auto trait Trait {}
 const F: () = ();
 const async fn f() {}
@@ -317,8 +318,13 @@ gen extern fn f() {}
 gen fn f() {}
 gen unsafe fn f() {}
 impl !Trait for () {}
+impl (crate) {}
 impl Trait for () {}
 impl const Trait for () {}
+impl(crate) auto trait Trait {}
+impl(in crate) auto trait Trait {}
+impl(self) trait Trait {}
+impl(super) const trait Trait {}
 pub const extern "C" fn f() {}
 pub const fn f() {}
 pub const unsafe extern "C" fn f() {}
