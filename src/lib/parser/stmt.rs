@@ -9,10 +9,6 @@ use crate::{ast, error::Error};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a statement.
-    ///
-    /// # Grammar
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_stmt(&mut self, delimiter: TokenKind) -> Result<ast::Stmt<'src>> {
         let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 

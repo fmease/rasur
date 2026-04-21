@@ -13,8 +13,6 @@ use std::mem;
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a type.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_ty(&mut self) -> Result<ast::Ty<'src>> {
         self.parse_ty_where(PlusPolicy::Parse)
     }
@@ -387,12 +385,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse generics (generic parameter list followed by a where-clause).
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Generics ::= Generic_Param_List Where_Clause?
-    /// ```
     pub(super) fn parse_generics(&mut self) -> Result<ast::Generics<'src>> {
         let params = self.parse_generic_param_list()?.unwrap_or_default();
         let preds = self.parse_where_clause()?.unwrap_or_default();
@@ -400,16 +392,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a list of generic parameters.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Generic_Param_List ::= "<" (Generic_Param ("," | >">"))* ">"
-    /// Generic_Param_List ::=
-    ///     | Lifetime
-    ///     | "const" Common_Ident ":" Type ("=" Const_Arg)?
-    ///     | Common_Ident (":" Bounds)? ("=" Ty)?
-    /// ```
     pub(super) fn parse_generic_param_list(
         &mut self,
     ) -> Result<Option<Vec<ast::GenericParam<'src>>>> {
@@ -471,16 +453,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a where-clause.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Where_Clause ::= ("where" Predicates)?
-    /// # FIXME: Traling comma
-    /// Predicates ::= (Predicate ",")* Predicate?
-    /// Predicate ::=
-    ///     | Ty ":" Bounds
-    /// ```
     pub(super) fn parse_where_clause(&mut self) -> Result<Option<Vec<ast::Predicate<'src>>>> {
         if !self.consume(TokenKind::Where) {
             return Ok(None);
@@ -564,12 +536,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Parse a bounds annotation if available.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Bounds ::= (Bound "+")* Bound?
-    /// ```
     pub(super) fn parse_bounds(&mut self) -> Result<Vec<ast::Bound<'src>>> {
         self.parse_bounds_where(PlusPolicy::Parse)
     }

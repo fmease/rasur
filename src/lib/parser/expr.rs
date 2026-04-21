@@ -12,8 +12,6 @@ use std::mem;
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse an expression.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
@@ -825,12 +823,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a block expression assuming the leading `{` has already been parsed.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Block_Expr ::= "{" Attrs⟨Inner⟩* Stmt* "}"
-    /// ```
     pub(super) fn fin_parse_block_expr(
         &mut self,
         a_policy: AttrPolicy<'_, 'src>,

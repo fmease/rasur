@@ -8,8 +8,6 @@ use crate::{ast, error::Error, feature::Feature};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a pattern.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     // FIXME: Experiment with turning ranges and negation back into true operators.
     //        Might not be feasible / worth it.
     pub(super) fn parse_pat(&mut self, o_policy: OrPolicy) -> Result<ast::Pat<'src>> {

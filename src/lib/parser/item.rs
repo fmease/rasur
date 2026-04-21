@@ -14,12 +14,6 @@ use std::mem;
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a source file.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// File ::= Attrs⟨Inner⟩ Items⟨#End_Of_Input⟩
-    /// ```
     pub(super) fn parse_file(&mut self) -> Result<ast::File<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Inner)?;
         let items = self.parse_items(ItemCx::Boring, TokenKind::EndOfInput)?;
@@ -28,12 +22,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Parse a sequence of items.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Items⟨terminator⟩ ::= Item* ⟨terminator⟩
-    /// ```
     pub(super) fn parse_items(
         &mut self,
         cx: ItemCx,
@@ -50,10 +38,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Parse an item.
-    ///
-    /// # Grammar
-    ///
-    /// <!-- FIXME: Add EBNF section back in -->
     pub(super) fn parse_item(&mut self, cx: ItemCx) -> Result<ast::Item<'src>> {
         // NOTE: To be kept in sync with `Self::begins_final_non_macro_call_item`.
 
@@ -412,18 +396,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a constant item assuming the leading `const` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Const_Item ::=
-    ///     "const" (Common_Ident | "_")
-    ///     Generic_Params
-    ///     ":" Ty
-    ///     ("=" Expr)?
-    ///     Where_Clause?
-    ///     ";"
-    /// ```
     fn fin_parse_const_item(
         &mut self,
         override_policy: ast::OverridePolicy,
@@ -460,16 +432,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing an enumeration item assuming the leading `enum` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Enum_Item ::=
-    ///     "enum" Common_Ident
-    ///     Generics
-    ///     "{" (Enum_Variant ("," | >"}"))* "}"
-    /// Enum_Variant ::= Common_Ident
-    /// ```
     fn fin_parse_enum_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let generics = self.parse_generics()?;
@@ -546,12 +508,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing an extern block item assuming the leading `"extern" #Str_Lit?` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Extern_Block_Item ::= "unsafe"? "extern" #Str_Lit? "{" … "}"
-    /// ```
     fn fin_parse_extern_block_item(
         &mut self,
         safety: ast::Safety,
@@ -585,12 +541,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing an extern crate item assuming the leading `extern crate` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Extern_Crate_Item ::= "extern" "crate" (Common_Ident | "self") ("as" Common_Ident) ";"
-    /// ```
     fn fin_parse_extern_crate_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let (target, _) = self.parse_common_ident_or(TokenKind::SelfLower)?;
         let binder = self
@@ -604,19 +554,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a function item assuming the leading `Fn_Modifiers "fn"` has already been parsed.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Fn_Item ::=
-    ///     Fn_Modifiers
-    ///     "fn" Common_Ident
-    ///     Generic_Params Fn_Params
-    ///     ("->" Ty)?
-    ///     Where_Clause?
-    ///     (Block_Expr | ";")
-    /// Fn_Modifiers ::= …
-    /// ```
     fn fin_parse_fn_item(
         &mut self,
         modifiers: ast::FnItemModifiers<'src>,
@@ -671,8 +608,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_impl_item(
         &mut self,
         override_policy: ast::OverridePolicy,
@@ -773,12 +708,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a macro (2.0) definition assuming the leading `macro` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Macro_Def ::= "macro" Common_Ident ("(" Token_Stream ")")? "{" Token_Stream "}"
-    /// ```
     fn fin_parse_macro_def(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = if self.consume(TokenKind::OpenRoundBracket) {
@@ -798,12 +727,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a module item assuming the leading `mod` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Mod_Item ::= "unsafe"? "mod" Common_Ident ("{" … "}" | ";")
-    /// ```
     fn fin_parse_mod_item(
         &mut self,
         safety: ast::Safety,
@@ -823,12 +746,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a static item assuming the leading `static` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Static_Item ::= "static" "mut"? Common_Ident ":" Ty ("=" Expr)? ";"
-    /// ```
     fn fin_parse_static_item(&mut self, safety: ast::Safety<()>) -> Result<ast::ItemKind<'src>> {
         let mut_ = self.parse_mut();
         let binder = self.parse_common_ident()?;
@@ -840,8 +757,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a struct item assuming the leading `struct` has been parsed already.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_struct_item(&mut self) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let mut generics = self.parse_generics()?;
@@ -857,8 +772,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a trait item assuming the leading `trait` has been parsed already.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_trait_item(
         &mut self,
         modifiers: ast::TraitItemModifiers<'src>,
@@ -926,17 +839,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a type item assuming the leading `type` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Ty_Alias_Item ::=
-    ///     "type" Common_Ident
-    ///     Generic_Params
-    ///     (":" Bounds)?
-    ///     Where_Clause?
-    ///     ("=" Ty Where_Clause?)?
-    ///     ";"
     fn fin_parse_ty_alias_item(
         &mut self,
         override_policy: ast::OverridePolicy,
@@ -962,15 +864,6 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     /// Finish parsing a union item assuming the leading `"union" Common_Ident` has been parsed already.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Union_Item ::=
-    ///     "union" Common_Ident
-    ///     Generics
-    ///     "{" … "}"
-    /// ```
     fn fin_parse_union_item(&mut self, binder: ast::Ident<'src>) -> Result<ast::ItemKind<'src>> {
         let generics = self.parse_generics()?;
 

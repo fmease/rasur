@@ -3,14 +3,6 @@ use crate::ast;
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a sequence of attributes of the given style.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Attrs⟨style⟩ ::= ("#" Bang⟨style⟩ "[" Attr_Path … "]" )*
-    /// Bang⟨Outer⟩ ::= ""
-    /// Bang⟨Inner⟩ ::= "!"
-    /// ```
     // FIXME: Get rid of this in favor of `parse_inner_attrs` & `parse_outer_attrs`
     //        which return type-safe Attrs (i.e., M!=Any)
     pub(super) fn parse_attrs(&mut self, style: ast::AttrStyle) -> Result<Vec<ast::Attr<'src>>> {

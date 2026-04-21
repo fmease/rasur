@@ -105,8 +105,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Parse a list of function parameters.
-    ///
-    /// <!-- FIXME: Add an EBNF section back in -->
     pub(super) fn parse_fn_param_list(
         &mut self,
         mode: FnParamMode,

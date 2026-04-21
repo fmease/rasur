@@ -5,12 +5,6 @@ use crate::{ast, error::Error, feature::Feature, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Path ::= "::"? Path_Seg_Ident ("::" Path_Seg_Ident)*
-    /// ```
     pub(super) fn parse_path<M: GenericArgsMode>(
         &mut self,
         mode: PathMode,
