@@ -104,10 +104,10 @@ impl Fmt for ast::FnPtrTy<'_> {
 
 impl Fmt for TrailingSpace<ast::FnPtrTyModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::FnPtrTyModifiers { safety, r#extern }) = self;
+        let Self(ast::FnPtrTyModifiers { safety, extern_ }) = self;
 
         safety.trailing_space().fmt(cx);
-        r#extern.trailing_space().fmt(cx);
+        extern_.trailing_space().fmt(cx);
     }
 }
 

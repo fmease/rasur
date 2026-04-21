@@ -18,7 +18,7 @@ fn abi_strs() {
         Rust2015,
         r#"extern "ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
-            modifiers: ast::FnPtrTyModifiers { r#extern: ast::Extern::Yes(Some(r#""ABI""#)), .. },
+            modifiers: ast::FnPtrTyModifiers { extern_: ast::Extern::Yes(Some(r#""ABI""#)), .. },
             ..
         })))
     );
@@ -28,7 +28,7 @@ fn abi_strs() {
         Rust2015,
         r#"extern r"ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
-            modifiers: ast::FnPtrTyModifiers { r#extern: ast::Extern::Yes(Some(r#"r"ABI""#)), .. },
+            modifiers: ast::FnPtrTyModifiers { extern_: ast::Extern::Yes(Some(r#"r"ABI""#)), .. },
             ..
         })))
     );
@@ -39,7 +39,7 @@ fn abi_strs() {
         r##"extern r#"ABI"# fn()"##,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
-                r#extern: ast::Extern::Yes(Some(r##"r#"ABI"#"##)),
+                extern_: ast::Extern::Yes(Some(r##"r#"ABI"#"##)),
                 ..
             },
             ..

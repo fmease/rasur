@@ -61,7 +61,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (Vec::new(), &*qualifiers),
                 };
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
-                (modifiers.r#extern, qualifiers) = Qualifier::strip_extern(qualifiers);
+                (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidTyPrefix(start.until(self.token.span)));
                 }

@@ -111,7 +111,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let store = Store::sealed();
         for (qualifier, token) in self.snapshot(&store).parse_item_qualifiers() {
             match qualifier {
-                Qualifier::Async | Qualifier::Const | Qualifier::Gen | Qualifier::Static => {}
+                Qualifier::Async | Qualifier::Const | Qualifier::Gen(_) | Qualifier::Static => {}
                 _ => return true,
             }
 
@@ -215,12 +215,12 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Async::No, qualifiers),
                 };
                 (modifiers.gen_, qualifiers) = match qualifiers {
-                    [Qualifier::Gen, qualifiers @ ..] => (ast::Gen::Yes, qualifiers),
+                    [Qualifier::Gen(span), qualifiers @ ..] => {
+                        self.feature(Feature::gen_blocks, *span);
+                        (ast::Gen::Yes, qualifiers)
+                    }
                     _ => (ast::Gen::No, qualifiers),
                 };
-                if let ast::Gen::Yes = modifiers.gen_ {
-                    self.feature_no_span_fixme(Feature::gen_blocks);
-                }
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
@@ -338,7 +338,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Fn => Qualifier::Fn,
-                TokenKind::Gen => Qualifier::Gen,
+                TokenKind::Gen => Qualifier::Gen(self.token.span),
                 TokenKind::CommonIdent => match self.source(self.token.span) {
                     weak::Auto::STR if weak::Auto.qualifies(self) => {
                         Qualifier::Auto(self.token.span)
@@ -485,8 +485,10 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
-            let safety = if this.consume(TokenKind::Unsafe) {
-                this.feature_no_span_fixme(Feature::unsafe_fields);
+            let safety = if let span = this.token.span
+                && this.consume(TokenKind::Unsafe)
+            {
+                this.feature(Feature::unsafe_fields, span);
                 ast::Safety::Unsafe
             } else {
                 ast::Safety::Inherited
@@ -499,8 +501,10 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     fn parse_field_default(&mut self) -> Result<Option<ast::Expr<'src>>> {
-        if self.consume(TokenKind::SingleEquals) {
-            self.feature_no_span_fixme(Feature::default_field_values);
+        if let span = self.token.span
+            && self.consume(TokenKind::SingleEquals)
+        {
+            self.feature(Feature::default_field_values, span);
             self.parse_expr().map(Some)
         } else {
             Ok(None)
@@ -623,9 +627,10 @@ impl<'src> Parser<'_, '_, 'src> {
         };
 
         let const_ = if let ast::Const::No = const_
+            && let span = self.token.span
             && self.consume(TokenKind::Const)
         {
-            self.feature_no_span_fixme(Feature::const_trait_impl);
+            self.feature(Feature::const_trait_impl, span);
             ast::Const::Yes
         } else {
             const_
@@ -1214,7 +1219,7 @@ enum Qualifier<'src> {
     Const,
     Extern(Option<&'src str>),
     Fn,
-    Gen,
+    Gen(Span),
     Impl,
     ImplRestriction(Box<Result<ast::Path<'src, ast::NoGenericArgs>>>),
     Mod,

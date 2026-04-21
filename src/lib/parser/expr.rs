@@ -435,12 +435,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
         match self.parse_expr_qualifiers()?.as_mut_slice() {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
-                if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
+                if let [Qualifier::Async | Qualifier::Gen(_), ..] = qualifiers {
                     let (async_, qualifiers) = Qualifier::strip_async(qualifiers);
-                    let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers);
-                    if let ast::Gen::Yes = gen_ {
-                        self.feature_no_span_fixme(Feature::gen_blocks);
-                    }
+                    let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                     if let ast::CaptureMode::Use = mode {
                         self.feature_no_span_fixme(Feature::ergonomic_clones);
@@ -459,7 +456,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
 
                 let (kind, qualifiers) = match qualifiers {
-                    [qualifiers @ .., Qualifier::Const] => {
+                    [qualifiers @ .., Qualifier::Const(_)] => {
                         (Some(ast::SpecialBlockKind::Const), qualifiers)
                     }
                     [qualifiers @ .., Qualifier::Try(ty)] => {
@@ -495,24 +492,21 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (Vec::new(), &*qualifiers),
                 };
                 (modifiers.const_, qualifiers) = match qualifiers {
-                    [Qualifier::Const, qualifiers @ ..] => (ast::Const::Yes, qualifiers),
+                    [Qualifier::Const(span), qualifiers @ ..] => {
+                        self.feature(Feature::const_closures, *span);
+                        (ast::Const::Yes, qualifiers)
+                    }
                     _ => (ast::Const::No, qualifiers),
                 };
-                if let ast::Const::Yes = modifiers.const_ {
-                    self.feature_no_span_fixme(Feature::const_closures);
-                }
                 (modifiers.static_, qualifiers) = match qualifiers {
-                    [Qualifier::Static, qualifiers @ ..] => (ast::Static::Yes, qualifiers),
+                    [Qualifier::Static(span), qualifiers @ ..] => {
+                        self.feature(Feature::coroutines, *span);
+                        (ast::Static::Yes, qualifiers)
+                    }
                     _ => (ast::Static::No, qualifiers),
                 };
-                if let ast::Static::Yes = modifiers.static_ {
-                    self.feature_no_span_fixme(Feature::coroutines);
-                }
                 (modifiers.async_, qualifiers) = Qualifier::strip_async(qualifiers);
-                (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers);
-                if let ast::Gen::Yes = modifiers.gen_ {
-                    self.feature_no_span_fixme(Feature::gen_blocks);
-                }
+                (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
                 if let ast::CaptureMode::Use = modifiers.mode {
                     self.feature_no_span_fixme(Feature::ergonomic_clones);
@@ -764,7 +758,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         loop {
             let qualifier = match self.token.kind {
                 TokenKind::Async => Qualifier::Async,
-                TokenKind::Const => Qualifier::Const,
+                TokenKind::Const => Qualifier::Const(self.token.span),
                 TokenKind::DoublePipe => {
                     self.parse_unchecked(TokenPrefix::Pipe);
                     qualifiers.push(Qualifier::Pipe);
@@ -777,7 +771,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::ForBinder(bound_vars));
                     continue;
                 }
-                TokenKind::Gen => Qualifier::Gen,
+                TokenKind::Gen => Qualifier::Gen(self.token.span),
                 TokenKind::Move => Qualifier::Move,
                 TokenKind::OpenCurlyBracket => {
                     self.advance();
@@ -789,7 +783,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     qualifiers.push(Qualifier::Pipe);
                     break;
                 }
-                TokenKind::Static => Qualifier::Static,
+                TokenKind::Static => Qualifier::Static(self.token.span),
                 TokenKind::Try => {
                     self.advance();
                     let ty = self
@@ -1336,13 +1330,13 @@ enum Level {
 
 enum Qualifier<'src> {
     Async,
-    Const,
+    Const(Span),
     ForBinder(Vec<ast::GenericParam<'src>>),
-    Gen,
+    Gen(Span),
     Move,
     OpenCurlyBracket,
     Pipe,
-    Static,
+    Static(Span),
     Try(Option<Box<ast::Ty<'src>>>),
     Unsafe,
     Use,
@@ -1356,9 +1350,15 @@ impl Qualifier<'_> {
         }
     }
 
-    fn strip_gen(qualifiers: &[Self]) -> (ast::Gen, &[Self]) {
+    fn strip_gen<'q>(
+        qualifiers: &'q [Self],
+        p: &super::Parser<'_, '_, '_>,
+    ) -> (ast::Gen, &'q [Self]) {
         match qualifiers {
-            [Self::Gen, qualifiers @ ..] => (ast::Gen::Yes, qualifiers),
+            [Self::Gen(span), qualifiers @ ..] => {
+                p.feature(Feature::gen_blocks, *span);
+                (ast::Gen::Yes, qualifiers)
+            }
             _ => (ast::Gen::No, qualifiers),
         }
     }

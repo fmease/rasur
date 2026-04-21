@@ -50,7 +50,7 @@ pub struct FnPtrTy<'src> {
 #[derive(Default, Debug)]
 pub struct FnPtrTyModifiers<'src> {
     pub safety: Safety<()>,
-    pub r#extern: Extern<'src>,
+    pub extern_: Extern<'src>,
 }
 
 #[derive(Debug)]
