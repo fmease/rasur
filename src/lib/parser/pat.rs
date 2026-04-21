@@ -72,7 +72,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         match op {
             Op::DoubleBorrow => {
                 let borrow = self.fin_parse_borrow_pat(right_level, o_policy, g_policy)?;
-                Ok(ast::Pat::Borrow(ast::BorrowKind::Ref, ast::Mutability::Not, Box::new(borrow)))
+                Ok(ast::Pat::Borrow(ast::BorrowKind::Ref, ast::Mut::No, Box::new(borrow)))
             }
             Op::SingleBorrow => self.fin_parse_borrow_pat(right_level, o_policy, g_policy),
             _ => unreachable!(),
@@ -167,7 +167,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         match self.parse_mut_by_ref() {
-            (ast::Mutability::Not, ast::ByRef::No) => {}
+            (ast::Mut::No, ast::ByRef::No) => {}
             (mut_, by_ref) => {
                 let binder = self.parse_common_ident()?;
                 return self.fin_parse_binding_pat(mut_, by_ref, binder);
@@ -312,7 +312,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
                         }
 
-                        let (binder, body) = if let (false, ast::Mutability::Not, ast::ByRef::No) =
+                        let (binder, body) = if let (false, ast::Mut::No, ast::ByRef::No) =
                             (box_, mut_, by_ref)
                             && self.consume(TokenKind::SingleColon)
                         {
@@ -390,7 +390,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 ast::ExtPath {
                     ext: None,
                     path: ast::Path { segs: deref!([ast::PathSeg { ident, args: None }]) },
-                } => self.fin_parse_binding_pat(ast::Mutability::Not, ast::ByRef::No, ident),
+                } => self.fin_parse_binding_pat(ast::Mut::No, ast::ByRef::No, ident),
                 _ => Ok(ast::Pat::Path(Box::new(path))),
             };
         }
@@ -448,7 +448,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     fn fin_parse_binding_pat(
         &mut self,
-        mut_: ast::Mutability,
+        mut_: ast::Mut,
         by_ref: ast::ByRef,
         binder: ast::Ident<'src>,
     ) -> Result<ast::Pat<'src>> {
@@ -459,9 +459,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(ast::Pat::Binding(Box::new(ast::BindingPat { mut_, by_ref, binder, pat })))
     }
 
-    fn parse_mut_by_ref(&mut self) -> (ast::Mutability, ast::ByRef) {
+    fn parse_mut_by_ref(&mut self) -> (ast::Mut, ast::ByRef) {
         let start = self.token.span;
-        let mut_ = self.parse_mutability();
+        let mut_ = self.parse_mut();
 
         let by_ref = if self.consume(TokenKind::Ref) {
             let (kind, mut_) = self.parse_borrow_kind_and_mutability();
@@ -470,7 +470,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             ast::ByRef::No
         };
 
-        if let ast::Mutability::Mut = mut_
+        if let ast::Mut::Yes = mut_
             && let ast::ByRef::Yes(..) = by_ref
         {
             self.feature(Feature::mut_ref, start);

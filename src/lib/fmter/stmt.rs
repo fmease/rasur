@@ -27,7 +27,7 @@ impl Fmt for ast::Stmt<'_> {
 
 impl Fmt for ast::LetStmt<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, superness, pat, ty, body } = self;
+        let Self { attrs, super_, pat, ty, body } = self;
 
         // FIXME: Scan for & respect skip attr.
         for attr in attrs {
@@ -35,9 +35,9 @@ impl Fmt for ast::LetStmt<'_> {
             LineBreak.fmt(cx);
         }
 
-        match superness {
-            ast::Superness::Super => fmt!(cx, "super "),
-            ast::Superness::Not => {}
+        match super_ {
+            ast::Super::Yes => fmt!(cx, "super "),
+            ast::Super::No => {}
         }
         fmt!(cx, "let ");
         pat.fmt(cx);

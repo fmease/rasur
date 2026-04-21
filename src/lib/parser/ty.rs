@@ -63,7 +63,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (Vec::new(), &*qualifiers),
                 };
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
-                (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
+                (modifiers.r#extern, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidTyPrefix(start.until(self.token.span)));
                 }
@@ -105,7 +105,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::Ty::Ref(Box::new(ast::RefTy {
                     lt: None,
                     kind: ast::BorrowKind::Ref,
-                    mut_: ast::Mutability::Not,
+                    mut_: ast::Mut::No,
                     pointee,
                 })));
             }
@@ -142,11 +142,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 let mut_ = match self.token.kind {
                     TokenKind::Const => {
                         self.advance();
-                        ast::Mutability::Not
+                        ast::Mut::No
                     }
                     TokenKind::Mut => {
                         self.advance();
-                        ast::Mutability::Mut
+                        ast::Mut::Yes
                     }
                     _ => {
                         return self.fatal(Error::UnexpectedToken(
@@ -862,12 +862,10 @@ impl<'src> Qualifier<'src> {
         }
     }
 
-    fn strip_extern(qualifiers: &[Self]) -> (ast::Externness<'src>, &[Self]) {
+    fn strip_extern(qualifiers: &[Self]) -> (ast::Extern<'src>, &[Self]) {
         match qualifiers {
-            [Qualifier::Extern(abi), qualifiers @ ..] => {
-                (ast::Externness::Extern(*abi), qualifiers)
-            }
-            _ => (ast::Externness::Not, qualifiers),
+            [Qualifier::Extern(abi), qualifiers @ ..] => (ast::Extern::Yes(*abi), qualifiers),
+            _ => (ast::Extern::No, qualifiers),
         }
     }
 }

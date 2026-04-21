@@ -35,13 +35,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return Ok(ast::Stmt::Item(item));
         }
 
-        let superness =
-            if self.token.kind == TokenKind::Super && self.peek(1).kind == TokenKind::Let {
-                self.advance();
-                ast::Superness::Super
-            } else {
-                ast::Superness::Not
-            };
+        let super_ = if self.token.kind == TokenKind::Super && self.peek(1).kind == TokenKind::Let {
+            self.advance();
+            ast::Super::Yes
+        } else {
+            ast::Super::No
+        };
         if self.consume(TokenKind::Let) {
             let pat = self.parse_pat(OrPolicy::Yield)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
@@ -62,7 +61,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
             // FIXME: Should mention `else`, too, where applicable.
             self.parse(TokenKind::Semicolon)?;
-            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt { attrs, superness, pat, ty, body })));
+            return Ok(ast::Stmt::Let(Box::new(ast::LetStmt { attrs, super_, pat, ty, body })));
         }
 
         if self.begins_expr() {

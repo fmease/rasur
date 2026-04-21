@@ -393,23 +393,22 @@ impl Fmt for ast::ClosureExpr<'_> {
 
 impl Fmt for TrailingSpace<ast::ClosureExprModifiers> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::ClosureExprModifiers { constness, staticness, asyncness, genness, mode }) =
-            self;
+        let Self(ast::ClosureExprModifiers { const_, static_, async_, gen_, mode }) = self;
 
-        constness.trailing_space().fmt(cx);
-        staticness.trailing_space().fmt(cx);
-        asyncness.trailing_space().fmt(cx);
-        genness.trailing_space().fmt(cx);
+        const_.trailing_space().fmt(cx);
+        static_.trailing_space().fmt(cx);
+        async_.trailing_space().fmt(cx);
+        gen_.trailing_space().fmt(cx);
         mode.trailing_space().fmt(cx);
     }
 }
 
-impl Fmt for TrailingSpace<ast::Staticness> {
+impl Fmt for TrailingSpace<ast::Static> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(staticness) = self;
-        match staticness {
-            ast::Staticness::Static => fmt!(cx, "static "),
-            ast::Staticness::Not => {}
+        let Self(static_) = self;
+        match static_ {
+            ast::Static::Yes => fmt!(cx, "static "),
+            ast::Static::No => {}
         }
     }
 }
@@ -445,13 +444,13 @@ impl Fmt for ast::ClosureParam<'_> {
 impl Fmt for (ast::ForLoopExpr<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (expr, attrs) = self;
-        let ast::ForLoopExpr { label, awaitness, pat, head, body } = expr;
+        let ast::ForLoopExpr { label, await_, pat, head, body } = expr;
 
         label.map(LoopLabel).fmt(cx);
         fmt!(cx, "for ");
-        match awaitness {
-            ast::Awaitness::Await => fmt!(cx, "await "),
-            ast::Awaitness::Not => {}
+        match await_ {
+            ast::Await::Yes => fmt!(cx, "await "),
+            ast::Await::No => {}
         }
 
         pat.fmt(cx);

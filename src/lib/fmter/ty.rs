@@ -13,8 +13,8 @@ impl Fmt for ast::Ty<'_> {
             Self::Ptr(mut_, ty) => {
                 fmt!(cx, "*");
                 match mut_ {
-                    ast::Mutability::Mut => fmt!(cx, "mut "),
-                    ast::Mutability::Not => fmt!(cx, "const "),
+                    ast::Mut::Yes => fmt!(cx, "mut "),
+                    ast::Mut::No => fmt!(cx, "const "),
                 }
                 ty.fmt(cx);
             }
@@ -104,10 +104,10 @@ impl Fmt for ast::FnPtrTy<'_> {
 
 impl Fmt for TrailingSpace<ast::FnPtrTyModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::FnPtrTyModifiers { safety, externness }) = self;
+        let Self(ast::FnPtrTyModifiers { safety, r#extern }) = self;
 
         safety.trailing_space().fmt(cx);
-        externness.trailing_space().fmt(cx);
+        r#extern.trailing_space().fmt(cx);
     }
 }
 

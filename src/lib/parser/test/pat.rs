@@ -15,8 +15,8 @@ fn mut_ref_mut() {
         Rust2015,
         "mut ref mut x",
         Ok(ast::Pat::Binding(r!(ast::BindingPat {
-            mut_: ast::Mutability::Mut,
-            by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
+            mut_: ast::Mut::Yes,
+            by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mut::Yes),
             binder: ast::Ident!("x"),
             pat: None,
         })))
@@ -63,8 +63,8 @@ fn pseudo_field_binding_mode_box() {
                 attrs: _,
                 binder: None,
                 body: ast::Pat::Box(r!(ast::Pat::Binding(r!(ast::BindingPat {
-                    mut_: ast::Mutability::Mut,
-                    by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mutability::Mut),
+                    mut_: ast::Mut::Yes,
+                    by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mut::Yes),
                     binder: ast::Ident!("x"),
                     pat: None,
                 }))))

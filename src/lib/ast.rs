@@ -66,9 +66,9 @@ pub enum LitKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Mutability {
-    Mut,
-    Not,
+pub enum Mut {
+    Yes,
+    No,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -89,8 +89,8 @@ pub enum Safety<X = !> {
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub enum Externness<'src> {
-    Extern(Option<&'src str>),
+pub enum Extern<'src> {
+    Yes(Option<&'src str>),
     #[default]
-    Not,
+    No,
 }

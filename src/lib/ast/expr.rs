@@ -1,6 +1,6 @@
 use super::{
-    Asyncness, Attr, BorrowKind, Bracket, Constness, ExtPath, GenericParam, Genness, Ident, Lit,
-    MacroCall, Mutability, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
+    Async, Attr, BorrowKind, Bracket, Const, ExtPath, Gen, GenericParam, Ident, Lit, MacroCall,
+    Mut, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
 use crate::span::Span;
 
@@ -24,7 +24,7 @@ pub enum ExprKind<'src> {
     Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
     Block(Option<Ident<'src>>, Box<BlockExpr<'src>>),
-    Borrow(BorrowKind, Mutability, Box<Expr<'src>>),
+    Borrow(BorrowKind, Mut, Box<Expr<'src>>),
     Break(Option<Ident<'src>>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
@@ -295,19 +295,18 @@ pub struct ClosureExpr<'src> {
 
 #[derive(Default, Debug)]
 pub struct ClosureExprModifiers {
-    pub constness: Constness,
-    pub staticness: Staticness,
-    pub asyncness: Asyncness,
-    // FIXME: Horrible naming!
-    pub genness: Genness,
+    pub const_: Const,
+    pub static_: Static,
+    pub async_: Async,
+    pub gen_: Gen,
     pub mode: CaptureMode,
 }
 
 #[derive(Default, Debug)]
-pub enum Staticness {
-    Static,
+pub enum Static {
+    Yes,
     #[default]
-    Not,
+    No,
 }
 
 #[derive(Default, Debug)]
@@ -334,17 +333,16 @@ pub struct LetExpr<'src> {
 #[derive(Debug)]
 pub struct ForLoopExpr<'src> {
     pub label: Option<Ident<'src>>,
-    // FIXME: Horrendous naming scheme, replace.
-    pub awaitness: Awaitness,
+    pub await_: Await,
     pub pat: Pat<'src>,
     pub head: Expr<'src>,
     pub body: BlockExpr<'src>,
 }
 
 #[derive(Debug)]
-pub enum Awaitness {
-    Await,
-    Not,
+pub enum Await {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]

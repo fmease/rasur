@@ -1,5 +1,5 @@
 use super::{
-    Attr, BorrowKind, Expr, ExtPath, Ident, Lit, MacroCall, Mutability,
+    Attr, BorrowKind, Expr, ExtPath, Ident, Lit, MacroCall, Mut,
     ObligatorilyDisambiguatedGenericArgs,
 };
 use crate::span::Span;
@@ -7,7 +7,7 @@ use crate::span::Span;
 #[derive(Debug)]
 pub enum Pat<'src> {
     Binding(Box<BindingPat<'src>>),
-    Borrow(BorrowKind<!>, Mutability, Box<Pat<'src>>),
+    Borrow(BorrowKind<!>, Mut, Box<Pat<'src>>),
     Box(Box<Pat<'src>>),
     Deref(Box<Pat<'src>>),
     Error(Span),
@@ -41,7 +41,7 @@ pub enum WildcardKind {
 
 #[derive(Debug)]
 pub struct BindingPat<'src> {
-    pub mut_: Mutability,
+    pub mut_: Mut,
     pub by_ref: ByRef,
     pub binder: Ident<'src>,
     pub pat: Option<Box<Pat<'src>>>,
@@ -49,7 +49,7 @@ pub struct BindingPat<'src> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ByRef {
-    Yes(BorrowKind<!>, Mutability),
+    Yes(BorrowKind<!>, Mut),
     No,
 }
 

@@ -1,7 +1,7 @@
 use super::{
-    Attr, BlockExpr, Bound, Expr, Externness, Generics, Ident, MacroCall, Mutability,
-    NoGenericArgs, ObligatorilyDisambiguatedGenericArgs, Pat, Path, PathExt, Safety, Span,
-    TokenStream, Ty, UnambiguousGenericArgs,
+    Attr, BlockExpr, Bound, Expr, Extern, Generics, Ident, MacroCall, Mut, NoGenericArgs,
+    ObligatorilyDisambiguatedGenericArgs, Pat, Path, PathExt, Safety, Span, TokenStream, Ty,
+    UnambiguousGenericArgs,
 };
 use Default::default;
 
@@ -44,19 +44,18 @@ pub enum ItemKind<'src> {
 
 #[derive(Debug)]
 pub struct ConstItem<'src> {
-    pub defaultness: Defaultness,
-    pub tyness: Tyness,
+    pub override_policy: OverridePolicy,
+    pub type_level: TypeLevel,
     pub binder: Ident<'src>,
     pub generics: Generics<'src>,
     pub ty: Ty<'src>,
     pub body: Option<Expr<'src>>,
 }
 
-// FIXME: horrible name
 #[derive(Debug)]
-pub enum Tyness {
-    Ty,
-    Not,
+pub enum TypeLevel {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]
@@ -177,37 +176,36 @@ pub struct FnItem<'src> {
 
 #[derive(Debug)]
 pub struct FnItemModifiers<'src> {
-    pub defaultness: Defaultness,
-    pub constness: Constness = default(),
-    pub asyncness: Asyncness = default(),
-    pub genness: Genness = default(),
+    pub override_policy: OverridePolicy,
+    pub const_: Const = default(),
+    pub async_: Async = default(),
+    pub gen_: Gen = default(),
     pub safety: Safety<()> = default(),
-    pub externness: Externness<'src> = default(),
+    pub extern_: Extern<'src> = default(),
 }
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub enum Constness {
-    Const,
+pub enum Const {
+    Yes,
     #[default]
-    Not,
+    No,
 }
 
 #[derive_const(Default)]
 #[derive(Debug)]
-pub enum Asyncness {
-    Async,
+pub enum Async {
+    Yes,
     #[default]
-    Not,
+    No,
 }
 
-// FIXME: Awful name, rethink whole naming scheme here
 #[derive_const(Default)]
 #[derive(Debug)]
-pub enum Genness {
-    Gen,
+pub enum Gen {
+    Yes,
     #[default]
-    Not,
+    No,
 }
 
 #[derive(Debug)]
@@ -226,7 +224,7 @@ pub struct Contract<'src> {
 #[derive(Debug)]
 pub struct ImplItem<'src> {
     pub generics: Generics<'src>,
-    pub constness: Constness,
+    pub const_: Const,
     pub trait_ref: Option<ImplTraitRef<'src>>,
     pub self_ty: Ty<'src>,
     pub body: ImplBody<'src>,
@@ -234,7 +232,7 @@ pub struct ImplItem<'src> {
 
 #[derive(Debug)]
 pub struct ImplTraitRef<'src> {
-    pub defaultness: Defaultness,
+    pub override_policy: OverridePolicy,
     pub safety: Safety,
     pub polarity: ImplPolarity,
     pub path: Path<'src, UnambiguousGenericArgs>,
@@ -263,7 +261,7 @@ pub struct ModItem<'src> {
 #[derive(Debug)]
 pub struct StaticItem<'src> {
     pub safety: Safety<()>,
-    pub mut_: Mutability,
+    pub mut_: Mut,
     pub binder: Ident<'src>,
     pub ty: Ty<'src>,
     pub body: Option<Expr<'src>>,
@@ -287,7 +285,7 @@ pub struct TraitItem<'src> {
 
 #[derive(Debug)]
 pub struct TraitAliasItem<'src> {
-    pub constness: Constness,
+    pub const_: Const,
     pub binder: Ident<'src>,
     pub generics: Generics<'src>,
     pub bounds: Vec<Bound<'src>>,
@@ -295,17 +293,17 @@ pub struct TraitAliasItem<'src> {
 
 #[derive(Default, Debug)]
 pub struct TraitItemModifiers<'src> {
-    pub constness: Constness,
+    pub const_: Const,
     pub safety: Safety,
-    pub autoness: Autoness,
+    pub auto: Auto,
     pub impl_restriction: Option<Path<'src, NoGenericArgs>>,
 }
 
 #[derive(Default, Debug)]
-pub enum Autoness {
-    Auto,
+pub enum Auto {
+    Yes,
     #[default]
-    Not,
+    No,
 }
 
 // FIXME: Maybe represent as Item<Assoc>?
@@ -328,7 +326,7 @@ pub enum AssocItemKind<'src> {
 
 #[derive(Debug)]
 pub struct TyAliasItem<'src> {
-    pub defaultness: Defaultness,
+    pub override_policy: OverridePolicy,
     pub binder: Ident<'src>,
     pub generics: Generics<'src>,
     pub bounds: Vec<Bound<'src>>,
@@ -383,10 +381,9 @@ pub enum Visibility<'src> {
     Public,
 }
 
-// FIXME: Find a better name for the type and its variants!
 #[derive(Clone, Copy, Debug)]
-pub enum Defaultness {
-    Default,
-    Final,
-    Not,
+pub enum OverridePolicy {
+    Allowed,
+    Forbidden,
+    Implicit,
 }

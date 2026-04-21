@@ -18,10 +18,7 @@ fn abi_strs() {
         Rust2015,
         r#"extern "ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
-            modifiers: ast::FnPtrTyModifiers {
-                externness: ast::Externness::Extern(Some(r#""ABI""#)),
-                ..
-            },
+            modifiers: ast::FnPtrTyModifiers { r#extern: ast::Extern::Yes(Some(r#""ABI""#)), .. },
             ..
         })))
     );
@@ -31,10 +28,7 @@ fn abi_strs() {
         Rust2015,
         r#"extern r"ABI" fn()"#,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
-            modifiers: ast::FnPtrTyModifiers {
-                externness: ast::Externness::Extern(Some(r#"r"ABI""#)),
-                ..
-            },
+            modifiers: ast::FnPtrTyModifiers { r#extern: ast::Extern::Yes(Some(r#"r"ABI""#)), .. },
             ..
         })))
     );
@@ -45,7 +39,7 @@ fn abi_strs() {
         r##"extern r#"ABI"# fn()"##,
         Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
-                externness: ast::Externness::Extern(Some(r##"r#"ABI"#"##)),
+                r#extern: ast::Extern::Yes(Some(r##"r#"ABI"#"##)),
                 ..
             },
             ..
@@ -56,7 +50,7 @@ fn abi_strs() {
 
     t!(parse_ty, Rust2021, r#"extern c"ABI" fn()"#, Err(r!([Error::InvalidAbiStr(_)])));
 
-    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err(r!([Error::AbiStrSuffix(_)])),);
+    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err(r!([Error::AbiStrSuffix(_)])));
 }
 
 #[test]
@@ -87,10 +81,7 @@ fn const_block_const_item_modifier() {
                             attrs: r!([]),
                             vis: ast::Visibility::Inherited,
                             kind: ast::ItemKind::Fn(ast::FnItem {
-                                modifiers: ast::FnItemModifiers {
-                                    constness: ast::Constness::Const,
-                                    ..
-                                },
+                                modifiers: ast::FnItemModifiers { const_: ast::Const::Yes, .. },
                                 binder: ast::Ident!("f"),
                                 ..
                             }),
@@ -122,7 +113,7 @@ fn const_block_const_item_modifier() {
                     attrs: r!([]),
                     vis: ast::Visibility::Inherited,
                     kind: ast::ItemKind::Fn(ast::FnItem {
-                        modifiers: ast::FnItemModifiers { constness: ast::Constness::Const, .. },
+                        modifiers: ast::FnItemModifiers { const_: ast::Const::Yes, .. },
                         binder: ast::Ident!("f"),
                         ..
                     }),

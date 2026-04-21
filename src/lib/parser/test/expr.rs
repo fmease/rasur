@@ -404,13 +404,9 @@ fn double_borrow_and_double_borrow() {
                 r!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
-                        ast::Mutability::Not,
+                        ast::Mut::No,
                         r!(ast::Expr {
-                            kind: ast::ExprKind::Borrow(
-                                ast::BorrowKind::Ref,
-                                ast::Mutability::Not,
-                                _
-                            ),
+                            kind: ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, _),
                             ..
                         })
                     ),
@@ -419,13 +415,9 @@ fn double_borrow_and_double_borrow() {
                 r!(ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
-                        ast::Mutability::Not,
+                        ast::Mut::No,
                         r!(ast::Expr {
-                            kind: ast::ExprKind::Borrow(
-                                ast::BorrowKind::Ref,
-                                ast::Mutability::Not,
-                                _
-                            ),
+                            kind: ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, _),
                             ..
                         }),
                     ),

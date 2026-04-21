@@ -59,12 +59,12 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { defaultness, tyness, binder, generics, ty, body } = self;
+        let Self { override_policy, type_level: tyness, binder, generics, ty, body } = self;
 
-        defaultness.trailing_space().fmt(cx);
+        override_policy.trailing_space().fmt(cx);
         match tyness {
-            ast::Tyness::Ty => fmt!(cx, "type "),
-            ast::Tyness::Not => {}
+            ast::TypeLevel::Yes => fmt!(cx, "type "),
+            ast::TypeLevel::No => {}
         }
         fmt!(cx, "const ");
         binder.fmt(cx);
@@ -355,15 +355,15 @@ impl Fmt for TrailingSpace<ast::FnItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(modifiers) = self;
 
-        let ast::FnItemModifiers { defaultness, constness, asyncness, genness, safety, externness } =
+        let ast::FnItemModifiers { override_policy, const_, async_, gen_, safety, extern_ } =
             modifiers;
 
-        defaultness.trailing_space().fmt(cx);
-        constness.trailing_space().fmt(cx);
-        asyncness.trailing_space().fmt(cx);
-        genness.trailing_space().fmt(cx);
+        override_policy.trailing_space().fmt(cx);
+        const_.trailing_space().fmt(cx);
+        async_.trailing_space().fmt(cx);
+        gen_.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
-        externness.trailing_space().fmt(cx);
+        extern_.trailing_space().fmt(cx);
     }
 }
 
@@ -429,11 +429,12 @@ impl Fmt for ast::Contract<'_> {
 impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         let (item, attrs) = self;
-        let ast::ImplItem { generics, constness, trait_ref, self_ty, body } = item;
+        let ast::ImplItem { generics, const_, trait_ref, self_ty, body } = item;
 
-        if let Some(ast::ImplTraitRef { defaultness, safety: _, polarity: _, path: _ }) = trait_ref
+        if let Some(ast::ImplTraitRef { override_policy, safety: _, polarity: _, path: _ }) =
+            trait_ref
         {
-            defaultness.trailing_space().fmt(cx);
+            override_policy.trailing_space().fmt(cx);
         }
 
         match body {
@@ -441,7 +442,8 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
             ast::ImplBody::Delegated(_) => fmt!(cx, "reuse "),
         }
 
-        if let Some(ast::ImplTraitRef { defaultness: _, safety, polarity: _, path: _ }) = trait_ref
+        if let Some(ast::ImplTraitRef { override_policy: _, safety, polarity: _, path: _ }) =
+            trait_ref
         {
             safety.trailing_space().fmt(cx);
         }
@@ -451,8 +453,9 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
             generics.params.fmt(cx);
         }
         fmt!(cx, " ");
-        constness.trailing_space().fmt(cx);
-        if let Some(ast::ImplTraitRef { defaultness: _, safety: _, polarity, path }) = trait_ref {
+        const_.trailing_space().fmt(cx);
+        if let Some(ast::ImplTraitRef { override_policy: _, safety: _, polarity, path }) = trait_ref
+        {
             match polarity {
                 ast::ImplPolarity::Positive => {}
                 ast::ImplPolarity::Negative => fmt!(cx, "!"),
@@ -572,11 +575,11 @@ impl Fmt for (ast::TraitItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
 
 impl Fmt for TrailingSpace<ast::TraitItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(ast::TraitItemModifiers { constness, safety, autoness, impl_restriction }) = self;
+        let Self(ast::TraitItemModifiers { const_, safety, auto, impl_restriction }) = self;
 
-        constness.trailing_space().fmt(cx);
+        const_.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
-        autoness.trailing_space().fmt(cx);
+        auto.trailing_space().fmt(cx);
         if let Some(path) = impl_restriction {
             fmt!(cx, "impl");
             Restriction(path).fmt(cx);
@@ -587,9 +590,9 @@ impl Fmt for TrailingSpace<ast::TraitItemModifiers<'_>> {
 
 impl Fmt for ast::TraitAliasItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { constness, binder, generics, bounds } = self;
+        let Self { const_, binder, generics, bounds } = self;
 
-        constness.trailing_space().fmt(cx);
+        const_.trailing_space().fmt(cx);
         fmt!(cx, "trait ");
         binder.fmt(cx);
         if !generics.params.is_empty() {
@@ -607,9 +610,9 @@ impl Fmt for ast::TraitAliasItem<'_> {
 
 impl Fmt for ast::TyAliasItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { defaultness, binder, generics, bounds, body } = self;
+        let Self { override_policy, binder, generics, bounds, body } = self;
 
-        defaultness.trailing_space().fmt(cx);
+        override_policy.trailing_space().fmt(cx);
         fmt!(cx, "type ");
         binder.fmt(cx);
         if !generics.params.is_empty() {
@@ -763,32 +766,32 @@ impl Fmt for Restriction<'_> {
     }
 }
 
-impl Fmt for TrailingSpace<ast::Constness> {
+impl Fmt for TrailingSpace<ast::Const> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(constness) = self;
-        match constness {
-            ast::Constness::Const => fmt!(cx, "const "),
-            ast::Constness::Not => {}
+        let Self(const_) = self;
+        match const_ {
+            ast::Const::Yes => fmt!(cx, "const "),
+            ast::Const::No => {}
         }
     }
 }
 
-impl Fmt for TrailingSpace<ast::Asyncness> {
+impl Fmt for TrailingSpace<ast::Async> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(asyncness) = self;
-        match asyncness {
-            ast::Asyncness::Async => fmt!(cx, "async "),
-            ast::Asyncness::Not => {}
+        let Self(async_) = self;
+        match async_ {
+            ast::Async::Yes => fmt!(cx, "async "),
+            ast::Async::No => {}
         }
     }
 }
 
-impl Fmt for TrailingSpace<ast::Genness> {
+impl Fmt for TrailingSpace<ast::Gen> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(genness) = self;
-        match genness {
-            ast::Genness::Gen => fmt!(cx, "gen "),
-            ast::Genness::Not => {}
+        let Self(gen_) = self;
+        match gen_ {
+            ast::Gen::Yes => fmt!(cx, "gen "),
+            ast::Gen::No => {}
         }
     }
 }
@@ -804,36 +807,36 @@ impl<X> Fmt for TrailingSpace<ast::Safety<X>> {
     }
 }
 
-impl Fmt for TrailingSpace<ast::Externness<'_>> {
+impl Fmt for TrailingSpace<ast::Extern<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(externness) = self;
-        match externness {
-            ast::Externness::Extern(abi) => {
+        let Self(extern_) = self;
+        match extern_ {
+            ast::Extern::Yes(abi) => {
                 fmt!(cx, "extern ");
                 abi.trailing_space().fmt(cx);
             }
-            ast::Externness::Not => {}
+            ast::Extern::No => {}
         }
     }
 }
 
-impl Fmt for TrailingSpace<ast::Autoness> {
+impl Fmt for TrailingSpace<ast::Auto> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(autoness) = self;
-        match autoness {
-            ast::Autoness::Auto => fmt!(cx, "auto "),
-            ast::Autoness::Not => {}
+        let Self(auto) = self;
+        match auto {
+            ast::Auto::Yes => fmt!(cx, "auto "),
+            ast::Auto::No => {}
         }
     }
 }
 
-impl Fmt for TrailingSpace<ast::Defaultness> {
+impl Fmt for TrailingSpace<ast::OverridePolicy> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(defaultness) = self;
-        match defaultness {
-            ast::Defaultness::Default => fmt!(cx, "default "),
-            ast::Defaultness::Final => fmt!(cx, "final "),
-            ast::Defaultness::Not => {}
+        let Self(policy) = self;
+        match policy {
+            ast::OverridePolicy::Allowed => fmt!(cx, "default "),
+            ast::OverridePolicy::Forbidden => fmt!(cx, "final "),
+            ast::OverridePolicy::Implicit => {}
         }
     }
 }

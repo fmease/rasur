@@ -15,11 +15,8 @@ use crate::{
 use std::mem;
 
 impl<'src> super::Parser<'_, '_, 'src> {
-    pub(super) fn parse_mutability(&mut self) -> ast::Mutability {
-        match self.consume(TokenKind::Mut) {
-            true => ast::Mutability::Mut,
-            false => ast::Mutability::Not,
-        }
+    pub(super) fn parse_mut(&mut self) -> ast::Mut {
+        if self.consume(TokenKind::Mut) { ast::Mut::Yes } else { ast::Mut::No }
     }
 
     // FIXME: Temporary API
@@ -168,7 +165,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 let (kind, mut_) = this.parse_borrow_kind_and_mutability();
                 (ShorthandKind::Ref(lt, kind), mut_)
             } else {
-                (ShorthandKind::Bare, this.parse_mutability())
+                (ShorthandKind::Bare, this.parse_mut())
             };
             // FIXME: make `parse` ret the Span
             let span = this.token.span;
@@ -184,7 +181,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }) {
             let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
                 mut_: match kind {
-                    ShorthandKind::Ref(..) => ast::Mutability::Not,
+                    ShorthandKind::Ref(..) => ast::Mut::No,
                     ShorthandKind::Bare => mut_,
                 },
                 by_ref: ast::ByRef::No,
@@ -311,11 +308,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     pub(super) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind>(
         &mut self,
-    ) -> (ast::BorrowKind<X>, ast::Mutability) {
+    ) -> (ast::BorrowKind<X>, ast::Mut) {
         if let TokenKind::CommonIdent = self.token.kind
             && let Some(mut_) = match self.peek(1).kind {
-                TokenKind::Mut => Some(ast::Mutability::Mut),
-                TokenKind::Const => Some(ast::Mutability::Not),
+                TokenKind::Mut => Some(ast::Mut::Yes),
+                TokenKind::Const => Some(ast::Mut::No),
                 _ => None,
             }
             && let Some(kind) = match self.source(self.token.span) {
@@ -330,7 +327,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.advance();
             (kind, mut_)
         } else {
-            (ast::BorrowKind::Ref, self.parse_mutability())
+            (ast::BorrowKind::Ref, self.parse_mut())
         }
     }
 

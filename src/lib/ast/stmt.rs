@@ -14,16 +14,16 @@ pub enum Stmt<'src> {
 #[derive(Debug)]
 pub struct LetStmt<'src> {
     pub attrs: Vec<Attr<'src>>,
-    pub superness: Superness,
+    pub super_: Super,
     pub pat: Pat<'src>,
     pub ty: Option<Ty<'src>>,
     pub body: Option<LetStmtBody<'src>>,
 }
 
 #[derive(Debug)]
-pub enum Superness {
-    Super,
-    Not,
+pub enum Super {
+    Yes,
+    No,
 }
 
 #[derive(Debug)]

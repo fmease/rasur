@@ -61,9 +61,9 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let mut attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let vis = self.parse_visibility()?;
-        let defaultness = self.parse_defaultness();
+        let override_policy = self.parse_override_policy();
 
-        let kind = self.parse_item_kind(defaultness, cx, &mut attrs)?;
+        let kind = self.parse_item_kind(override_policy, cx, &mut attrs)?;
 
         // FIXME: Find a better way to obtain the span
         let span = self.prev_token().map_or(start, |token| start.to(token.span));
@@ -72,11 +72,11 @@ impl<'src> Parser<'_, '_, 'src> {
             self.error(Error::VisibilityOnInvalidItem(span));
         }
 
-        if !kind.supports_defaultness() {
-            match defaultness {
-                ast::Defaultness::Default => self.error(Error::DefaultOnInvalidItem(span)),
-                ast::Defaultness::Final => self.error(Error::FinalOnInvalidItem(span)),
-                ast::Defaultness::Not => {}
+        if !kind.supports_explicit_override_policy() {
+            match override_policy {
+                ast::OverridePolicy::Allowed => self.error(Error::DefaultOnInvalidItem(span)),
+                ast::OverridePolicy::Forbidden => self.error(Error::FinalOnInvalidItem(span)),
+                ast::OverridePolicy::Implicit => {}
             }
         }
 
@@ -148,23 +148,23 @@ impl<'src> Parser<'_, '_, 'src> {
         qualified
     }
 
-    fn parse_defaultness(&mut self) -> ast::Defaultness {
+    fn parse_override_policy(&mut self) -> ast::OverridePolicy {
         let span = self.token.span;
         if self.consume(weak::Default) {
             // FIXME: replace with `MinSpecialization` if the item ends up being a fn.
             self.feature(Feature::specialization, span);
-            ast::Defaultness::Default
+            ast::OverridePolicy::Allowed
         } else if self.consume(TokenKind::Final) {
             self.feature(Feature::final_associated_functions, span);
-            ast::Defaultness::Final
+            ast::OverridePolicy::Forbidden
         } else {
-            ast::Defaultness::Not
+            ast::OverridePolicy::Implicit
         }
     }
 
     fn parse_item_kind(
         &mut self,
-        defaultness: ast::Defaultness,
+        override_policy: ast::OverridePolicy,
         cx: ItemCx,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
@@ -178,25 +178,25 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_mut_slice() {
             [] => {}
-            [Qualifier::Type(_)] => return self.fin_parse_ty_alias_item(defaultness),
+            [Qualifier::Type(_)] => return self.fin_parse_ty_alias_item(override_policy),
             [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
                 self.feature(Feature::const_block_items, start);
                 return self.fin_parse_const_block_item();
             }
             [qualifiers @ .., Qualifier::Const] => {
-                let (tyness, qualifiers) = match qualifiers {
+                let (type_level, qualifiers) = match qualifiers {
                     [Qualifier::Type(span), qualifiers @ ..] => {
                         // FIXME: There's also feature gate `mgca_type_const_syntax`.
                         self.feature(Feature::min_generic_const_args, *span);
-                        (ast::Tyness::Ty, qualifiers)
+                        (ast::TypeLevel::Yes, qualifiers)
                     }
-                    _ => (ast::Tyness::Not, qualifiers),
+                    _ => (ast::TypeLevel::No, qualifiers),
                 };
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_const_item(defaultness, tyness);
+                return self.fin_parse_const_item(override_policy, type_level);
             }
             // `crate` can't be a qualifier itself because it may also begin paths & it's not worth the look-ahead.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
@@ -223,22 +223,22 @@ impl<'src> Parser<'_, '_, 'src> {
                 return self.fin_parse_static_item(safety);
             }
             &mut [mut ref mut qualifiers @ .., Qualifier::Fn] => {
-                let mut modifiers = ast::FnItemModifiers { defaultness, .. };
+                let mut modifiers = ast::FnItemModifiers { override_policy, .. };
 
-                (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
-                (modifiers.asyncness, qualifiers) = match qualifiers {
-                    [Qualifier::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
-                    _ => (ast::Asyncness::Not, qualifiers),
+                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers);
+                (modifiers.async_, qualifiers) = match qualifiers {
+                    [Qualifier::Async, qualifiers @ ..] => (ast::Async::Yes, qualifiers),
+                    _ => (ast::Async::No, qualifiers),
                 };
-                (modifiers.genness, qualifiers) = match qualifiers {
-                    [Qualifier::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
-                    _ => (ast::Genness::Not, qualifiers),
+                (modifiers.gen_, qualifiers) = match qualifiers {
+                    [Qualifier::Gen, qualifiers @ ..] => (ast::Gen::Yes, qualifiers),
+                    _ => (ast::Gen::No, qualifiers),
                 };
-                if let ast::Genness::Gen = modifiers.genness {
+                if let ast::Gen::Yes = modifiers.gen_ {
                     self.feature_no_span_fixme(Feature::gen_blocks);
                 }
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
-                (modifiers.externness, qualifiers) = Qualifier::strip_extern(qualifiers);
+                (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
@@ -248,17 +248,17 @@ impl<'src> Parser<'_, '_, 'src> {
             &mut [mut ref mut qualifiers @ .., Qualifier::Trait] => {
                 let mut modifiers = ast::TraitItemModifiers::default();
 
-                (modifiers.constness, qualifiers) = Qualifier::strip_const(qualifiers);
-                if let ast::Constness::Const = modifiers.constness {
+                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers);
+                if let ast::Const::Yes = modifiers.const_ {
                     self.feature_no_span_fixme(Feature::const_trait_impl);
                 }
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
-                (modifiers.autoness, qualifiers) = match qualifiers {
+                (modifiers.auto, qualifiers) = match qualifiers {
                     [Qualifier::Auto(span), qualifiers @ ..] => {
                         self.feature(Feature::auto_traits, *span);
-                        (ast::Autoness::Auto, qualifiers)
+                        (ast::Auto::Yes, qualifiers)
                     }
-                    _ => (ast::Autoness::Not, qualifiers),
+                    _ => (ast::Auto::No, qualifiers),
                 };
                 (modifiers.impl_restriction, qualifiers) = match qualifiers {
                     [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
@@ -282,8 +282,8 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                     _ => (ImplKind::Normal, qualifiers),
                 };
-                let (constness, qualifiers) = Qualifier::strip_const(qualifiers);
-                if let ast::Constness::Const = constness {
+                let (const_, qualifiers) = Qualifier::strip_const(qualifiers);
+                if let ast::Const::Yes = const_ {
                     self.feature_no_span_fixme(Feature::const_trait_impl);
                 }
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -291,7 +291,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
                 }
 
-                return self.fin_parse_impl_item(defaultness, kind, constness, safety, attrs);
+                return self.fin_parse_impl_item(override_policy, kind, const_, safety, attrs);
             }
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
@@ -426,8 +426,8 @@ impl<'src> Parser<'_, '_, 'src> {
     /// ```
     fn fin_parse_const_item(
         &mut self,
-        defaultness: ast::Defaultness,
-        tyness: ast::Tyness,
+        override_policy: ast::OverridePolicy,
+        type_level: ast::TypeLevel,
     ) -> Result<ast::ItemKind<'src>> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
         let params = self
@@ -443,8 +443,8 @@ impl<'src> Parser<'_, '_, 'src> {
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
-            defaultness,
-            tyness,
+            override_policy,
+            type_level,
             binder,
             generics: ast::Generics { params, preds },
             ty,
@@ -675,9 +675,9 @@ impl<'src> Parser<'_, '_, 'src> {
     /// <!-- FIXME: Add an EBNF section back in -->
     fn fin_parse_impl_item(
         &mut self,
-        defaultness: ast::Defaultness,
+        override_policy: ast::OverridePolicy,
         kind: ImplKind,
-        constness: ast::Constness,
+        const_: ast::Const,
         safety: ast::Safety,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ItemKind<'src>> {
@@ -687,13 +687,13 @@ impl<'src> Parser<'_, '_, 'src> {
             Vec::new()
         };
 
-        let constness = if let ast::Constness::Not = constness
+        let const_ = if let ast::Const::No = const_
             && self.consume(TokenKind::Const)
         {
             self.feature_no_span_fixme(Feature::const_trait_impl);
-            ast::Constness::Const
+            ast::Const::Yes
         } else {
-            constness
+            const_
         };
 
         let polarity = if self.token.kind == TokenKind::SingleBang
@@ -729,7 +729,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let preds = self.parse_where_clause()?.unwrap_or_default();
 
         let trait_ref = if let Some(path) = trait_ref {
-            Some(ast::ImplTraitRef { defaultness, safety, polarity, path })
+            Some(ast::ImplTraitRef { override_policy, safety, polarity, path })
         } else {
             match polarity {
                 ast::ImplPolarity::Positive => {}
@@ -765,7 +765,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         Ok(ast::ItemKind::Impl(Box::new(ast::ImplItem {
             generics: ast::Generics { params, preds },
-            constness,
+            const_,
             trait_ref,
             self_ty,
             body,
@@ -830,7 +830,7 @@ impl<'src> Parser<'_, '_, 'src> {
     /// Static_Item ::= "static" "mut"? Common_Ident ":" Ty ("=" Expr)? ";"
     /// ```
     fn fin_parse_static_item(&mut self, safety: ast::Safety<()>) -> Result<ast::ItemKind<'src>> {
-        let mut_ = self.parse_mutability();
+        let mut_ = self.parse_mut();
         let binder = self.parse_common_ident()?;
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
@@ -901,16 +901,16 @@ impl<'src> Parser<'_, '_, 'src> {
 
         self.parse(TokenKind::Semicolon)?;
 
-        let ast::TraitItemModifiers { constness, safety, autoness, impl_restriction } = modifiers;
+        let ast::TraitItemModifiers { const_, safety, auto, impl_restriction } = modifiers;
 
         match safety {
             ast::Safety::Inherited => {}
             ast::Safety::Unsafe => self.error(Error::UnsafeTraitAlias),
         }
 
-        match autoness {
-            ast::Autoness::Auto => self.error(Error::AutoTraitAlias),
-            ast::Autoness::Not => {}
+        match auto {
+            ast::Auto::Yes => self.error(Error::AutoTraitAlias),
+            ast::Auto::No => {}
         }
 
         if impl_restriction.is_some() {
@@ -918,7 +918,7 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         Ok(ast::ItemKind::TraitAlias(Box::new(ast::TraitAliasItem {
-            constness,
+            const_,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
@@ -939,7 +939,7 @@ impl<'src> Parser<'_, '_, 'src> {
     ///     ";"
     fn fin_parse_ty_alias_item(
         &mut self,
-        defaultness: ast::Defaultness,
+        override_policy: ast::OverridePolicy,
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let params = self.parse_generic_param_list()?.unwrap_or_default();
@@ -953,7 +953,7 @@ impl<'src> Parser<'_, '_, 'src> {
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::TyAlias(Box::new(ast::TyAliasItem {
-            defaultness,
+            override_policy,
             binder,
             generics: ast::Generics { params, preds },
             bounds,
@@ -1287,7 +1287,7 @@ impl ast::ItemKind<'_> {
         }
     }
 
-    fn supports_defaultness(&self) -> bool {
+    fn supports_explicit_override_policy(&self) -> bool {
         match self {
             Self::Const(_) | Self::Fn(_) | Self::TyAlias(_) => true,
             Self::Impl(item) => item.trait_ref.is_some(),
@@ -1334,10 +1334,10 @@ enum Qualifier<'src> {
 }
 
 impl<'src> Qualifier<'src> {
-    fn strip_const(qualifiers: &mut [Self]) -> (ast::Constness, &mut [Self]) {
+    fn strip_const(qualifiers: &mut [Self]) -> (ast::Const, &mut [Self]) {
         match qualifiers {
-            [Self::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
-            _ => (ast::Constness::Not, qualifiers),
+            [Self::Const, qualifiers @ ..] => (ast::Const::Yes, qualifiers),
+            _ => (ast::Const::No, qualifiers),
         }
     }
 
@@ -1356,10 +1356,10 @@ impl<'src> Qualifier<'src> {
         }
     }
 
-    fn strip_extern(qualifiers: &mut [Self]) -> (ast::Externness<'src>, &mut [Self]) {
+    fn strip_extern(qualifiers: &mut [Self]) -> (ast::Extern<'src>, &mut [Self]) {
         match qualifiers {
-            [Self::Extern(abi), qualifiers @ ..] => (ast::Externness::Extern(*abi), qualifiers),
-            _ => (ast::Externness::Not, qualifiers),
+            [Self::Extern(abi), qualifiers @ ..] => (ast::Extern::Yes(*abi), qualifiers),
+            _ => (ast::Extern::No, qualifiers),
         }
     }
 }

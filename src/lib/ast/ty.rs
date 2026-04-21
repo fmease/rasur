@@ -1,6 +1,6 @@
 use super::{
-    Attr, BorrowKind, Expr, ExtPath, Externness, FnParam, Ident, MacroCall, Mutability, Path,
-    Safety, UnambiguousGenericArgs,
+    Attr, BorrowKind, Expr, ExtPath, Extern, FnParam, Ident, MacroCall, Mut, Path, Safety,
+    UnambiguousGenericArgs,
 };
 use crate::span::Span;
 
@@ -26,7 +26,7 @@ pub enum Ty<'src> {
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Never,
     Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
-    Ptr(Mutability, Box<Ty<'src>>),
+    Ptr(Mut, Box<Ty<'src>>),
     Ref(Box<RefTy<'src>>),
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
@@ -50,14 +50,14 @@ pub struct FnPtrTy<'src> {
 #[derive(Default, Debug)]
 pub struct FnPtrTyModifiers<'src> {
     pub safety: Safety<()>,
-    pub externness: Externness<'src>,
+    pub r#extern: Extern<'src>,
 }
 
 #[derive(Debug)]
 pub struct RefTy<'src> {
     pub lt: Option<Lifetime<'src>>,
     pub kind: BorrowKind<!>,
-    pub mut_: Mutability,
+    pub mut_: Mut,
     pub pointee: Ty<'src>,
 }
 

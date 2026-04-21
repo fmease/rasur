@@ -200,17 +200,17 @@ impl Fmt for (ast::Bracket, ast::Orientation) {
     }
 }
 
-impl Fmt for TrailingSpace<ast::Mutability> {
+impl Fmt for TrailingSpace<ast::Mut> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(mut_) = self;
         match mut_ {
-            ast::Mutability::Mut => fmt!(cx, "mut "),
-            ast::Mutability::Not => {}
+            ast::Mut::Yes => fmt!(cx, "mut "),
+            ast::Mut::No => {}
         }
     }
 }
 
-impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mutability)> {
+impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mut)> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self((kind, mut_)) = self;
 
@@ -220,8 +220,7 @@ impl<X> Fmt for TrailingSpace<(ast::BorrowKind<X>, ast::Mutability)> {
             ast::BorrowKind::Ref => {}
         }
         mut_.trailing_space().fmt(cx);
-        if let (ast::BorrowKind::Pin | ast::BorrowKind::Raw(_), ast::Mutability::Not) = (kind, mut_)
-        {
+        if let (ast::BorrowKind::Pin | ast::BorrowKind::Raw(_), ast::Mut::No) = (kind, mut_) {
             fmt!(cx, "const ");
         }
     }

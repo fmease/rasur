@@ -171,11 +171,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             Op::DoubleBorrow => {
                 let expr =
                     self.fin_parse_borrow_expr(right_level, s_policy, o_policy, Vec::new())?;
-                let kind = ast::ExprKind::Borrow(
-                    ast::BorrowKind::Ref,
-                    ast::Mutability::Not,
-                    Box::new(expr),
-                );
+                let kind =
+                    ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, Box::new(expr));
                 return Ok(ast::Expr { attrs, kind });
             }
             Op::Range(kind) => {
@@ -441,9 +438,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
             [] => {}
             [qualifiers @ .., Qualifier::OpenCurlyBracket] => {
                 if let [Qualifier::Async | Qualifier::Gen, ..] = qualifiers {
-                    let (asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
-                    let (genness, qualifiers) = Qualifier::strip_gen(qualifiers);
-                    if let ast::Genness::Gen = genness {
+                    let (async_, qualifiers) = Qualifier::strip_async(qualifiers);
+                    let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers);
+                    if let ast::Gen::Yes = gen_ {
                         self.feature_no_span_fixme(Feature::gen_blocks);
                     }
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
@@ -454,11 +451,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
                     let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
-                    let kind = match (asyncness, genness) {
-                        (ast::Asyncness::Async, ast::Genness::Gen) => ast::GenBlockKind::AsyncGen,
-                        (ast::Asyncness::Async, ast::Genness::Not) => ast::GenBlockKind::Async,
-                        (ast::Asyncness::Not, ast::Genness::Gen) => ast::GenBlockKind::Gen,
-                        (ast::Asyncness::Not, ast::Genness::Not) => unreachable!(),
+                    let kind = match (async_, gen_) {
+                        (ast::Async::Yes, ast::Gen::Yes) => ast::GenBlockKind::AsyncGen,
+                        (ast::Async::Yes, ast::Gen::No) => ast::GenBlockKind::Async,
+                        (ast::Async::No, ast::Gen::Yes) => ast::GenBlockKind::Gen,
+                        (ast::Async::No, ast::Gen::No) => unreachable!(),
                     };
                     return Ok(ast::ExprKind::GenBlock(kind, mode, Box::new(block)));
                 }
@@ -499,23 +496,23 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     }
                     _ => (Vec::new(), &*qualifiers),
                 };
-                (modifiers.constness, qualifiers) = match qualifiers {
-                    [Qualifier::Const, qualifiers @ ..] => (ast::Constness::Const, qualifiers),
-                    _ => (ast::Constness::Not, qualifiers),
+                (modifiers.const_, qualifiers) = match qualifiers {
+                    [Qualifier::Const, qualifiers @ ..] => (ast::Const::Yes, qualifiers),
+                    _ => (ast::Const::No, qualifiers),
                 };
-                if let ast::Constness::Const = modifiers.constness {
+                if let ast::Const::Yes = modifiers.const_ {
                     self.feature_no_span_fixme(Feature::const_closures);
                 }
-                (modifiers.staticness, qualifiers) = match qualifiers {
-                    [Qualifier::Static, qualifiers @ ..] => (ast::Staticness::Static, qualifiers),
-                    _ => (ast::Staticness::Not, qualifiers),
+                (modifiers.static_, qualifiers) = match qualifiers {
+                    [Qualifier::Static, qualifiers @ ..] => (ast::Static::Yes, qualifiers),
+                    _ => (ast::Static::No, qualifiers),
                 };
-                if let ast::Staticness::Static = modifiers.staticness {
+                if let ast::Static::Yes = modifiers.static_ {
                     self.feature_no_span_fixme(Feature::coroutines);
                 }
-                (modifiers.asyncness, qualifiers) = Qualifier::strip_async(qualifiers);
-                (modifiers.genness, qualifiers) = Qualifier::strip_gen(qualifiers);
-                if let ast::Genness::Gen = modifiers.genness {
+                (modifiers.async_, qualifiers) = Qualifier::strip_async(qualifiers);
+                (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers);
+                if let ast::Gen::Yes = modifiers.gen_ {
                     self.feature_no_span_fixme(Feature::gen_blocks);
                 }
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
@@ -895,13 +892,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
         label: Option<ast::Ident<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        let awaitness = if let span = self.token.span
+        let await_ = if let span = self.token.span
             && self.consume(TokenKind::Await)
         {
             self.feature(Feature::async_for_loop, span);
-            ast::Awaitness::Await
+            ast::Await::Yes
         } else {
-            ast::Awaitness::Not
+            ast::Await::No
         };
         let pat = self.parse_pat(OrPolicy::Parse)?;
         self.parse(TokenKind::In)?;
@@ -909,7 +906,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.parse_expr_where(StructPolicy::Yield, LetPolicy::YieldOrReject, OpPolicy::Parse)?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
-        Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, awaitness, pat, head, body })))
+        Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, await_, pat, head, body })))
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
@@ -1360,17 +1357,17 @@ enum Qualifier<'src> {
 }
 
 impl Qualifier<'_> {
-    fn strip_async(qualifiers: &[Self]) -> (ast::Asyncness, &[Self]) {
+    fn strip_async(qualifiers: &[Self]) -> (ast::Async, &[Self]) {
         match qualifiers {
-            [Self::Async, qualifiers @ ..] => (ast::Asyncness::Async, qualifiers),
-            _ => (ast::Asyncness::Not, qualifiers),
+            [Self::Async, qualifiers @ ..] => (ast::Async::Yes, qualifiers),
+            _ => (ast::Async::No, qualifiers),
         }
     }
 
-    fn strip_gen(qualifiers: &[Self]) -> (ast::Genness, &[Self]) {
+    fn strip_gen(qualifiers: &[Self]) -> (ast::Gen, &[Self]) {
         match qualifiers {
-            [Self::Gen, qualifiers @ ..] => (ast::Genness::Gen, qualifiers),
-            _ => (ast::Genness::Not, qualifiers),
+            [Self::Gen, qualifiers @ ..] => (ast::Gen::Yes, qualifiers),
+            _ => (ast::Gen::No, qualifiers),
         }
     }
 
