@@ -363,77 +363,31 @@ use {self::*, self::{}};
     );
 
     // Make sure that we don't consider these weak / context-dependent keywords as item modifiers:
-    t!(
-        parse_stmt,
-        Rust2015,
-        "auto as _",
-        Ok(ast::Stmt::Expr(
-            ast::Expr {
-                kind: ast::ExprKind::Cast(
-                    r!(ast::Expr {
-                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
-                            ext: None,
-                            path: ast::Path {
-                                segs: [ast::PathSeg { ident: ast::Ident!("auto"), .. }]
-                            }
-                        })),
-                        ..
-                    }),
-                    _
-                ),
-                ..
-            },
-            _
-        ))
-    );
-
-    t!(
-        parse_stmt,
-        Rust2015,
-        "default as _",
-        Ok(ast::Stmt::Expr(
-            ast::Expr {
-                kind: ast::ExprKind::Cast(
-                    r!(ast::Expr {
-                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
-                            ext: None,
-                            path: ast::Path {
-                                segs: [ast::PathSeg { ident: ast::Ident!("default"), .. }]
-                            }
-                        })),
-                        ..
-                    }),
-                    _
-                ),
-                ..
-            },
-            _
-        ))
-    );
-
-    t!(
-        parse_stmt,
-        Rust2015,
-        "safe as _",
-        Ok(ast::Stmt::Expr(
-            ast::Expr {
-                kind: ast::ExprKind::Cast(
-                    r!(ast::Expr {
-                        kind: ast::ExprKind::Path(r!(ast::ExtPath {
-                            ext: None,
-                            path: ast::Path {
-                                segs: [ast::PathSeg { ident: ast::Ident!("safe"), .. }]
-                            }
-                        })),
-                        ..
-                    }),
-                    _
-                ),
-                ..
-            },
-            _
-        ))
-    );
+    for weak in ["auto", "default", "safe"] {
+        t!(
+            parse_stmt,
+            Rust2015,
+            &format!("{weak} as _"),
+            Ok(ast::Stmt::Expr(
+                ast::Expr {
+                    kind: ast::ExprKind::Cast(
+                        r!(ast::Expr {
+                            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                                ext: None,
+                                path: ast::Path {
+                                    segs: [ast::PathSeg { ident: ast::Ident!(name), .. }]
+                                }
+                            })),
+                            ..
+                        }),
+                        _
+                    ),
+                    ..
+                },
+                _
+            )) if name == weak
+        );
+    }
 }
 
 #[test]

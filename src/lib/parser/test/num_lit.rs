@@ -56,7 +56,7 @@ fn suffixes_invalid_places() {
         "Compound { 0suffix: 0 }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::Comma)]),
+            r!([Fragment::Token(TokenKind::SingleColon)]),
         )]))
     );
 
@@ -66,7 +66,7 @@ fn suffixes_invalid_places() {
         "Compound { 0suffix }",
         Err(r!([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::Comma)]),
+            r!([Fragment::Token(TokenKind::SingleColon)]),
         )]))
     );
 }
@@ -168,9 +168,42 @@ fn exponents_invalid_places() {
     t!(parse_expr, Rust2015, "Compound { 0e-1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
     t!(parse_pat, Rust2015, "Compound { 0e1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
     t!(parse_pat, Rust2015, "Compound { 0e+1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0e1 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0e+1 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0e-1 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0e1 }",
+        Err(r!([
+            Error::InvalidNumericIdent(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::CloseCurlyBracket, .. },
+                [Fragment::Token(TokenKind::SingleColon)]
+            )
+        ]))
+    );
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0e+1 }",
+        Err(r!([
+            Error::InvalidNumericIdent(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::CloseCurlyBracket, .. },
+                [Fragment::Token(TokenKind::SingleColon)]
+            )
+        ]))
+    );
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0e-1 }",
+        Err(r!([
+            Error::InvalidNumericIdent(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::CloseCurlyBracket, .. },
+                [Fragment::Token(TokenKind::SingleColon)]
+            )
+        ]))
+    );
 }
 
 #[test]
@@ -183,6 +216,28 @@ fn fractional_part_invalid_places() {
     t!(parse_expr, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
     t!(parse_pat, Rust2015, "Compound { 0.0: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
     t!(parse_pat, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0.0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0. }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0.0 }",
+        Err(r!([
+            Error::InvalidNumericIdent(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::CloseCurlyBracket, .. },
+                [Fragment::Token(TokenKind::SingleColon)]
+            )
+        ]))
+    );
+    t!(
+        parse_pat,
+        Rust2015,
+        "Compound { 0. }",
+        Err(r!([
+            Error::InvalidNumericIdent(_),
+            Error::UnexpectedToken(
+                Token { kind: TokenKind::CloseCurlyBracket, .. },
+                [Fragment::Token(TokenKind::SingleColon)]
+            )
+        ]))
+    );
 }
