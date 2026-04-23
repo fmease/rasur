@@ -720,8 +720,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
                         }
 
-                        // NB: Shorthand numeric fields are not permitted
-                        //     in struct exprs contrary to struct pats.
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
                         } else {

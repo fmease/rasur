@@ -75,6 +75,156 @@ fn pseudo_field_binding_mode_box() {
 }
 
 #[test]
+fn structs() {
+    t!(
+        parse_pat,
+        Rust2015,
+        "S {}",
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            path: ast::ExtPath {
+                ext: None,
+                path: ast::Path {
+                    segs: r!([ast::PathSeg { ident: ast::Ident!("S"), args: None }])
+                }
+            },
+            fields: r!([]),
+            rest: false
+        })))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { .. }",
+        Ok(ast::Pat::Struct(r!(ast::StructPat { fields: r!([]), rest: true, .. })))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { f: x @ Some(_) }",
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            fields: r!([ast::StructPatField {
+                attrs: r!([]),
+                binder: Some(ast::Ident!("f")),
+                body: ast::Pat::Binding(_),
+            }]),
+            ..
+        })))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { f: .. }",
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            fields: r!([ast::StructPatField {
+                binder: Some(ast::Ident!("f")),
+                body: ast::Pat::Rest,
+                ..
+            }]),
+            rest: false,
+            ..
+        })))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { f }",
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            fields: r!([ast::StructPatField {
+                binder: None,
+                body: ast::Pat::Binding(r!(ast::BindingPat {
+                    mut_: ast::Mut::No,
+                    by_ref: ast::ByRef::No,
+                    binder: ast::Ident!("f"),
+                    pat: None,
+                })),
+                ..
+            }]),
+            rest: false,
+            ..
+        })))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { _ }",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::Underscore, .. },
+            r!([Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)])
+        )]))
+    );
+
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { #[a] f: _ }",
+        Ok(ast::Pat::Struct(r!(ast::StructPat {
+            fields: r!([ast::StructPatField {
+                attrs: r!([ast::Attr {
+                    style: ast::AttrStyle::Outer,
+                    kind: ast::AttrKind::Regular(_),
+                    ..
+                }]),
+                binder: Some(ast::Ident!("f")),
+                body: ast::Pat::Wildcard(ast::WildcardKind::Normal),
+            }]),
+            ..
+        })))
+    );
+
+    // Context: rustc once used to accept this accidentally:
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { #[a] .. }",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::DoubleDot, .. },
+            r!([Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)])
+        )]))
+    );
+
+    // No numeric identifier shorthands:
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { 0 }",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::CloseCurlyBracket, .. },
+            r!([Fragment::Token(TokenKind::SingleColon)])
+        )]))
+    );
+
+    // If a "modifier" is present, the explicit form is forbidden:
+    for modifier in ["box", "mut", "ref"] {
+        t!(
+            parse_pat,
+            Rust2015,
+            &format!("S {{ {modifier} f: _ }}"),
+            Err(r!([Error::UnexpectedToken(
+                Token { kind: TokenKind::SingleColon, .. },
+                r!([Fragment::Token(TokenKind::Comma)])
+            )]))
+        );
+    }
+
+    // There are no numeric identifier shorthands and the presence of modifiers requires shorthand.
+    // Consequently, modifiers are incompatible with numeric identifiers:
+    t!(
+        parse_pat,
+        Rust2015,
+        "S { ref 0 }",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::NumLit, .. },
+            r!([Fragment::Token(TokenKind::CommonIdent)])
+        )]))
+    );
+}
+
+#[test]
 fn ranges_and_rest() {
     // Not a range but a rest pattern.
     t!(parse_pat, Rust2015, "..", Ok(ast::Pat::Rest));

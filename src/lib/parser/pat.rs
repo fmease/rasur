@@ -293,26 +293,32 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        let box_ = if let span = self.token.span
+                        let boxed = if let span = self.token.span
                             && self.consume(TokenKind::Box)
                         {
                             self.feature(Feature::box_patterns, span);
-                            true
+                            Boxed::Yes
                         } else {
-                            false
+                            Boxed::No
                         };
                         let (mut_, by_ref) = self.parse_mut_by_ref();
 
-                        // NB: Shorthand numeric fields are permitted
-                        //     in struct pats contrary to struct exprs.
-                        let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+                        let unmarked = matches!(
+                            (boxed, mut_, by_ref),
+                            (Boxed::No, ast::Mut::No, ast::ByRef::No)
+                        );
+
+                        let (binder, numeric) = if unmarked {
+                            self.parse_common_ident_or(TokenKind::NumLit)?
+                        } else {
+                            (self.parse_common_ident()?, false)
+                        };
                         if numeric {
                             self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
                         }
 
-                        let (binder, body) = if let (false, ast::Mut::No, ast::ByRef::No) =
-                            (box_, mut_, by_ref)
-                            && self.consume(TokenKind::SingleColon)
+                        let (binder, body) = if unmarked
+                            && self.consume_or_parse(TokenKind::SingleColon, !numeric)?
                         {
                             let body = self.parse_pat_where(
                                 OrPolicy::Parse,
@@ -327,7 +333,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                                 binder,
                                 pat: None,
                             }));
-                            let body = if box_ { ast::Pat::Box(Box::new(body)) } else { body };
+                            let body = match boxed {
+                                Boxed::Yes => ast::Pat::Box(Box::new(body)),
+                                Boxed::No => body,
+                            };
 
                             (None, body)
                         };
@@ -336,6 +345,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;
+                        }
+
+                        #[derive(Clone, Copy)]
+                        enum Boxed {
+                            Yes,
+                            No,
                         }
                     }
 

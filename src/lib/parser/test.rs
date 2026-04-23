@@ -153,9 +153,9 @@ fn parse_via<'src, T>(
     Ok(node.unwrap())
 }
 
-macro t($parse:ident, $edition:ident, $source:literal, $ast:pat $(,)?) {
+macro t($parse:ident, $edition:ident, $source:expr, $ast:pat $(if $guard:expr)? $(,)?) {
     match $parse(normalize($source).as_ref(), $edition) {
-        $ast => {}
+        $ast $(if $guard)? => {}
         ast => panic!("{:?}: {} != {:#?}", $source, stringify!($ast), ast),
     }
 }
