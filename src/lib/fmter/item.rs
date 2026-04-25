@@ -343,13 +343,7 @@ impl Fmt for (ast::FnItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         if !generics.params.is_empty() {
             generics.params.fmt(cx);
         }
-        fmt!(cx, "(");
-        params.interleave(", ").fmt(cx);
-        fmt!(cx, ")");
-        if let Some(ty) = ret_ty {
-            fmt!(cx, " -> ");
-            ty.fmt(cx);
-        }
+        (params, ret_ty).fmt(cx);
         contract.fmt(cx);
         generics.preds.fmt(cx);
         if let Some(body) = body {
@@ -374,6 +368,26 @@ impl Fmt for TrailingSpace<ast::FnItemModifiers<'_>> {
         gen_.trailing_space().fmt(cx);
         safety.trailing_space().fmt(cx);
         extern_.trailing_space().fmt(cx);
+    }
+}
+
+impl Fmt for (Vec<ast::FnParam<'_>>, Option<ast::Ty<'_>>) {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let (params, output_ty) = self;
+
+        params.fmt(cx);
+        if let Some(ty) = output_ty {
+            fmt!(cx, " -> ");
+            ty.fmt(cx);
+        }
+    }
+}
+
+impl Fmt for Vec<ast::FnParam<'_>> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        fmt!(cx, "(");
+        self.interleave(", ").fmt(cx);
+        fmt!(cx, ")");
     }
 }
 

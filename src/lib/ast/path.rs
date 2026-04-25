@@ -1,4 +1,4 @@
-use super::{Bound, Expr, Lifetime, Ty};
+use super::{Bound, Expr, FnParam, Lifetime, Ty};
 use crate::span::Span;
 use std::fmt;
 
@@ -89,7 +89,7 @@ pub struct PathExt<'src> {
 #[derive(Debug)]
 pub enum GenericArgs<'src> {
     Angle(Vec<AngleGenericArg<'src>>),
-    Paren(Vec<Ty<'src>>, Option<Ty<'src>>),
+    Paren(Vec<FnParam<'src>>, Option<Ty<'src>>),
     ParenElided,
 }
 

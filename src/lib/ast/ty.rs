@@ -14,7 +14,7 @@ pub enum Ty<'src> {
     /// [^1]: Not to be confused with specialization's default impls `default impl Trait for Type {}`.
     All,
     Array(Box<Ty<'src>>, Expr<'src>),
-    CVariadics,
+    CVariadics(Span),
     DynTrait(DynKind, Vec<Bound<'src>>),
     Error(Span),
     FieldOf(Box<Ty<'src>>, Option<Ident<'src>>, Ident<'src>),

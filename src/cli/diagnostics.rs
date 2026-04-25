@@ -30,11 +30,17 @@ impl IntoDiag for Error {
             ErrorKind::FinalOnInvalidItem => {
                 diag.title("this item kind may not be marked with `final`")
             }
+            ErrorKind::ForbiddenCVariadics => {
+                diag.title("C-variadic parameters are forbidden in this context")
+            }
             ErrorKind::ForbiddenInnerAttrs => {
                 diag.title("inner attributes are forbidden in this context")
             }
             ErrorKind::ForbiddenOuterAttrs => {
                 diag.title("outer attributes are forbidden in this context")
+            }
+            ErrorKind::ForbiddenSelfParams => {
+                diag.title("self parameters are forbidden in this context")
             }
             ErrorKind::FrontmatterOpeningTooLarge => diag.title("frontmatter opening too large"),
             ErrorKind::GenericArgsOnFieldExpr => diag.title("generic args on field expression"),

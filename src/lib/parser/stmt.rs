@@ -161,7 +161,7 @@ impl ast::Ty<'_> {
         match self {
             | Self::All
             | Self::Array(..)
-            | Self::CVariadics
+            | Self::CVariadics(_)
             | Self::DynTrait(..)
             | Self::Error(_)
             | Self::FieldOf(..)

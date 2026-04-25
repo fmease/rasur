@@ -106,7 +106,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
         mode: FnParamMode,
     ) -> Result<Vec<ast::FnParam<'src>>> {
         self.parse(TokenKind::OpenRoundBracket)?;
+        self.fin_parse_fn_param_list(mode)
+    }
 
+    /// Finish parsing a list of function parameters assuming the leading `(` has been parsed already.
+    pub(super) fn fin_parse_fn_param_list(
+        &mut self,
+        mode: FnParamMode,
+    ) -> Result<Vec<ast::FnParam<'src>>> {
         let mut first = true;
         self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let first = mem::take(&mut first);
@@ -122,8 +129,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(param);
             }
 
-            let pat = if (matches!(mode, FnParamMode::Required)
-                && this.token.kind != TokenKind::TripleDot)
+            let pat = if mode == FnParamMode::Required && this.token.kind != TokenKind::TripleDot
                 || this.is_restricted_param_pat()
             {
                 let pat = this.parse_pat(OrPolicy::Yield)?;
@@ -134,8 +140,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
 
             // FIXME: Better expectation.
-            let ty = if this.consume(TokenKind::TripleDot) {
-                ast::Ty::CVariadics
+            let ty = if let span = this.token.span
+                && this.consume(TokenKind::TripleDot)
+            {
+                ast::Ty::CVariadics(span)
             } else {
                 this.parse_ty()?
             };
@@ -458,7 +466,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum FnParamMode {
     Required,
     Optional,

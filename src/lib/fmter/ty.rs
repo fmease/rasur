@@ -5,7 +5,7 @@ impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::All => fmt!(cx, ".."),
-            Self::CVariadics => fmt!(cx, "..."),
+            Self::CVariadics(_) => fmt!(cx, "..."),
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
             Self::FnPtr(ty) => ty.fmt(cx),
@@ -94,13 +94,8 @@ impl Fmt for ast::FnPtrTy<'_> {
 
         modifiers.trailing_space().fmt(cx);
 
-        fmt!(cx, "fn(");
-        inputs.interleave(", ").fmt(cx);
-        fmt!(cx, ")");
-        if let Some(output) = output {
-            fmt!(cx, " -> ");
-            output.fmt(cx);
-        }
+        fmt!(cx, "fn");
+        (inputs, output).fmt(cx);
     }
 }
 

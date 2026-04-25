@@ -1,7 +1,8 @@
 use super::{
-    Fragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, frags, ty::PlusPolicy,
+    Fragment, Parser, Result, TokenKind, TokenPrefix, common::FnParamMode, expr::AttrPolicy, frags,
+    ty::PlusPolicy,
 };
-use crate::{ast, feature::Feature, token::PathSegIdent};
+use crate::{ast, error::ErrorKind, feature::Feature, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
@@ -184,11 +185,40 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::GenericArgs::ParenElided);
         }
 
-        let inputs = self.fin_parse_delim_seq(
-            TokenKind::CloseRoundBracket,
-            TokenKind::Comma,
-            Self::parse_ty,
-        )?;
+        let inputs = self.fin_parse_fn_param_list(FnParamMode::Optional)?;
+
+        // Ideally, we wouldn't hard-reject attrs, C-variadics and self parameters.
+        // See also <https://github.com/rust-lang/rust/issues/160797>.
+        for ast::FnParam { attrs, pat, ty } in &inputs {
+            let mut poisoned = false;
+
+            if let Some(attr) = attrs.first() {
+                let span = attr.span.to(attrs.last().unwrap().span);
+                self.error(ErrorKind::ForbiddenOuterAttrs, span);
+                poisoned = true;
+            }
+
+            if let &ast::Ty::CVariadics(span) = ty {
+                self.error(ErrorKind::ForbiddenCVariadics, span);
+                poisoned = true;
+            }
+
+            if let ast::Pat::Binding(ast::BindingPat {
+                mut_: _,
+                by_ref: ast::ByRef::No,
+                binder: ast::Ident { name: "self", span },
+                pat: None,
+            }) = pat
+            {
+                self.error(ErrorKind::ForbiddenSelfParams, *span);
+                poisoned = true;
+            }
+
+            if !poisoned && !matches!(pat, ast::Pat::Wildcard(ast::WildcardKind::Empty)) {
+                self.feature_no_span_fixme(Feature::named_fn_trait_parameters);
+            }
+        }
+
         let output = if self.consume(TokenKind::ThinArrow) {
             Some(self.parse_ty_where(PlusPolicy::Yield)?)
         } else {

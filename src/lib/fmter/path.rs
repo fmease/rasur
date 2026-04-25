@@ -101,15 +101,7 @@ impl Fmt for ast::GenericArgs<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Angle(args) => args.fmt(cx),
-            Self::Paren(inputs, output) => {
-                fmt!(cx, "(");
-                inputs.interleave(", ").fmt(cx);
-                fmt!(cx, ")");
-                if let Some(output) = output {
-                    fmt!(cx, " -> ");
-                    output.fmt(cx);
-                }
-            }
+            Self::Paren(inputs, output) => (inputs, output).fmt(cx),
             Self::ParenElided => fmt!(cx, "(..)"),
         }
     }

@@ -66,6 +66,7 @@ features! {
     move_expr #155050,
     mut_ref #123076,
     mut_restriction #105077,
+    named_fn_trait_parameters #158499,
     negative_bounds,
     negative_impls #68318,
     never_patterns #118155,
