@@ -5,7 +5,7 @@ use super::{
     item::ItemCx,
     pat::OrPolicy,
 };
-use crate::{ast, error::Error};
+use crate::{ast, error::Error, feature::Feature};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a statement.
@@ -32,6 +32,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         let super_ = if self.token.kind == TokenKind::Super && self.peek(1).kind == TokenKind::Let {
+            self.feature(Feature::super_let, self.token.span);
             self.advance();
             ast::Super::Yes
         } else {

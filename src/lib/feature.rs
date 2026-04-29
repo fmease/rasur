@@ -95,6 +95,8 @@ features! {
     return_type_notation,
     // <https://github.com/rust-lang/rust/issues/31844>.
     specialization,
+    // <https://github.com/rust-lang/rust/issues/139076>.
+    super_let,
     // <https://github.com/rust-lang/rust/issues/41517>.
     trait_alias,
     // <https://github.com/rust-lang/rust/issues/31436>.
