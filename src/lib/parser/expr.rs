@@ -438,10 +438,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 if let [Qualifier::Async | Qualifier::Gen(_), ..] = qualifiers {
                     let (async_, qualifiers) = Qualifier::strip_async(qualifiers);
                     let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
-                    let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
-                    if let ast::CaptureMode::Use = mode {
-                        self.feature_no_span_fixme(Feature::ergonomic_clones);
-                    }
+                    let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                     if !qualifiers.is_empty() {
                         self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                     }
@@ -507,10 +504,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 };
                 (modifiers.async_, qualifiers) = Qualifier::strip_async(qualifiers);
                 (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
-                (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers);
-                if let ast::CaptureMode::Use = modifiers.mode {
-                    self.feature_no_span_fixme(Feature::ergonomic_clones);
-                }
+                (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
                 }
@@ -792,7 +786,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Unsafe => Qualifier::Unsafe,
-                TokenKind::Use => Qualifier::Use,
+                TokenKind::Use => Qualifier::Use(self.token.span),
                 _ => break,
             };
             self.advance();
@@ -1337,7 +1331,7 @@ enum Qualifier<'src> {
     Static(Span),
     Try(Option<Box<ast::Ty<'src>>>),
     Unsafe,
-    Use,
+    Use(Span),
 }
 
 impl Qualifier<'_> {
@@ -1361,10 +1355,16 @@ impl Qualifier<'_> {
         }
     }
 
-    fn strip_capture_mode(qualifiers: &[Self]) -> (ast::CaptureMode, &[Self]) {
+    fn strip_capture_mode<'q>(
+        qualifiers: &'q [Self],
+        p: &super::Parser<'_, '_, '_>,
+    ) -> (ast::CaptureMode, &'q [Self]) {
         match qualifiers {
             [Self::Move, qualifiers @ ..] => (ast::CaptureMode::Move, qualifiers),
-            [Self::Use, qualifiers @ ..] => (ast::CaptureMode::Use, qualifiers),
+            [Self::Use(span), qualifiers @ ..] => {
+                p.feature(Feature::ergonomic_clones, *span);
+                (ast::CaptureMode::Use, qualifiers)
+            }
             _ => (ast::CaptureMode::Ref, qualifiers),
         }
     }
