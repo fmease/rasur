@@ -193,6 +193,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     kind,
                     mut_,
                     pointee: ast::Ty::ImplicitSelf,
+                    view: None,
                 })),
                 ShorthandKind::Bare => match self.consume(TokenKind::SingleColon) {
                     // Indeed, C-variadics are not permitted here.

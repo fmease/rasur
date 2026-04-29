@@ -100,11 +100,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
             TokenKind::DoubleAmpersand => {
                 self.advance();
                 let pointee = self.fin_parse_ref_ty()?;
+                let view = self.parse_view()?;
                 return Ok(ast::Ty::Ref(Box::new(ast::RefTy {
                     lt: None,
                     kind: ast::BorrowKind::Ref,
                     mut_: ast::Mut::No,
                     pointee,
+                    view,
                 })));
             }
             TokenKind::Dyn => {
@@ -381,7 +383,24 @@ impl<'src> super::Parser<'_, '_, 'src> {
         let lt = self.parse_lifetime();
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let pointee = self.parse_ty_where(PlusPolicy::Yield)?;
-        Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee })))
+        let view = self.parse_view()?;
+        Ok(ast::Ty::Ref(Box::new(ast::RefTy { lt, kind, mut_, pointee, view })))
+    }
+
+    fn parse_view(&mut self) -> Result<Option<Vec<ast::Ident<'src>>>> {
+        if let span = self.token.span
+            && self.consume(TokenKind::SingleDot)
+        {
+            self.feature(Feature::view_types, span);
+            self.parse(TokenKind::OpenCurlyBracket)?;
+            return self
+                .fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
+                    this.parse_common_ident()
+                })
+                .map(Some);
+        }
+
+        Ok(None)
     }
 
     /// Optionally parse generics (generic parameter list followed by a where-clause).

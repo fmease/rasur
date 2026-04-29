@@ -108,6 +108,8 @@ features! {
     unsafe_binders,
     // <https://github.com/rust-lang/rust/issues/132922>.
     unsafe_fields,
+    // <https://github.com/rust-lang/rust/issues/155938>.
+    view_types,
     // <https://github.com/rust-lang/rust/issues/115590>.
     where_clause_attrs,
     // <https://github.com/rust-lang/rust/issues/96373>.
