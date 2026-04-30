@@ -253,11 +253,12 @@ pub(super) struct Diag {
     level: ann::Level<'static>,
     title: Cow<'static, str>,
     highlight: Option<(Span, Option<Cow<'static, str>>)>,
+    subs: Vec<Cow<'static, str>>,
 }
 
 impl Diag {
     pub(super) fn new(level: ann::Level<'static>, title: impl Into<Cow<'static, str>>) -> Self {
-        Self { level, title: title.into(), highlight: None }
+        Self { level, title: title.into(), highlight: None, subs: Vec::new() }
     }
 
     pub(super) fn error(title: impl Into<Cow<'static, str>>) -> Self {
@@ -274,27 +275,37 @@ impl Diag {
         self
     }
 
+    pub(super) fn help(mut self, note: impl Into<Cow<'static, str>>) -> Self {
+        self.subs.push(note.into());
+        self
+    }
+
     pub(super) fn render(self, cx: &RenderCx<'_>) {
-        let group = ann::Group::with_title(self.level.title(self.title));
-        let group = match self.highlight {
-            Some((span, label)) => {
-                let file = cx.file.as_ref().expect("highlight requested but no source provided");
+        let mut group = ann::Group::with_title(self.level.title(self.title));
+        let path;
 
-                super let path = match file.path {
-                    // FIXME: Being forced to use to_string_lossy is sad :(
-                    SourcePath::Real(path) => path.to_string_lossy(),
-                    SourcePath::Anon => "<anon>".into(),
-                };
+        if let Some((span, label)) = self.highlight {
+            let file = cx.file.as_ref().expect("highlight requested but no source provided");
 
-                let annotation = ann::AnnotationKind::Primary.span(span.into());
-                let annotation = match label {
-                    Some(label) => annotation.label(label),
-                    None => annotation,
-                };
-                group.element(ann::Snippet::source(file.source).path(&path).annotation(annotation))
-            }
-            None => group,
-        };
+            path = match file.path {
+                // FIXME: Being forced to use to_string_lossy is sad :(
+                SourcePath::Real(path) => path.to_string_lossy(),
+                SourcePath::Anon => "<anon>".into(),
+            };
+
+            let annotation = ann::AnnotationKind::Primary.span(span.into());
+            let annotation = match label {
+                Some(label) => annotation.label(label),
+                None => annotation,
+            };
+            group =
+                group.element(ann::Snippet::source(file.source).path(&path).annotation(annotation));
+        }
+
+        for sub in self.subs {
+            group = group.element(ann::Level::HELP.message(sub));
+        }
+
         let renderer = if cx.colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
         let diag = renderer.short_message(cx.short).render(&[group]);
         eprintln!("{diag}");

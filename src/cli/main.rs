@@ -5,7 +5,6 @@
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
 #![feature(never_type)]
-#![feature(super_let)]
 #![feature(type_alias_impl_trait)]
 // Lints
 #![deny(unused_must_use, rust_2018_idioms)]
@@ -152,7 +151,8 @@ fn report(
             } else {
                 annotate_snippets::Level::WARNING
             };
-            let diag = Diag::new(level, format!("use of experimental feature `{feature}`"));
+            let diag = Diag::new(level, format!("use of experimental feature `{feature}`"))
+                .help(format!("add `#![feature({feature})]` at the top of the file to enable"));
             let diag = match span {
                 Some(span) => diag.highlight(span),
                 None => diag,

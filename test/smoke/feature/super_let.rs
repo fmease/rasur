@@ -7,4 +7,5 @@ fn main() {
     #[a] super let ();
 
     super::r#let();
+    super let super;
 }
