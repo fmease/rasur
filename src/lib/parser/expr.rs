@@ -165,35 +165,30 @@ impl<'src> super::Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level().unwrap();
 
-        let op = match op {
+        match op {
             Op::DoubleBorrow => {
                 let expr =
                     self.fin_parse_borrow_expr(right_level, s_policy, o_policy, Vec::new())?;
                 let kind =
                     ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, Box::new(expr));
-                return Ok(ast::Expr { attrs, kind });
+                Ok(ast::Expr { attrs, kind })
             }
             Op::Range(kind) => {
-                return self.fin_parse_range_expr(
-                    kind,
-                    None,
+                self.fin_parse_range_expr(kind, None, right_level, s_policy, o_policy, attrs)
+            }
+            Op::SingleBorrow => self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs),
+            Op::UnOp(op) => {
+                let right = self.parse_expr_at_level(
                     right_level,
                     s_policy,
+                    LetPolicy::YieldOrReject,
                     o_policy,
-                    attrs,
-                );
+                )?;
+
+                Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
             }
-            Op::SingleBorrow => {
-                return self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs);
-            }
-            Op::UnOp(op) => op,
             _ => unreachable!(),
-        };
-
-        let right =
-            self.parse_expr_at_level(right_level, s_policy, LetPolicy::YieldOrReject, o_policy)?;
-
-        Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
+        }
     }
 
     fn fin_parse_infix_or_postfix_op_expr(
@@ -206,51 +201,53 @@ impl<'src> super::Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let right_level = op.right_level();
 
-        let op = match op {
-            Op::BinOp(op) => op,
+        match op {
+            Op::BinOp(op) => {
+                let l_policy = match op {
+                    ast::BinOp::And => l_policy,
+                    _ => LetPolicy::YieldOrReject,
+                };
+
+                let right = self.parse_expr_at_level(
+                    right_level.unwrap(),
+                    s_policy,
+                    l_policy,
+                    OpPolicy::Parse,
+                )?;
+
+                Ok(ast::ExprKind::BinOp(op, Box::new(left), Box::new(right)).into())
+            }
             Op::Call => {
                 let attrs = mem::take(&mut left.attrs);
                 let args = self.fin_parse_fn_args()?;
-                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Call(Box::new(left), args) });
+                Ok(ast::Expr { attrs, kind: ast::ExprKind::Call(Box::new(left), args) })
             }
             Op::Cast => {
                 let ty = self.parse_ty_where(PlusPolicy::Yield)?;
-                return Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into());
+                Ok(ast::ExprKind::Cast(Box::new(left), Box::new(ty)).into())
             }
-            Op::Dot => return self.fin_parse_dot_expr(left),
+            Op::Dot => self.fin_parse_dot_expr(left),
             Op::Index => {
                 let attrs = mem::take(&mut left.attrs);
                 let index = self.parse_expr()?;
                 self.parse(TokenKind::CloseSquareBracket)?;
                 let kind = ast::ExprKind::Index(Box::new(left), Box::new(index));
-                return Ok(ast::Expr { attrs, kind });
+                Ok(ast::Expr { attrs, kind })
             }
-            Op::Range(kind) => {
-                return self.fin_parse_range_expr(
-                    kind,
-                    Some(Box::new(left)),
-                    right_level.unwrap(),
-                    s_policy,
-                    o_policy,
-                    Vec::new(),
-                );
-            }
+            Op::Range(kind) => self.fin_parse_range_expr(
+                kind,
+                Some(Box::new(left)),
+                right_level.unwrap(),
+                s_policy,
+                o_policy,
+                Vec::new(),
+            ),
             Op::Try => {
                 let attrs = mem::take(&mut left.attrs);
-                return Ok(ast::Expr { attrs, kind: ast::ExprKind::Try(Box::new(left)) });
+                Ok(ast::Expr { attrs, kind: ast::ExprKind::Try(Box::new(left)) })
             }
             _ => unreachable!(),
-        };
-
-        let l_policy = match op {
-            ast::BinOp::And => l_policy,
-            _ => LetPolicy::YieldOrReject,
-        };
-
-        let right =
-            self.parse_expr_at_level(right_level.unwrap(), s_policy, l_policy, OpPolicy::Parse)?;
-
-        Ok(ast::ExprKind::BinOp(op, Box::new(left), Box::new(right)).into())
+        }
     }
 
     fn fin_parse_dot_expr(&mut self, mut left: ast::Expr<'src>) -> Result<ast::Expr<'src>> {
