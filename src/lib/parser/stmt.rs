@@ -41,13 +41,15 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if self.consume(TokenKind::Let) {
             let pat = self.parse_pat(OrPolicy::Yield)?;
             let ty = self.consume(TokenKind::SingleColon).then(|| self.parse_ty()).transpose()?;
-            // FIXME: Proper diagnostic for the !else_may_follow case.
             let body = if self.consume(TokenKind::SingleEquals) {
                 let consequent = self.parse_expr()?;
-                let alternate = if let TokenKind::Else = self.token.kind
-                    && consequent.kind.else_may_follow()
+                let alternate = if let token = self.token
+                    && self.consume(TokenKind::Else)
                 {
-                    self.advance();
+                    if !consequent.kind.else_may_follow() {
+                        // FIXME: Improve diagnostic.
+                        self.error(Error::UnexpectedToken(token, frags![TokenKind::Semicolon]));
+                    }
                     Some(self.parse_block_expr(AttrPolicy::Reject)?)
                 } else {
                     None
