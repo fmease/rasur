@@ -107,7 +107,6 @@ impl ast::ExprKind<'_> {
             | Self::Ascription(..)
             | Self::Await(_)
             | Self::Call(..)
-            | Self::Cast(..)
             | Self::Continue(_)
             | Self::Field(..)
             | Self::GenBlock(..)
@@ -134,10 +133,7 @@ impl ast::ExprKind<'_> {
             | Self::SpecialBlock(..)
             | Self::Struct(_)
             | Self::WhileLoop(_) => false,
-            | Self::MacroCall(call) => match call.bracket {
-                ast::Bracket::Round | ast::Bracket::Square => true,
-                ast::Bracket::Curly => false,
-            },
+            | Self::MacroCall(expr) => expr.bracket.else_may_follow(),
             | Self::Become(expr)
             | Self::BinOp(.., expr)
             | Self::Borrow(.., expr)
@@ -151,6 +147,42 @@ impl ast::ExprKind<'_> {
             | Self::Yield(ast::YieldExpr::Prefix(expr)) => {
                 expr.as_ref().is_none_or(|expr| expr.kind.else_may_follow())
             }
+            | Self::Cast(_, ty) => ty.else_may_follow(),
+        }
+    }
+}
+
+impl ast::Ty<'_> {
+    fn else_may_follow(&self) -> bool {
+        match self {
+            | Self::All
+            | Self::Array(..)
+            | Self::CVariadics
+            | Self::DynTrait(..)
+            | Self::Error(_)
+            | Self::FieldOf(..)
+            | Self::Grouped(_)
+            | Self::ImplTrait(_)
+            | Self::ImplicitSelf
+            | Self::Inferred
+            | Self::Never
+            | Self::Path(_)
+            | Self::Slice(_)
+            | Self::Tuple(_) => true,
+            Self::FnPtr(ty) => ty.output.as_ref().is_none_or(ast::Ty::else_may_follow),
+            Self::MacroCall(ty) => ty.bracket.else_may_follow(),
+            Self::Ptr(_, ty) | Self::UnsafeBinder(_, ty) => ty.else_may_follow(),
+            // BLOCKED(upstream): FIXME: consider view (presence forces false)
+            Self::Ref(ty) => ty.pointee.else_may_follow(),
+        }
+    }
+}
+
+impl ast::Bracket {
+    fn else_may_follow(self) -> bool {
+        match self {
+            Self::Round | Self::Square => true,
+            Self::Curly => false,
         }
     }
 }

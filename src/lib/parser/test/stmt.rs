@@ -1,5 +1,11 @@
+use super::super::Fragment;
 use super::{parse_stmt, t};
-use crate::{ast, edition::Edition::*};
+use crate::{
+    ast,
+    edition::Edition::*,
+    error::Error,
+    token::{Token, TokenKind},
+};
 use deref as r;
 
 #[test]
@@ -56,5 +62,44 @@ fn macros() {
             ast::Expr { kind: ast::ExprKind::MacroCall(_), .. },
             ast::Semicolon::No
         ))
+    );
+}
+
+#[test]
+fn let_else() {
+    t!(
+        parse_stmt,
+        Rust2015,
+        "let _ = () else {};",
+        Ok(ast::Stmt::Let(r!(ast::LetStmt {
+            body: Some(ast::LetStmtBody {
+                consequent: ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. },
+                alternate: Some(ast::BlockExpr { stmts: r!([]) }),
+            }),
+            ..
+        })))
+    );
+
+    // If the consequent (aka initializer) ends in a curly bracket, let-else is invalid.
+
+    t!(
+        parse_stmt,
+        Rust2015,
+        "let _ = {} else {};",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::Else, .. },
+            r!([Fragment::Token(TokenKind::Semicolon)])
+        )]))
+    );
+
+    // We once used to accept this by mistake.
+    t!(
+        parse_stmt,
+        Rust2015,
+        "let _ = () as M! {} else {};",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::Else, .. },
+            r!([Fragment::Token(TokenKind::Semicolon)])
+        )]))
     );
 }
