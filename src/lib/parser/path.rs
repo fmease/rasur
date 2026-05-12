@@ -130,7 +130,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     ast::AngleGenericArg::Ty(ty)
                 } else if let Some(lt) = this.parse_lifetime() {
                     ast::AngleGenericArg::Lifetime(lt)
-                } else if this.begins_const_arg() {
+                } else if this.begins_const_arg_unambiguously() {
                     let expr = this.parse_const_arg()?;
                     ast::AngleGenericArg::Const(expr)
                 } else {
@@ -197,7 +197,7 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_term(&mut self) -> Result<ast::Term<'src>> {
         if self.begins_ty(0) {
             Ok(ast::Term::Ty(self.parse_ty()?))
-        } else if self.begins_const_arg() {
+        } else if self.begins_const_arg_unambiguously() {
             self.feature(Feature::min_generic_const_args, self.token.span);
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
@@ -217,9 +217,12 @@ impl<'src> Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            // NB: Only reachable when parsing terms. FIXME: We should make this a
-            //     policy param for clarity.
-            TokenKind::CommonIdent => {
+            // NB: Only reachable when const parameter defaults.
+            //     FIXME: We should make this a policy param for clarity.
+            //     FIXME: We should introduce `Ambiguous` for generic args,
+            //            const param defaults & terms.
+            // NB: Indeed, underscores are not const args.
+            PathSegIdent!() => {
                 let ident = self.ident(self.token.span);
                 self.advance();
                 Ok(ast::ExprKind::Path(Box::new(ast::ExtPath::ident(ident))).into())
@@ -244,8 +247,8 @@ impl<'src> Parser<'_, '_, 'src> {
         }
     }
 
-    // NB: Intentionally excludes common idents. FIXME: This should be made more obvious.
-    fn begins_const_arg(&self) -> bool {
+    // NB: Intentionally excludes path segment identifiers.
+    fn begins_const_arg_unambiguously(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_const_arg`.
 
         matches!(self.token.kind, TokenKind::OpenCurlyBracket | TokenKind::Const)

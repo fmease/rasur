@@ -283,3 +283,37 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         })
     );
 }
+
+#[test]
+fn const_args() {
+    // We once used to reject this by mistake!
+    t!(
+        parse_item,
+        Rust2015,
+        "struct T<const N: U = Self>;",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+                generics: ast::Generics {
+                    params: r!([ast::GenericParam {
+                        kind: ast::GenericParamKind::Const {
+                            default: Some(ast::Expr {
+                                kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: r!([ast::PathSeg { ident: ast::Ident!("Self"), .. }])
+                                    }
+                                })),
+                                ..
+                            }),
+                            ..
+                        },
+                        ..
+                    }]),
+                    ..
+                },
+                ..
+            })),
+            ..
+        })
+    );
+}
