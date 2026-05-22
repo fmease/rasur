@@ -151,6 +151,7 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
     }
 }
 
+// FIXME: Awful API for "casual" implementers!
 pub trait TokenCategory: Copy {
     fn check(self, p: &Parser<'_, '_, '_>) -> bool;
 

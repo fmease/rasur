@@ -119,6 +119,7 @@ impl VariantKind<'_> {
 pub struct TupleFieldDef<'src> {
     pub attrs: Vec<Attr<'src>>,
     pub vis: Visibility<'src>,
+    pub mut_restriction: Option<Path<'src, NoGenericArgs>>,
     pub ty: Ty<'src>,
     pub default: Option<Expr<'src>>,
 }
@@ -127,6 +128,7 @@ pub struct TupleFieldDef<'src> {
 pub struct StructFieldDef<'src> {
     pub attrs: Vec<Attr<'src>>,
     pub vis: Visibility<'src>,
+    pub mut_restriction: Option<Path<'src, NoGenericArgs>>,
     pub safety: Safety,
     pub binder: Ident<'src>,
     pub ty: Ty<'src>,

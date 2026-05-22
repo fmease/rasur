@@ -233,8 +233,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 let mut modifiers = ast::TraitItemModifiers::default();
 
                 (modifiers.impl_restriction, qualifiers) = match qualifiers {
-                    [Qualifier::ImplRestriction(path), qualifiers @ ..] => {
-                        self.feature_no_span_fixme(Feature::impl_restriction);
+                    [Qualifier::ImplRestriction(span, path), qualifiers @ ..] => {
+                        self.feature(Feature::impl_restriction, *span);
                         let Ok(path) = path else { return Err(()) };
                         (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
                     }
@@ -350,14 +350,14 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => return,
                 },
                 TokenKind::Impl => {
+                    let span = self.token.span;
                     self.advance();
 
                     // We disqualify sequences like `impl(crate) {` which should be
                     // interpreted as impl blocks instead.
-                    if let Some(path) =
-                        self.parse_restriction(|kind| kind != TokenKind::OpenCurlyBracket)
-                    {
-                        yield (Qualifier::ImplRestriction(Box::new(path)), self.token.kind);
+                    if self.begins_restriction(|kind| kind != TokenKind::OpenCurlyBracket) {
+                        let path = self.parse_restriction();
+                        yield (Qualifier::ImplRestriction(span, Box::new(path)), self.token.kind);
                         continue;
                     }
 
@@ -479,9 +479,10 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
+            let mut_restriction = this.parse_mut_restriction()?;
             let ty = this.parse_ty()?;
             let default = this.parse_field_default()?;
-            Ok(ast::TupleFieldDef { attrs, vis, ty, default })
+            Ok(ast::TupleFieldDef { attrs, vis, mut_restriction, ty, default })
         })
     }
 
@@ -489,6 +490,7 @@ impl<'src> Parser<'_, '_, 'src> {
         self.fin_parse_delim_seq(TokenKind::CloseCurlyBracket, TokenKind::Comma, |this| {
             let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
             let vis = this.parse_visibility()?;
+            let mut_restriction = this.parse_mut_restriction()?;
             let safety = if let span = this.token.span
                 && this.consume(TokenKind::Unsafe)
             {
@@ -500,8 +502,20 @@ impl<'src> Parser<'_, '_, 'src> {
             let binder = this.parse_common_ident()?;
             let ty = this.parse_ty_annotation()?;
             let default = this.parse_field_default()?;
-            Ok(ast::StructFieldDef { attrs, vis, safety, binder, ty, default })
+            Ok(ast::StructFieldDef { attrs, vis, mut_restriction, safety, binder, ty, default })
         })
+    }
+
+    fn parse_mut_restriction(&mut self) -> Result<Option<ast::Path<'src, ast::NoGenericArgs>>> {
+        // No need to consult `begins_restriction`, it's unambiguous.
+        if let span = self.token.span
+            && self.consume(TokenKind::Mut)
+        {
+            self.feature(Feature::mut_restriction, span);
+            self.parse_restriction().map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     fn parse_field_default(&mut self) -> Result<Option<ast::Expr<'src>>> {
@@ -1107,8 +1121,9 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::Visibility::Inherited);
         }
 
-        if let Some(path) = self.parse_restriction(|_| true) {
-            return Ok(ast::Visibility::Restricted(path?));
+        if self.begins_restriction(|_| true) {
+            let path = self.parse_restriction()?;
+            return Ok(ast::Visibility::Restricted(path));
         }
 
         Ok(ast::Visibility::Public)
@@ -1120,44 +1135,52 @@ impl<'src> Parser<'_, '_, 'src> {
         self.token.kind == TokenKind::Pub
     }
 
-    fn parse_restriction(
-        &mut self,
-        may_follow: fn(TokenKind) -> bool,
-    ) -> Option<Result<ast::Path<'src, ast::NoGenericArgs>>> {
+    // FIXME: Ideally this would return the herald.
+    fn begins_restriction(&mut self, may_follow: fn(TokenKind) -> bool) -> bool {
+        if self.token.kind != TokenKind::OpenRoundBracket {
+            return false;
+        }
+
+        match self.peek(1).kind {
+            TokenKind::In => true,
+            TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
+                self.peek(2).kind == TokenKind::CloseRoundBracket && may_follow(self.peek(3).kind)
+            }
+            _ => false,
+        }
+    }
+
+    fn parse_restriction(&mut self) -> Result<ast::Path<'src, ast::NoGenericArgs>> {
         enum Herald {
             In,
             CrateSuperSelf(Span),
         }
 
-        if self.token.kind == TokenKind::OpenRoundBracket
-            && let token = self.peek(1)
-            && let Some(herald) = match token.kind {
-                TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower
-                    if let TokenKind::CloseRoundBracket = self.peek(2).kind
-                        && may_follow(self.peek(3).kind) =>
-                {
-                    Some(Herald::CrateSuperSelf(token.span))
-                }
-                TokenKind::In => Some(Herald::In),
-                _ => None,
+        self.parse(TokenKind::OpenRoundBracket)?;
+
+        let herald = match self.token.kind {
+            TokenKind::Crate | TokenKind::Super | TokenKind::SelfLower => {
+                Herald::CrateSuperSelf(self.token.span)
             }
-        {
-            self.advance(); // parenthesis
-            self.advance(); // herald
+            TokenKind::In => Herald::In,
+            _ => {
+                return self.fatal(Error::UnexpectedToken(
+                    self.token,
+                    frags![TokenKind::Crate, TokenKind::Super, TokenKind::SelfLower, TokenKind::In],
+                ));
+            }
+        };
 
-            let path = try {
-                let path = match herald {
-                    Herald::In => self.parse_path(PathMode::Normal)?,
-                    Herald::CrateSuperSelf(span) => ast::Path::ident(self.ident(span)),
-                };
-                self.parse(TokenKind::CloseRoundBracket)?;
-                path
-            };
+        self.advance();
 
-            return Some(path);
-        }
+        let path = match herald {
+            Herald::In => self.parse_path(PathMode::Normal)?,
+            Herald::CrateSuperSelf(span) => ast::Path::ident(self.ident(span)),
+        };
 
-        None
+        self.parse(TokenKind::CloseRoundBracket)?;
+
+        Ok(path)
     }
 }
 
@@ -1225,7 +1248,7 @@ enum Qualifier<'src> {
     Fn,
     Gen(Span),
     Impl,
-    ImplRestriction(Box<Result<ast::Path<'src, ast::NoGenericArgs>>>),
+    ImplRestriction(Span, Box<Result<ast::Path<'src, ast::NoGenericArgs>>>),
     Mod,
     Reuse(Span),
     Safe,

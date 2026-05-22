@@ -84,6 +84,8 @@ features! {
     move_expr,
     // <https://github.com/rust-lang/rust/issues/123076>.
     mut_ref,
+    // <https://github.com/rust-lang/rust/issues/105077>.
+    mut_restriction,
     // (internal)
     negative_bounds,
     // <https://github.com/rust-lang/rust/issues/68318>.
