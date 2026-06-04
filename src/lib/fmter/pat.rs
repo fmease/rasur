@@ -8,10 +8,6 @@ impl Fmt for ast::Pat<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Binding(binding) => binding.fmt(cx),
-            Self::Box(pat) => {
-                fmt!(cx, "box ");
-                pat.fmt(cx);
-            }
             Self::Deref(pat) => BuiltinSyntax("deref", |cx| pat.fmt(cx)).fmt(cx),
             Self::Error(span) => fmt!(cx, "{}", cx.source(span)),
             // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.

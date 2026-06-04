@@ -173,16 +173,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            // FIXME: Should this be a prefix op? Then "OrPolicy::Yield" would come for free.
-            TokenKind::Box => {
-                self.feature(Feature::box_patterns, self.token.span);
-                self.advance();
-                return Ok(ast::Pat::Box(Box::new(self.parse_pat_where(
-                    OrPolicy::Yield,
-                    NonLegacyRangePolicy::Yield,
-                    GuardPolicy::Yield,
-                )?)));
-            }
             TokenKind::CommonIdent if self.check(weak::Builtin) => {
                 self.advance();
                 return self.fin_parse_builtin_syntax(
@@ -294,20 +284,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        let boxed = if let span = self.token.span
-                            && self.consume(TokenKind::Box)
-                        {
-                            self.feature(Feature::box_patterns, span);
-                            Boxed::Yes
-                        } else {
-                            Boxed::No
-                        };
                         let (mut_, by_ref) = self.parse_mut_by_ref();
 
-                        let unmarked = matches!(
-                            (boxed, mut_, by_ref),
-                            (Boxed::No, ast::Mut::No, ast::ByRef::No)
-                        );
+                        let unmarked = matches!((mut_, by_ref), (ast::Mut::No, ast::ByRef::No));
 
                         let (binder, numeric) = if unmarked {
                             self.parse_common_ident_or(TokenKind::NumLit)?
@@ -334,11 +313,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
                                 binder,
                                 pat: None,
                             }));
-                            let body = match boxed {
-                                Boxed::Yes => ast::Pat::Box(Box::new(body)),
-                                Boxed::No => body,
-                            };
-
                             (None, body)
                         };
 
@@ -346,12 +320,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;
-                        }
-
-                        #[derive(Clone, Copy)]
-                        enum Boxed {
-                            Yes,
-                            No,
                         }
                     }
 

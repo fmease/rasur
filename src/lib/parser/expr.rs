@@ -1136,7 +1136,6 @@ impl ast::Pat<'_> {
             | Self::Rest
             | Self::Wildcard(_) => false,
             | Self::Borrow(.., pat)
-            | Self::Box(pat)
             | Self::Deref(pat)
             | Self::Grouped(_, pat)
             | Self::Guarded(pat, _)

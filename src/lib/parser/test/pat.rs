@@ -50,30 +50,6 @@ fn main() {
 }
 
 #[test]
-fn pseudo_field_binding_mode_box() {
-    // issue: <https://github.com/fmease/rasur/issues/19>
-
-    t!(
-        parse_pat,
-        Rust2015,
-        "X { box mut ref mut x }",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            fields: [ast::StructPatField {
-                attrs: _,
-                binder: None,
-                body: ast::Pat::Box(ast::Pat::Binding(ast::BindingPat {
-                    mut_: ast::Mut::Yes,
-                    by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mut::Yes),
-                    binder: ast::Ident!("x"),
-                    pat: None,
-                }))
-            }],
-            ..
-        }))
-    );
-}
-
-#[test]
 fn structs() {
     t!(
         parse_pat,
@@ -205,7 +181,7 @@ fn structs() {
     );
 
     // If a "modifier" is present, the explicit form is forbidden:
-    for modifier in ["box", "mut", "ref"] {
+    for modifier in ["mut", "ref"] {
         t!(
             parse_pat,
             Rust2015,
@@ -464,12 +440,10 @@ fn ranges_and_rest() {
         )),
     );
 
-    // The snippets below are legal because the `..` isn't
+    // This snippet is legal because the `..` isn't
     // interpreted as a range but as a rest pattern.
 
     t!(parse_pat, Rust2015, "&..", Ok(ast::Pat::Borrow(.., ast::Pat::Rest)));
-
-    t!(parse_pat, Rust2015, "box ..", Ok(ast::Pat::Box(ast::Pat::Rest)));
 
     t!(
         parse_pat,
@@ -571,15 +545,5 @@ fn guards() {
             _,
             ast::Pat::Guarded(ast::Pat::Range(Some(ast::RangePatBound::Lit(..)), None, _), _)
         ))
-    );
-
-    // Obviously, `(box 0) if true` over `box (0 if true)`.
-    // At the time of writing, `box` isn't a prefix op but a just lower pat unlike `&`.
-    // Guards don't need to be binops due to `box` but due to `&`.
-    t!(
-        parse_pat,
-        Rust2015,
-        "(box 0 if true)",
-        Ok(ast::Pat::Grouped(_, ast::Pat::Guarded(ast::Pat::Box(ast::Pat::Lit(..)), _)))
     );
 }

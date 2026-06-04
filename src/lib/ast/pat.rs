@@ -8,7 +8,6 @@ use crate::span::Span;
 pub enum Pat<'src> {
     Binding(Box<BindingPat<'src>>),
     Borrow(BorrowKind<!>, Mut, Box<Pat<'src>>),
-    Box(Box<Pat<'src>>),
     Deref(Box<Pat<'src>>),
     Error(Span),
     Grouped(Span, Box<Pat<'src>>),
