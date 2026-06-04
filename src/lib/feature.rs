@@ -108,6 +108,8 @@ features! {
     try_blocks,
     // <https://github.com/rust-lang/rust/issues/149488>.
     try_blocks_heterogeneous,
+    // <https://github.com/rust-lang/rust/issues/156628>.
+    unnamed_enum_variants,
     // <https://github.com/rust-lang/rust/issues/130516>.
     unsafe_binders,
     // <https://github.com/rust-lang/rust/issues/132922>.

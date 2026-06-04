@@ -453,7 +453,10 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_variant(&mut self) -> Result<ast::Variant<'src>> {
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
         let vis = self.parse_visibility()?;
-        let binder = self.parse_common_ident()?;
+        let (binder, unnamed) = self.parse_common_ident_or(TokenKind::Underscore)?;
+        if unnamed {
+            self.feature(Feature::unnamed_enum_variants, binder.span);
+        }
         let kind = self.parse_variant_kind()?;
         let discr = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
         Ok(ast::Variant { attrs, vis, binder, kind, discr })
