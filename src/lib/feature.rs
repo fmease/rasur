@@ -41,7 +41,6 @@ features! {
     async_for_loop #118898,
     async_trait_bounds #62290,
     auto_traits #13231,
-    box_patterns #29641,
     builtin_syntax #110680,
     closure_lifetime_binder #97362,
     const_block_items #149226,
@@ -91,7 +90,6 @@ impl Feature {
     pub const fn protected(self) -> bool {
         match self {
             | Self::auto_traits
-            | Self::box_patterns
             | Self::decl_macro
             | Self::min_specialization
             | Self::negative_impls
