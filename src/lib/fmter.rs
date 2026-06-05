@@ -326,16 +326,14 @@ trait InterleaveExt: Sized {
 
 impl<T> InterleaveExt for T {}
 
-struct Tup<T>(Vec<T>);
+struct Tup<I>(I);
 
-impl<T: Fmt> Fmt for Tup<T> {
+impl<I: Iterator<Item: Fmt>> Fmt for Tup<I> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(nodes) = self;
+        let Self(mut nodes) = self;
         fmt!(cx, "(");
-        // FIXME: Simplify!
-        if !nodes.is_empty() {
-            let mut nodes = nodes.into_iter();
-            nodes.next().fmt(cx);
+        if let Some(node) = nodes.next() {
+            node.fmt(cx);
             match nodes.next() {
                 Some(node) => {
                     fmt!(cx, ", ");

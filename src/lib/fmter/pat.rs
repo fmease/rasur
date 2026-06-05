@@ -25,7 +25,7 @@ impl Fmt for ast::Pat<'_> {
                 (kind, mut_).trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
-            Self::Tuple(pats) => Tup(pats).fmt(cx),
+            Self::Tuple(pats) => Tup(pats.into_iter()).fmt(cx),
             Self::Grouped(pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);

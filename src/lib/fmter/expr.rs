@@ -175,7 +175,7 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
             }
             ast::ExprKind::Closure(expr) => expr.fmt(cx),
             ast::ExprKind::ForLoop(expr) => (*expr, attrs).fmt(cx),
-            ast::ExprKind::Tuple(exprs) => Tup(exprs).fmt(cx),
+            ast::ExprKind::Tuple(exprs) => Tup(exprs.into_iter()).fmt(cx),
             ast::ExprKind::Array(elems) => {
                 fmt!(cx, "[");
                 elems.interleave(", ").fmt(cx);

@@ -120,7 +120,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();
-                return self.fin_parse_grouped_or_tuple_or_bare_trait_object_ty(p_policy);
+                return self.fin_parse_parenthesized_ty(p_policy);
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
@@ -258,19 +258,22 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(qualifiers)
     }
 
-    fn fin_parse_grouped_or_tuple_or_bare_trait_object_ty(
-        &mut self,
-        p_policy: PlusPolicy,
-    ) -> Result<ast::Ty<'src>> {
-        let mut tys = Vec::new();
+    fn fin_parse_parenthesized_ty(&mut self, p_policy: PlusPolicy) -> Result<ast::Ty<'src>> {
+        let mut fields = Vec::new();
 
         const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
         const SEPARATOR: TokenKind = TokenKind::Comma;
         while !self.consume(DELIMITER) {
+            let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+            if let Some(attr) = attrs.first() {
+                let span = attr.span.to(attrs.last().unwrap().span);
+                self.feature(Feature::__rfc3532, span);
+            }
+
             let mut ty = self.parse_ty()?;
 
-            if self.token.kind == DELIMITER {
-                if tys.is_empty() {
+            if self.token.kind == DELIMITER && (attrs.is_empty() || !fields.is_empty()) {
+                if fields.is_empty() {
                     let trailing_plus =
                         self.prev_token().is_some_and(|t| self.matches(TokenPrefix::Plus, t));
 
@@ -291,10 +294,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 self.parse(SEPARATOR)?;
             }
 
-            tys.push(ty);
+            fields.push((attrs, ty));
         }
 
-        Ok(ast::Ty::Tuple(tys))
+        Ok(ast::Ty::Tuple(fields))
     }
 
     fn extract_fin_parse_bare_paren_trait_object_ty(

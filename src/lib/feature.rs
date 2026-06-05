@@ -30,6 +30,9 @@ macro_rules! features {
 }
 
 features! {
+    // FIXME: Placeholder.
+    // <https://github.com/rust-lang/rfcs/pull/3532/>.
+    __rfc3532,
     // <https://github.com/rust-lang/rust/issues/118898>.
     async_for_loop,
     // <https://github.com/rust-lang/rust/issues/62290>.

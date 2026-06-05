@@ -29,7 +29,7 @@ pub enum Ty<'src> {
     Ptr(Mut, Box<Ty<'src>>),
     Ref(Box<RefTy<'src>>),
     Slice(Box<Ty<'src>>),
-    Tuple(Vec<Ty<'src>>),
+    Tuple(Vec<(Vec<Attr<'src>>, Ty<'src>)>),
     UnsafeBinder(Vec<GenericParam<'src>>, Box<Ty<'src>>),
 }
 
