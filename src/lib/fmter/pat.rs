@@ -1,5 +1,6 @@
 use super::{
-    BuiltinSyntax, Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
+    BuiltinSyntax, Cx, Fmt, Inline, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup,
+    fmt,
 };
 use crate::ast;
 
@@ -25,7 +26,16 @@ impl Fmt for ast::Pat<'_> {
                 (kind, mut_).trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
-            Self::Tuple(pats) => Tup(pats.into_iter()).fmt(cx),
+            Self::Tuple(fields) => Tup(fields.into_iter().map(|(attrs, pat)| {
+                Inline(move |cx| {
+                    for attr in attrs {
+                        attr.fmt(cx);
+                        fmt!(cx, " ");
+                    }
+                    pat.fmt(cx);
+                })
+            }))
+            .fmt(cx),
             Self::Grouped(pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);

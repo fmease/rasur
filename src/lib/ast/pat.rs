@@ -22,7 +22,7 @@ pub enum Pat<'src> {
     Range(Option<Box<RangePatBound<'src>>>, Option<Box<RangePatBound<'src>>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
-    Tuple(Vec<Pat<'src>>),
+    Tuple(Vec<(Vec<Attr<'src>>, Pat<'src>)>),
     TupleStruct(Box<TupleStructPat<'src>>),
     Wildcard(WildcardKind),
 }

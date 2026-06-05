@@ -456,7 +456,7 @@ fn ranges_and_rest() {
 
     // We once used to wrongly parse this as `Grouped(Rest)`.
     // Inspired by <https://www.reddit.com/r/rust/comments/1pbbx5a/comment/nrqkwto>.
-    t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple(r!([ast::Pat::Rest]))));
+    t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple(r!([(r!([]), ast::Pat::Rest)]))));
 }
 
 #[test]
