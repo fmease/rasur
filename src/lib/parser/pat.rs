@@ -371,6 +371,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
                         |this| {
+                            // FIXME(rfcs#3532): Allow outer attributes here!
                             this.parse_pat_where(
                                 OrPolicy::Parse,
                                 NonLegacyRangePolicy::Parse,
