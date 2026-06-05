@@ -1,6 +1,5 @@
 use super::{
-    BuiltinSyntax, Cx, Fmt, Inline, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup,
-    fmt,
+    BuiltinSyntax, Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
 };
 use crate::ast;
 
@@ -22,16 +21,9 @@ impl Fmt for ast::Pat<'_> {
                 (kind, mut_).trailing_space().fmt(cx);
                 pat.fmt(cx);
             }
-            Self::Tuple(fields) => Tup(fields.into_iter().map(|(attrs, pat)| {
-                Inline(move |cx| {
-                    for attr in attrs {
-                        attr.fmt(cx);
-                        fmt!(cx, " ");
-                    }
-                    pat.fmt(cx);
-                })
-            }))
-            .fmt(cx),
+            Self::Tuple(fields) => {
+                Tup(fields.into_iter().map(|(attrs, pat)| PatWithAttrs { attrs, pat })).fmt(cx)
+            }
             Self::Grouped(_, pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);
@@ -95,7 +87,7 @@ impl Fmt for ast::TupleStructPat<'_> {
 
         path.fmt(cx);
         fmt!(cx, "(");
-        fields.interleave(", ").fmt(cx);
+        fields.into_iter().map(|(attrs, pat)| PatWithAttrs { attrs, pat }).interleave(", ").fmt(cx);
         fmt!(cx, ")");
     }
 }
@@ -126,7 +118,7 @@ impl Fmt for ast::StructPat<'_> {
 
 impl Fmt for ast::StructPatField<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, binder, body } = self;
+        let Self { attrs, binder, pat: body } = self;
 
         for attr in attrs {
             attr.fmt(cx);
@@ -173,5 +165,22 @@ impl Fmt for TrailingSpace<ast::ByRef> {
             }
             ast::ByRef::No => {}
         }
+    }
+}
+
+struct PatWithAttrs<'src> {
+    attrs: Vec<ast::Attr<'src>>,
+    pat: ast::Pat<'src>,
+}
+
+impl Fmt for PatWithAttrs<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { attrs, pat } = self;
+
+        for attr in attrs {
+            attr.fmt(cx);
+            fmt!(cx, " ");
+        }
+        pat.fmt(cx);
     }
 }

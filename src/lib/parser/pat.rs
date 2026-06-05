@@ -324,7 +324,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             (None, body)
                         };
 
-                        fields.push(ast::StructPatField { attrs, binder, body });
+                        fields.push(ast::StructPatField { attrs, binder, pat: body });
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;
@@ -340,11 +340,19 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
                         |this| {
-                            this.parse_pat_where(
+                            let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+                            if let Some(attr) = attrs.first() {
+                                let span = attr.span.to(attrs.last().unwrap().span);
+                                this.feature(Feature::__rfc3532, span);
+                            }
+
+                            let pat = this.parse_pat_where(
                                 OrPolicy::Parse,
                                 NonLegacyRangePolicy::Parse,
                                 GuardPolicy::Parse,
-                            )
+                            )?;
+
+                            Ok((attrs, pat))
                         },
                     )?;
                     return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {
