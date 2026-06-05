@@ -1,4 +1,4 @@
-use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
+use super::{Cx, Fmt, Inline, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::{ast, fmter::BuiltinSyntax, lexer::lex_keyword, token::TokenKind};
 
 impl Fmt for ast::Ty<'_> {
@@ -54,7 +54,16 @@ impl Fmt for ast::Ty<'_> {
                 ty.fmt(cx);
                 fmt!(cx, "]");
             }
-            Self::Tuple(tys) => Tup(tys).fmt(cx),
+            Self::Tuple(fields) => Tup(fields.into_iter().map(|(attrs, ty)| {
+                Inline(move |cx| {
+                    for attr in attrs {
+                        attr.fmt(cx);
+                        fmt!(cx, " ");
+                    }
+                    ty.fmt(cx);
+                })
+            }))
+            .fmt(cx),
             Self::Grouped(ty) => {
                 fmt!(cx, "(");
                 ty.fmt(cx);
