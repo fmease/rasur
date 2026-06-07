@@ -29,6 +29,8 @@ impl Fmt for ast::Ty<'_> {
                     }
                     ast::DynKind::Bare => {}
                 }
+                // FIXME: This renders `dyn` for "`DynTrait(Bare, ["dyn"])`" (`dyn+`, `(dyn)+`)
+                //        which is a `Path`, not a `DynTrait` and thus not syntactically equivalent!
                 bounds.fmt(cx);
             }
             Self::ImplTrait(bounds) => {

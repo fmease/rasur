@@ -549,6 +549,78 @@ fn ambiguous_plus() {
 }
 
 #[test]
+fn weak_keyword_dyn() {
+    // In Rust 2015, `dyn` only a *contextual* keyword that is active in type contexts
+    // if it's followed by a token in set {PathSegIdent, "for", TickedIdent, "(", "?"}.
+
+    t!(
+        parse_ty,
+        Rust2015,
+        "dyn",
+        Ok(ast::Ty::Path(r!(ast::ExtPath {
+            ext: None,
+            path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) }
+        })))
+    );
+
+    t!(
+        parse_ty,
+        Rust2015,
+        "dyn+",
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            r!([ast::Bound::Trait {
+                path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                ..
+            }])
+        ))
+    );
+
+    t!(
+        parse_ty,
+        Rust2018,
+        "dyn+",
+        Err(r!([Error::UnexpectedToken(
+            Token { kind: TokenKind::SinglePlus, .. },
+            r!([Fragment::Token(TokenKind::EndOfInput)])
+        )]))
+    );
+
+    t!(
+        parse_ty,
+        Rust2015,
+        "(dyn)+",
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            r!([ast::Bound::Trait {
+                path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                ..
+            }])
+        ))
+    );
+
+    // Context: <https://github.com/rust-lang/rust/issues/157565>.
+    t!(
+        parse_ty,
+        Rust2015,
+        "dyn + dyn",
+        Ok(ast::Ty::DynTrait(
+            ast::DynKind::Bare,
+            r!([
+                ast::Bound::Trait {
+                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                    ..
+                },
+                ast::Bound::Trait {
+                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                    ..
+                }
+            ])
+        ))
+    );
+}
+
+#[test]
 fn ty_modifiers() {
     t!(
         parse_ty,

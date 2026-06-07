@@ -1,7 +1,7 @@
 // issue: <https://github.com/rust-lang/rust/issues/139076>
 //: accept
 
-fn main() {
+fn func() {
     super let _;
     super let v = ();
     #[a] super let ();
