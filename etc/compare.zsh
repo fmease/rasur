@@ -36,8 +36,14 @@ esac
 shift
 done
 
-if [[ -n $FORMAT && -n $AST ]]; then
-  die '`--format` and `--ast` are mutually exclusive'
+if [[ -n $FORMAT ]]; then
+  if [[ -n $AST ]]; then
+    die '`--format` and `--ast` are mutually exclusive'
+  fi
+  # That's because `-Zunpretty=normal` halts before AST pretty just like `-Zparse-crate-root-only`.
+  if [[ -n $ALT ]]; then
+    die '`--format` and `--alt` are mutually exclusive'
+  fi
 fi
 
 if [[ -z $SOURCE ]]; then

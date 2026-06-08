@@ -161,10 +161,4 @@ macro t($parse:ident, $edition:ident, $source:expr, $ast:pat $(if $guard:expr)? 
 }
 
 // FIXME: macro_rules! in stmt pos (-> item not stmt); macro_rules! no binder == macro call
-// FIXME: ops
-// FIXME: structs in ifs etc.
 // FIXME: almost-assoc-item-constraint due to (  )
-// FIXME: exprs, pats
-// FIXME: A bunch of negative behavior tests!
-// FIXME: Add stmt `{ 0 } + 0` error, stmt `&{ 0 } + 0` ok but stmt `..{ 0 } + 0` err! etc.
-//        More: `0 + { 0 } + 0` OK. stmt `{ 0 } || 0` err.

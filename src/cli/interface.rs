@@ -55,7 +55,7 @@ pub(crate) fn opts() -> Opts {
                 .short('G')
                 .long("gatekeep")
                 .action(SetTrue)
-                .help("Forbid the use of unstable features"),
+                .help("Forbid the use of unstable features that aren't explicitly enabled"),
         )
         .arg(
             Arg::new(id::SHORT)

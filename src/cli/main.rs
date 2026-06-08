@@ -20,8 +20,18 @@ use crate::{
 };
 use Default::default;
 use painter::Painter;
-use rasur::span::At as _;
-use std::{collections::HashSet, io::Write, mem, process::ExitCode};
+use rasur::{
+    feature::{Feature, FeatureKind},
+    fmter, lexer, parser,
+    span::{At as _, ByteIndex, Span},
+    store::Store,
+};
+use std::{
+    collections::HashSet,
+    io::{self, Write},
+    mem,
+    process::ExitCode,
+};
 
 fn main() -> ExitCode {
     match try_main() {
@@ -49,7 +59,7 @@ fn try_main() -> Result<(), ()> {
             (source, SourcePathBuf::Real(mem::take(path)))
         }
         interface::Source::Stdin => (
-            std::io::read_to_string(std::io::stdin()).map_err(|error| {
+            io::read_to_string(io::stdin()).map_err(|error| {
                 Diag::error(format!("failed to read stdin: {error}")).render(&cx)
             })?,
             SourcePathBuf::Anon,
@@ -57,24 +67,22 @@ fn try_main() -> Result<(), ()> {
         interface::Source::String(ref mut string) => (mem::take(string), SourcePathBuf::Anon),
     };
 
-    let source = rasur::lexer::normalize(&source);
+    let source = lexer::normalize(&source);
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();
     let cx = cx.file(path.as_ref(), source);
 
-    let store = rasur::store::Store::default();
+    let store = Store::default();
 
-    let mut offset = rasur::span::ByteIndex::default();
-    let shebang = opts
-        .strip_shebang
-        .then(|| rasur::lexer::strip_shebang(source, &mut offset, edition))
-        .flatten();
+    let mut offset = ByteIndex::default();
+    let shebang =
+        opts.strip_shebang.then(|| lexer::strip_shebang(source, &mut offset, edition)).flatten();
     let frontmatter = opts
         .strip_frontmatter
-        .then(|| rasur::lexer::strip_frontmatter(source, &mut offset, &store))
+        .then(|| lexer::strip_frontmatter(source, &mut offset, &store))
         .flatten();
-    let tokens = rasur::lexer::lex(source, offset, edition, &store);
+    let tokens = lexer::lex(source, offset, edition, &store);
 
     // FIXME: Make it possible again to continue parsing after emitting tokens.
     if opts.lex_only || matches!(opts.emit, Some(ArtifactType::Tokens)) {
@@ -87,7 +95,7 @@ fn try_main() -> Result<(), ()> {
         return report(store, default(), &opts, &cx);
     }
 
-    let file = rasur::parser::parse(tokens, source, edition, &store);
+    let file = parser::parse(tokens, source, edition, &store);
 
     if let Ok(file) = &file
         && let Some(ArtifactType::Ast) = opts.emit
@@ -112,7 +120,7 @@ fn try_main() -> Result<(), ()> {
     if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
     {
-        let result = rasur::fmter::fmt(file, source, shebang, frontmatter, edition, default());
+        let result = fmter::fmt(file, source, shebang, frontmatter, edition, default());
         println!("{result}");
     }
 
@@ -120,8 +128,8 @@ fn try_main() -> Result<(), ()> {
 }
 
 fn report(
-    store: rasur::store::Store,
-    enabled_features: HashSet<rasur::feature::Feature>,
+    store: Store,
+    enabled_features: HashSet<Feature>,
     opts: &interface::Opts,
     cx: &diagnostics::RenderCx<'_>,
 ) -> Result<(), ()> {
@@ -146,8 +154,8 @@ fn report(
             };
 
             let kind = match feature.kind() {
-                rasur::feature::FeatureKind::Experimental => "experimental",
-                rasur::feature::FeatureKind::Internal => "internal",
+                FeatureKind::Experimental => "experimental",
+                FeatureKind::Internal => "internal",
             };
 
             let diag = Diag::new(level, format!("use of {kind} feature `{feature}`"));
@@ -163,7 +171,7 @@ fn report(
             diag.render(cx);
         }
     } else if let Some(ArtifactType::Features) = opts.emit {
-        let mut stdout = std::io::BufWriter::new(std::io::stdout().lock());
+        let mut stdout = io::BufWriter::new(io::stdout().lock());
         for (feature, _) in store.features {
             if !feature.protected() {
                 continue;
@@ -177,17 +185,17 @@ fn report(
 }
 
 fn emit_tokens(
-    tokens: rasur::lexer::Tokens<'_, '_>,
-    shebang: Option<rasur::span::Span>,
-    frontmatter: Option<rasur::lexer::Frontmatter>,
+    tokens: lexer::Tokens<'_, '_>,
+    shebang: Option<Span>,
+    frontmatter: Option<lexer::Frontmatter>,
     source: &str,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
+    use io::Write as _;
     use painter::{AnsiColor, Effects};
-    use std::io::{self, Write as _};
 
     let mut p = Painter::new(io::stderr(), io::BufWriter::new);
 
-    let render = |p: &mut Painter<_>, span: rasur::span::Span| {
+    let render = |p: &mut Painter<_>, span: Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
         p.with(AnsiColor::Yellow, |p| write!(p, "{:?}", source.at(span)))
     };
@@ -209,11 +217,10 @@ fn emit_tokens(
     }
 
     for token in tokens {
+        use rasur::token::TokenKind;
+
         // FIXME: Allow the CLI to dictate if we print all tokens instead of "most".
-        if let rasur::token::TokenKind::Comment
-        | rasur::token::TokenKind::Error
-        | rasur::token::TokenKind::Whitespace = token.kind
-        {
+        if let TokenKind::Comment | TokenKind::Error | TokenKind::Whitespace = token.kind {
             continue;
         }
 

@@ -8,6 +8,8 @@ use crate::{
 };
 use deref as r;
 
+// FIXME: Exercise `StructPolicy::Yield` (e.g., struct exprs in if conditions).
+
 #[test]
 fn levels() {
     t!(
