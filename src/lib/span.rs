@@ -41,7 +41,7 @@ impl std::ops::AddAssign for ByteIndex {
 }
 
 // FIXME: Make the fields fully private.
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 #[derive_const(Default)]
 pub struct Span {
     pub(crate) start: ByteIndex,

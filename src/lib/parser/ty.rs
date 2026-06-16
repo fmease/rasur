@@ -640,8 +640,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         if modifiers != ast::TraitBoundModifiers::NONE {
-            // FIXME: Span
-            self.error(Error::ModifiersOnInvalidBound);
+            self.error(Error::ModifiersOnInvalidBound); // FIXME: span
         }
 
         Ok(())
@@ -678,36 +677,17 @@ impl<'src> super::Parser<'_, '_, 'src> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
         let constness = self.parse_bound_constness()?;
+        let asyncness = self.parse_bound_asyncness();
+        let polarity = self.parse_bound_polarity();
 
-        let asyncness = if let span = self.token.span
-            && self.consume(TokenKind::Async)
+        if let ast::BoundPolarity::Negative(span) | ast::BoundPolarity::Maybe(span) = polarity
+            && (bound_vars.is_some()
+                || constness != ast::BoundConstness::Never
+                || asyncness != ast::BoundAsyncness::Never)
         {
-            self.feature(Feature::async_trait_bounds, span);
-            ast::BoundAsyncness::Always
-        } else {
-            ast::BoundAsyncness::Never
-        };
-
-        // FIXME: Find a nicer way to impl / expr this
-        let polarity = if bound_vars.is_none()
-            && let ast::BoundConstness::Never = constness
-            && let ast::BoundAsyncness::Never = asyncness
-        {
-            match self.token.kind {
-                TokenKind::SingleBang => {
-                    self.feature(Feature::negative_bounds, self.token.span);
-                    self.advance();
-                    ast::BoundPolarity::Negative
-                }
-                TokenKind::QuestionMark => {
-                    self.advance();
-                    ast::BoundPolarity::Maybe
-                }
-                _ => ast::BoundPolarity::Positive,
-            }
-        } else {
-            ast::BoundPolarity::Positive
-        };
+            // FIXME: add more context
+            self.error(Error::InvalidTraitBoundModifier(span))
+        }
 
         Ok(ast::TraitBoundModifiers { constness, asyncness, polarity })
     }
@@ -756,6 +736,34 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.feature(Feature::const_trait_impl, span);
 
         Ok(constness)
+    }
+
+    fn parse_bound_asyncness(&mut self) -> ast::BoundAsyncness {
+        let span = self.token.span;
+
+        if self.consume(TokenKind::Async) {
+            self.feature(Feature::async_trait_bounds, span);
+            ast::BoundAsyncness::Always
+        } else {
+            ast::BoundAsyncness::Never
+        }
+    }
+
+    fn parse_bound_polarity(&mut self) -> ast::BoundPolarity {
+        let span = self.token.span;
+
+        match self.token.kind {
+            TokenKind::SingleBang => {
+                self.feature(Feature::negative_bounds, span);
+                self.advance();
+                ast::BoundPolarity::Negative(span)
+            }
+            TokenKind::QuestionMark => {
+                self.advance();
+                ast::BoundPolarity::Maybe(span)
+            }
+            _ => ast::BoundPolarity::Positive,
+        }
     }
 
     fn parse_outlives_bounds(&mut self) -> Vec<ast::Lifetime<'src>> {

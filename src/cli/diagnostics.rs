@@ -167,6 +167,9 @@ impl IntoDiag for Error {
             Self::TickFollowingRawTickedIdent(span) => {
                 Diag::error("tick immediately following raw ticked identifier").highlight(span)
             }
+            Self::InvalidTraitBoundModifier(span) => {
+                Diag::error("invalid trait bound modifier").highlight(span)
+            }
         }
     }
 }

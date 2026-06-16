@@ -44,7 +44,7 @@ fn bare_trait_object_tys() {
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
-                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
+                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe(_), .. },
                 ..
             }])
         ))
@@ -61,7 +61,7 @@ fn bare_trait_object_tys() {
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
             r!([ast::Bound::Trait {
-                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe, .. },
+                modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe(_), .. },
                 ..
             }])
         ))

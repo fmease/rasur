@@ -40,6 +40,7 @@ pub enum Error {
     InvalidRawIdent(IdentKind, Span),
     InvalidScalar(char, InvalidScalarPlace, Span),
     InvalidStrLitDelimiter(Span),
+    InvalidTraitBoundModifier(Span),
     InvalidTyPrefix(Span),
     LifetimeObjectTyWithoutPlus(Span),
     MisplacedReceiver(Span),

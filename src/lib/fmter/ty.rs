@@ -305,8 +305,8 @@ impl Fmt for ast::TraitBoundModifiers {
 
         match polarity {
             ast::BoundPolarity::Positive => {}
-            ast::BoundPolarity::Negative => fmt!(cx, "!"),
-            ast::BoundPolarity::Maybe => fmt!(cx, "?"),
+            ast::BoundPolarity::Negative(_) => fmt!(cx, "!"),
+            ast::BoundPolarity::Maybe(_) => fmt!(cx, "?"),
         }
     }
 }

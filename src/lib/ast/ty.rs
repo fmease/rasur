@@ -165,8 +165,8 @@ pub enum BoundAsyncness {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum BoundPolarity {
     Positive,
-    Negative,
-    Maybe,
+    Negative(Span),
+    Maybe(Span),
 }
 
 #[derive(Debug)]
