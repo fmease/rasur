@@ -42,16 +42,13 @@ pub(crate) fn opts() -> Opts {
                 .help("Halt after lexing the source file"),
         )
         .arg(
-            Arg::new(id::NO_STRIP_FRONTMATTER)
-                .long("no-strip-frontmatter")
-                .action(SetTrue)
-                .help("Don't strip frontmatter"),
+            Arg::new(id::NO_SHEBANG).long("no-shebang").action(SetTrue).help("Don't strip shebang"),
         )
         .arg(
-            Arg::new(id::NO_STRIP_SHEBANG)
-                .long("no-strip-shebang")
+            Arg::new(id::NO_FRONTMATTER)
+                .long("no-frontmatter")
                 .action(SetTrue)
-                .help("Don't strip shebang"),
+                .help("Don't strip frontmatter"),
         )
         .arg(
             Arg::new(id::GATEKEEP)
@@ -87,8 +84,8 @@ pub(crate) fn opts() -> Opts {
         edition: matches.remove_one(id::EDITION),
         emit: matches.remove_one(id::EMIT),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
-        strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
-        strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
+        strip_shebang: !matches.remove_one(id::NO_SHEBANG).unwrap_or(false),
+        strip_frontmatter: !matches.remove_one(id::NO_FRONTMATTER).unwrap_or(false),
         gatekeep: matches.remove_one(id::GATEKEEP).unwrap_or_default(),
         short: matches.remove_one(id::SHORT).unwrap_or_default(),
         color: matches.remove_one(id::COLOR).unwrap(),
@@ -100,8 +97,8 @@ pub(crate) struct Opts {
     pub(crate) edition: Option<Edition>,
     pub(crate) emit: Option<ArtifactType>,
     pub(crate) lex_only: bool,
-    pub(crate) strip_frontmatter: bool,
     pub(crate) strip_shebang: bool,
+    pub(crate) strip_frontmatter: bool,
     pub(crate) gatekeep: bool,
     pub(crate) short: bool,
     pub(crate) color: clap::ColorChoice,
@@ -162,6 +159,6 @@ macro_rules! ids {
 #[rustfmt::skip]
 ids! {
     COLOR, EDITION, EMIT, GATEKEEP, LEX_ONLY,
-    NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
+    NO_FRONTMATTER, NO_SHEBANG,
     PATH, SHORT, SOURCE,
 }
