@@ -19,22 +19,12 @@ use std::fmt::Write as _;
 
 pub struct Cfg {
     pub indent: usize,
-    pub skip_marker: SkipMarker,
 }
 
 impl Default for Cfg {
     fn default() -> Self {
-        Self { indent: 4, skip_marker: SkipMarker::default() }
+        Self { indent: 4 }
     }
-}
-
-#[derive(Default, Clone, Copy)]
-pub enum SkipMarker {
-    None,
-    All,
-    Rustfmt,
-    #[default]
-    Rasur,
 }
 
 macro fmt($cx:ident, $($arg:tt)*) {
@@ -79,32 +69,18 @@ impl<'src> Cx<'src> {
         self.indent -= self.cfg.indent;
     }
 
-    // FIXME: rename to `should_skip`
-    fn skip<M: ast::AttrMode>(&self, attrs: &[ast::Attr<'_, M>]) -> bool {
-        if let SkipMarker::None = self.cfg.skip_marker {
-            return false;
-        }
+    /// Whether to reproduce the node that owns the given attributes verbatim.
+    fn should_preserve<M: ast::AttrMode>(&self, attrs: &[ast::Attr<'_, M>]) -> bool {
+        // NOTE: We intentionally don't "look inside" (i.e., evaluate or ignore) `cfg_attr`s since
+        //       the use cases for `#![cfg_attr(…, rasurfmt::skip)]` are questionable.
 
-        // FIXME: Look into cfg_attrs, too
-        // FIXME: Support rustfmt_skip or whatever that legacy attr is called
         attrs.iter().any(|attr| {
             let ast::AttrKind::Regular(attr) = &attr.kind else { return false };
             let ast::MetaArgs::Unit = attr.args else { return false };
-
-            let &[
-                ast::PathSeg { ident: ast::Ident!(tool), args: () },
-                ast::PathSeg { ident: ast::Ident!("skip"), args: () },
-            ] = attr.path.segs.as_slice()
-            else {
-                return false;
-            };
-
-            match self.cfg.skip_marker {
-                SkipMarker::None => unreachable!(),
-                SkipMarker::All => matches!(tool, "rustfmt" | "rasur"),
-                SkipMarker::Rustfmt => tool == "rustfmt",
-                SkipMarker::Rasur => tool == "rasur",
-            }
+            let [tool_name, attr_name] = attr.path.segs.as_slice() else { return false };
+            let "rasurfmt" = tool_name.ident.name else { return false };
+            let "preserve" = attr_name.ident.name else { return false };
+            true
         })
     }
 }
@@ -113,7 +89,7 @@ impl Fmt for ast::File<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, items } = self;
 
-        if cx.skip(&attrs) {
+        if cx.should_preserve(&attrs) {
             cx.source.fmt(cx);
             return;
         }

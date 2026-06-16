@@ -61,13 +61,6 @@ pub(crate) fn opts() -> Opts {
                 .help("Forbid the use of unstable features"),
         )
         .arg(
-            Arg::new(id::SKIP_MARKER)
-                .long("skip-marker")
-                .value_parser(parse_skip_marker)
-                .value_name("MARKER")
-                .help("Set the skip markers the pretty-printer should look out for"),
-        )
-        .arg(
             Arg::new(id::SHORT)
                 .long("short")
                 .action(SetTrue)
@@ -94,7 +87,6 @@ pub(crate) fn opts() -> Opts {
         edition: matches.remove_one(id::EDITION),
         emit: matches.remove_one(id::EMIT),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
-        skip_marker: matches.remove_one(id::SKIP_MARKER).unwrap_or_default(),
         strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
         strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
         gatekeep: matches.remove_one(id::GATEKEEP).unwrap_or_default(),
@@ -108,7 +100,6 @@ pub(crate) struct Opts {
     pub(crate) edition: Option<Edition>,
     pub(crate) emit: Option<ArtifactType>,
     pub(crate) lex_only: bool,
-    pub(crate) skip_marker: rasur::fmter::SkipMarker,
     pub(crate) strip_frontmatter: bool,
     pub(crate) strip_shebang: bool,
     pub(crate) gatekeep: bool,
@@ -160,17 +151,6 @@ fn parse_artifact_type(source: &str) -> Result<ArtifactType, String> {
     )(source)
 }
 
-fn parse_skip_marker(source: &str) -> Result<rasur::fmter::SkipMarker, String> {
-    use rasur::fmter::SkipMarker::*;
-
-    parse!(
-        "none" => None,
-        "all" => All,
-        "rustfmt" => Rustfmt,
-        "rasur" => Rasur,
-    )(source)
-}
-
 macro_rules! ids {
     ($($name:ident),+ $(,)?) => {
         mod id {
@@ -183,5 +163,5 @@ macro_rules! ids {
 ids! {
     COLOR, EDITION, EMIT, GATEKEEP, LEX_ONLY,
     NO_STRIP_FRONTMATTER, NO_STRIP_SHEBANG,
-    PATH, SHORT, SKIP_MARKER, SOURCE,
+    PATH, SHORT, SOURCE,
 }

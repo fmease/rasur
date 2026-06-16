@@ -9,7 +9,7 @@ impl Fmt for ast::Item<'_> {
         let Self { attrs, vis, kind, span } = self;
 
         let (outer_attrs, inner_attrs) = attrs.partition();
-        if cx.skip(&outer_attrs) {
+        if cx.should_preserve(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -306,7 +306,7 @@ impl Fmt for ast::ExternItem<'_> {
         let Self { attrs, vis, kind, span } = self;
 
         let (outer_attrs, inner_attrs) = attrs.partition();
-        if cx.skip(&outer_attrs) {
+        if cx.should_preserve(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }
@@ -719,7 +719,7 @@ impl Fmt for ast::AssocItem<'_> {
         let Self { attrs, vis, kind, span } = self;
 
         let (outer_attrs, inner_attrs) = attrs.partition();
-        if cx.skip(&outer_attrs) {
+        if cx.should_preserve(&outer_attrs) {
             fmt!(cx, "{}", cx.source(span));
             return;
         }

@@ -112,14 +112,7 @@ fn try_main() -> Result<(), ()> {
     if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
     {
-        let result = rasur::fmter::fmt(
-            file,
-            source,
-            shebang,
-            frontmatter,
-            edition,
-            rasur::fmter::Cfg { skip_marker: opts.skip_marker, ..default() },
-        );
+        let result = rasur::fmter::fmt(file, source, shebang, frontmatter, edition, default());
         println!("{result}");
     }
 
