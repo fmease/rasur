@@ -677,27 +677,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     ) -> Result<ast::TraitBoundModifiers> {
         // NOTE: To be kept in sync with `Self::begins_trait_bound_modifiers`.
 
-        let constness = match self.token.kind {
-            TokenKind::Const => {
-                self.advance();
-                ast::BoundConstness::Always
-            }
-            TokenKind::OpenSquareBracket => {
-                self.advance();
-                self.parse(TokenKind::Const)?;
-                self.parse(TokenKind::CloseSquareBracket)?;
-                ast::BoundConstness::Maybe
-            }
-            TokenKind::Tilde => {
-                self.advance();
-                self.parse(TokenKind::Const)?;
-                ast::BoundConstness::Maybe
-            }
-            _ => ast::BoundConstness::Never,
-        };
-        if let ast::BoundConstness::Always | ast::BoundConstness::Maybe = constness {
-            self.feature_no_span_fixme(Feature::const_trait_impl);
-        }
+        let constness = self.parse_bound_constness()?;
 
         let asyncness = if let span = self.token.span
             && self.consume(TokenKind::Async)
@@ -747,6 +727,35 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             _ => false,
         }
+    }
+
+    fn parse_bound_constness(&mut self) -> Result<ast::BoundConstness> {
+        let mut span = self.token.span;
+
+        let constness = match self.token.kind {
+            TokenKind::Const => {
+                self.advance();
+                ast::BoundConstness::Always
+            }
+            TokenKind::OpenSquareBracket => {
+                self.advance();
+                self.parse(TokenKind::Const)?;
+                span = span.to(self.token.span);
+                self.parse(TokenKind::CloseSquareBracket)?;
+                ast::BoundConstness::Maybe
+            }
+            TokenKind::Tilde => {
+                self.advance();
+                span = span.to(self.token.span);
+                self.parse(TokenKind::Const)?;
+                ast::BoundConstness::Maybe
+            }
+            _ => return Ok(ast::BoundConstness::Never),
+        };
+
+        self.feature(Feature::const_trait_impl, span);
+
+        Ok(constness)
     }
 
     fn parse_outlives_bounds(&mut self) -> Vec<ast::Lifetime<'src>> {

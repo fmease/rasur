@@ -111,7 +111,7 @@ impl<'src> Parser<'_, '_, 'src> {
         let store = Store::sealed();
         for (qualifier, token) in self.snapshot(&store).parse_item_qualifiers() {
             match qualifier {
-                Qualifier::Async | Qualifier::Const | Qualifier::Gen(_) | Qualifier::Static => {}
+                Qualifier::Async | Qualifier::Const(_) | Qualifier::Gen(_) | Qualifier::Static => {}
                 _ => return true,
             }
 
@@ -163,11 +163,11 @@ impl<'src> Parser<'_, '_, 'src> {
         match qualifiers.as_mut_slice() {
             [] => {}
             [Qualifier::Type(_)] => return self.fin_parse_ty_alias_item(override_policy),
-            [Qualifier::Const] if self.consume(TokenKind::OpenCurlyBracket) => {
-                self.feature(Feature::const_block_items, start);
+            [Qualifier::Const(span)] if self.consume(TokenKind::OpenCurlyBracket) => {
+                self.feature(Feature::const_block_items, *span);
                 return self.fin_parse_const_block_item();
             }
-            [qualifiers @ .., Qualifier::Const] => {
+            [qualifiers @ .., Qualifier::Const(_)] => {
                 let (type_level, qualifiers) = match qualifiers {
                     [Qualifier::Type(span), qualifiers @ ..] => {
                         // FIXME: There's also feature gate `mgca_type_const_syntax`.
@@ -209,7 +209,7 @@ impl<'src> Parser<'_, '_, 'src> {
             &mut [mut ref mut qualifiers @ .., Qualifier::Fn] => {
                 let mut modifiers = ast::FnItemModifiers { override_policy, .. };
 
-                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers);
+                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers, drop);
                 (modifiers.async_, qualifiers) = match qualifiers {
                     [Qualifier::Async, qualifiers @ ..] => (ast::Async::Yes, qualifiers),
                     _ => (ast::Async::No, qualifiers),
@@ -240,10 +240,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                     _ => (None, qualifiers),
                 };
-                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers);
-                if let ast::Const::Yes = modifiers.const_ {
-                    self.feature_no_span_fixme(Feature::const_trait_impl);
-                }
+                (modifiers.const_, qualifiers) = Qualifier::strip_const(qualifiers, |span| {
+                    self.feature(Feature::const_trait_impl, span)
+                });
                 (modifiers.safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 (modifiers.auto, qualifiers) = match qualifiers {
                     [Qualifier::Auto(span), qualifiers @ ..] => {
@@ -266,10 +265,9 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                     _ => (ImplKind::Normal, qualifiers),
                 };
-                let (const_, qualifiers) = Qualifier::strip_const(qualifiers);
-                if let ast::Const::Yes = const_ {
-                    self.feature_no_span_fixme(Feature::const_trait_impl);
-                }
+                let (const_, qualifiers) = Qualifier::strip_const(qualifiers, |span| {
+                    self.feature(Feature::const_trait_impl, span)
+                });
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
                     self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
@@ -331,7 +329,7 @@ impl<'src> Parser<'_, '_, 'src> {
         loop {
             let qualifier = match self.token.kind {
                 TokenKind::Async => Qualifier::Async,
-                TokenKind::Const => Qualifier::Const,
+                TokenKind::Const => Qualifier::Const(self.token.span),
                 TokenKind::Extern => {
                     self.advance();
                     yield (Qualifier::Extern(self.parse_abi_str()), self.token.kind);
@@ -1246,7 +1244,7 @@ pub(super) enum ItemCx {
 enum Qualifier<'src> {
     Async,
     Auto(Span),
-    Const,
+    Const(Span),
     Extern(Option<&'src str>),
     Fn,
     Gen(Span),
@@ -1262,9 +1260,12 @@ enum Qualifier<'src> {
 }
 
 impl<'src> Qualifier<'src> {
-    fn strip_const(qualifiers: &mut [Self]) -> (ast::Const, &mut [Self]) {
+    fn strip_const(qualifiers: &mut [Self], gate: impl FnOnce(Span)) -> (ast::Const, &mut [Self]) {
         match qualifiers {
-            [Self::Const, qualifiers @ ..] => (ast::Const::Yes, qualifiers),
+            [Self::Const(span), qualifiers @ ..] => {
+                gate(*span);
+                (ast::Const::Yes, qualifiers)
+            }
             _ => (ast::Const::No, qualifiers),
         }
     }
