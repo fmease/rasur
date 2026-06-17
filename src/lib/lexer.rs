@@ -708,8 +708,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
             ('u', _, _) => {
                 let Some((_, '{')) = self.advance() else { return false };
 
-                let mut is_empty = true;
-                let mut value = 0;
+                let mut value = None::<u32>;
 
                 while let Some(char) = self.peek() {
                     let sub = |x: char, y: char| x as u32 - y as u32;
@@ -718,7 +717,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                         '0'..='9' => sub(char, '0'),
                         'a'..='f' => sub(char, 'a') + 10,
                         'A'..='F' => sub(char, 'A') + 10,
-                        '_' if !is_empty => {
+                        '_' if value.is_some() => {
                             self.advance();
                             continue;
                         }
@@ -728,14 +727,14 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                         }
                         _ => return false,
                     };
-                    value *= 16;
-                    value += plus;
 
-                    is_empty = false;
+                    let value = value.get_or_insert(0);
+                    *value = value.saturating_mul(16).saturating_add(plus);
+
                     self.advance();
                 }
 
-                !is_empty && value <= 0x10_FFFF
+                value.is_some_and(|value| value <= 0x10_FFFF)
             }
             _ => false,
         }

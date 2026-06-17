@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[test]
-fn suffixes_invalid_places() {
+fn num_lit_suffixes_invalid_places() {
     t!(
         parse_expr,
         Rust2015,
@@ -71,7 +71,7 @@ fn suffixes_invalid_places() {
 }
 
 #[test]
-fn exponents_invalid_places() {
+fn num_lit_exponents_invalid_places() {
     // In field exprs, "exponents" in the numeric identifier are legal...
     t!(
         parse_expr,
@@ -196,7 +196,7 @@ fn exponents_invalid_places() {
 }
 
 #[test]
-fn fractional_part_invalid_places() {
+fn num_lit_fractional_part_invalid_places() {
     // We lex `0.0` and `0.` as a single token, a number literal.
     // However, in the cases below we require integer literals.
     // The parser needs to inspect the literal itself to detect this.
@@ -229,4 +229,12 @@ fn fractional_part_invalid_places() {
             )
         ])
     );
+}
+
+// FIXME: Add a lot more tests.
+#[test]
+fn str_lit_invalid_escape_sequences() {
+    // We once used to overflow here. The lexer currently uses a `u32` for this value
+    // and that number is 2^32 in HEX.
+    t!(parse_expr, Rust2015, r#""\u{100000000}""#, Err([Error::InvalidEscapeSequence(_)]));
 }

@@ -24,13 +24,15 @@ fn main() -> ExitCode {
     banner(&mut stdout, "RUSTC", '-').unwrap();
     let rustc_status = rustc(&opts);
 
-    banner(&mut stdout, "RASUR", '.').unwrap();
+    banner(&mut stdout, "RASUR", '-').unwrap();
     let rasur_status = rasur(&opts);
 
+    // FIXME: Use center dot instead once `banner` properly handles Unicode.
     if rustc_status == rasur_status {
         stdout.with(AnsiColor::Green, |stdout| banner(stdout, "MATCH!", '.')).unwrap();
         ExitCode::SUCCESS
     } else {
+        // FIXME: Print concrete codes in parentheses.
         stdout.with(AnsiColor::Red, |stdout| banner(stdout, "MISMATCH!", '.')).unwrap();
         ExitCode::FAILURE
     }
@@ -52,7 +54,8 @@ fn banner(
 
     write!(stdout, " {title} ")?;
 
-    for _ in 0..70usize.saturating_sub(title.len()) {
+    // FIXME: Don't use byte length, use Unicode width.
+    for _ in 0..71usize.saturating_sub(title.len()) {
         write!(stdout, "{symbol}")?;
     }
 
