@@ -1,4 +1,4 @@
-#!/usr/bin/env -S cargo +nightly -Zscript --quiet
+#!/usr/bin/env -S cargo -Zscript --quiet
 ---
 [package]
 edition = "2024"
