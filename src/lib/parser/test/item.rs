@@ -209,7 +209,6 @@ gen unsafe fn f() {}
 impl !Trait for () {}
 impl (crate) {}
 impl Trait for () {}
-impl const Trait for () {}
 impl(crate) auto trait Trait {}
 impl(in crate) auto trait Trait {}
 impl(self) trait Trait {}
@@ -240,8 +239,6 @@ unsafe extern "C" {}
 unsafe extern {}
 unsafe fn f() {}
 unsafe impl Trait for () {}
-unsafe impl const !Trait for () {}
-unsafe impl const Trait for () {}
 unsafe mod m;
 unsafe static X: ();
 unsafe trait Trait {}
@@ -319,7 +316,6 @@ gen unsafe fn f() {}
 impl !Trait for () {}
 impl (crate) {}
 impl Trait for () {}
-impl const Trait for () {}
 impl(crate) auto trait Trait {}
 impl(in crate) auto trait Trait {}
 impl(self) trait Trait {}
@@ -350,8 +346,6 @@ unsafe extern "C" {}
 unsafe extern {}
 unsafe fn f() {}
 unsafe impl Trait for () {}
-unsafe impl const !Trait for () {}
-unsafe impl const Trait for () {}
 unsafe mod m;
 unsafe static X: ();
 unsafe trait Trait {}

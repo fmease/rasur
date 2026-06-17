@@ -452,6 +452,8 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
             ast::ImplBody::Delegated(_) => fmt!(cx, "reuse "),
         }
 
+        const_.trailing_space().fmt(cx);
+
         if let Some(ast::ImplTraitRef { override_policy: _, safety, polarity: _, path: _ }) =
             trait_ref
         {
@@ -463,7 +465,7 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
             generics.params.fmt(cx);
         }
         fmt!(cx, " ");
-        const_.trailing_space().fmt(cx);
+
         if let Some(ast::ImplTraitRef { override_policy: _, safety: _, polarity, path }) = trait_ref
         {
             match polarity {
