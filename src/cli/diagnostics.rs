@@ -256,7 +256,7 @@ pub(super) struct Diag {
     level: ann::Level<'static>,
     title: Cow<'static, str>,
     highlight: Option<(Span, Option<Cow<'static, str>>)>,
-    subs: Vec<Cow<'static, str>>,
+    subs: Vec<(ann::Level<'static>, Cow<'static, str>)>,
 }
 
 impl Diag {
@@ -278,8 +278,13 @@ impl Diag {
         self
     }
 
-    pub(super) fn help(mut self, note: impl Into<Cow<'static, str>>) -> Self {
-        self.subs.push(note.into());
+    pub(super) fn note(mut self, message: impl Into<Cow<'static, str>>) -> Self {
+        self.subs.push((ann::Level::NOTE, message.into()));
+        self
+    }
+
+    pub(super) fn help(mut self, message: impl Into<Cow<'static, str>>) -> Self {
+        self.subs.push((ann::Level::HELP, message.into()));
         self
     }
 
@@ -305,8 +310,8 @@ impl Diag {
                 group.element(ann::Snippet::source(file.source).path(&path).annotation(annotation));
         }
 
-        for sub in self.subs {
-            group = group.element(ann::Level::HELP.message(sub));
+        for (level, message) in self.subs {
+            group = group.element(level.message(message));
         }
 
         let renderer = if cx.colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };

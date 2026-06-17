@@ -144,12 +144,22 @@ fn report(
             } else {
                 annotate_snippets::Level::WARNING
             };
-            let diag = Diag::new(level, format!("use of experimental feature `{feature}`"))
-                .help(format!("add `#![feature({feature})]` at the top of the file to enable"));
-            let diag = match span {
-                Some(span) => diag.highlight(span),
-                None => diag,
+
+            let kind = match feature.kind() {
+                rasur::feature::FeatureKind::Experimental => "experimental",
+                rasur::feature::FeatureKind::Internal => "internal",
             };
+
+            let diag = Diag::new(level, format!("use of {kind} feature `{feature}`"));
+            let diag = if let Some(issue) = feature.tracking_issue() {
+                const ISSUE_BASE_URL: &str = "https://github.com/rust-lang/rust/issues/";
+                diag.note(format!("see <{ISSUE_BASE_URL}{issue}> for more information"))
+            } else {
+                diag
+            };
+            let diag =
+                diag.help(format!("add `#![feature({feature})]` at the top of the file to enable"));
+            let diag = if let Some(span) = span { diag.highlight(span) } else { diag };
             diag.render(cx);
         }
     } else if let Some(ArtifactType::Features) = opts.emit {
