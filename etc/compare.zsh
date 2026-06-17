@@ -55,9 +55,9 @@ fi
 print
 
 print -P '%S-- RUSTC ----------------------------------------------------------------%s'
-printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc \
+printf '%s' "$SOURCE" | rustc \
   +$([[ -n "$TOOLCHAIN" ]] && echo "$TOOLCHAIN" || echo nightly) \
-  $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
+  $([[ -n $FILE ]] && printf '%s\n' "$SOURCE" || printf '-\n') \
   $([[ -z $ALT ]] && echo -Zparse-crate-root-only || echo -Zcrate-attr='cfg(false)' --crate-type=lib) \
   $([[ -n $INT ]] && echo -Zinternal-testing-features) \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
