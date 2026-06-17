@@ -630,7 +630,7 @@ impl<'src> Parser<'_, '_, 'src> {
         Ok(contract)
     }
 
-    /// Finish parsing an implementation item assuming the leading `impl` or `impl const` has been parsed already.
+    /// Finish parsing an implementation item assuming the leading `impl` has been parsed already.
     fn fin_parse_impl_item(
         &mut self,
         override_policy: ast::OverridePolicy,
@@ -643,16 +643,6 @@ impl<'src> Parser<'_, '_, 'src> {
             self.parse_generic_param_list()?.unwrap_or_default()
         } else {
             Vec::new()
-        };
-
-        let const_ = if let ast::Const::No = const_
-            && let span = self.token.span
-            && self.consume(TokenKind::Const)
-        {
-            self.feature(Feature::const_trait_impl, span);
-            ast::Const::Yes
-        } else {
-            const_
         };
 
         let polarity = if self.token.kind == TokenKind::SingleBang
