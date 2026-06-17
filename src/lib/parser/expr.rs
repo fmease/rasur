@@ -453,11 +453,15 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     [qualifiers @ .., Qualifier::Const(_)] => {
                         (Some(ast::SpecialBlockKind::Const), qualifiers)
                     }
-                    [qualifiers @ .., Qualifier::Try(ty)] => {
-                        self.feature_no_span_fixme(match ty {
-                            Some(_) => Feature::try_blocks_heterogeneous,
-                            None => Feature::try_blocks,
-                        });
+                    [qualifiers @ .., Qualifier::Try(span, ty)] => {
+                        self.feature(
+                            if ty.is_some() {
+                                Feature::try_blocks_heterogeneous
+                            } else {
+                                Feature::try_blocks
+                            },
+                            *span,
+                        );
                         (Some(ast::SpecialBlockKind::Try(mem::take(ty))), qualifiers)
                     }
                     [qualifiers @ .., Qualifier::Unsafe] => {
@@ -781,12 +785,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
                 TokenKind::Static => Qualifier::Static(self.token.span),
                 TokenKind::Try => {
+                    let span = self.token.span;
                     self.advance();
                     let ty = self
                         .consume(weak::Bikeshed)
                         .then(|| self.parse_ty().map(Box::new))
                         .transpose()?;
-                    qualifiers.push(Qualifier::Try(ty));
+                    // FIXME: The span should also include the type if present.
+                    qualifiers.push(Qualifier::Try(span, ty));
                     continue;
                 }
                 TokenKind::Unsafe => Qualifier::Unsafe,
@@ -1333,7 +1339,7 @@ enum Qualifier<'src> {
     OpenCurlyBracket,
     Pipe,
     Static(Span),
-    Try(Option<Box<ast::Ty<'src>>>),
+    Try(Span, Option<Box<ast::Ty<'src>>>),
     Unsafe,
     Use(Span),
 }

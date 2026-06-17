@@ -614,17 +614,19 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_contract(&mut self) -> Result<ast::Contract<'src>> {
         let mut contract = ast::Contract { requires: None, ensures: None };
 
-        if self.consume(weak::ContractRequires) {
+        if let span = self.token.span
+            && self.consume(weak::ContractRequires)
+        {
+            self.feature(Feature::contract_internals, span);
             let block = self.parse_block_expr(AttrPolicy::Reject)?;
             contract.requires = Some(Box::new(block));
         }
 
-        if self.consume(weak::ContractEnsures) {
+        if let span = self.token.span
+            && self.consume(weak::ContractEnsures)
+        {
+            self.feature(Feature::contract_internals, span);
             contract.ensures = Some(Box::new(self.parse_expr()?));
-        }
-
-        if contract.requires.is_some() || contract.ensures.is_some() {
-            self.feature_no_span_fixme(Feature::contract_internals);
         }
 
         Ok(contract)
