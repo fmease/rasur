@@ -27,6 +27,8 @@ do case "$1" in
   ;;
   --alt) ALT=1
   ;;
+  --int) INT=1
+  ;;
   *) if [[ -n $SOURCE ]]; then
     die "unexpected extra argument \`$1\`"
   else
@@ -57,6 +59,7 @@ printf -- "$([[ -z $FILE ]] && echo "$SOURCE")" | rustc \
   +$([[ -n "$TOOLCHAIN" ]] && echo "$TOOLCHAIN" || echo nightly) \
   $([[ -n $FILE ]] && printf -- "$SOURCE" || printf '-\n') \
   $([[ -z $ALT ]] && echo -Zparse-crate-root-only || echo -Zcrate-attr='cfg(false)' --crate-type=lib) \
+  $([[ -n $INT ]] && echo -Zinternal-testing-features) \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -n $TERSE ]] && echo --error-format=short) \
   $([[ -n $FORMAT ]] && echo -Zunpretty=normal) \
@@ -66,7 +69,8 @@ RUSTC_RESULT="$?"
 print -P '%S-- RASUR ----------------------------------------------------------------%s'
 ./rasur \
   $([[ -z $FILE ]] && echo --source) "$SOURCE" \
-  $([[ -n $ALT ]] && echo -G) \
+  $([[ -n $ALT ]] && echo --gatekeep) \
+  $([[ -n $INT ]] && echo --unlock-super-internal-features) \
   $([[ -n $EDITION ]] && echo --edition "$EDITION") \
   $([[ -n $TERSE ]] && echo --short) \
   $([[ -n $FORMAT ]] && echo --emit=fmt) \

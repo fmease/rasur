@@ -58,6 +58,12 @@ pub(crate) fn opts() -> Opts {
                 .help("Forbid the use of unstable features that aren't explicitly enabled"),
         )
         .arg(
+            Arg::new(id::UNLOCK_SUPER_INTERNAL_FEATURES)
+                .long(UNLOCK_SUPER_INTERNAL_FEATURES_OPT)
+                .action(SetTrue)
+                .hide(true),
+        )
+        .arg(
             Arg::new(id::SHORT)
                 .long("short")
                 .action(SetTrue)
@@ -87,6 +93,9 @@ pub(crate) fn opts() -> Opts {
         strip_shebang: !matches.remove_one(id::NO_SHEBANG).unwrap_or(false),
         strip_frontmatter: !matches.remove_one(id::NO_FRONTMATTER).unwrap_or(false),
         gatekeep: matches.remove_one(id::GATEKEEP).unwrap_or_default(),
+        unlock_super_internal_features: matches
+            .remove_one(id::UNLOCK_SUPER_INTERNAL_FEATURES)
+            .unwrap_or_default(),
         short: matches.remove_one(id::SHORT).unwrap_or_default(),
         color: matches.remove_one(id::COLOR).unwrap(),
     }
@@ -100,6 +109,7 @@ pub(crate) struct Opts {
     pub(crate) strip_shebang: bool,
     pub(crate) strip_frontmatter: bool,
     pub(crate) gatekeep: bool,
+    pub(crate) unlock_super_internal_features: bool,
     pub(crate) short: bool,
     pub(crate) color: clap::ColorChoice,
 }
@@ -117,6 +127,8 @@ pub(crate) enum ArtifactType {
     Features,
     Fmt,
 }
+
+pub(crate) const UNLOCK_SUPER_INTERNAL_FEATURES_OPT: &str = "unlock-super-internal-features";
 
 macro_rules! parse {
     ($( $key:literal => $value:expr ),+ $(,)?)  => { |source| Ok(match source {
@@ -160,5 +172,5 @@ macro_rules! ids {
 ids! {
     COLOR, EDITION, EMIT, GATEKEEP, LEX_ONLY,
     NO_FRONTMATTER, NO_SHEBANG,
-    PATH, SHORT, SOURCE,
+    PATH, SHORT, SOURCE, UNLOCK_SUPER_INTERNAL_FEATURES,
 }

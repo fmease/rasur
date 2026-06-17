@@ -104,9 +104,8 @@ impl Feature {
 
     pub const fn kind(self) -> FeatureKind {
         match self {
-            Self::builtin_syntax | Self::contract_internals | Self::negative_bounds => {
-                FeatureKind::Internal
-            }
+            Self::builtin_syntax | Self::contract_internals => FeatureKind::Internal,
+            Self::negative_bounds => FeatureKind::SuperInternal,
             _ => FeatureKind::Experimental,
         }
     }
@@ -121,4 +120,15 @@ impl fmt::Display for Feature {
 pub enum FeatureKind {
     Experimental,
     Internal,
+    SuperInternal,
+}
+
+impl fmt::Display for FeatureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Experimental => "experimental",
+            Self::Internal => "internal",
+            Self::SuperInternal => "super internal",
+        })
+    }
 }
