@@ -4,11 +4,8 @@
 #![feature(deref_patterns)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
-#![feature(never_type)]
-#![feature(type_alias_impl_trait)]
 // Lints
 #![deny(unused_must_use, rust_2018_idioms)]
-#![expect(incomplete_features, reason = "deref_patterns")]
 
 mod diagnostics;
 mod feature;

@@ -6,7 +6,6 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn attrs() {
@@ -17,14 +16,14 @@ fn attrs() {
         "#[a]match x{#![b]}",
         Ok(ast::Stmt::Expr(
             ast::Expr {
-                attrs: r!([
+                attrs: [
                     ast::Attr { style: ast::AttrStyle::Outer, .. },
                     ast::Attr { style: ast::AttrStyle::Inner, .. },
-                ]),
-                kind: ast::ExprKind::Match(r!(ast::MatchExpr {
-                    scrutinee: ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) },
+                ],
+                kind: ast::ExprKind::Match(ast::MatchExpr {
+                    scrutinee: ast::Expr { attrs: [], kind: ast::ExprKind::Path(_) },
                     ..
-                }))
+                })
             },
             _
         ))
@@ -71,13 +70,13 @@ fn let_else() {
         parse_stmt,
         Rust2015,
         "let _ = () else {};",
-        Ok(ast::Stmt::Let(r!(ast::LetStmt {
+        Ok(ast::Stmt::Let(ast::LetStmt {
             body: Some(ast::LetStmtBody {
-                consequent: ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. },
-                alternate: Some(ast::BlockExpr { stmts: r!([]) }),
+                consequent: ast::Expr { kind: ast::ExprKind::Tuple([]), .. },
+                alternate: Some(ast::BlockExpr { stmts: [] }),
             }),
             ..
-        })))
+        }))
     );
 
     // If the consequent (aka initializer) ends in a curly bracket, let-else is invalid.
@@ -86,10 +85,10 @@ fn let_else() {
         parse_stmt,
         Rust2015,
         "let _ = {} else {};",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::Else, .. },
-            r!([Fragment::Token(TokenKind::Semicolon)])
-        )]))
+            [Fragment::Token(TokenKind::Semicolon)]
+        )])
     );
 
     // We once used to accept this by mistake.
@@ -97,9 +96,9 @@ fn let_else() {
         parse_stmt,
         Rust2015,
         "let _ = () as M! {} else {};",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::Else, .. },
-            r!([Fragment::Token(TokenKind::Semicolon)])
-        )]))
+            [Fragment::Token(TokenKind::Semicolon)]
+        )])
     );
 }

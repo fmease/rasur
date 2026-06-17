@@ -402,7 +402,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return match path {
                 ast::ExtPath {
                     ext: None,
-                    path: ast::Path { segs: deref!([ast::PathSeg { ident, args: None }]) },
+                    path: ast::Path { segs: [ast::PathSeg { ident, args: None }] },
                 } => self.fin_parse_binding_pat(ast::Mut::No, ast::ByRef::No, ident),
                 _ => Ok(ast::Pat::Path(Box::new(path))),
             };

@@ -306,10 +306,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
             ast::Path { segs: Vec::new() };
 
         let bound = match inner_ty {
-            ast::Ty::Path(deref!(ast::ExtPath { ext: None, path })) => {
+            ast::Ty::Path(ast::ExtPath { ext: None, path }) => {
                 ast::Bound::from(mem::replace(path, EMPTY))
             }
-            ast::Ty::DynTrait(ast::DynKind::Bare, deref!([bound])) => {
+            ast::Ty::DynTrait(ast::DynKind::Bare, [bound]) => {
                 match bound {
                     ast::Bound::Outlives(_) => return Ok(None),
                     // NOTE: I'm not happy about this since use-bounds can't be parenthesized "normally".

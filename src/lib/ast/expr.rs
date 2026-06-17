@@ -75,7 +75,7 @@ impl ExprKind<'_> {
             | Self::ForLoop(_)
             // NOTE: Not so sure about this one. What is better for recovery?
             | Self::Error(_) => true,
-            Self::MacroCall(deref!(MacroCall { bracket: Bracket::Curly, .. })) => match extra {
+            Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
                 CurlyBracketedMacroCallIsBoundary::Yes => true,
                 CurlyBracketedMacroCallIsBoundary::No => false,
             },

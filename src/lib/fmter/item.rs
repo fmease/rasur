@@ -387,24 +387,19 @@ impl Fmt for ast::FnParam<'_> {
         }
 
         match (ty, pat) {
-            (
-                ast::Ty::ImplicitSelf,
-                ast::Pat::Binding(deref!(ast::BindingPat { mut_, binder, .. })),
-            ) => {
+            (ast::Ty::ImplicitSelf, ast::Pat::Binding(ast::BindingPat { mut_, binder, .. })) => {
                 mut_.trailing_space().fmt(cx);
                 binder.fmt(cx);
             }
             (
-                ast::Ty::Ref(
-                    deref!(ast::RefTy {
-                        lt,
-                        mut_,
-                        kind,
-                        pointee: ast::Ty::ImplicitSelf,
-                        view: None,
-                    }),
-                ),
-                ast::Pat::Binding(deref!(ast::BindingPat { binder, .. })),
+                ast::Ty::Ref(ast::RefTy {
+                    lt,
+                    mut_,
+                    kind,
+                    pointee: ast::Ty::ImplicitSelf,
+                    view: None,
+                }),
+                ast::Pat::Binding(ast::BindingPat { binder, .. }),
             ) => {
                 fmt!(cx, "&");
                 lt.trailing_space().fmt(cx);

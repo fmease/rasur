@@ -6,7 +6,6 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 // FIXME: Exercise `StructPolicy::Yield` (e.g., struct exprs in if conditions).
 
@@ -17,7 +16,7 @@ fn levels() {
         Rust2015,
         "if(){}else{}()",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Call(r!(ast::Expr { kind: ast::ExprKind::If(..), .. }), r!([])),
+            kind: ast::ExprKind::Call(ast::Expr { kind: ast::ExprKind::If(..), .. }, []),
             ..
         }),
     );
@@ -28,14 +27,14 @@ fn levels() {
         "if(){}else{}as _",
         Ok(ast::Expr {
             kind: ast::ExprKind::Cast(
-                r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
-                r!(ast::Ty::Inferred)
+                ast::Expr { kind: ast::ExprKind::If(..), .. },
+                ast::Ty::Inferred
             ),
             ..
         }),
     );
 
-    t!(parse_stmt, Rust2015, "-if 0{}else{}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+    t!(parse_stmt, Rust2015, "-if 0{}else{}()", Err([Error::InvalidOpAfterBoundary(_)]));
 
     // ...however, we accept this (expr, unary op):
     t!(
@@ -45,13 +44,10 @@ fn levels() {
         Ok(ast::Expr {
             kind: ast::ExprKind::UnOp(
                 ast::UnOp::Neg,
-                r!(ast::Expr {
-                    kind: ast::ExprKind::Call(
-                        r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
-                        r!([])
-                    ),
+                ast::Expr {
+                    kind: ast::ExprKind::Call(ast::Expr { kind: ast::ExprKind::If(..), .. }, []),
                     ..
-                })
+                }
             ),
             ..
         })
@@ -66,14 +62,14 @@ fn levels() {
             ast::Expr {
                 kind: ast::ExprKind::BinOp(
                     ast::BinOp::Sub,
-                    r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                    r!(ast::Expr {
+                    ast::Expr { kind: ast::ExprKind::Lit(_), .. },
+                    ast::Expr {
                         kind: ast::ExprKind::Call(
-                            r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
-                            r!([])
+                            ast::Expr { kind: ast::ExprKind::If(..), .. },
+                            []
                         ),
                         ..
-                    })
+                    }
                 ),
                 ..
             },
@@ -81,9 +77,9 @@ fn levels() {
         ),),
     );
 
-    t!(parse_stmt, Rust2015, "&if(){}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+    t!(parse_stmt, Rust2015, "&if(){}()", Err([Error::InvalidOpAfterBoundary(_)]));
 
-    t!(parse_stmt, Rust2015, "&&{}()", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+    t!(parse_stmt, Rust2015, "&&{}()", Err([Error::InvalidOpAfterBoundary(_)]));
 
     // Ensure that index & call operators are allowed to follow boundaries
     // if "they start a new stmt" (i.e., the precedence level is initial).
@@ -96,12 +92,12 @@ fn levels() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Block(
                 _,
-                r!(ast::BlockExpr {
-                    stmts: r!([
+                ast::BlockExpr {
+                    stmts: [
                         ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::If(_), .. }, _),
-                        ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }, _),
-                    ])
-                })
+                        ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Tuple([]), .. }, _),
+                    ]
+                }
             ),
             ..
         })
@@ -115,11 +111,11 @@ fn attrs() {
         Rust2015,
         "#[a]0",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr {
+            attrs: [ast::Attr {
                 style: ast::AttrStyle::Outer,
                 kind: ast::AttrKind::Regular(_),
                 ..
-            }]),
+            }],
             kind: ast::ExprKind::Lit(_),
         })
     );
@@ -129,13 +125,11 @@ fn attrs() {
         Rust2015,
         "#[a]#[b](#[c]#[d]0)",
         Ok(ast::Expr {
-            attrs: r!([
+            attrs: [
                 ast::Attr {
                     style: ast::AttrStyle::Outer,
                     kind: ast::AttrKind::Regular(ast::Meta {
-                        path: ast::Path {
-                            segs: r!([ast::PathSeg { ident: ast::Ident!("a"), .. }])
-                        },
+                        path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("a"), .. }] },
                         ..
                     }),
                     ..
@@ -143,21 +137,19 @@ fn attrs() {
                 ast::Attr {
                     style: ast::AttrStyle::Outer,
                     kind: ast::AttrKind::Regular(ast::Meta {
-                        path: ast::Path {
-                            segs: r!([ast::PathSeg { ident: ast::Ident!("b"), .. }])
-                        },
+                        path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("b"), .. }] },
                         ..
                     }),
                     ..
                 },
-            ]),
-            kind: ast::ExprKind::Grouped(r!(ast::Expr {
-                attrs: r!([
+            ],
+            kind: ast::ExprKind::Grouped(ast::Expr {
+                attrs: [
                     ast::Attr { style: ast::AttrStyle::Outer, .. },
                     ast::Attr { style: ast::AttrStyle::Outer, .. },
-                ]),
+                ],
                 kind: ast::ExprKind::Lit(_),
-            })),
+            }),
         })
     );
 
@@ -166,7 +158,7 @@ fn attrs() {
         Rust2015,
         "#[a]*x",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
             kind: ast::ExprKind::UnOp(..)
         })
     );
@@ -177,30 +169,30 @@ fn attrs() {
         Rust2015,
         "#[a]!x",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
             kind: ast::ExprKind::UnOp(..)
         })
     );
 
-    t!(parse_expr, Rust2015, "#[a]..", Err(r!([Error::ForbiddenOuterAttrs(_)])));
+    t!(parse_expr, Rust2015, "#[a]..", Err([Error::ForbiddenOuterAttrs(_)]));
 
-    t!(parse_expr, Rust2015, "#[a]..()", Err(r!([Error::ForbiddenOuterAttrs(_)])));
+    t!(parse_expr, Rust2015, "#[a]..()", Err([Error::ForbiddenOuterAttrs(_)]));
 
-    t!(parse_expr, Rust2015, "#[a]..=_", Err(r!([Error::ForbiddenOuterAttrs(_)])));
+    t!(parse_expr, Rust2015, "#[a]..=_", Err([Error::ForbiddenOuterAttrs(_)]));
 
     t!(
         parse_expr,
         Rust2015,
         "#[a]&#[b]()",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
             kind: ast::ExprKind::Borrow(
                 ..,
-                r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::Tuple(_),
                     ..
-                })
+                }
             )
         })
     );
@@ -210,14 +202,14 @@ fn attrs() {
         Rust2015,
         "#[a]&#[b]()",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
             kind: ast::ExprKind::Borrow(
                 ..,
-                r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::Tuple(_),
                     ..
-                })
+                }
             )
         })
     );
@@ -228,14 +220,14 @@ fn attrs() {
         Rust2015,
         "0..#[a]1",
         Ok(ast::Expr {
-            attrs: r!([]),
+            attrs: [],
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Lit(_), .. })),
-                Some(r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                Some(ast::Expr { attrs: [], kind: ast::ExprKind::Lit(_), .. }),
+                Some(ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::Lit(_),
                     ..
-                })),
+                }),
                 ..
             )
         })
@@ -247,12 +239,12 @@ fn attrs() {
         Rust2015,
         "#[a]()as()",
         Ok(ast::Expr {
-            attrs: r!([]),
+            attrs: [],
             kind: ast::ExprKind::Cast(
-                r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::Tuple(_)
-                }),
+                },
                 ..
             ),
         })
@@ -264,13 +256,13 @@ fn attrs() {
         Rust2015,
         "#[a]!0..",
         Ok(ast::Expr {
-            attrs: r!([]),
+            attrs: [],
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                Some(ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::UnOp(..),
                     ..
-                })),
+                }),
                 None,
                 ..
             )
@@ -283,14 +275,11 @@ fn attrs() {
         Rust2015,
         "#[a]0??",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
-            kind: ast::ExprKind::Try(r!(ast::Expr {
-                attrs: r!([]),
-                kind: ast::ExprKind::Try(r!(ast::Expr {
-                    attrs: r!([]),
-                    kind: ast::ExprKind::Lit(_)
-                }),),
-            }))
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
+            kind: ast::ExprKind::Try(ast::Expr {
+                attrs: [],
+                kind: ast::ExprKind::Try(ast::Expr { attrs: [], kind: ast::ExprKind::Lit(_) },),
+            })
         })
     );
 
@@ -300,11 +289,8 @@ fn attrs() {
         Rust2015,
         "#[a]f()",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
-            kind: ast::ExprKind::Call(
-                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
-                r!([])
-            )
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
+            kind: ast::ExprKind::Call(ast::Expr { attrs: [], kind: ast::ExprKind::Path(_) }, [])
         })
     );
 
@@ -314,16 +300,16 @@ fn attrs() {
         Rust2015,
         "(#[a]f)()",
         Ok(ast::Expr {
-            attrs: r!([]),
+            attrs: [],
             kind: ast::ExprKind::Call(
-                r!(ast::Expr {
-                    attrs: r!([]),
-                    kind: ast::ExprKind::Grouped(r!(ast::Expr {
-                        attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                ast::Expr {
+                    attrs: [],
+                    kind: ast::ExprKind::Grouped(ast::Expr {
+                        attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                         kind: ast::ExprKind::Path(_)
-                    }))
-                }),
-                r!([])
+                    })
+                },
+                []
             )
         })
     );
@@ -334,11 +320,8 @@ fn attrs() {
         Rust2015,
         "#[a]f[0]",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
-            kind: ast::ExprKind::Index(
-                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
-                _
-            )
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
+            kind: ast::ExprKind::Index(ast::Expr { attrs: [], kind: ast::ExprKind::Path(_) }, _)
         })
     );
 
@@ -348,11 +331,8 @@ fn attrs() {
         Rust2015,
         "#[a]x.y",
         Ok(ast::Expr {
-            attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
-            kind: ast::ExprKind::Field(
-                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) }),
-                _,
-            )
+            attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
+            kind: ast::ExprKind::Field(ast::Expr { attrs: [], kind: ast::ExprKind::Path(_) }, _,)
         })
     );
 
@@ -362,14 +342,14 @@ fn attrs() {
         Rust2015,
         "#[a]x.match{#![b]}",
         Ok(ast::Expr {
-            attrs: r!([
+            attrs: [
                 ast::Attr { style: ast::AttrStyle::Outer, .. },
                 ast::Attr { style: ast::AttrStyle::Inner, .. },
-            ]),
-            kind: ast::ExprKind::Match(r!(ast::MatchExpr {
-                scrutinee: ast::Expr { attrs: r!([]), kind: ast::ExprKind::Path(_) },
+            ],
+            kind: ast::ExprKind::Match(ast::MatchExpr {
+                scrutinee: ast::Expr { attrs: [], kind: ast::ExprKind::Path(_) },
                 ..
-            }))
+            })
         })
     );
 
@@ -379,15 +359,15 @@ fn attrs() {
         Rust2015,
         "#[a]-0+1",
         Ok(ast::Expr {
-            attrs: r!([]),
+            attrs: [],
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Add,
-                r!(ast::Expr {
-                    attrs: r!([ast::Attr { style: ast::AttrStyle::Outer, .. }]),
+                ast::Expr {
+                    attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
                     kind: ast::ExprKind::UnOp(..),
                     ..
-                }),
-                r!(ast::Expr { attrs: r!([]), kind: ast::ExprKind::Lit(_), .. }),
+                },
+                ast::Expr { attrs: [], kind: ast::ExprKind::Lit(_), .. },
                 ..
             )
         })
@@ -403,28 +383,28 @@ fn double_borrow_and_double_borrow() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::And,
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
                         ast::Mut::No,
-                        r!(ast::Expr {
+                        ast::Expr {
                             kind: ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, _),
                             ..
-                        })
+                        }
                     ),
                     ..
-                }),
-                r!(ast::Expr {
+                },
+                ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ast::BorrowKind::Ref,
                         ast::Mut::No,
-                        r!(ast::Expr {
+                        ast::Expr {
                             kind: ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, _),
                             ..
-                        }),
+                        },
                     ),
                     ..
-                })
+                }
             ),
             ..
         }),
@@ -440,17 +420,17 @@ fn or_nullary_closure() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Or,
-                r!(ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }),
-                r!(ast::Expr {
-                    kind: ast::ExprKind::Closure(r!(ast::ClosureExpr {
-                        bound_vars: r!([]),
+                ast::Expr { kind: ast::ExprKind::Tuple([]), .. },
+                ast::Expr {
+                    kind: ast::ExprKind::Closure(ast::ClosureExpr {
+                        bound_vars: [],
                         modifiers: _,
-                        params: r!([]),
+                        params: [],
                         ret_ty: None,
-                        body: ast::Expr { kind: ast::ExprKind::Tuple(r!([])), .. }
-                    })),
+                        body: ast::Expr { kind: ast::ExprKind::Tuple([]), .. }
+                    }),
                     ..
-                })
+                }
             ),
             ..
         })
@@ -463,27 +443,27 @@ fn control_flow_ops_block() {
         parse_expr,
         Rust2015,
         "if return {}",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::EndOfInput, span: _ },
-            r!([Fragment::Token(TokenKind::OpenCurlyBracket)]),
-        )]))
+            [Fragment::Token(TokenKind::OpenCurlyBracket)],
+        )])
     );
     t!(
         parse_expr,
         Rust2015,
         "if return {} {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(r!(ast::IfExpr {
+            kind: ast::ExprKind::If(ast::IfExpr {
                 condition: ast::Expr {
-                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
-                        kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: r!([]) }),
+                    kind: ast::ExprKind::Return(Some(ast::Expr {
+                        kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: [] }),
                         ..
-                    }))),
+                    })),
                     ..
                 },
-                consequent: ast::BlockExpr { stmts: r!([]) },
+                consequent: ast::BlockExpr { stmts: [] },
                 alternate: None
-            })),
+            }),
             ..
         })
     );
@@ -494,11 +474,11 @@ fn control_flow_ops_block() {
         Rust2015,
         "if break {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(r!(ast::IfExpr {
+            kind: ast::ExprKind::If(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Break(None, None), .. },
-                consequent: ast::BlockExpr { stmts: r!([]) },
+                consequent: ast::BlockExpr { stmts: [] },
                 alternate: None
-            })),
+            }),
             ..
         })
     );
@@ -510,10 +490,10 @@ fn control_flow_ops_block() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Break(
                 None,
-                Some(r!(ast::Expr {
-                    kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: r!([]) }),
+                Some(ast::Expr {
+                    kind: ast::ExprKind::Block(None, ast::BlockExpr { stmts: [] }),
                     ..
-                }))
+                })
             ),
             ..
         })
@@ -524,11 +504,11 @@ fn control_flow_ops_block() {
         Rust2015,
         "if continue {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::If(r!(ast::IfExpr {
+            kind: ast::ExprKind::If(ast::IfExpr {
                 condition: ast::Expr { kind: ast::ExprKind::Continue(None), .. },
-                consequent: ast::BlockExpr { stmts: r!([]), .. },
+                consequent: ast::BlockExpr { stmts: [], .. },
                 alternate: None
-            })),
+            }),
             ..
         })
     );
@@ -542,7 +522,7 @@ fn numeric_field() {
         "x.0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                ast::Expr { kind: ast::ExprKind::Path(_), .. },
                 ast::Ident!("0"),
             ),
             ..
@@ -555,13 +535,13 @@ fn numeric_field() {
         "x.0 .1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Field(
-                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Path(_), .. },
                         ast::Ident!("0"),
                     ),
                     ..
-                }),
+                },
                 ast::Ident!("1"),
             ),
             ..
@@ -576,13 +556,13 @@ fn numeric_field() {
         "x.0.1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Field(
-                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Path(_), .. },
                         ast::Ident!("0"),
                     ),
                     ..
-                }),
+                },
                 ast::Ident!("1"),
             ),
             ..
@@ -596,13 +576,13 @@ fn numeric_field() {
         "x. 0.1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Field(
-                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Path(_), .. },
                         ast::Ident!("0"),
                     ),
                     ..
-                }),
+                },
                 ast::Ident!("1"),
             ),
             ..
@@ -617,13 +597,13 @@ fn numeric_field() {
         "x.0. 1",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Field(
-                        r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Path(_), .. },
                         ast::Ident!("0"),
                     ),
                     ..
-                }),
+                },
                 ast::Ident!("1"),
             ),
             ..
@@ -638,7 +618,7 @@ fn numeric_field() {
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
                 _,
-                r!([ast::Ident!("x"), ast::Ident!("0"), ast::Ident!("1")])
+                [ast::Ident!("x"), ast::Ident!("0"), ast::Ident!("1")]
             ),
             ..
         }),
@@ -661,10 +641,10 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Borrow(
                 ..,
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
                     ..
-                })
+                }
             ),
             ..
         }),
@@ -675,10 +655,10 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..?",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::QuestionMark, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )]),
     );
 
     // `(!x)..`, not `!(x..)`.
@@ -688,7 +668,7 @@ fn ranges() {
         "!x..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Not, _), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Not, _), .. }),
                 None,
                 ast::RangeExprKind::Exclusive
             ),
@@ -703,7 +683,7 @@ fn ranges() {
         "&0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { kind: ast::ExprKind::Borrow(..), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::Borrow(..), .. }),
                 None,
                 ast::RangeExprKind::Exclusive
             ),
@@ -719,7 +699,7 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Neg, _), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Neg, _), .. }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -734,7 +714,7 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -749,7 +729,7 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr { kind: ast::ExprKind::Try(..), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::Try(..), .. }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -763,8 +743,8 @@ fn ranges() {
         "1 + 2..3 + 4",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. })),
-                Some(r!(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. }),
+                Some(ast::Expr { kind: ast::ExprKind::BinOp(ast::BinOp::Add, ..), .. }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -779,7 +759,7 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -792,14 +772,14 @@ fn ranges() {
         Rust2015,
         "for _ in .. {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
+            kind: ast::ExprKind::ForLoop(ast::ForLoopExpr {
                 head: ast::Expr {
                     kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
                     ..
                 },
                 body: ast::BlockExpr { .. },
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -811,7 +791,7 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr { kind: ast::ExprKind::Tuple(_), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::Tuple(_), .. }),
                 ast::RangeExprKind::Inclusive
             ),
             ..
@@ -825,8 +805,8 @@ fn ranges() {
         "*x..=0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. })),
-                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
+                Some(ast::Expr { kind: ast::ExprKind::UnOp(ast::UnOp::Deref, _), .. }),
+                Some(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
                 ast::RangeExprKind::Inclusive
             ),
             ..
@@ -837,20 +817,14 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..=",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "'='..=",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])]),
     );
 
     // Unlike the `..` case, `{}` gets interpreted as the right argument of the range.
@@ -859,18 +833,18 @@ fn ranges() {
         Rust2015,
         "for _ in ..={} {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
+            kind: ast::ExprKind::ForLoop(ast::ForLoopExpr {
                 head: ast::Expr {
                     kind: ast::ExprKind::Range(
                         None,
-                        Some(r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })),
+                        Some(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
                         ast::RangeExprKind::Inclusive,
                     ),
                     ..
                 },
                 body: ast::BlockExpr { .. },
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -882,17 +856,17 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::Range(
                         None,
-                        Some(r!(ast::Expr {
+                        Some(ast::Expr {
                             kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
                             ..
-                        })),
+                        }),
                         ast::RangeExprKind::Exclusive
                     ),
                     ..
-                })),
+                }),
                 ast::RangeExprKind::Exclusive
             ),
             ..
@@ -906,17 +880,17 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::Range(
                         None,
-                        Some(r!(ast::Expr {
+                        Some(ast::Expr {
                             kind: ast::ExprKind::Range(None, None, ast::RangeExprKind::Exclusive),
                             ..
-                        })),
+                        }),
                         ast::RangeExprKind::Inclusive
                     ),
                     ..
-                })),
+                }),
                 ast::RangeExprKind::Inclusive
             ),
             ..
@@ -927,45 +901,45 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "0..1..2",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..=1..2",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..1..=2",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..=1..=2",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDotEquals, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )]),
     );
 
-    t!(parse_stmt, Rust2015, "..if(){}else{}[0]", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+    t!(parse_stmt, Rust2015, "..if(){}else{}[0]", Err([Error::InvalidOpAfterBoundary(_)]));
 
-    t!(parse_stmt, Rust2015, "()..if(){}else{}[0]", Err(r!([Error::InvalidOpAfterBoundary(_)])));
+    t!(parse_stmt, Rust2015, "()..if(){}else{}[0]", Err([Error::InvalidOpAfterBoundary(_)]));
 
     // ...for comparison, this does parse:
     t!(
@@ -975,13 +949,13 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::Index(
-                        r!(ast::Expr { kind: ast::ExprKind::If(..), .. }),
-                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })
+                        ast::Expr { kind: ast::ExprKind::If(..), .. },
+                        ast::Expr { kind: ast::ExprKind::Lit(_), .. }
                     ),
                     ..
-                })),
+                }),
                 _
             ),
             ..
@@ -994,10 +968,10 @@ fn ranges() {
         parse_stmt,
         Rust2015,
         "..{}+0",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::Semicolon)]),
-        )]))
+            [Fragment::Token(TokenKind::Semicolon)],
+        )])
     );
 
     // ...for comparison, this does parse:
@@ -1008,14 +982,14 @@ fn ranges() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
                 None,
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::BinOp(
                         ast::BinOp::Add,
-                        r!(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
-                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Block(..), .. },
+                        ast::Expr { kind: ast::ExprKind::Lit(_), .. },
                     ),
                     ..
-                })),
+                }),
                 _
             ),
             ..
@@ -1031,14 +1005,14 @@ fn ranges() {
             ast::Expr {
                 kind: ast::ExprKind::BinOp(
                     ast::BinOp::Add,
-                    r!(ast::Expr {
+                    ast::Expr {
                         kind: ast::ExprKind::UnOp(
                             ast::UnOp::Neg,
-                            r!(ast::Expr { kind: ast::ExprKind::Block(..), .. })
+                            ast::Expr { kind: ast::ExprKind::Block(..), .. }
                         ),
                         ..
-                    }),
-                    r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })
+                    },
+                    ast::Expr { kind: ast::ExprKind::Lit(_), .. }
                 ),
                 ..
             },
@@ -1052,10 +1026,10 @@ fn ranges() {
         parse_stmt,
         Rust2015,
         "1..{}+0",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::Semicolon)]),
-        )]))
+            [Fragment::Token(TokenKind::Semicolon)],
+        )])
     );
 
     // ...for comparison, this does parse:
@@ -1065,15 +1039,15 @@ fn ranges() {
         "1..{}+0",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
-                Some(r!(ast::Expr {
+                Some(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                Some(ast::Expr {
                     kind: ast::ExprKind::BinOp(
                         ast::BinOp::Add,
-                        r!(ast::Expr { kind: ast::ExprKind::Block(..), .. }),
-                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                        ast::Expr { kind: ast::ExprKind::Block(..), .. },
+                        ast::Expr { kind: ast::ExprKind::Lit(_), .. },
                     ),
                     ..
-                })),
+                }),
                 _
             ),
             ..
@@ -1090,20 +1064,20 @@ fn ranges() {
         "&..=0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::Borrow(
                         ..,
-                        r!(ast::Expr {
+                        ast::Expr {
                             kind: ast::ExprKind::Range(
                                 None,
-                                Some(r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. })),
+                                Some(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
                                 ast::RangeExprKind::Inclusive
                             ),
                             ..
-                        })
+                        }
                     ),
                     ..
-                })),
+                }),
                 None,
                 ast::RangeExprKind::Exclusive,
             ),
@@ -1116,10 +1090,10 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..=0..",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::DoubleDot, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )]),
     );
 
     // We once used to wrongly parse this as `(T {}) + (..(0..))` instead of `((T {}) + (..0))..`.
@@ -1130,14 +1104,14 @@ fn ranges() {
         "T {} + ..0..",
         Ok(ast::Expr {
             kind: ast::ExprKind::Range(
-                Some(r!(ast::Expr {
+                Some(ast::Expr {
                     kind: ast::ExprKind::BinOp(
                         ast::BinOp::Add,
-                        r!(ast::Expr { kind: ast::ExprKind::Struct(_), .. }),
-                        r!(ast::Expr { kind: ast::ExprKind::Range(None, Some(_), _), .. }),
+                        ast::Expr { kind: ast::ExprKind::Struct(_), .. },
+                        ast::Expr { kind: ast::ExprKind::Range(None, Some(_), _), .. },
                     ),
                     ..
-                })),
+                }),
                 None,
                 _
             ),
@@ -1154,17 +1128,17 @@ fn ranges() {
         "return x + .. .y",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
-                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+                ast::Expr {
+                    kind: ast::ExprKind::Return(Some(ast::Expr {
                         kind: ast::ExprKind::BinOp(
                             ast::BinOp::Add,
-                            r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
-                            r!(ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. }),
+                            ast::Expr { kind: ast::ExprKind::Path(_), .. },
+                            ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. },
                         ),
                         ..
-                    }))),
+                    })),
                     ..
-                }),
+                },
                 ast::Ident!("y"),
             ),
             ..
@@ -1177,20 +1151,20 @@ fn ranges() {
         Rust2015,
         "return x + 0 .y",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+            kind: ast::ExprKind::Return(Some(ast::Expr {
                 kind: ast::ExprKind::BinOp(
                     ast::BinOp::Add,
-                    r!(ast::Expr { kind: ast::ExprKind::Path(_), .. }),
-                    r!(ast::Expr {
+                    ast::Expr { kind: ast::ExprKind::Path(_), .. },
+                    ast::Expr {
                         kind: ast::ExprKind::Field(
-                            r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
+                            ast::Expr { kind: ast::ExprKind::Lit(_), .. },
                             ast::Ident!("y")
                         ),
                         ..
-                    }),
+                    },
                 ),
                 ..
-            }))),
+            })),
             ..
         }),
     );
@@ -1203,16 +1177,16 @@ fn ranges() {
         "return !.. .f",
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr {
-                    kind: ast::ExprKind::Return(Some(r!(ast::Expr {
+                ast::Expr {
+                    kind: ast::ExprKind::Return(Some(ast::Expr {
                         kind: ast::ExprKind::UnOp(
                             ast::UnOp::Not,
-                            r!(ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. })
+                            ast::Expr { kind: ast::ExprKind::Range(None, None, _), .. }
                         ),
                         ..
-                    }))),
+                    })),
                     ..
-                }),
+                },
                 ast::Ident!("f")
             ),
             ..
@@ -1224,10 +1198,10 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "1 + .. .y",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SingleDot, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )]))
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )])
     );
 
     // For the longest time, we used to wrongly accept this.
@@ -1235,10 +1209,10 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "1 * .. ?",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::QuestionMark, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )]))
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )])
     );
 }
 
@@ -1256,35 +1230,29 @@ fn qualified_struct_pat_in_for_loop() {
         Rust2015,
         "for<Ty as Trait>::AssocTy {} in () {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::ForLoop(r!(ast::ForLoopExpr {
+            kind: ast::ExprKind::ForLoop(ast::ForLoopExpr {
                 pat: ast::Pat::Struct(ast::StructPat {
                     path: ast::ExtPath {
                         ext: Some(ast::PathExt {
                             self_ty: ast::Ty::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
-                                    segs: r!([ast::PathSeg {
-                                        ident: ast::Ident!("Ty"),
-                                        args: None
-                                    }])
+                                    segs: [ast::PathSeg { ident: ast::Ident!("Ty"), args: None }]
                                 },
                             }),
                             trait_ref: Some(ast::Path {
-                                segs: r!([ast::PathSeg {
-                                    ident: ast::Ident!("Trait"),
-                                    args: None
-                                }])
+                                segs: [ast::PathSeg { ident: ast::Ident!("Trait"), args: None }]
                             })
                         }),
                         path: ast::Path {
-                            segs: r!([ast::PathSeg { ident: ast::Ident!("AssocTy"), args: None }])
+                            segs: [ast::PathSeg { ident: ast::Ident!("AssocTy"), args: None }]
                         }
                     },
-                    fields: r!([]),
+                    fields: [],
                     rest: false
                 }),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -1302,25 +1270,25 @@ fn struct_policy() {
         Rust2015,
         "while || Struct {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::WhileLoop(r!(ast::WhileLoopExpr {
+            kind: ast::ExprKind::WhileLoop(ast::WhileLoopExpr {
                 condition: ast::Expr {
                     kind: ast::ExprKind::Closure(ast::ClosureExpr {
                         body: ast::Expr {
-                            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                            kind: ast::ExprKind::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
-                                    segs: r!([ast::PathSeg { ident: ast::Ident!("Struct"), .. }])
+                                    segs: [ast::PathSeg { ident: ast::Ident!("Struct"), .. }]
                                 }
-                            })),
+                            }),
                             ..
                         },
                         ..
                     }),
                     ..
                 },
-                body: ast::BlockExpr { stmts: r!([]) },
+                body: ast::BlockExpr { stmts: [] },
                 ..
-            })),
+            }),
             ..
         })
     );

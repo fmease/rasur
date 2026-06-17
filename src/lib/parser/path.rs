@@ -299,9 +299,9 @@ fn extract_assoc_item_seg<'src>(
     arg: &mut ast::AngleGenericArg<'src>,
 ) -> Option<(ast::Ident<'src>, Option<ast::GenericArgs<'src>>)> {
     if let ast::AngleGenericArg::Ty(ty) = arg
-        && let ast::Ty::Path(deref!(path)) = ty
+        && let ast::Ty::Path(path) = ty
         && let ast::ExtPath { ext: None, path } = path
-        && let ast::Path { segs: deref!([seg]) } = path
+        && let ast::Path { segs: [seg] } = path
     {
         Some((seg.ident, seg.args.take()))
     } else {

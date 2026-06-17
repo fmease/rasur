@@ -15,7 +15,6 @@
 #![feature(negative_impls)]
 #![feature(never_type)]
 #![feature(step_trait)]
-#![feature(try_blocks)]
 #![feature(type_alias_impl_trait)]
 #![feature(type_changing_struct_update)]
 // Lints

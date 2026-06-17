@@ -6,7 +6,6 @@ use crate::{
     lexer::IdentKind,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn abi_strs() {
@@ -17,40 +16,40 @@ fn abi_strs() {
         parse_ty,
         Rust2015,
         r#"extern "ABI" fn()"#,
-        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+        Ok(ast::Ty::FnPtr(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers { extern_: ast::Extern::Yes(Some(r#""ABI""#)), .. },
             ..
-        })))
+        }))
     );
 
     t!(
         parse_ty,
         Rust2015,
         r#"extern r"ABI" fn()"#,
-        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+        Ok(ast::Ty::FnPtr(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers { extern_: ast::Extern::Yes(Some(r#"r"ABI""#)), .. },
             ..
-        })))
+        }))
     );
 
     t!(
         parse_ty,
         Rust2015,
         r##"extern r#"ABI"# fn()"##,
-        Ok(ast::Ty::FnPtr(r!(ast::FnPtrTy {
+        Ok(ast::Ty::FnPtr(ast::FnPtrTy {
             modifiers: ast::FnPtrTyModifiers {
                 extern_: ast::Extern::Yes(Some(r##"r#"ABI"#"##)),
                 ..
             },
             ..
-        })))
+        }))
     );
 
-    t!(parse_ty, Rust2015, r#"extern b"ABI" fn()"#, Err(r!([Error::InvalidAbiStr(_)])));
+    t!(parse_ty, Rust2015, r#"extern b"ABI" fn()"#, Err([Error::InvalidAbiStr(_)]));
 
-    t!(parse_ty, Rust2021, r#"extern c"ABI" fn()"#, Err(r!([Error::InvalidAbiStr(_)])));
+    t!(parse_ty, Rust2021, r#"extern c"ABI" fn()"#, Err([Error::InvalidAbiStr(_)]));
 
-    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err(r!([Error::AbiStrSuffix(_)])));
+    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err([Error::AbiStrSuffix(_)]));
 }
 
 #[test]
@@ -65,20 +64,20 @@ fn const_block_const_item_modifier() {
         Ok(ast::Expr {
             kind: ast::ExprKind::Block(
                 None,
-                r!(ast::BlockExpr {
-                    stmts: r!([
+                ast::BlockExpr {
+                    stmts: [
                         ast::Stmt::Expr(
                             ast::Expr {
                                 kind: ast::ExprKind::SpecialBlock(
                                     ast::SpecialBlockKind::Const,
-                                    r!(ast::BlockExpr { stmts: r!([]) })
+                                    ast::BlockExpr { stmts: [] }
                                 ),
                                 ..
                             },
                             ast::Semicolon::No
                         ),
                         ast::Stmt::Item(ast::Item {
-                            attrs: r!([]),
+                            attrs: [],
                             vis: ast::Visibility::Inherited,
                             kind: ast::ItemKind::Fn(ast::FnItem {
                                 modifiers: ast::FnItemModifiers { const_: ast::Const::Yes, .. },
@@ -87,8 +86,8 @@ fn const_block_const_item_modifier() {
                             }),
                             span: _
                         }),
-                    ])
-                })
+                    ]
+                }
             ),
             ..
         })
@@ -102,15 +101,15 @@ fn const_block_const_item_modifier() {
     const fn f() {}
 ",
         Ok(ast::File {
-            items: r!([
+            items: [
                 ast::Item {
-                    kind: ast::ItemKind::ConstBlock(r!(ast::ConstBlockItem {
-                        body: ast::BlockExpr { stmts: r!([]) }
-                    })),
+                    kind: ast::ItemKind::ConstBlock(ast::ConstBlockItem {
+                        body: ast::BlockExpr { stmts: [] }
+                    }),
                     ..
                 },
                 ast::Item {
-                    attrs: r!([]),
+                    attrs: [],
                     vis: ast::Visibility::Inherited,
                     kind: ast::ItemKind::Fn(ast::FnItem {
                         modifiers: ast::FnItemModifiers { const_: ast::Const::Yes, .. },
@@ -119,7 +118,7 @@ fn const_block_const_item_modifier() {
                     }),
                     span: _
                 },
-            ]),
+            ],
             ..
         })
     );
@@ -127,24 +126,19 @@ fn const_block_const_item_modifier() {
 
 #[test]
 fn builtin_syntax() {
-    t!(parse_expr, Rust2015, "builtin#unknown(1 + 2 @)", Err(r!([Error::UnknownBuiltinSyntax(_)])),);
+    t!(parse_expr, Rust2015, "builtin#unknown(1 + 2 @)", Err([Error::UnknownBuiltinSyntax(_)]),);
 
     t!(
         parse_expr,
         Rust2021,
         "builtin#unknown(1 + 2 @)",
-        Err(r!([
+        Err([
             Error::ReservedPrefix(_),
             Error::UnexpectedToken(Token { kind: TokenKind::At, .. }, _)
-        ])),
+        ]),
     );
 
-    t!(
-        parse_expr,
-        Rust2021,
-        "builtin # unknown(1 + 2 @)",
-        Err(r!([Error::UnknownBuiltinSyntax(_)])),
-    );
+    t!(parse_expr, Rust2021, "builtin # unknown(1 + 2 @)", Err([Error::UnknownBuiltinSyntax(_)]),);
 
     t!(
         parse_expr,
@@ -152,8 +146,8 @@ fn builtin_syntax() {
         "builtin # type_ascribe(0,i32)",
         Ok(ast::Expr {
             kind: ast::ExprKind::Ascription(
-                r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                r!(ast::Ty::Path(_))
+                ast::Expr { kind: ast::ExprKind::Lit(_), .. },
+                ast::Ty::Path(_)
             ),
             ..
         })
@@ -165,11 +159,11 @@ fn builtin_syntax() {
         "builtin # offset_of(X,0.x.y.1)",
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
-                r!(ast::Ty::Path(ast::ExtPath {
+                ast::Ty::Path(ast::ExtPath {
                     ext: None,
-                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("X"), .. }]) }
-                })),
-                r!([ast::Ident!("0"), ast::Ident!("x"), ast::Ident!("y"), ast::Ident!("1"),]),
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("X"), .. }] }
+                }),
+                [ast::Ident!("0"), ast::Ident!("x"), ast::Ident!("y"), ast::Ident!("1"),],
             ),
             ..
         })
@@ -182,7 +176,7 @@ fn builtin_syntax() {
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Wrap,
-                r!(ast::Expr { .. }),
+                ast::Expr { .. },
             ),
             ..
         })
@@ -195,13 +189,13 @@ fn builtin_syntax() {
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Unwrap,
-                r!(ast::Expr { .. }),
+                ast::Expr { .. },
             ),
             ..
         })
     );
 
-    t!(parse_pat, Rust2021, "builtin # deref(0)", Ok(ast::Pat::Deref(r!(ast::Pat::Lit(..)))));
+    t!(parse_pat, Rust2021, "builtin # deref(0)", Ok(ast::Pat::Deref(ast::Pat::Lit(..))));
 }
 
 #[test]
@@ -216,7 +210,7 @@ fn unicode_17() {
         Rust2015,
         "fn \u{88f}();",
         Ok(ast::Item {
-            kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("\u{88f}"), .. })),
+            kind: ast::ItemKind::Fn(ast::FnItem { binder: ast::Ident!("\u{88f}"), .. }),
             ..
         })
     );
@@ -227,7 +221,7 @@ fn unicode_17() {
         Rust2015,
         "fn f\u{10efb}();",
         Ok(ast::Item {
-            kind: ast::ItemKind::Fn(r!(ast::FnItem { binder: ast::Ident!("f\u{10efb}"), .. })),
+            kind: ast::ItemKind::Fn(ast::FnItem { binder: ast::Ident!("f\u{10efb}"), .. }),
             ..
         })
     );
@@ -240,13 +234,13 @@ fn raw_idents() {
         Rust2015,
         "r#loop {}",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Struct(r!(ast::StructExpr {
+            kind: ast::ExprKind::Struct(ast::StructExpr {
                 path: ast::ExtPath {
                     ext: None,
-                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("loop"), .. }]) }
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("loop"), .. }] }
                 },
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -256,10 +250,10 @@ fn raw_idents() {
         parse_item,
         Rust2015,
         "K!(r#self r#_);",
-        Err(r!([
+        Err([
             Error::InvalidRawIdent(IdentKind::Normal, _),
             Error::InvalidRawIdent(IdentKind::Normal, _)
-        ]))
+        ])
     );
 
     // `r#` is considered to be a malformed raw delimited string literal. That's what rustc does, too.
@@ -268,7 +262,7 @@ fn raw_idents() {
         parse_item,
         Rust2015,
         "K!(r#);",
-        Err(r!([Error::InvalidStrLitDelimiter(_), Error::MissingClosingDelimiters(_)]))
+        Err([Error::InvalidStrLitDelimiter(_), Error::MissingClosingDelimiters(_)])
     );
 }
 
@@ -280,22 +274,22 @@ fn ticked_idents() {
         Rust2015,
         "M! { 'if }",
         Ok(ast::Item {
-            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([
+            kind: ast::ItemKind::MacroCall(ast::MacroCall {
+                stream: [
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
-                ]),
+                ],
                 ..
-            })),
+            }),
             ..
         })
     );
 
     // However as lifetimes they are (except for `'_` and `'static` of course):
-    t!(parse_item, Rust2015, "type T<'if>;", Err(r!([Error::ReservedLifetime(_)])));
+    t!(parse_item, Rust2015, "type T<'if>;", Err([Error::ReservedLifetime(_)]));
 
     // Similarly, as labels they are, too:
-    t!(parse_expr, Rust2015, "'if: loop {}", Err(r!([Error::ReservedLabel(_)])));
+    t!(parse_expr, Rust2015, "'if: loop {}", Err([Error::ReservedLabel(_)]));
 }
 
 #[test]
@@ -305,17 +299,17 @@ fn raw_ticked_idents() {
         Rust2021,
         "type T<'r#if>;",
         Ok(ast::Item {
-            kind: ast::ItemKind::TyAlias(r!(ast::TyAliasItem {
+            kind: ast::ItemKind::TyAlias(ast::TyAliasItem {
                 generics: ast::Generics {
-                    params: r!([ast::GenericParam {
+                    params: [ast::GenericParam {
                         kind: ast::GenericParamKind::Lifetime(_),
                         binder: ast::Ident!("if"),
                         ..
-                    }]),
+                    }],
                     ..
                 },
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -326,7 +320,7 @@ fn raw_ticked_idents() {
         parse_expr,
         Rust2018,
         "'r#if: loop {}",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Hash, .. }, _)]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::Hash, .. }, _)])
     );
 
     // Using a macro call to demonstrate that this is a lexical error even!
@@ -335,15 +329,15 @@ fn raw_ticked_idents() {
         Rust2018,
         "C! { 'r#if }",
         Ok(ast::Item {
-            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([
+            kind: ast::ItemKind::MacroCall(ast::MacroCall {
+                stream: [
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::Hash, .. },
                     Token { kind: TokenKind::If, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
-                ]),
+                ],
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -352,7 +346,7 @@ fn raw_ticked_idents() {
         parse_item,
         Rust2021,
         "type R = &'r#_ ();",
-        Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)]))
+        Err([Error::InvalidRawIdent(IdentKind::Ticked, _)])
     );
 
     // We once used to accept this by mistake!
@@ -361,17 +355,17 @@ fn raw_ticked_idents() {
         parse_item,
         Rust2021,
         "seg!('r#self 'r#Self);",
-        Err(r!([
+        Err([
             Error::InvalidRawIdent(IdentKind::Ticked, _),
             Error::InvalidRawIdent(IdentKind::Ticked, _)
-        ]))
+        ])
     );
 
     // We once used to accept this by mistake!
-    t!(parse_item, Rust2021, "W!('r#0);", Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)])));
+    t!(parse_item, Rust2021, "W!('r#0);", Err([Error::InvalidRawIdent(IdentKind::Ticked, _)]));
 
     // We once used to accept this by mistake treating it as an empty raw ticked ident!
-    t!(parse_item, Rust2021, "O!('r#);", Err(r!([Error::InvalidRawIdent(IdentKind::Ticked, _)])));
+    t!(parse_item, Rust2021, "O!('r#);", Err([Error::InvalidRawIdent(IdentKind::Ticked, _)]));
 }
 
 #[test]
@@ -381,14 +375,14 @@ fn char_lits_or_ticked_idents() {
         Rust2015,
         "M! { 'a'a }",
         Ok(ast::Item {
-            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([
+            kind: ast::ItemKind::MacroCall(ast::MacroCall {
+                stream: [
                     Token { kind: TokenKind::CharLit, .. },
                     Token { kind: TokenKind::LitSuffix, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
-                ]),
+                ],
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -398,34 +392,34 @@ fn char_lits_or_ticked_idents() {
         Rust2015,
         "M! { 'a 'a }",
         Ok(ast::Item {
-            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([
+            kind: ast::ItemKind::MacroCall(ast::MacroCall {
+                stream: [
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
-                ]),
+                ],
                 ..
-            })),
+            }),
             ..
         })
     );
 
-    t!(parse_item, Rust2015, "M! { '?a'a }", Err(r!([Error::MultiScalarCharLit(_)])));
+    t!(parse_item, Rust2015, "M! { '?a'a }", Err([Error::MultiScalarCharLit(_)]));
 
     t!(
         parse_item,
         Rust2015,
         "M! { 'a?'a }",
         Ok(ast::Item {
-            kind: ast::ItemKind::MacroCall(r!(ast::MacroCall {
-                stream: r!([
+            kind: ast::ItemKind::MacroCall(ast::MacroCall {
+                stream: [
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::QuestionMark, .. },
                     Token { kind: TokenKind::TickedIdent, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
-                ]),
+                ],
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -435,16 +429,16 @@ fn char_lits_or_ticked_idents() {
         parse_item,
         Rust2021,
         "W!('r#');",
-        Err(r!([
+        Err([
             Error::InvalidRawIdent(IdentKind::Ticked, _),
             Error::UnterminatedCharLit(_),
             Error::MissingClosingDelimiters(_),
-        ]))
+        ])
     );
 
     // We once used to accidentally accept this & lex it as two consecutive ticked idents.
-    t!(parse_item, Rust2021, "M! { 'r#a'a }", Err(r!([Error::TickFollowingRawTickedIdent(_)])));
+    t!(parse_item, Rust2021, "M! { 'r#a'a }", Err([Error::TickFollowingRawTickedIdent(_)]));
 
     // We once used to accidentally accept this & lex it as two consecutive ticked idents.
-    t!(parse_item, Rust2021, "M! { 'r#a'r#a }", Err(r!([Error::TickFollowingRawTickedIdent(_)])));
+    t!(parse_item, Rust2021, "M! { 'r#a'r#a }", Err([Error::TickFollowingRawTickedIdent(_)]));
 }

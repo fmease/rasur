@@ -6,7 +6,6 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn suffixes_invalid_places() {
@@ -14,60 +13,60 @@ fn suffixes_invalid_places() {
         parse_expr,
         Rust2015,
         "compound.0suffix",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )]))
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "builtin#offset_of(T, 0suffix)",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::SingleDot)]),
-        )]))
+            [Fragment::Token(TokenKind::SingleDot)],
+        )])
     );
 
     t!(
         parse_ty,
         Rust2015,
         "builtin#field_of(T, 0suffix)",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::SingleDot)]),
-        )]))
+            [Fragment::Token(TokenKind::SingleDot)],
+        )])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "Compound { 0suffix: 0 }",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::SingleColon)]),
-        )]))
+            [Fragment::Token(TokenKind::SingleColon)],
+        )])
     );
 
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0suffix: 0 }",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::SingleColon)]),
-        )]))
+            [Fragment::Token(TokenKind::SingleColon)],
+        )])
     );
 
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0suffix }",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::LitSuffix, .. },
-            r!([Fragment::Token(TokenKind::SingleColon)]),
-        )]))
+            [Fragment::Token(TokenKind::SingleColon)],
+        )])
     );
 }
 
@@ -86,7 +85,7 @@ fn exponents_invalid_places() {
         "compound.0.1e2", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::Field(
-                r!(ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0")), .. }),
+                ast::Expr { kind: ast::ExprKind::Field(_, ast::Ident!("0")), .. },
                 ast::Ident!("1e2")
             ),
             ..
@@ -94,19 +93,19 @@ fn exponents_invalid_places() {
     );
 
     // ...unless the "exponent" contains an explicit sign:
-    t!(parse_expr, Rust2015, "compound.0e+1", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_expr, Rust2015, "compound.0e-1", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "compound.0e+1", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_expr, Rust2015, "compound.0e-1", Err([Error::InvalidNumericIdent(_)]));
     t!(
         parse_expr,
         Rust2015,
         "compound.0.1e+2", // exercise float lit splitting
-        Err(r!([Error::InvalidNumericIdent(_)]))
+        Err([Error::InvalidNumericIdent(_)])
     );
     t!(
         parse_expr,
         Rust2015,
         "compound.0. 1e-2", // exercise float lit splitting
-        Err(r!([Error::InvalidNumericIdent(_)]))
+        Err([Error::InvalidNumericIdent(_)])
     );
 
     // Similarly, in OffsetOf/FieldOf exprs, "exponents" in the numeric are legal...
@@ -114,14 +113,14 @@ fn exponents_invalid_places() {
         parse_expr,
         Rust2015,
         "builtin#offset_of(T, 0e1)",
-        Ok(ast::Expr { kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0e1")])), .. }),
+        Ok(ast::Expr { kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0e1")]), .. }),
     );
     t!(
         parse_expr,
         Rust2015,
         "builtin#offset_of(T, 0.1e2)", // exercise float lit splitting
         Ok(ast::Expr {
-            kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
+            kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0"), ast::Ident!("1e2")]),
             ..
         }),
     );
@@ -130,79 +129,69 @@ fn exponents_invalid_places() {
         Rust2015,
         "builtin#offset_of(T, 0. 1e2)", // exercise float lit splitting
         Ok(ast::Expr {
-            kind: ast::ExprKind::OffsetOf(_, r!([ast::Ident!("0"), ast::Ident!("1e2")])),
+            kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0"), ast::Ident!("1e2")]),
             ..
         }),
     );
 
     // ...unless the "exponent" contains an explicit sign:
-    t!(
-        parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0e+1)",
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
-    t!(
-        parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0e-1)",
-        Err(r!([Error::InvalidNumericIdent(_)]))
-    );
+    t!(parse_expr, Rust2015, "builtin#offset_of(T, 0e+1)", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_expr, Rust2015, "builtin#offset_of(T, 0e-1)", Err([Error::InvalidNumericIdent(_)]));
     t!(
         parse_expr,
         Rust2015,
         "builtin#offset_of(T, 0.1e+2)", // exercise float lit splitting
-        Err(r!([Error::InvalidNumericIdent(_)]))
+        Err([Error::InvalidNumericIdent(_)])
     );
     t!(
         parse_expr,
         Rust2015,
         "builtin#offset_of(T, 0. 1e-2)", // exercise float lit splitting
-        Err(r!([Error::InvalidNumericIdent(_)]))
+        Err([Error::InvalidNumericIdent(_)])
     );
 
     // In stark contrast, in struct exprs & pats  "exponents" are outright forbidden
     // regardless of whether they have an explicit sign or not:
 
-    t!(parse_expr, Rust2015, "Compound { 0e1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_expr, Rust2015, "Compound { 0e-1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0e1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0e+1: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "Compound { 0e1: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_expr, Rust2015, "Compound { 0e-1: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_pat, Rust2015, "Compound { 0e1: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_pat, Rust2015, "Compound { 0e+1: 0 }", Err([Error::InvalidNumericIdent(_)]));
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0e1 }",
-        Err(r!([
+        Err([
             Error::InvalidNumericIdent(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::CloseCurlyBracket, .. },
                 [Fragment::Token(TokenKind::SingleColon)]
             )
-        ]))
+        ])
     );
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0e+1 }",
-        Err(r!([
+        Err([
             Error::InvalidNumericIdent(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::CloseCurlyBracket, .. },
                 [Fragment::Token(TokenKind::SingleColon)]
             )
-        ]))
+        ])
     );
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0e-1 }",
-        Err(r!([
+        Err([
             Error::InvalidNumericIdent(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::CloseCurlyBracket, .. },
                 [Fragment::Token(TokenKind::SingleColon)]
             )
-        ]))
+        ])
     );
 }
 
@@ -212,32 +201,32 @@ fn fractional_part_invalid_places() {
     // However, in the cases below we require integer literals.
     // The parser needs to inspect the literal itself to detect this.
 
-    t!(parse_expr, Rust2015, "Compound { 0.0: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_expr, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0.0: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
-    t!(parse_pat, Rust2015, "Compound { 0.: 0 }", Err(r!([Error::InvalidNumericIdent(_)])));
+    t!(parse_expr, Rust2015, "Compound { 0.0: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_expr, Rust2015, "Compound { 0.: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_pat, Rust2015, "Compound { 0.0: 0 }", Err([Error::InvalidNumericIdent(_)]));
+    t!(parse_pat, Rust2015, "Compound { 0.: 0 }", Err([Error::InvalidNumericIdent(_)]));
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0.0 }",
-        Err(r!([
+        Err([
             Error::InvalidNumericIdent(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::CloseCurlyBracket, .. },
                 [Fragment::Token(TokenKind::SingleColon)]
             )
-        ]))
+        ])
     );
     t!(
         parse_pat,
         Rust2015,
         "Compound { 0. }",
-        Err(r!([
+        Err([
             Error::InvalidNumericIdent(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::CloseCurlyBracket, .. },
                 [Fragment::Token(TokenKind::SingleColon)]
             )
-        ]))
+        ])
     );
 }

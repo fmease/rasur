@@ -675,13 +675,12 @@ impl<'src> Parser<'_, '_, 'src> {
         let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
             let self_ty =
                 if self.consume(TokenKind::DoubleDot) { ast::Ty::All } else { self.parse_ty()? };
-            let trait_ref =
-                if let ast::Ty::Path(deref!(ast::ExtPath { ext: None, path: trait_ref })) = ty {
-                    Some(trait_ref)
-                } else {
-                    self.error(Error::ExpectedTraitFoundTy(ty_span));
-                    None
-                };
+            let trait_ref = if let ast::Ty::Path(ast::ExtPath { ext: None, path: trait_ref }) = ty {
+                Some(trait_ref)
+            } else {
+                self.error(Error::ExpectedTraitFoundTy(ty_span));
+                None
+            };
             (trait_ref, self_ty)
         } else {
             (None, ty)

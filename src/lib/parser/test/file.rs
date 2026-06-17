@@ -4,11 +4,10 @@ use crate::{
     edition::Edition::*,
     error::{Error, InvalidScalarPlace},
 };
-use deref as r;
 
 #[test]
 fn empty() {
-    t!(parse_file, Rust2015, "", Ok(ast::File { attrs: r!([]), items: r!([]) }));
+    t!(parse_file, Rust2015, "", Ok(ast::File { attrs: [], items: [] }));
 }
 
 // FIXME: Test shebang!
@@ -34,16 +33,16 @@ fn frontmatter_crlf() {
 #[test]
 fn frontmatter_cr() {
     // CR isn't "horizontal whitespace" and therefore forbidden inside infostrings.
-    t!(parse_file, Rust2015, "--- \r \n---", Err(r!([Error::InvalidFrontmatterInfostring(_)])));
+    t!(parse_file, Rust2015, "--- \r \n---", Err([Error::InvalidFrontmatterInfostring(_)]));
 
     // CR isn't "horizontal whitespace" and therefore forbidden inside trailers.
-    t!(parse_file, Rust2015, "---\n--- \r ", Err(r!([Error::InvalidFrontmatterTrailer(_)])));
+    t!(parse_file, Rust2015, "---\n--- \r ", Err([Error::InvalidFrontmatterTrailer(_)]));
 
     // "Stray" CRs inside the frontmatter body are explicitly forbidden.
     t!(
         parse_file,
         Rust2015,
         "---\n(\r)\n---",
-        Err(r!([Error::InvalidScalar('\r', InvalidScalarPlace::FrontmatterBody, _)]))
+        Err([Error::InvalidScalar('\r', InvalidScalarPlace::FrontmatterBody, _)])
     );
 }

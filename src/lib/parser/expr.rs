@@ -959,7 +959,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let pat = self.parse_pat(OrPolicy::Parse)?;
 
             let (pat, guard) = match pat {
-                ast::Pat::Grouped(deref!(ast::Pat::Guarded(pat, guard))) => {
+                ast::Pat::Grouped(ast::Pat::Guarded(pat, guard)) => {
                     self.error(Error::ParenthesizedGuardedPatInMatch);
 
                     (*pat, Some(*guard))

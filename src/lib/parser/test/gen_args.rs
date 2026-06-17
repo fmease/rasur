@@ -5,20 +5,19 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn false_angle_gen_args_expr() {
-    t!(parse_expr, Rust2015, "f<i32>()", Err(r!([Error::ChainedComparison(_)])),);
+    t!(parse_expr, Rust2015, "f<i32>()", Err([Error::ChainedComparison(_)]),);
 
     t!(
         parse_expr,
         Rust2015,
         "f<i32>",
-        Err(r!([
+        Err([
             Error::ChainedComparison(_),
             Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
-        ])),
+        ]),
     );
 }
 
@@ -28,7 +27,7 @@ fn false_angle_gen_args_pat() {
         parse_pat,
         Rust2015,
         "Some<i32>(0)",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
     );
 }
 
@@ -40,29 +39,29 @@ fn angle_gen_args_expr() {
         "f::<i32>()",
         Ok(ast::Expr {
             kind: ast::ExprKind::Call(
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Path(ast::ExtPath {
                         ext: None,
                         path: ast::Path {
-                            segs: r!([ast::PathSeg {
+                            segs: [ast::PathSeg {
                                 ident: ast::Ident!("f"),
-                                args: Some(ast::GenericArgs::Angle(r!([
-                                    ast::AngleGenericArg::Ty(ast::Ty::Path(ast::ExtPath {
+                                args: Some(ast::GenericArgs::Angle([ast::AngleGenericArg::Ty(
+                                    ast::Ty::Path(ast::ExtPath {
                                         ext: None,
                                         path: ast::Path {
-                                            segs: r!([ast::PathSeg {
+                                            segs: [ast::PathSeg {
                                                 ident: ast::Ident!("i32"),
                                                 args: None
-                                            }])
+                                            }]
                                         },
-                                    }))
-                                ])))
-                            }])
+                                    })
+                                )]))
+                            }]
                         }
                     }),
                     ..
-                }),
-                r!([])
+                },
+                []
             ),
             ..
         })
@@ -75,31 +74,28 @@ fn angle_gen_args_pat() {
         parse_pat,
         Rust2015,
         "Some::<i32>(0)",
-        Ok(ast::Pat::TupleStruct(r!(ast::TupleStructPat {
+        Ok(ast::Pat::TupleStruct(ast::TupleStructPat {
             path: ast::ExtPath {
                 ext: None,
                 path: ast::Path {
-                    segs: r!([ast::PathSeg {
+                    segs: [ast::PathSeg {
                         ident: ast::Ident!("Some"),
-                        args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Ty(
+                        args: Some(ast::GenericArgs::Angle([ast::AngleGenericArg::Ty(
                             ast::Ty::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
-                                    segs: r!([ast::PathSeg {
-                                        ident: ast::Ident!("i32"),
-                                        args: None
-                                    }]),
+                                    segs: [ast::PathSeg { ident: ast::Ident!("i32"), args: None }],
                                 }
                             })
-                        )])))
-                    }])
+                        )]))
+                    }]
                 }
             },
-            fields: r!([ast::Pat::Lit(
+            fields: [ast::Pat::Lit(
                 ast::Sign::None,
-                r!(ast::Lit { kind: ast::LitKind::Num, value: "0", .. }),
-            )])
-        }))),
+                ast::Lit { kind: ast::LitKind::Num, value: "0", .. },
+            )]
+        })),
     );
 }
 
@@ -109,26 +105,26 @@ fn angle_gen_args_ty() {
         parse_ty,
         Rust2015,
         "Ty<'a, (), 0>",
-        Ok(ast::Ty::Path(r!(ast::ExtPath {
+        Ok(ast::Ty::Path(ast::ExtPath {
             ext: None,
             path: ast::Path {
-                segs: r!([ast::PathSeg {
+                segs: [ast::PathSeg {
                     ident: ast::Ident!("Ty"),
-                    args: Some(ast::GenericArgs::Angle(r!([
+                    args: Some(ast::GenericArgs::Angle([
                         ast::AngleGenericArg::Lifetime(ast::Lifetime(ast::Ident!("a"))),
-                        ast::AngleGenericArg::Ty(ast::Ty::Tuple(r!([]))),
+                        ast::AngleGenericArg::Ty(ast::Ty::Tuple([])),
                         ast::AngleGenericArg::Const(ast::Expr {
-                            kind: ast::ExprKind::Lit(r!(ast::Lit {
+                            kind: ast::ExprKind::Lit(ast::Lit {
                                 kind: ast::LitKind::Num,
                                 value: "0",
                                 ..
-                            })),
+                            }),
                             ..
                         }),
-                    ])))
-                }])
+                    ]))
+                }]
             }
-        })))
+        }))
     );
 
     t!(parse_ty, Rust2015, "Ty::<'a, (), 0>", Ok(_)); // just a smoke test
@@ -145,22 +141,22 @@ fn angle_args_in_path_ext_expr() {
         Rust2015,
         "<() as TraitRef<()>>::assoc",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+            kind: ast::ExprKind::Path(ast::ExtPath {
                 ext: Some(ast::PathExt {
-                    self_ty: ast::Ty::Tuple(r!([])),
+                    self_ty: ast::Ty::Tuple([]),
                     trait_ref: Some(ast::Path {
-                        segs: r!([ast::PathSeg {
+                        segs: [ast::PathSeg {
                             ident: ast::Ident!("TraitRef"),
-                            args: Some(ast::GenericArgs::Angle(r!([ast::AngleGenericArg::Ty(
-                                ast::Ty::Tuple(r!([]))
-                            )])))
-                        },])
+                            args: Some(ast::GenericArgs::Angle([ast::AngleGenericArg::Ty(
+                                ast::Ty::Tuple([])
+                            )]))
+                        },]
                     })
                 }),
                 path: ast::Path {
-                    segs: r!([ast::PathSeg { ident: ast::Ident!("assoc"), args: None }])
+                    segs: [ast::PathSeg { ident: ast::Ident!("assoc"), args: None }]
                 }
-            })),
+            }),
             ..
         })
     );
@@ -176,15 +172,15 @@ fn paren_gen_args_arrow_expr_or_pat() {
         Rust2015,
         "x::()->()",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+            kind: ast::ExprKind::Path(ast::ExtPath {
                 ext: None,
                 path: ast::Path {
-                    segs: r!([ast::PathSeg {
+                    segs: [ast::PathSeg {
                         ident: ast::Ident!("x"),
-                        args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::Tuple(r!([])))))
-                    }])
+                        args: Some(ast::GenericArgs::Paren([], Some(ast::Ty::Tuple([]))))
+                    }]
                 }
-            })),
+            }),
             ..
         })
     );
@@ -193,18 +189,18 @@ fn paren_gen_args_arrow_expr_or_pat() {
         parse_pat,
         Rust2015,
         "x::()->!::X",
-        Ok(ast::Pat::Path(r!(ast::ExtPath {
+        Ok(ast::Pat::Path(ast::ExtPath {
             ext: None,
             path: ast::Path {
-                segs: r!([
+                segs: [
                     ast::PathSeg {
                         ident: ast::Ident!("x"),
-                        args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::Never)))
+                        args: Some(ast::GenericArgs::Paren([], Some(ast::Ty::Never)))
                     },
                     ast::PathSeg { ident: ast::Ident!("X"), args: None }
-                ])
+                ]
             }
-        })))
+        }))
     );
 }
 
@@ -214,37 +210,37 @@ fn macro_call_gen_args() {
         parse_item,
         Rust2015,
         "path::to::<>::call!();",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
     );
 
     t!(
         parse_item,
         Rust2015,
         "path::to::call<()>!();",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
     );
 
     t!(
         parse_stmt,
         Rust2015,
         "path::to::<>::call::<>!();",
-        Ok(ast::Stmt::MacroCall(r!(ast::MacroCall {
+        Ok(ast::Stmt::MacroCall(ast::MacroCall {
             path: ast::Path {
-                segs: r!([
+                segs: [
                     ast::PathSeg { ident: ast::Ident!("path"), args: None },
                     ast::PathSeg {
                         ident: ast::Ident!("to"),
-                        args: Some(ast::GenericArgs::Angle(r!([])))
+                        args: Some(ast::GenericArgs::Angle([]))
                     },
                     ast::PathSeg {
                         ident: ast::Ident!("call"),
-                        args: Some(ast::GenericArgs::Angle(r!([])))
+                        args: Some(ast::GenericArgs::Angle([]))
                     },
-                ])
+                ]
             },
             bracket: ast::Bracket::Round,
-            stream: r!([Token { kind: TokenKind::EndOfInput, .. }]),
-        })))
+            stream: [Token { kind: TokenKind::EndOfInput, .. }],
+        }))
     );
 
     t!(parse_stmt, Rust2015, "path::to::<>::call::()!();", Ok(_)); // just a smoke test
@@ -262,7 +258,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Le,
-                r!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                ast::Expr { kind: ast::ExprKind::Cast(..), .. },
                 _
             ),
             ..
@@ -276,7 +272,7 @@ fn dont_split_less_than_equals_for_angle_bracketed_lists() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::BitShiftLeftAssign,
-                r!(ast::Expr { kind: ast::ExprKind::Cast(..), .. }),
+                ast::Expr { kind: ast::ExprKind::Cast(..), .. },
                 _
             ),
             ..
@@ -292,27 +288,27 @@ fn const_args() {
         Rust2015,
         "struct T<const N: U = Self>;",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
+            kind: ast::ItemKind::Struct(ast::StructItem {
                 generics: ast::Generics {
-                    params: r!([ast::GenericParam {
+                    params: [ast::GenericParam {
                         kind: ast::GenericParamKind::Const {
                             default: Some(ast::Expr {
-                                kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                                kind: ast::ExprKind::Path(ast::ExtPath {
                                     ext: None,
                                     path: ast::Path {
-                                        segs: r!([ast::PathSeg { ident: ast::Ident!("Self"), .. }])
+                                        segs: [ast::PathSeg { ident: ast::Ident!("Self"), .. }]
                                     }
-                                })),
+                                }),
                                 ..
                             }),
                             ..
                         },
                         ..
-                    }]),
+                    }],
                     ..
                 },
                 ..
-            })),
+            }),
             ..
         })
     );

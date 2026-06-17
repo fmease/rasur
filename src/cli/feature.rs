@@ -63,7 +63,7 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
     }
 
     fn parse_attr(&mut self, meta: &ast::Meta<'src>) -> Result<ControlFlow<()>, ()> {
-        let ast::Path { segs: deref!([ast::PathSeg { ident, .. }]) } = meta.path else {
+        let ast::Path { segs: [ast::PathSeg { ident, .. }] } = meta.path else {
             return Ok(ControlFlow::Continue(()));
         };
 

@@ -6,7 +6,6 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn tuple_struct_field_visibility() {
@@ -15,14 +14,14 @@ fn tuple_struct_field_visibility() {
         Rust2015,
         "struct T(pub([i32; 2]));",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(ast::StructItem {
+                kind: ast::VariantKind::Tuple([ast::TupleFieldDef {
                     vis: ast::Visibility::Public,
-                    ty: ast::Ty::Grouped(r!(ast::Ty::Array(..))),
+                    ty: ast::Ty::Grouped(ast::Ty::Array(..)),
                     ..
-                }])),
+                }]),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -32,16 +31,16 @@ fn tuple_struct_field_visibility() {
         Rust2015,
         "struct T(pub(crate)[i32]);",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(ast::StructItem {
+                kind: ast::VariantKind::Tuple([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: r!([ast::PathSeg { ident: ast::Ident!("crate"), .. }])
+                        segs: [ast::PathSeg { ident: ast::Ident!("crate"), .. }]
                     }),
                     ty: ast::Ty::Slice(_),
                     ..
-                }])),
+                }]),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -51,16 +50,16 @@ fn tuple_struct_field_visibility() {
         Rust2015,
         "struct T(pub(self)&());",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(ast::StructItem {
+                kind: ast::VariantKind::Tuple([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: r!([ast::PathSeg { ident: ast::Ident!("self"), .. }])
+                        segs: [ast::PathSeg { ident: ast::Ident!("self"), .. }]
                     }),
                     ty: ast::Ty::Ref(_),
                     ..
-                }])),
+                }]),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -71,22 +70,22 @@ fn tuple_struct_field_visibility() {
         Rust2015,
         "struct T(pub(super::U));",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(ast::StructItem {
+                kind: ast::VariantKind::Tuple([ast::TupleFieldDef {
                     vis: ast::Visibility::Public,
-                    ty: ast::Ty::Grouped(r!(ast::Ty::Path(ast::ExtPath {
+                    ty: ast::Ty::Grouped(ast::Ty::Path(ast::ExtPath {
                         ext: None,
                         path: ast::Path {
-                            segs: r!([
+                            segs: [
                                 ast::PathSeg { ident: ast::Ident!("super"), .. },
                                 ast::PathSeg { ident: ast::Ident!("U"), .. },
-                            ])
+                            ]
                         }
-                    }))),
+                    })),
                     ..
-                }])),
+                }]),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -95,7 +94,7 @@ fn tuple_struct_field_visibility() {
         parse_item,
         Rust2015,
         "struct T(pub(super::U)impl);",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)]),
     );
 
     t!(
@@ -103,19 +102,19 @@ fn tuple_struct_field_visibility() {
         Rust2015,
         "struct T(pub(in super::U)!);",
         Ok(ast::Item {
-            kind: ast::ItemKind::Struct(r!(ast::StructItem {
-                kind: ast::VariantKind::Tuple(r!([ast::TupleFieldDef {
+            kind: ast::ItemKind::Struct(ast::StructItem {
+                kind: ast::VariantKind::Tuple([ast::TupleFieldDef {
                     vis: ast::Visibility::Restricted(ast::Path {
-                        segs: r!([
+                        segs: [
                             ast::PathSeg { ident: ast::Ident!("super"), .. },
                             ast::PathSeg { ident: ast::Ident!("U"), .. },
-                        ])
+                        ]
                     }),
                     ty: ast::Ty::Never,
                     ..
-                }])),
+                }]),
                 ..
-            })),
+            }),
             ..
         })
     );
@@ -124,10 +123,10 @@ fn tuple_struct_field_visibility() {
         parse_item,
         Rust2015,
         "struct T(pub);",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseRoundBracket, .. },
-            r!([Fragment::Ty])
-        )]))
+            [Fragment::Ty]
+        )])
     );
 }
 
@@ -371,15 +370,15 @@ use {self::*, self::{}};
             Ok(ast::Stmt::Expr(
                 ast::Expr {
                     kind: ast::ExprKind::Cast(
-                        r!(ast::Expr {
-                            kind: ast::ExprKind::Path(r!(ast::ExtPath {
+                        ast::Expr {
+                            kind: ast::ExprKind::Path(ast::ExtPath {
                                 ext: None,
                                 path: ast::Path {
                                     segs: [ast::PathSeg { ident: ast::Ident!(name), .. }]
                                 }
-                            })),
+                            }),
                             ..
-                        }),
+                        },
                         _
                     ),
                     ..

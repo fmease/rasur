@@ -22,9 +22,6 @@ use crate::{
 };
 use normalizer::{Normalized, normalize};
 
-// NOTE: We're not using implicit deref patterns at the moment since rust-analyzer
-//       can't handle them yet and would color the entirely red. Use `r!(…)` for now.
-
 type Result<T, E = Vec<Error>> = std::result::Result<T, E>;
 
 mod normalizer {

@@ -6,7 +6,6 @@ use crate::{
     error::Error,
     token::{Token, TokenKind},
 };
-use deref as r;
 
 #[test]
 fn bare_trait_object_tys() {
@@ -14,7 +13,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "A+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Trait { .. }]))
     );
 
     t!(parse_ty, Rust2015, "Hold<A+>", Ok(_));
@@ -23,7 +22,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(A)+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Trait { .. }]))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
@@ -31,10 +30,10 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(A+)+",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )]),
     );
 
     t!(
@@ -43,10 +42,10 @@ fn bare_trait_object_tys() {
         "?A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe(_), .. },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -60,10 +59,10 @@ fn bare_trait_object_tys() {
         "(?A)+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { polarity: ast::BoundPolarity::Maybe(_), .. },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -73,10 +72,10 @@ fn bare_trait_object_tys() {
         "const A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -86,10 +85,10 @@ fn bare_trait_object_tys() {
         Rust2015,
         "Hold<const A>",
         // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::CommonIdent, .. },
-            r!([Fragment::Token(TokenKind::OpenCurlyBracket)]),
-        )]))
+            [Fragment::Token(TokenKind::OpenCurlyBracket)],
+        )])
     );
 
     t!(
@@ -98,10 +97,10 @@ fn bare_trait_object_tys() {
         "(const A)+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { constness: ast::BoundConstness::Always, .. },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -110,10 +109,10 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "[const] A",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseSquareBracket, .. },
-            r!([Fragment::Bound])
-        )])),
+            [Fragment::Bound]
+        )]),
     );
 
     t!(
@@ -122,10 +121,10 @@ fn bare_trait_object_tys() {
         "async A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 modifiers: ast::TraitBoundModifiers { asyncness: ast::BoundAsyncness::Always, .. },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -134,14 +133,14 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2018,
         "Hold<async A>",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)])
     );
 
     t!(
         parse_ty,
         Rust2015,
         "for<>A",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Trait { .. }]))
     );
 
     t!(parse_ty, Rust2015, "Hold<for<>A>", Ok(_));
@@ -150,7 +149,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(for<>A)+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Trait { .. }])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Trait { .. }]))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
@@ -158,55 +157,55 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(for<>A+)+",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )])),
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "for<>'a",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
-            r!([Fragment::PathSegIdent])
-        )])),
+            [Fragment::PathSegIdent]
+        )]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "for<>'a+",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::TickedIdent, .. },
-            r!([Fragment::PathSegIdent])
-        )])),
+            [Fragment::PathSegIdent]
+        )]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "'a+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Outlives(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Outlives(_)]))
     );
 
     t!(parse_ty, Rust2015, "Hold<'a+>", Ok(_));
 
-    t!(parse_ty, Rust2015, "'a", Err(r!([Error::LifetimeObjectTyWithoutPlus(_)])));
+    t!(parse_ty, Rust2015, "'a", Err([Error::LifetimeObjectTyWithoutPlus(_)]));
 
     // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
     t!(
         parse_ty,
         Rust2015,
         "('a)+",
-        Err(r!([
+        Err([
             Error::LifetimeObjectTyWithoutPlus(_),
             Error::UnexpectedToken(
                 Token { kind: TokenKind::SinglePlus, .. },
-                r!([Fragment::Token(TokenKind::EndOfInput)])
+                [Fragment::Token(TokenKind::EndOfInput)]
             )
-        ]))
+        ])
     );
 
     // issue: <https://github.com/fmease/rasur/issues/20>
@@ -214,7 +213,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "use<>",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Use(_)]))
     );
 
     // Indeed, even though you can't parenthesize precise-capturing lists
@@ -224,7 +223,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(use<>)+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, r!([ast::Bound::Use(_)])))
+        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Use(_)]))
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
@@ -232,17 +231,17 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(use<>+)+",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)]),
-        )]))
+            [Fragment::Token(TokenKind::EndOfInput)],
+        )])
     );
 
     t!(
         parse_ty,
         Rust2015,
         "Hold<use<>>",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)]),
     );
 
     t!(
@@ -251,7 +250,7 @@ fn bare_trait_object_tys() {
         "A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+            [ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]
         ))
     );
 
@@ -259,35 +258,35 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "&A + B",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "&for<>A + B",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "*const A + B",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "&A + B",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "fn() -> A + B",
-        Err(r!([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)])),
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
     );
 
     // Like `dyn (Fn() -> A) + B`, not like `dyn Fn() -> (dyn A + B)`.
@@ -297,29 +296,29 @@ fn bare_trait_object_tys() {
         "Fn() -> A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([
+            [
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: r!([ast::PathSeg {
+                        segs: [ast::PathSeg {
                             ident: ast::Ident!("Fn"),
                             args: Some(ast::GenericArgs::Paren(
-                                r!([]),
+                                [],
                                 Some(ast::Ty::Path(ast::ExtPath {
                                     ext: None,
                                     path: ast::Path {
-                                        segs: r!([ast::PathSeg { ident: ast::Ident!("A"), .. }])
+                                        segs: [ast::PathSeg { ident: ast::Ident!("A"), .. }]
                                     }
                                 }))
                             ))
-                        }])
+                        }]
                     },
                     ..
                 },
                 ast::Bound::Trait {
-                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("B"), .. }]) },
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("B"), .. }] },
                     ..
                 }
-            ]),
+            ],
         )),
     );
 
@@ -330,7 +329,7 @@ fn bare_trait_object_tys() {
         "Fn() -> (A) + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]),
+            [ast::Bound::Trait { .. }, ast::Bound::Trait { .. }],
         )),
     );
 
@@ -344,24 +343,24 @@ fn bare_trait_object_tys() {
         "Fn() -> 'a + A",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([
+            [
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: r!([ast::PathSeg {
+                        segs: [ast::PathSeg {
                             ident: ast::Ident!("Fn"),
                             args: Some(ast::GenericArgs::Paren(
-                                r!([]),
+                                [],
                                 Some(ast::Ty::DynTrait(
                                     ast::DynKind::Bare,
-                                    r!([ast::Bound::Outlives(_)])
+                                    [ast::Bound::Outlives(_)]
                                 )),
                             ))
-                        }])
+                        }]
                     },
                     ..
                 },
                 ast::Bound::Trait { .. }
-            ]),
+            ],
         )),
     );
 
@@ -373,21 +372,18 @@ fn bare_trait_object_tys() {
         "Fn() -> 'a+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
+            [ast::Bound::Trait {
                 path: ast::Path {
-                    segs: r!([ast::PathSeg {
+                    segs: [ast::PathSeg {
                         ident: ast::Ident!("Fn"),
                         args: Some(ast::GenericArgs::Paren(
-                            r!([]),
-                            Some(ast::Ty::DynTrait(
-                                ast::DynKind::Bare,
-                                r!([ast::Bound::Outlives(_)])
-                            )),
+                            [],
+                            Some(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Outlives(_)])),
                         ))
-                    }])
+                    }]
                 },
                 ..
-            },]),
+            },],
         ))
     );
 
@@ -399,20 +395,20 @@ fn bare_trait_object_tys() {
         Ok(ast::Expr {
             kind: ast::ExprKind::BinOp(
                 ast::BinOp::Add,
-                r!(ast::Expr {
+                ast::Expr {
                     kind: ast::ExprKind::Cast(
-                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                        r!(ast::Ty::Path(..))
+                        ast::Expr { kind: ast::ExprKind::Lit(_), .. },
+                        ast::Ty::Path(..)
                     ),
                     ..
-                }),
-                r!(ast::Expr {
+                },
+                ast::Expr {
                     kind: ast::ExprKind::Cast(
-                        r!(ast::Expr { kind: ast::ExprKind::Lit(_), .. }),
-                        r!(ast::Ty::Path(..))
+                        ast::Expr { kind: ast::ExprKind::Lit(_), .. },
+                        ast::Ty::Path(..)
                     ),
                     ..
-                }),
+                },
             ),
             ..
         })
@@ -422,60 +418,48 @@ fn bare_trait_object_tys() {
         parse_expr,
         Rust2015,
         "0 as for<> A+",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as 'a+",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as const A+",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as use<>+",
-        Err(r!([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            r!([Fragment::Expr])
-        )]))
+        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
     );
 }
 
 #[test]
 fn ambiguous_plus() {
-    t!(parse_ty, Rust2015, "&dyn A + B", Err(r!([Error::AmbiguousPlus(_)])),);
+    t!(parse_ty, Rust2015, "&dyn A + B", Err([Error::AmbiguousPlus(_)]),);
 
-    t!(parse_ty, Rust2015, "&dyn A+", Err(r!([Error::AmbiguousPlus(_)])),);
+    t!(parse_ty, Rust2015, "&dyn A+", Err([Error::AmbiguousPlus(_)]),);
 
-    t!(parse_ty, Rust2015, "&impl A + B", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "&impl A + B", Err([Error::AmbiguousPlus(_)]));
 
-    t!(parse_ty, Rust2015, "&impl A+", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "&impl A+", Err([Error::AmbiguousPlus(_)]));
 
-    t!(parse_ty, Rust2015, "F() -> dyn A + B", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "F() -> dyn A + B", Err([Error::AmbiguousPlus(_)]));
 
-    t!(parse_ty, Rust2015, "F() -> impl A + B", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "F() -> impl A + B", Err([Error::AmbiguousPlus(_)]));
 
-    t!(parse_ty, Rust2015, "dyn F() -> impl A+", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "dyn F() -> impl A+", Err([Error::AmbiguousPlus(_)]));
 
-    t!(parse_ty, Rust2015, "impl F() -> dyn A+", Err(r!([Error::AmbiguousPlus(_)])));
+    t!(parse_ty, Rust2015, "impl F() -> dyn A+", Err([Error::AmbiguousPlus(_)]));
 
     // Indeed, this is not (to be) flagged as ambiguous.
     // I wonder if it's an oversight or intentional?
@@ -483,24 +467,21 @@ fn ambiguous_plus() {
         parse_ty,
         Rust2015,
         "impl F() -> for<> A + B",
-        Ok(ast::Ty::ImplTrait(r!([
+        Ok(ast::Ty::ImplTrait([
             ast::Bound::Trait {
                 path: ast::Path {
-                    segs: r!([ast::PathSeg {
+                    segs: [ast::PathSeg {
                         ident: ast::Ident!("F"),
                         args: Some(ast::GenericArgs::Paren(
-                            r!([]),
-                            Some(ast::Ty::DynTrait(
-                                ast::DynKind::Bare,
-                                r!([ast::Bound::Trait { .. }])
-                            )),
+                            [],
+                            Some(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Trait { .. }])),
                         ))
-                    }])
+                    }]
                 },
                 ..
             },
             ast::Bound::Trait { .. }
-        ])))
+        ]))
     );
 
     // ... after all, you could hypothetically parse it like this:
@@ -508,21 +489,21 @@ fn ambiguous_plus() {
         parse_ty,
         Rust2015,
         "impl F() -> (for<> A + B)",
-        Ok(ast::Ty::ImplTrait(r!([ast::Bound::Trait {
+        Ok(ast::Ty::ImplTrait([ast::Bound::Trait {
             path: ast::Path {
-                segs: r!([ast::PathSeg {
+                segs: [ast::PathSeg {
                     ident: ast::Ident!("F"),
                     args: Some(ast::GenericArgs::Paren(
-                        r!([]),
+                        [],
                         Some(ast::Ty::Grouped(ast::Ty::DynTrait(
                             ast::DynKind::Bare,
-                            r!([ast::Bound::Trait { .. }, ast::Bound::Trait { .. }])
+                            [ast::Bound::Trait { .. }, ast::Bound::Trait { .. }]
                         ))),
                     ))
-                }])
+                }]
             },
             ..
-        },])))
+        },]))
     );
 
     // Not ambiguous (counterexample).
@@ -532,18 +513,18 @@ fn ambiguous_plus() {
         "F() -> fn() -> A + B",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([
+            [
                 ast::Bound::Trait {
                     path: ast::Path {
-                        segs: r!([ast::PathSeg {
+                        segs: [ast::PathSeg {
                             ident: ast::Ident!("F"),
-                            args: Some(ast::GenericArgs::Paren(r!([]), Some(ast::Ty::FnPtr(..))))
-                        }])
+                            args: Some(ast::GenericArgs::Paren([], Some(ast::Ty::FnPtr(..))))
+                        }]
                     },
                     ..
                 },
                 ast::Bound::Trait { .. }
-            ])
+            ]
         ))
     );
 }
@@ -557,10 +538,10 @@ fn weak_keyword_dyn() {
         parse_ty,
         Rust2015,
         "dyn",
-        Ok(ast::Ty::Path(r!(ast::ExtPath {
+        Ok(ast::Ty::Path(ast::ExtPath {
             ext: None,
-            path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) }
-        })))
+            path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("dyn"), .. }] }
+        }))
     );
 
     t!(
@@ -569,10 +550,10 @@ fn weak_keyword_dyn() {
         "dyn+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
-                path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+            [ast::Bound::Trait {
+                path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("dyn"), .. }] },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -580,10 +561,10 @@ fn weak_keyword_dyn() {
         parse_ty,
         Rust2018,
         "dyn+",
-        Err(r!([Error::UnexpectedToken(
+        Err([Error::UnexpectedToken(
             Token { kind: TokenKind::SinglePlus, .. },
-            r!([Fragment::Token(TokenKind::EndOfInput)])
-        )]))
+            [Fragment::Token(TokenKind::EndOfInput)]
+        )])
     );
 
     t!(
@@ -592,10 +573,10 @@ fn weak_keyword_dyn() {
         "(dyn)+",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([ast::Bound::Trait {
-                path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+            [ast::Bound::Trait {
+                path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("dyn"), .. }] },
                 ..
-            }])
+            }]
         ))
     );
 
@@ -606,16 +587,16 @@ fn weak_keyword_dyn() {
         "dyn + dyn",
         Ok(ast::Ty::DynTrait(
             ast::DynKind::Bare,
-            r!([
+            [
                 ast::Bound::Trait {
-                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("dyn"), .. }] },
                     ..
                 },
                 ast::Bound::Trait {
-                    path: ast::Path { segs: r!([ast::PathSeg { ident: ast::Ident!("dyn"), .. }]) },
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("dyn"), .. }] },
                     ..
                 }
-            ])
+            ]
         ))
     );
 }
