@@ -3,8 +3,8 @@ use super::{parse_stmt, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
-    token::{Token, TokenKind},
+    error::{Error, ErrorKind},
+    token::TokenKind,
 };
 
 #[test]
@@ -85,10 +85,13 @@ fn let_else() {
         parse_stmt,
         Rust2015,
         "let _ = {} else {};",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::Else, .. },
-            [Fragment::Token(TokenKind::Semicolon)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::Else,
+                [Fragment::Token(TokenKind::Semicolon)]
+            ),
+            ..
+        }])
     );
 
     // We once used to accept this by mistake.
@@ -96,9 +99,12 @@ fn let_else() {
         parse_stmt,
         Rust2015,
         "let _ = () as M! {} else {};",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::Else, .. },
-            [Fragment::Token(TokenKind::Semicolon)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::Else,
+                [Fragment::Token(TokenKind::Semicolon)]
+            ),
+            ..
+        }])
     );
 }

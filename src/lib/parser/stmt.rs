@@ -5,7 +5,7 @@ use super::{
     item::ItemCx,
     pat::OrPolicy,
 };
-use crate::{ast, error::Error, feature::Feature};
+use crate::{ast, feature::Feature};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a statement.
@@ -48,7 +48,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 {
                     if !consequent.kind.else_may_follow() {
                         // FIXME: Improve diagnostic.
-                        self.error(Error::UnexpectedToken(token, frags![TokenKind::Semicolon]));
+                        self.unexpected(token, frags![TokenKind::Semicolon]);
                     }
                     Some(self.parse_block_expr(AttrPolicy::Reject)?)
                 } else {
@@ -97,7 +97,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.advance();
             Ok(ast::Stmt::Empty)
         } else {
-            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Stmt]))
+            self.unexpected(self.token, frags![Fragment::Stmt]);
+            Err(())
         }
     }
 }

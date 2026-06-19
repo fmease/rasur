@@ -7,7 +7,7 @@ use super::{
     weak::{self, Weak as _},
 };
 use crate::{
-    ast, edition::Edition, error::Error, feature::Feature, span::Span, store::Store,
+    ast, edition::Edition, error::ErrorKind, feature::Feature, span::Span, store::Store,
     token::PathSegIdent,
 };
 use std::mem;
@@ -53,13 +53,13 @@ impl<'src> Parser<'_, '_, 'src> {
         let span = self.prev_token().map_or(start, |token| start.to(token.span));
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
-            self.error(Error::VisibilityOnInvalidItem(span));
+            self.error(ErrorKind::VisibilityOnInvalidItem, span);
         }
 
         if !kind.supports_explicit_override_policy() {
             match override_policy {
-                ast::OverridePolicy::Allowed => self.error(Error::DefaultOnInvalidItem(span)),
-                ast::OverridePolicy::Forbidden => self.error(Error::FinalOnInvalidItem(span)),
+                ast::OverridePolicy::Allowed => self.error(ErrorKind::DefaultOnInvalidItem, span),
+                ast::OverridePolicy::Forbidden => self.error(ErrorKind::FinalOnInvalidItem, span),
                 ast::OverridePolicy::Implicit => {}
             }
         }
@@ -177,7 +177,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::TypeLevel::No, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_const_item(override_policy, type_level);
@@ -193,7 +193,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_mod_item(safety, attrs);
@@ -201,7 +201,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_static_item(safety);
@@ -224,7 +224,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_fn_item(modifiers, cx, attrs);
@@ -253,7 +253,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Auto::No, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_trait_item(modifiers, attrs);
@@ -271,7 +271,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 });
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_impl_item(override_policy, kind, const_, safety, attrs);
@@ -279,13 +279,14 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidItemPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi, attrs);
             }
             _ => {
-                return self.fatal(Error::InvalidItemPrefix(start.until(self.token.span)));
+                self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                return Err(());
             }
         }
 
@@ -323,7 +324,8 @@ impl<'src> Parser<'_, '_, 'src> {
             return self.parse_macro_call_item();
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Item]))
+        self.unexpected(self.token, frags![Fragment::Item]);
+        Err(())
     }
 
     gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
@@ -554,7 +556,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     ast::ItemKind::MacroCall(item) => ast::ExternItemKind::MacroCall(item),
                     ast::ItemKind::TyAlias(item) => ast::ExternItemKind::Ty(item),
                     _ => {
-                        self.error(Error::InvalidExternItemKind(item.span));
+                        self.error(ErrorKind::InvalidExternItemKind, item.span);
                         continue;
                     }
                 },
@@ -671,7 +673,7 @@ impl<'src> Parser<'_, '_, 'src> {
             let trait_ref = if let ast::Ty::Path(ast::ExtPath { ext: None, path: trait_ref }) = ty {
                 Some(trait_ref)
             } else {
-                self.error(Error::ExpectedTraitFoundTy(ty_span));
+                self.error(ErrorKind::ExpectedTraitFoundTy, ty_span);
                 None
             };
             (trait_ref, self_ty)
@@ -687,14 +689,14 @@ impl<'src> Parser<'_, '_, 'src> {
             match polarity {
                 ast::ImplPolarity::Positive => {}
                 ast::ImplPolarity::Negative(span) => {
-                    self.error(Error::TraitImplModifierInInherentImpl(span, "!"));
+                    self.error(ErrorKind::TraitImplModifierInInherentImpl("!"), span);
                 }
             }
 
             match safety {
                 ast::Safety::Inherited => {}
                 ast::Safety::Unsafe(span) => {
-                    self.error(Error::TraitImplModifierInInherentImpl(span, "unsafe"));
+                    self.error(ErrorKind::TraitImplModifierInInherentImpl("unsafe"), span);
                 }
             }
 
@@ -708,7 +710,7 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             ImplKind::Delegation(span) => {
                 if trait_ref.is_none() {
-                    self.error(Error::ReuseInherentImpl(span));
+                    self.error(ErrorKind::ReuseInherentImpl, span);
                 }
 
                 let body = self.parse_delegation_body()?;
@@ -835,16 +837,16 @@ impl<'src> Parser<'_, '_, 'src> {
         let ast::TraitItemModifiers { impl_restriction, const_, safety, auto } = modifiers;
 
         if let Some((span, _)) = impl_restriction {
-            self.error(Error::ImplRestrictedTraitAlias(span));
+            self.error(ErrorKind::ImplRestrictedTraitAlias, span);
         }
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe(span) => self.error(Error::UnsafeTraitAlias(span)),
+            ast::Safety::Unsafe(span) => self.error(ErrorKind::UnsafeTraitAlias, span),
         }
 
         match auto {
-            ast::Auto::Yes(span) => self.error(Error::AutoTraitAlias(span)),
+            ast::Auto::Yes(span) => self.error(ErrorKind::AutoTraitAlias, span),
             ast::Auto::No => {}
         }
 
@@ -946,15 +948,16 @@ impl<'src> Parser<'_, '_, 'src> {
                 ast::UsePathTreeKind::Stump(binder)
             }
             _ => {
-                return self.fatal(Error::UnexpectedToken(
+                // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
+                self.unexpected(
                     self.token,
-                    // FIXME: Technically also DoubleColon under certain circumstances (e.g., `use;`).
                     frags![
                         Fragment::PathSegIdent,
                         TokenKind::OpenCurlyBracket,
                         TokenKind::SingleAsterisk
                     ],
-                ));
+                );
+                return Err(());
             }
         })
     }
@@ -1012,7 +1015,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     ast::ItemKind::MacroCall(item) => ast::AssocItemKind::MacroCall(item),
                     ast::ItemKind::TyAlias(item) => ast::AssocItemKind::Ty(item),
                     _ => {
-                        self.error(Error::InvalidAssocItemKind(item.span));
+                        self.error(ErrorKind::InvalidAssocItemKind, item.span);
                         continue;
                     }
                 },
@@ -1088,14 +1091,15 @@ impl<'src> Parser<'_, '_, 'src> {
                 ast::DelegationPathTreeKind::Stump(binder)
             }
             _ => {
-                return self.fatal(Error::UnexpectedToken(
+                self.unexpected(
                     self.token,
                     frags![
                         Fragment::PathSegIdent,
                         TokenKind::OpenCurlyBracket,
                         TokenKind::SingleAsterisk
                     ],
-                ));
+                );
+                return Err(());
             }
         })
     }
@@ -1159,10 +1163,11 @@ impl<'src> Parser<'_, '_, 'src> {
             }
             TokenKind::In => Herald::In,
             _ => {
-                return self.fatal(Error::UnexpectedToken(
+                self.unexpected(
                     self.token,
                     frags![TokenKind::Crate, TokenKind::Super, TokenKind::SelfLower, TokenKind::In],
-                ));
+                );
+                return Err(());
             }
         };
 

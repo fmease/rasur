@@ -2,21 +2,21 @@ use super::{parse_expr, parse_item, parse_pat, parse_stmt, parse_ty, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
+    error::{Error, ErrorKind},
     token::{Token, TokenKind},
 };
 
 #[test]
 fn false_angle_gen_args_expr() {
-    t!(parse_expr, Rust2015, "f<i32>()", Err([Error::ChainedComparison(_)]),);
+    t!(parse_expr, Rust2015, "f<i32>()", Err([Error { kind: ErrorKind::ChainedComparison, .. }]),);
 
     t!(
         parse_expr,
         Rust2015,
         "f<i32>",
         Err([
-            Error::ChainedComparison(_),
-            Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, span: _ }, _)
+            Error { kind: ErrorKind::ChainedComparison, .. },
+            Error { kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, _), .. }
         ]),
     );
 }
@@ -27,7 +27,7 @@ fn false_angle_gen_args_pat() {
         parse_pat,
         Rust2015,
         "Some<i32>(0)",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SingleLessThan, _), .. }])
     );
 }
 
@@ -210,14 +210,14 @@ fn macro_call_gen_args() {
         parse_item,
         Rust2015,
         "path::to::<>::call!();",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SingleLessThan, _), .. }])
     );
 
     t!(
         parse_item,
         Rust2015,
         "path::to::call<()>!();",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SingleLessThan, span: _ }, _)])
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SingleLessThan, _), .. }])
     );
 
     t!(

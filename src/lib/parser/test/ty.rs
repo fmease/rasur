@@ -3,8 +3,8 @@ use super::{parse_expr, parse_file, parse_ty, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
-    token::{Token, TokenKind},
+    error::{Error, ErrorKind},
+    token::TokenKind,
 };
 
 #[test]
@@ -30,10 +30,13 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(A+)+",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }]),
     );
 
     t!(
@@ -85,10 +88,13 @@ fn bare_trait_object_tys() {
         Rust2015,
         "Hold<const A>",
         // The diagnostic could be better (we're expecting `Hold<const { … }>` at this point).
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::CommonIdent, .. },
-            [Fragment::Token(TokenKind::OpenCurlyBracket)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::CommonIdent,
+                [Fragment::Token(TokenKind::OpenCurlyBracket)],
+            ),
+            ..
+        }])
     );
 
     t!(
@@ -109,10 +115,13 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "[const] A",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::CloseSquareBracket, .. },
-            [Fragment::PathSegIdent]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::CloseSquareBracket,
+                [Fragment::PathSegIdent]
+            ),
+            ..
+        }]),
     );
 
     t!(
@@ -133,7 +142,7 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2018,
         "Hold<async A>",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::Async, .. }, _)])
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::Async, _), .. }])
     );
 
     t!(
@@ -157,30 +166,33 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(for<>A+)+",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "for<>'a",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::TickedIdent, .. },
-            [Fragment::PathSegIdent]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::TickedIdent, [Fragment::PathSegIdent]),
+            ..
+        }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "for<>'a+",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::TickedIdent, .. },
-            [Fragment::PathSegIdent]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::TickedIdent, [Fragment::PathSegIdent]),
+            ..
+        }]),
     );
 
     t!(
@@ -192,7 +204,7 @@ fn bare_trait_object_tys() {
 
     t!(parse_ty, Rust2015, "Hold<'a+>", Ok(_));
 
-    t!(parse_ty, Rust2015, "'a", Err([Error::LifetimeObjectTyWithoutPlus(_)]));
+    t!(parse_ty, Rust2015, "'a", Err([Error { kind: ErrorKind::LifetimeObjectTyWithoutPlus, .. }]));
 
     // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
     t!(
@@ -200,11 +212,14 @@ fn bare_trait_object_tys() {
         Rust2015,
         "('a)+",
         Err([
-            Error::LifetimeObjectTyWithoutPlus(_),
-            Error::UnexpectedToken(
-                Token { kind: TokenKind::SinglePlus, .. },
-                [Fragment::Token(TokenKind::EndOfInput)]
-            )
+            Error { kind: ErrorKind::LifetimeObjectTyWithoutPlus, .. },
+            Error {
+                kind: ErrorKind::UnexpectedToken(
+                    TokenKind::SinglePlus,
+                    [Fragment::Token(TokenKind::EndOfInput)]
+                ),
+                ..
+            }
         ])
     );
 
@@ -231,17 +246,20 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "(use<>+)+",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }])
     );
 
     t!(
         parse_ty,
         Rust2015,
         "Hold<use<>>",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::Use, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::Use, _), .. }]),
     );
 
     t!(
@@ -258,35 +276,35 @@ fn bare_trait_object_tys() {
         parse_ty,
         Rust2015,
         "&A + B",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SinglePlus, _), .. }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "&for<>A + B",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SinglePlus, _), .. }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "*const A + B",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SinglePlus, _), .. }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "&A + B",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SinglePlus, _), .. }]),
     );
 
     t!(
         parse_ty,
         Rust2015,
         "fn() -> A + B",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::SinglePlus, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::SinglePlus, _), .. }]),
     );
 
     // Like `dyn (Fn() -> A) + B`, not like `dyn Fn() -> (dyn A + B)`.
@@ -418,48 +436,75 @@ fn bare_trait_object_tys() {
         parse_expr,
         Rust2015,
         "0 as for<> A+",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as 'a+",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as const A+",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0 as use<>+",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }])
     );
 }
 
 #[test]
 fn ambiguous_plus() {
-    t!(parse_ty, Rust2015, "&dyn A + B", Err([Error::AmbiguousPlus(_)]),);
+    t!(parse_ty, Rust2015, "&dyn A + B", Err([Error { kind: ErrorKind::AmbiguousPlus, .. }]),);
 
-    t!(parse_ty, Rust2015, "&dyn A+", Err([Error::AmbiguousPlus(_)]),);
+    t!(parse_ty, Rust2015, "&dyn A+", Err([Error { kind: ErrorKind::AmbiguousPlus, .. }]),);
 
-    t!(parse_ty, Rust2015, "&impl A + B", Err([Error::AmbiguousPlus(_)]));
+    t!(parse_ty, Rust2015, "&impl A + B", Err([Error { kind: ErrorKind::AmbiguousPlus, .. }]));
 
-    t!(parse_ty, Rust2015, "&impl A+", Err([Error::AmbiguousPlus(_)]));
+    t!(parse_ty, Rust2015, "&impl A+", Err([Error { kind: ErrorKind::AmbiguousPlus, .. }]));
 
-    t!(parse_ty, Rust2015, "F() -> dyn A + B", Err([Error::AmbiguousPlus(_)]));
+    t!(parse_ty, Rust2015, "F() -> dyn A + B", Err([Error { kind: ErrorKind::AmbiguousPlus, .. }]));
 
-    t!(parse_ty, Rust2015, "F() -> impl A + B", Err([Error::AmbiguousPlus(_)]));
+    t!(
+        parse_ty,
+        Rust2015,
+        "F() -> impl A + B",
+        Err([Error { kind: ErrorKind::AmbiguousPlus, .. }])
+    );
 
-    t!(parse_ty, Rust2015, "dyn F() -> impl A+", Err([Error::AmbiguousPlus(_)]));
+    t!(
+        parse_ty,
+        Rust2015,
+        "dyn F() -> impl A+",
+        Err([Error { kind: ErrorKind::AmbiguousPlus, .. }])
+    );
 
-    t!(parse_ty, Rust2015, "impl F() -> dyn A+", Err([Error::AmbiguousPlus(_)]));
+    t!(
+        parse_ty,
+        Rust2015,
+        "impl F() -> dyn A+",
+        Err([Error { kind: ErrorKind::AmbiguousPlus, .. }])
+    );
 
     // Indeed, this is not (to be) flagged as ambiguous.
     // I wonder if it's an oversight or intentional?
@@ -561,10 +606,13 @@ fn weak_keyword_dyn() {
         parse_ty,
         Rust2018,
         "dyn+",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 
     t!(

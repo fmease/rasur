@@ -3,8 +3,8 @@ use super::{parse_expr, parse_file, parse_item, parse_stmt, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
-    token::{Token, TokenKind},
+    error::{Error, ErrorKind},
+    token::TokenKind,
 };
 
 #[test]
@@ -94,7 +94,7 @@ fn tuple_struct_field_visibility() {
         parse_item,
         Rust2015,
         "struct T(pub(super::U)impl);",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::Impl, .. }, _)]),
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::Impl, _), .. }]),
     );
 
     t!(
@@ -123,10 +123,10 @@ fn tuple_struct_field_visibility() {
         parse_item,
         Rust2015,
         "struct T(pub);",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::CloseRoundBracket, .. },
-            [Fragment::Ty]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::CloseRoundBracket, [Fragment::Ty]),
+            ..
+        }])
     );
 }
 

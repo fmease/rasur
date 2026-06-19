@@ -3,7 +3,7 @@ mod transformer;
 
 use crate::{
     edition::Edition,
-    error::{Error, InvalidScalarPlace},
+    error::{Error, ErrorKind, InvalidScalarPlace},
     span::{At as _, ByteIndex, Span},
     store::Store,
     token::{PathSegKeyword, Token, TokenKind},
@@ -143,12 +143,12 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                     }
 
                     if let Some('"') = self.peek() {
-                        self.error(Error::ReservedPrefix(self.span(start)));
+                        self.error(ErrorKind::ReservedPrefix, self.span(start));
                         return TokenKind::Error;
                     }
 
                     if multi {
-                        self.error(Error::ReservedMultiHash(self.span(start)));
+                        self.error(ErrorKind::ReservedMultiHash, self.span(start));
                         return TokenKind::Error;
                     }
                 }
@@ -238,7 +238,10 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 _ => TokenKind::SingleGreaterThan,
             },
             _ => {
-                self.error(Error::InvalidScalar(char, InvalidScalarPlace::File, self.span(start)));
+                self.error(
+                    ErrorKind::InvalidScalar(char, InvalidScalarPlace::File),
+                    self.span(start),
+                );
                 TokenKind::Error
             }
         }
@@ -267,11 +270,10 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
             if let TokenKind::InnerDocComment | TokenKind::OuterDocComment = kind
                 && let '\r' = char
             {
-                self.error(Error::InvalidScalar(
-                    char,
-                    InvalidScalarPlace::DocComment,
+                self.error(
+                    ErrorKind::InvalidScalar(char, InvalidScalarPlace::DocComment),
                     self.span(start),
-                ));
+                );
             }
         }
 
@@ -310,18 +312,17 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                     depth -= 1;
                 }
                 ('\r', _) if let TokenKind::InnerDocComment | TokenKind::OuterDocComment = kind => {
-                    self.error(Error::InvalidScalar(
-                        char,
-                        InvalidScalarPlace::DocComment,
+                    self.error(
+                        ErrorKind::InvalidScalar(char, InvalidScalarPlace::DocComment),
                         self.span(index),
-                    ))
+                    )
                 }
                 _ => {}
             }
         }
 
         if !terminated {
-            self.error(Error::UnterminatedBlockComment(self.span(start)));
+            self.error(ErrorKind::UnterminatedBlockComment, self.span(start));
         }
 
         kind
@@ -361,7 +362,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 Base::Oct if is_oct_digit(char) => {}
                 Base::Hex if is_hex_digit(char) => {}
                 Base::Bin | Base::Oct | Base::Hex if is_dec_digit(char) => {
-                    self.error(Error::InvalidDigit(self.span(self.index())));
+                    self.error(ErrorKind::InvalidDigit, self.span(self.index()));
                 }
                 _ => break,
             }
@@ -370,7 +371,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         }
 
         if is_empty {
-            self.error(Error::EmptyNumLit(self.span(start)));
+            self.error(ErrorKind::EmptyNumLit, self.span(start));
         }
 
         let mut this = self.snapshot();
@@ -383,7 +384,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
             match base {
                 Base::Dec => {}
                 Base::Bin | Base::Oct | Base::Hex => {
-                    self.error(Error::NonDecFloatLit(self.span(start)));
+                    self.error(ErrorKind::NonDecFloatLit, self.span(start));
                 }
             }
         }
@@ -410,7 +411,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
             }
 
             if is_empty {
-                self.error(Error::EmptyExponent(self.span(start)));
+                self.error(ErrorKind::EmptyExponent, self.span(start));
             }
         }
 
@@ -439,14 +440,14 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                     match count {
                         0 => unreachable!(),
                         1 => {}
-                        _ => self.error(Error::MultiScalarCharLit(self.span(start))),
+                        _ => self.error(ErrorKind::MultiScalarCharLit, self.span(start)),
                     }
 
                     return TokenKind::CharLit;
                 }
                 Some('#') if self.edition >= Edition::Rust2021 => {
                     if self.source(unticked) != "r" {
-                        self.error(Error::ReservedPrefix(self.span(unticked)));
+                        self.error(ErrorKind::ReservedPrefix, self.span(unticked));
                         self.advance(); // `#`
                         return TokenKind::Error;
                     }
@@ -456,15 +457,19 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                         Some(()) => {
                             // This is considered to be a 'reservation'.
                             if let Some('\'') = self.peek() {
-                                self.error(Error::TickFollowingRawTickedIdent(
+                                self.error(
+                                    ErrorKind::TickFollowingRawTickedIdent,
                                     self.span(self.index()),
-                                ));
+                                );
                             }
 
                             TokenKind::TickedIdent
                         }
                         None => {
-                            self.error(Error::InvalidRawIdent(IdentKind::Ticked, self.span(start)));
+                            self.error(
+                                ErrorKind::InvalidRawIdent(IdentKind::Ticked),
+                                self.span(start),
+                            );
                             TokenKind::Error
                         }
                     };
@@ -505,19 +510,19 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         let span = self.span(start);
 
         if !terminated {
-            self.error(Error::UnterminatedCharLit(span));
+            self.error(ErrorKind::UnterminatedCharLit, span);
         } else {
             if !has_invalid_escape_seqs {
                 match count {
-                    0 => self.error(Error::EmptyCharLit(span)),
+                    0 => self.error(ErrorKind::EmptyCharLit, span),
                     1 => {}
-                    _ => self.error(Error::MultiScalarCharLit(span)),
+                    _ => self.error(ErrorKind::MultiScalarCharLit, span),
                 }
             }
             if let Some((char, span)) = invalid_scalar
                 && count == 1
             {
-                self.error(Error::InvalidScalar(char, InvalidScalarPlace::Lit, span));
+                self.error(ErrorKind::InvalidScalar(char, InvalidScalarPlace::Lit), span);
             }
         }
 
@@ -550,9 +555,9 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         }
 
         if !terminated {
-            self.error(Error::UnterminatedStrLit(self.span(start)));
+            self.error(ErrorKind::UnterminatedStrLit, self.span(start));
         } else if let Some((char, span)) = invalid_scalar {
-            self.error(Error::InvalidScalar(char, InvalidScalarPlace::Lit, span));
+            self.error(ErrorKind::InvalidScalar(char, InvalidScalarPlace::Lit), span);
         }
 
         TokenKind::StrLit
@@ -565,7 +570,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
 
         if let Some(TokenKind::CharLit | TokenKind::NumLit | TokenKind::StrLit) = self.previous {
             if let "_" = ident {
-                self.error(Error::InvalidLitSuffix(self.span(start)));
+                self.error(ErrorKind::InvalidLitSuffix, self.span(start));
             }
             return TokenKind::LitSuffix;
         }
@@ -597,7 +602,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 };
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
-                self.error(Error::ReservedPrefix(self.span(start)));
+                self.error(ErrorKind::ReservedPrefix, self.span(start));
                 if char == '#' {
                     self.advance();
                 }
@@ -621,7 +626,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         if let PathSegKeyword!() | TokenKind::Underscore =
             lex_ident(self.source(unprefixed), self.edition)
         {
-            self.error(Error::InvalidRawIdent(kind, self.span(start)));
+            self.error(ErrorKind::InvalidRawIdent(kind), self.span(start));
         }
 
         Some(())
@@ -640,7 +645,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         if let Some((index, char)) = self.advance()
             && char != '"'
         {
-            self.error(Error::InvalidStrLitDelimiter(self.span(index)));
+            self.error(ErrorKind::InvalidStrLitDelimiter, self.span(index));
             return TokenKind::StrLit;
         }
 
@@ -666,9 +671,9 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         }
 
         if !terminated {
-            self.error(Error::UnterminatedStrLit(self.span(start)));
+            self.error(ErrorKind::UnterminatedStrLit, self.span(start));
         } else if open > 255 {
-            self.error(Error::StrLitGuardTooLarge(self.span(start)));
+            self.error(ErrorKind::StrLitGuardTooLarge, self.span(start));
         }
 
         TokenKind::StrLit
@@ -677,7 +682,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
     fn fin_lex_escape_seq(&mut self, kind: TextLitKind, flavor: TextLitFlavor) -> bool {
         let index = self.index();
         if !self.fin_lex_escape_seq_inner(kind, flavor) {
-            self.error(Error::InvalidEscapeSequence(self.span(index)));
+            self.error(ErrorKind::InvalidEscapeSequence, self.span(index));
             return false;
         }
         true
@@ -744,8 +749,8 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         self.source.at(self.span(start))
     }
 
-    fn error(&self, error: Error) {
-        self.store.errors.add(error);
+    fn error(&self, kind: ErrorKind, span: Span) {
+        self.store.errors.add(Error::new(kind, span));
     }
 }
 

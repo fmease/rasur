@@ -4,7 +4,7 @@ use super::{
     frags,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::Error, feature::Feature};
+use crate::{ast, error::ErrorKind, feature::Feature};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a pattern.
@@ -378,7 +378,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
                 TokenKind::SingleBang => {
                     if path.ext.is_some() {
-                        self.error(Error::TyRelMacroCall(start.until(self.token.span)));
+                        self.error(ErrorKind::TyRelMacroCall, start.until(self.token.span));
                     }
 
                     self.advance();
@@ -409,7 +409,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Pat]))
+        self.unexpected(self.token, frags![Fragment::Pat]);
+        Err(())
     }
 
     fn fin_parse_range_or_rest_pat(
@@ -450,7 +451,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
             Ok(ast::RangePatBound::Path(path))
         } else {
-            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Lit, Fragment::ExtPath]))
+            self.unexpected(self.token, frags![Fragment::Lit, Fragment::ExtPath]);
+            Err(())
         }
     }
 

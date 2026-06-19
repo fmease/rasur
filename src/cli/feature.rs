@@ -1,6 +1,6 @@
 use crate::{
     Diag,
-    diagnostics::{IntoDiag, RenderCx, ToDiagStr, unexpected_token},
+    diagnostics::{IntoDiag, RenderCx, ToDiagStr},
 };
 use rasur::{
     ast::{self, Token, TokenKind},
@@ -131,10 +131,9 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
                                     Some(source)
                                 }
                                 _ => {
-                                    return self.p.fatal(rasur::error::Error::UnexpectedToken(
-                                        self.p.token,
-                                        list1![TokenKind::StrLit.into()],
-                                    ));
+                                    self.p
+                                        .unexpected(self.p.token, list1![TokenKind::StrLit.into()]);
+                                    return Err(());
                                 }
                             }
                         } else {
@@ -292,14 +291,19 @@ impl IntoDiag for Error<'_> {
     fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
         match self {
             Self::UnsafeOnSafeAttr(span, name) => {
-                Diag::error(format!("`{name}` is not an unsafe attribute")).highlight(span)
+                Diag::error(format!("`{name}` is not an unsafe attribute")).span(span)
             }
             Self::MalformedAttr(name) => Diag::error(format!("attribute `{name}` is malformed")),
             Self::UnexpectedToken(actual, expected) => {
-                unexpected_token(actual, &expected.to_diag_str(()), cx)
+                let span = actual.span;
+                let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
+                let expected = expected.to_diag_str(());
+                Diag::error(format!("found {actual} but expected {expected}"))
+                    .span(span)
+                    .label("unexpected token")
             }
             Self::FeatureAlreadyEnabled(feature, span) => {
-                Diag::error(format!("feature `{feature}` is already enabled")).highlight(span)
+                Diag::error(format!("feature `{feature}` is already enabled")).span(span)
             }
             Self::UnknownFeature(name) => Diag::error(format!("unknown feature `{name}`")),
             Self::Parse(error) => error.into_diag(cx),

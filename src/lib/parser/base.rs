@@ -2,12 +2,13 @@ use super::{Fragment, Result, frags, weak};
 use crate::{
     ast,
     edition::Edition,
-    error::Error,
+    error::{Error, ErrorKind},
     feature::Feature,
     span::{At as _, ByteIndex, Span},
     store::Store,
     token::{Token, TokenKind},
 };
+use utility::List1;
 
 pub struct Parser<'tok, 'sto, 'src> {
     tokens: &'tok [Token],
@@ -61,7 +62,8 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
             return Ok(());
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![category.fragment()]))
+        self.unexpected(self.token, frags![category.fragment()]);
+        Err(())
     }
 
     pub(super) fn parse_unchecked(&mut self, category: impl TokenCategory) {
@@ -132,13 +134,12 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
         })
     }
 
-    pub fn error(&self, error: Error) {
-        self.store.errors.add(error);
+    pub fn error(&self, kind: ErrorKind, span: Span) {
+        self.store.errors.add(Error::new(kind, span));
     }
 
-    pub fn fatal<T>(&self, error: Error) -> Result<T> {
-        self.error(error);
-        Err(())
+    pub fn unexpected(&self, actual: Token, expected: List1<Fragment>) {
+        self.error(ErrorKind::UnexpectedToken(actual.kind, expected), actual.span);
     }
 
     pub(super) fn feature(&self, feature: Feature, span: Span) {

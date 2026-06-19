@@ -3,7 +3,7 @@ use super::{
 };
 use crate::{
     edition::Edition,
-    error::{Error, InvalidScalarPlace},
+    error::{Error, ErrorKind, InvalidScalarPlace},
     feature::Feature,
     span::{ByteIndex, Span},
     store::Store,
@@ -44,6 +44,8 @@ pub fn strip_frontmatter(
     offset: &mut ByteIndex,
     store: &Store,
 ) -> Option<Frontmatter> {
+    let error = |kind: ErrorKind, span: Span| store.errors.add(Error::new(kind, span));
+
     let mut cutter = Cutter::new(source, *offset);
 
     let mut start = *offset;
@@ -72,7 +74,7 @@ pub fn strip_frontmatter(
     }
 
     if leading_dashes > 255 {
-        store.errors.add(Error::FrontmatterOpeningTooLarge(cutter.span(start)));
+        error(ErrorKind::FrontmatterOpeningTooLarge, cutter.span(start));
     }
 
     let infostring = {
@@ -101,7 +103,7 @@ pub fn strip_frontmatter(
         let span = Span::new(start, end);
 
         if !valid {
-            store.errors.add(Error::InvalidFrontmatterInfostring(span));
+            error(ErrorKind::InvalidFrontmatterInfostring, span);
         }
 
         span
@@ -122,11 +124,10 @@ pub fn strip_frontmatter(
         }
 
         if char == '\r' {
-            store.errors.add(Error::InvalidScalar(
-                char,
-                InvalidScalarPlace::FrontmatterBody,
+            error(
+                ErrorKind::InvalidScalar(char, InvalidScalarPlace::FrontmatterBody),
                 cutter.span(index),
-            ));
+            );
         }
 
         line_start = char == '\n';
@@ -158,12 +159,12 @@ pub fn strip_frontmatter(
 
         if !valid {
             // FIXME: Emit a custom message if trailing_dashes > leading_dashes.
-            store.errors.add(Error::InvalidFrontmatterTrailer(Span::new(start, end)));
+            error(ErrorKind::InvalidFrontmatterTrailer, Span::new(start, end));
         }
     }
 
     if !terminated {
-        store.errors.add(Error::UnterminatedFrontmatter(span));
+        error(ErrorKind::UnterminatedFrontmatter, span);
     }
 
     store.features.add((Feature::frontmatter, Some(span)));

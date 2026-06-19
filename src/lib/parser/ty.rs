@@ -3,7 +3,7 @@ use super::{
 };
 use crate::{
     ast,
-    error::Error,
+    error::ErrorKind,
     feature::Feature,
     parser::weak::Weak,
     span::Span,
@@ -63,7 +63,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidTyPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidTyPrefix, start.until(self.token.span));
                 }
                 return self.fin_parse_fn_ptr_ty(bound_vars, modifiers);
             }
@@ -82,7 +82,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
                 return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
             }
-            _ => return self.fatal(Error::InvalidTyPrefix(start.until(self.token.span))),
+            _ => {
+                self.error(ErrorKind::InvalidTyPrefix, start.until(self.token.span));
+                return Err(());
+            }
         }
 
         match self.token.kind {
@@ -149,10 +152,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         ast::Mut::Yes
                     }
                     _ => {
-                        return self.fatal(Error::UnexpectedToken(
-                            self.token,
-                            frags![TokenKind::Mut, TokenKind::Const],
-                        ));
+                        self.unexpected(self.token, frags![TokenKind::Mut, TokenKind::Const]);
+                        return Err(());
                     }
                 };
                 let ty = self.parse_ty_where(PlusPolicy::Yield)?;
@@ -171,7 +172,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             //     Clearly, this is an upstream bug. Such pluses should be flagged ambiguous.
             TokenKind::TickedIdent => {
                 if !self.matches(TokenPrefix::Plus, self.peek(1)) {
-                    self.error(Error::LifetimeObjectTyWithoutPlus(start));
+                    self.error(ErrorKind::LifetimeObjectTyWithoutPlus, start);
                 }
 
                 let bounds = self.parse_bounds_where(p_policy.maintain())?;
@@ -197,7 +198,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
             if self.consume(TokenKind::SingleBang) {
                 if path.ext.is_some() {
-                    self.error(Error::TyRelMacroCall(start.until(self.token.span)));
+                    self.error(ErrorKind::TyRelMacroCall, start.until(self.token.span));
                 }
                 let (bracket, stream) = self.parse_delimited_token_stream()?;
                 return Ok(ast::Ty::MacroCall(ast::MacroCall { path: path.path, bracket, stream }));
@@ -221,7 +222,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return Ok(ast::Ty::DynTrait(ast::DynKind::Bare, bounds));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Ty]))
+        self.unexpected(self.token, frags![Fragment::Ty]);
+        Err(())
     }
 
     fn parse_ty_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -349,7 +351,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             [first, .., last] => Some(first.span.to(last.span)),
                         };
                         if let Some(span) = extra {
-                            this.error(Error::InvalidExtraFieldProjections(span));
+                            this.error(ErrorKind::InvalidExtraFieldProjections, span);
                         }
 
                         (Some(variant), field)
@@ -459,10 +461,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         (ident, ast::GenericParamKind::Ty { bounds, default })
                     }
                     _ => {
-                        return this.fatal(Error::UnexpectedToken(
+                        this.unexpected(
                             this.token,
                             frags![Fragment::GenericParam, SEPARATOR, TokenKind::SingleGreaterThan],
-                        ));
+                        );
+                        return Err(());
                     }
                 }
             };
@@ -480,7 +483,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if self.pick_generic_param_list_over_ext_path(0) {
             let start = self.token.span;
             let _bound_vars = self.parse_generic_param_list()?;
-            self.error(Error::ParametrizedWhereClause(start.until(self.token.span)));
+            self.error(ErrorKind::ParametrizedWhereClause, start.until(self.token.span));
         }
 
         let mut preds = Vec::new();
@@ -521,7 +524,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let bounds = self.parse_outlives_bounds();
             ast::PredicateKind::Outlives(ast::OutlivesPredicate { lt, bounds })
         } else {
-            return self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Predicate]));
+            self.unexpected(self.token, frags![Fragment::Predicate]);
+            return Err(());
         };
 
         Ok(ast::Predicate { attrs, kind })
@@ -559,7 +563,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 break;
             }
             if let PlusPolicy::Reject(()) = p_policy {
-                self.error(Error::AmbiguousPlus(span));
+                self.error(ErrorKind::AmbiguousPlus, span);
             }
         }
 
@@ -608,17 +612,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             this.advance();
                             Ok(ast::Capture::TyOrConst(param))
                         }
-                        _ => this.fatal(Error::UnexpectedToken(
-                            this.token,
-                            frags![Fragment::GenericParam],
-                        )),
+                        _ => {
+                            this.unexpected(this.token, frags![Fragment::GenericParam]);
+                            Err(())
+                        }
                     }
                 })?;
 
             return Ok(ast::Bound::Use(captures));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Bound]))
+        self.unexpected(self.token, frags![Fragment::Bound]);
+        Err(())
     }
 
     fn begins_bound(&self, offset: usize) -> bool {
@@ -661,7 +666,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 || asyncness != ast::BoundAsyncness::Never)
         {
             // FIXME: add more context
-            self.error(Error::InvalidTraitBoundModifier(span))
+            self.error(ErrorKind::InvalidTraitBoundModifier, span);
         }
 
         Ok(ast::TraitBoundModifiers { constness, asyncness, polarity })
@@ -775,7 +780,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             |kind| {
                 matches!(kind, TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static)
             },
-            Error::ReservedLifetime,
+            ErrorKind::ReservedLifetime,
         )?))
     }
 }

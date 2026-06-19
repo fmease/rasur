@@ -15,7 +15,6 @@ mod weak;
 use crate::{
     ast,
     edition::Edition,
-    error::Error,
     lexer::Tokens,
     store::Store,
     token::{Token, TokenKind},

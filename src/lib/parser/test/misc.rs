@@ -2,7 +2,7 @@ use super::{parse_expr, parse_file, parse_item, parse_pat, parse_ty, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
+    error::{Error, ErrorKind},
     lexer::IdentKind,
     token::{Token, TokenKind},
 };
@@ -45,11 +45,26 @@ fn abi_strs() {
         }))
     );
 
-    t!(parse_ty, Rust2015, r#"extern b"ABI" fn()"#, Err([Error::InvalidAbiStr(_)]));
+    t!(
+        parse_ty,
+        Rust2015,
+        r#"extern b"ABI" fn()"#,
+        Err([Error { kind: ErrorKind::InvalidAbiStr, .. }])
+    );
 
-    t!(parse_ty, Rust2021, r#"extern c"ABI" fn()"#, Err([Error::InvalidAbiStr(_)]));
+    t!(
+        parse_ty,
+        Rust2021,
+        r#"extern c"ABI" fn()"#,
+        Err([Error { kind: ErrorKind::InvalidAbiStr, .. }])
+    );
 
-    t!(parse_ty, Rust2018, r#"extern "ABI"suffix fn()"#, Err([Error::AbiStrSuffix(_)]));
+    t!(
+        parse_ty,
+        Rust2018,
+        r#"extern "ABI"suffix fn()"#,
+        Err([Error { kind: ErrorKind::AbiStrSuffix, .. }])
+    );
 }
 
 #[test]
@@ -126,19 +141,29 @@ fn const_block_const_item_modifier() {
 
 #[test]
 fn builtin_syntax() {
-    t!(parse_expr, Rust2015, "builtin#unknown(1 + 2 @)", Err([Error::UnknownBuiltinSyntax(_)]),);
+    t!(
+        parse_expr,
+        Rust2015,
+        "builtin#unknown(1 + 2 @)",
+        Err([Error { kind: ErrorKind::UnknownBuiltinSyntax, .. }]),
+    );
 
     t!(
         parse_expr,
         Rust2021,
         "builtin#unknown(1 + 2 @)",
         Err([
-            Error::ReservedPrefix(_),
-            Error::UnexpectedToken(Token { kind: TokenKind::At, .. }, _)
+            Error { kind: ErrorKind::ReservedPrefix, .. },
+            Error { kind: ErrorKind::UnexpectedToken(TokenKind::At, _), .. }
         ]),
     );
 
-    t!(parse_expr, Rust2021, "builtin # unknown(1 + 2 @)", Err([Error::UnknownBuiltinSyntax(_)]),);
+    t!(
+        parse_expr,
+        Rust2021,
+        "builtin # unknown(1 + 2 @)",
+        Err([Error { kind: ErrorKind::UnknownBuiltinSyntax, .. }]),
+    );
 
     t!(
         parse_expr,
@@ -251,8 +276,8 @@ fn raw_idents() {
         Rust2015,
         "K!(r#self r#_);",
         Err([
-            Error::InvalidRawIdent(IdentKind::Normal, _),
-            Error::InvalidRawIdent(IdentKind::Normal, _)
+            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Normal), .. },
+            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Normal), .. }
         ])
     );
 
@@ -262,7 +287,10 @@ fn raw_idents() {
         parse_item,
         Rust2015,
         "K!(r#);",
-        Err([Error::InvalidStrLitDelimiter(_), Error::MissingClosingDelimiters(_)])
+        Err([
+            Error { kind: ErrorKind::InvalidStrLitDelimiter, .. },
+            Error { kind: ErrorKind::MissingClosingDelimiters, .. }
+        ])
     );
 }
 
@@ -286,10 +314,15 @@ fn ticked_idents() {
     );
 
     // However as lifetimes they are (except for `'_` and `'static` of course):
-    t!(parse_item, Rust2015, "type T<'if>;", Err([Error::ReservedLifetime(_)]));
+    t!(
+        parse_item,
+        Rust2015,
+        "type T<'if>;",
+        Err([Error { kind: ErrorKind::ReservedLifetime, .. }])
+    );
 
     // Similarly, as labels they are, too:
-    t!(parse_expr, Rust2015, "'if: loop {}", Err([Error::ReservedLabel(_)]));
+    t!(parse_expr, Rust2015, "'if: loop {}", Err([Error { kind: ErrorKind::ReservedLabel, .. }]));
 }
 
 #[test]
@@ -320,7 +353,7 @@ fn raw_ticked_idents() {
         parse_expr,
         Rust2018,
         "'r#if: loop {}",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::Hash, .. }, _)])
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::Hash, _), .. }])
     );
 
     // Using a macro call to demonstrate that this is a lexical error even!
@@ -346,7 +379,7 @@ fn raw_ticked_idents() {
         parse_item,
         Rust2021,
         "type R = &'r#_ ();",
-        Err([Error::InvalidRawIdent(IdentKind::Ticked, _)])
+        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
     );
 
     // We once used to accept this by mistake!
@@ -356,16 +389,26 @@ fn raw_ticked_idents() {
         Rust2021,
         "seg!('r#self 'r#Self);",
         Err([
-            Error::InvalidRawIdent(IdentKind::Ticked, _),
-            Error::InvalidRawIdent(IdentKind::Ticked, _)
+            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
+            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
         ])
     );
 
     // We once used to accept this by mistake!
-    t!(parse_item, Rust2021, "W!('r#0);", Err([Error::InvalidRawIdent(IdentKind::Ticked, _)]));
+    t!(
+        parse_item,
+        Rust2021,
+        "W!('r#0);",
+        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
+    );
 
     // We once used to accept this by mistake treating it as an empty raw ticked ident!
-    t!(parse_item, Rust2021, "O!('r#);", Err([Error::InvalidRawIdent(IdentKind::Ticked, _)]));
+    t!(
+        parse_item,
+        Rust2021,
+        "O!('r#);",
+        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
+    );
 }
 
 #[test]
@@ -404,7 +447,12 @@ fn char_lits_or_ticked_idents() {
         })
     );
 
-    t!(parse_item, Rust2015, "M! { '?a'a }", Err([Error::MultiScalarCharLit(_)]));
+    t!(
+        parse_item,
+        Rust2015,
+        "M! { '?a'a }",
+        Err([Error { kind: ErrorKind::MultiScalarCharLit, .. }])
+    );
 
     t!(
         parse_item,
@@ -430,15 +478,25 @@ fn char_lits_or_ticked_idents() {
         Rust2021,
         "W!('r#');",
         Err([
-            Error::InvalidRawIdent(IdentKind::Ticked, _),
-            Error::UnterminatedCharLit(_),
-            Error::MissingClosingDelimiters(_),
+            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
+            Error { kind: ErrorKind::UnterminatedCharLit, .. },
+            Error { kind: ErrorKind::MissingClosingDelimiters, .. },
         ])
     );
 
     // We once used to accidentally accept this & lex it as two consecutive ticked idents.
-    t!(parse_item, Rust2021, "M! { 'r#a'a }", Err([Error::TickFollowingRawTickedIdent(_)]));
+    t!(
+        parse_item,
+        Rust2021,
+        "M! { 'r#a'a }",
+        Err([Error { kind: ErrorKind::TickFollowingRawTickedIdent, .. }])
+    );
 
     // We once used to accidentally accept this & lex it as two consecutive ticked idents.
-    t!(parse_item, Rust2021, "M! { 'r#a'r#a }", Err([Error::TickFollowingRawTickedIdent(_)]));
+    t!(
+        parse_item,
+        Rust2021,
+        "M! { 'r#a'r#a }",
+        Err([Error { kind: ErrorKind::TickFollowingRawTickedIdent, .. }])
+    );
 }

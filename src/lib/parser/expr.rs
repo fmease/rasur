@@ -7,7 +7,7 @@ use super::{
     ty::PlusPolicy,
     weak::{self, Weak as _},
 };
-use crate::{ast, edition::Edition, error::Error, feature::Feature, span::Span};
+use crate::{ast, edition::Edition, error::ErrorKind, feature::Feature, span::Span};
 use std::mem;
 
 impl<'src> super::Parser<'_, '_, 'src> {
@@ -115,7 +115,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 if let Op::Call | Op::Index = op
                     && level != Level::Initial
                 {
-                    return self.fatal(Error::InvalidOpAfterBoundary(self.token.span));
+                    self.error(ErrorKind::InvalidOpAfterBoundary, self.token.span);
+                    return Err(());
                 }
 
                 break;
@@ -129,7 +130,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             if let Level::Compare = left_level
                 && let ast::ExprKind::BinOp(ast::CompareOp!(), ..) = left.kind
             {
-                self.error(Error::ChainedComparison(self.token.span));
+                self.error(ErrorKind::ChainedComparison, self.token.span);
             }
 
             if let Op::Call | Op::Dot | Op::Index | Op::Try = op {
@@ -137,7 +138,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     break;
                 }
                 if let ast::ExprKind::Cast(..) = left.kind {
-                    self.error(Error::InvalidOpAfterCast(self.token.span));
+                    self.error(ErrorKind::InvalidOpAfterCast, self.token.span);
                 }
             } else {
                 h_policy = HigherPostfixOpPolicy::Yield;
@@ -278,7 +279,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::Expr { attrs, kind });
             }
             _ => {
-                return self.fatal(Error::UnexpectedToken(
+                self.unexpected(
                     self.token,
                     frags![
                         TokenKind::Await,
@@ -288,7 +289,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         TokenKind::Use,
                         TokenKind::Yield
                     ],
-                ));
+                );
+                return Err(());
             }
         };
 
@@ -308,7 +310,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::Expr { attrs, kind });
             }
             if gen_args.is_some() {
-                self.error(Error::GenericArgsOnFieldExpr(gen_args_start.until(self.token.span)));
+                self.error(
+                    ErrorKind::GenericArgsOnFieldExpr,
+                    gen_args_start.until(self.token.span),
+                );
             }
         }
 
@@ -355,7 +360,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             && let Some(attr) = attrs.first()
         {
             let span = attr.span.to(attrs.last().unwrap().span);
-            self.error(Error::ForbiddenOuterAttrs(span));
+            self.error(ErrorKind::ForbiddenOuterAttrs, span);
         }
 
         let right = if matches!(kind, ast::RangeExprKind::Inclusive)
@@ -416,15 +421,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     self.advance();
                     self.fin_parse_while_loop_expr(label, attrs)
                 }
-                _ => self.fatal(Error::UnexpectedToken(
-                    self.token,
-                    frags![
-                        TokenKind::For,
-                        TokenKind::Loop,
-                        TokenKind::OpenCurlyBracket,
-                        TokenKind::While
-                    ],
-                )),
+                _ => {
+                    self.unexpected(
+                        self.token,
+                        frags![
+                            TokenKind::For,
+                            TokenKind::Loop,
+                            TokenKind::OpenCurlyBracket,
+                            TokenKind::While
+                        ],
+                    );
+                    return Err(());
+                }
             };
         }
 
@@ -437,7 +445,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                     if !qualifiers.is_empty() {
-                        self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                        self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
                     }
                     let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                     let kind = match (async_, gen_) {
@@ -470,7 +478,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (None, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
                 }
                 let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                 return Ok(match kind {
@@ -506,7 +514,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                 if !qualifiers.is_empty() {
-                    self.error(Error::InvalidExprPrefix(start.until(self.token.span)));
+                    self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
                 }
 
                 return self.fin_parse_closure_expr(bound_vars, modifiers, s_policy);
@@ -518,7 +526,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 self.parse(TokenKind::CloseRoundBracket)?;
                 return Ok(ast::ExprKind::Move(Box::new(expr)));
             }
-            _ => return self.fatal(Error::InvalidExprPrefix(start.until(self.token.span))),
+            _ => {
+                self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
+                return Err(());
+            }
         }
 
         match self.token.kind {
@@ -679,7 +690,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             match self.token.kind {
                 TokenKind::SingleBang => {
                     if path.ext.is_some() {
-                        self.error(Error::TyRelMacroCall(start.until(self.token.span)));
+                        self.error(ErrorKind::TyRelMacroCall, start.until(self.token.span));
                     }
 
                     self.advance();
@@ -746,7 +757,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             return Ok(ast::ExprKind::Path(Box::new(path)));
         }
 
-        self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Expr]))
+        self.unexpected(self.token, frags![Fragment::Expr]);
+        Err(())
     }
 
     fn parse_expr_qualifiers(&mut self) -> Result<Vec<Qualifier<'src>>> {
@@ -831,7 +843,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.parse_attrs_into(ast::AttrStyle::Inner, attrs)?;
         if reject && let Some(attr) = attrs.first() {
             let span = attr.span.to(attrs.last().unwrap().span);
-            self.error(Error::ForbiddenInnerAttrs(span));
+            self.error(ErrorKind::ForbiddenInnerAttrs, span);
         }
 
         let mut stmts = Vec::new();
@@ -920,10 +932,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         self.fin_parse_if_expr()?
                     }
                     _ => {
-                        return self.fatal(Error::UnexpectedToken(
+                        self.unexpected(
                             self.token,
                             frags![TokenKind::OpenCurlyBracket, TokenKind::If],
-                        ));
+                        );
+                        return Err(());
                     }
                 },
             })
@@ -961,7 +974,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
             let (pat, guard) = match pat {
                 ast::Pat::Grouped(span, ast::Pat::Guarded(pat, guard)) => {
-                    self.error(Error::ParenthesizedGuardedPatInMatch(span));
+                    self.error(ErrorKind::ParenthesizedGuardedPatInMatch, span);
 
                     (*pat, Some(*guard))
                 }
@@ -1072,7 +1085,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         {
             // FIXME: Fake an UnexpectedToken(Let|&&|.., Fragment::Expr) in the
             // relevant cases for uniformity with the corresp. parser diagnostic.
-            self.error(Error::InvalidLetChain(span));
+            self.error(ErrorKind::InvalidLetChain, span);
         }
     }
 
@@ -1104,7 +1117,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     /// Optionally parse a label.
     fn parse_label(&mut self) -> Option<ast::Ident<'src>> {
-        self.parse_ticked_ident(|kind| matches!(kind, TokenKind::CommonIdent), Error::ReservedLabel)
+        self.parse_ticked_ident(
+            |kind| matches!(kind, TokenKind::CommonIdent),
+            ErrorKind::ReservedLabel,
+        )
     }
 }
 

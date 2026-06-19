@@ -3,8 +3,8 @@ use super::{parse_expr, parse_stmt, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
-    token::{Token, TokenKind},
+    error::{Error, ErrorKind},
+    token::TokenKind,
 };
 
 // FIXME: Exercise `StructPolicy::Yield` (e.g., struct exprs in if conditions).
@@ -34,7 +34,12 @@ fn levels() {
         }),
     );
 
-    t!(parse_stmt, Rust2015, "-if 0{}else{}()", Err([Error::InvalidOpAfterBoundary(_)]));
+    t!(
+        parse_stmt,
+        Rust2015,
+        "-if 0{}else{}()",
+        Err([Error { kind: ErrorKind::InvalidOpAfterBoundary, .. }])
+    );
 
     // ...however, we accept this (expr, unary op):
     t!(
@@ -77,9 +82,19 @@ fn levels() {
         ),),
     );
 
-    t!(parse_stmt, Rust2015, "&if(){}()", Err([Error::InvalidOpAfterBoundary(_)]));
+    t!(
+        parse_stmt,
+        Rust2015,
+        "&if(){}()",
+        Err([Error { kind: ErrorKind::InvalidOpAfterBoundary, .. }])
+    );
 
-    t!(parse_stmt, Rust2015, "&&{}()", Err([Error::InvalidOpAfterBoundary(_)]));
+    t!(
+        parse_stmt,
+        Rust2015,
+        "&&{}()",
+        Err([Error { kind: ErrorKind::InvalidOpAfterBoundary, .. }])
+    );
 
     // Ensure that index & call operators are allowed to follow boundaries
     // if "they start a new stmt" (i.e., the precedence level is initial).
@@ -174,11 +189,11 @@ fn attrs() {
         })
     );
 
-    t!(parse_expr, Rust2015, "#[a]..", Err([Error::ForbiddenOuterAttrs(_)]));
+    t!(parse_expr, Rust2015, "#[a]..", Err([Error { kind: ErrorKind::ForbiddenOuterAttrs, .. }]));
 
-    t!(parse_expr, Rust2015, "#[a]..()", Err([Error::ForbiddenOuterAttrs(_)]));
+    t!(parse_expr, Rust2015, "#[a]..()", Err([Error { kind: ErrorKind::ForbiddenOuterAttrs, .. }]));
 
-    t!(parse_expr, Rust2015, "#[a]..=_", Err([Error::ForbiddenOuterAttrs(_)]));
+    t!(parse_expr, Rust2015, "#[a]..=_", Err([Error { kind: ErrorKind::ForbiddenOuterAttrs, .. }]));
 
     t!(
         parse_expr,
@@ -443,10 +458,13 @@ fn control_flow_ops_block() {
         parse_expr,
         Rust2015,
         "if return {}",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, span: _ },
-            [Fragment::Token(TokenKind::OpenCurlyBracket)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::EndOfInput,
+                [Fragment::Token(TokenKind::OpenCurlyBracket)],
+            ),
+            ..
+        }])
     );
     t!(
         parse_expr,
@@ -655,10 +673,13 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..?",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::QuestionMark, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::QuestionMark,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }]),
     );
 
     // `(!x)..`, not `!(x..)`.
@@ -817,14 +838,20 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..=",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "'='..=",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::EndOfInput, .. }, [Fragment::Expr])]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::EndOfInput, [Fragment::Expr]),
+            ..
+        }]),
     );
 
     // Unlike the `..` case, `{}` gets interpreted as the right argument of the range.
@@ -901,45 +928,67 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "0..1..2",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDot, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDot,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..=1..2",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDot, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDot,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..1..=2",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDotEquals, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDotEquals,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }]),
     );
 
     t!(
         parse_expr,
         Rust2015,
         "0..=1..=2",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDotEquals, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDotEquals,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }]),
     );
 
-    t!(parse_stmt, Rust2015, "..if(){}else{}[0]", Err([Error::InvalidOpAfterBoundary(_)]));
+    t!(
+        parse_stmt,
+        Rust2015,
+        "..if(){}else{}[0]",
+        Err([Error { kind: ErrorKind::InvalidOpAfterBoundary, .. }])
+    );
 
-    t!(parse_stmt, Rust2015, "()..if(){}else{}[0]", Err([Error::InvalidOpAfterBoundary(_)]));
+    t!(
+        parse_stmt,
+        Rust2015,
+        "()..if(){}else{}[0]",
+        Err([Error { kind: ErrorKind::InvalidOpAfterBoundary, .. }])
+    );
 
     // ...for comparison, this does parse:
     t!(
@@ -968,10 +1017,13 @@ fn ranges() {
         parse_stmt,
         Rust2015,
         "..{}+0",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::Semicolon)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::Semicolon)],
+            ),
+            ..
+        }])
     );
 
     // ...for comparison, this does parse:
@@ -1026,10 +1078,13 @@ fn ranges() {
         parse_stmt,
         Rust2015,
         "1..{}+0",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SinglePlus, .. },
-            [Fragment::Token(TokenKind::Semicolon)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::Semicolon)],
+            ),
+            ..
+        }])
     );
 
     // ...for comparison, this does parse:
@@ -1090,10 +1145,13 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "..=0..",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDot, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )]),
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDot,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }]),
     );
 
     // We once used to wrongly parse this as `(T {}) + (..(0..))` instead of `((T {}) + (..0))..`.
@@ -1198,10 +1256,13 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "1 + .. .y",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SingleDot, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SingleDot,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 
     // For the longest time, we used to wrongly accept this.
@@ -1209,10 +1270,13 @@ fn ranges() {
         parse_expr,
         Rust2015,
         "1 * .. ?",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::QuestionMark, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::QuestionMark,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 }
 

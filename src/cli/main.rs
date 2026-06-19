@@ -155,7 +155,7 @@ fn report(
                 annotate_snippets::Level::WARNING
             };
 
-            let diag = Diag::new(level, format!("use of {kind} feature `{feature}`"));
+            let diag = Diag::new(level).title(format!("use of {kind} feature `{feature}`"));
             let diag = if let Some(issue) = feature.tracking_issue() {
                 const ISSUE_BASE_URL: &str = "https://github.com/rust-lang/rust/issues/";
                 diag.note(format!("see <{ISSUE_BASE_URL}{issue}> for more information"))
@@ -170,7 +170,7 @@ fn report(
             let diag = diag.help(format!(
                 "add `#![feature({feature})]` at the top of the file{extra} to enable"
             ));
-            let diag = if let Some(span) = span { diag.highlight(span) } else { diag };
+            let diag = if let Some(span) = span { diag.span(span) } else { diag };
             diag.render(cx);
         }
     } else if let Some(ArtifactType::Features) = opts.emit {

@@ -3,8 +3,8 @@ use super::{parse_file, parse_pat, t};
 use crate::{
     ast,
     edition::Edition::*,
-    error::Error,
-    token::{Token, TokenKind},
+    error::{Error, ErrorKind},
+    token::TokenKind,
 };
 
 #[test]
@@ -149,10 +149,13 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S { _ }",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::Underscore, .. },
-            [Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::Underscore,
+                [Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)]
+            ),
+            ..
+        }])
     );
 
     t!(
@@ -178,10 +181,13 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S { #[a] .. }",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDot, .. },
-            [Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDot,
+                [Fragment::Token(TokenKind::CommonIdent), Fragment::Token(TokenKind::NumLit)]
+            ),
+            ..
+        }])
     );
 
     // No numeric identifier shorthands:
@@ -189,10 +195,13 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S { 0 }",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::CloseCurlyBracket, .. },
-            [Fragment::Token(TokenKind::SingleColon)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::CloseCurlyBracket,
+                [Fragment::Token(TokenKind::SingleColon)]
+            ),
+            ..
+        }])
     );
 
     // If a "modifier" is present, the explicit form is forbidden:
@@ -201,10 +210,13 @@ fn structs() {
             parse_pat,
             Rust2015,
             &format!("S {{ {modifier} f: _ }}"),
-            Err([Error::UnexpectedToken(
-                Token { kind: TokenKind::SingleColon, .. },
-                [Fragment::Token(TokenKind::Comma)]
-            )])
+            Err([Error {
+                kind: ErrorKind::UnexpectedToken(
+                    TokenKind::SingleColon,
+                    [Fragment::Token(TokenKind::Comma)]
+                ),
+                ..
+            }])
         );
     }
 
@@ -214,10 +226,13 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S { ref 0 }",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::NumLit, .. },
-            [Fragment::Token(TokenKind::CommonIdent)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::NumLit,
+                [Fragment::Token(TokenKind::CommonIdent)]
+            ),
+            ..
+        }])
     );
 }
 
@@ -277,20 +292,26 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "..=",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            [Fragment::Lit, Fragment::ExtPath],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::EndOfInput,
+                [Fragment::Lit, Fragment::ExtPath],
+            ),
+            ..
+        }])
     );
 
     t!(
         parse_pat,
         Rust2015,
         "0..=",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            [Fragment::Lit, Fragment::ExtPath],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::EndOfInput,
+                [Fragment::Lit, Fragment::ExtPath],
+            ),
+            ..
+        }])
     );
 
     t!(
@@ -330,14 +351,20 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "...",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::TripleDot, .. }, [Fragment::Pat],)])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::TripleDot, [Fragment::Pat]),
+            ..
+        }])
     );
 
     t!(
         parse_pat,
         Rust2015,
         "...1",
-        Err([Error::UnexpectedToken(Token { kind: TokenKind::TripleDot, .. }, [Fragment::Pat],)])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::TripleDot, [Fragment::Pat]),
+            ..
+        }])
     );
 
     // Of course, them being inclusive, they need an explicit upper bound:
@@ -345,10 +372,13 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "X...",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::EndOfInput, .. },
-            [Fragment::Lit, Fragment::ExtPath],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::EndOfInput,
+                [Fragment::Lit, Fragment::ExtPath],
+            ),
+            ..
+        }])
     );
 
     t!(
@@ -373,10 +403,13 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "&5..10",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDot, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDot,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 
     // We once used to incorrectly accept this.
@@ -384,10 +417,13 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "&..10",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::NumLit, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::NumLit,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }])
     );
 
     // We once used to incorrectly accept this.
@@ -395,10 +431,13 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "&5..=10",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDotEquals, .. },
-            [Fragment::Token(TokenKind::EndOfInput)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::DoubleDotEquals,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
     );
 
     // We once used to incorrectly accept this.
@@ -406,10 +445,10 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "&..=10",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::DoubleDotEquals, .. },
-            [Fragment::Pat],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::DoubleDotEquals, [Fragment::Pat],),
+            ..
+        }])
     );
 
     // Contrary to the non-legacy ranges, this is indeed allowed!
@@ -436,10 +475,13 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "5..=&10",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::SingleAmpersand, .. },
-            [Fragment::Lit, Fragment::ExtPath],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SingleAmpersand,
+                [Fragment::Lit, Fragment::ExtPath],
+            ),
+            ..
+        }])
     );
 
     // Leading bar.
@@ -457,10 +499,13 @@ fn guards() {
         parse_pat,
         Rust2015,
         "0 if true",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::If, .. },
-            [Fragment::Token(TokenKind::EndOfInput)],
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::If,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }])
     );
 
     t!(
@@ -491,10 +536,10 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(0 if true if true)",
-        Err([Error::UnexpectedToken(
-            Token { kind: TokenKind::If, .. },
-            [Fragment::Token(TokenKind::Comma)]
-        )])
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(TokenKind::If, [Fragment::Token(TokenKind::Comma)]),
+            ..
+        }])
     );
 
     // Obviously, `(&0) if true` over `&(0 if true)`.

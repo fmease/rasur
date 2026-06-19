@@ -1,5 +1,5 @@
-use super::{Error, Result, TokenKind, frags};
-use crate::ast;
+use super::{Result, TokenKind, frags};
+use crate::{ast, error::ErrorKind};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_delimited_token_stream(
@@ -18,14 +18,17 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 self.advance();
                 self.fin_parse_delimited_token_stream(ast::Bracket::Curly)
             }
-            _ => self.fatal(Error::UnexpectedToken(
-                self.token,
-                frags![
-                    TokenKind::OpenRoundBracket,
-                    TokenKind::OpenSquareBracket,
-                    TokenKind::OpenCurlyBracket,
-                ],
-            )),
+            _ => {
+                self.unexpected(
+                    self.token,
+                    frags![
+                        TokenKind::OpenRoundBracket,
+                        TokenKind::OpenSquareBracket,
+                        TokenKind::OpenCurlyBracket,
+                    ],
+                );
+                Err(())
+            }
         }
     }
 
@@ -73,7 +76,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
                                 break;
                             }
                         }
-                        _ => return self.fatal(Error::UnexpectedClosingDelimiter(self.token)),
+                        _ => {
+                            self.error(
+                                ErrorKind::UnexpectedClosingDelimiter(self.token.kind),
+                                self.token.span,
+                            );
+                            return Err(());
+                        }
                     },
                 }
             }
@@ -83,7 +92,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         if !stack.is_empty() {
-            return self.fatal(Error::MissingClosingDelimiters(self.token.span));
+            self.error(ErrorKind::MissingClosingDelimiters, self.token.span);
+            return Err(());
         }
 
         stream.push(ast::Token { kind: TokenKind::EndOfInput, span: self.token.span.start.into() });

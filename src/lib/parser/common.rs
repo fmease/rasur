@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     ast,
-    error::Error,
+    error::ErrorKind,
     feature::Feature,
     lexer::lex_ident,
     parser::{MatchAgainstArbitraryToken, TokenCategory},
@@ -29,10 +29,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
         } else if self.token.kind == exception {
             true
         } else {
-            return self.fatal(Error::UnexpectedToken(
-                self.token,
-                frags![TokenKind::CommonIdent, exception],
-            ));
+            self.unexpected(self.token, frags![TokenKind::CommonIdent, exception]);
+            return Err(());
         };
 
         let ident = self.ident(self.token.span);
@@ -42,10 +40,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     // FIXME: Temporary API, replace with parse(CommonIdent)
     pub fn parse_common_ident(&mut self) -> Result<ast::Ident<'src>> {
-        match self.consume_common_ident() {
-            Some(ident) => Ok(ident),
-            None => self.fatal(Error::UnexpectedToken(self.token, frags![TokenKind::CommonIdent])),
-        }
+        self.consume_common_ident()
+            .ok_or_else(|| self.unexpected(self.token, frags![TokenKind::CommonIdent]))
     }
 
     // FIXME: Temporary API, replace with consume(CommonIdent)
@@ -59,7 +55,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_ticked_ident(
         &mut self,
         validate: fn(TokenKind) -> bool,
-        error: fn(Span) -> Error,
+        error: ErrorKind,
     ) -> Option<ast::Ident<'src>> {
         let Token { kind: TokenKind::TickedIdent, span } = self.token else { return None };
         self.advance();
@@ -67,7 +63,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         let source = &self.source(span)[const { "'".len() }..];
         let ident = lex_ident(source, self.edition);
         if !validate(ident) {
-            self.error(error(span));
+            self.error(error, span);
         }
 
         let name = source.strip_prefix("r#").unwrap_or(source);
@@ -121,7 +117,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 && let Some(param) = this.parse_self_param(&mut attrs)?
             {
                 if !first {
-                    this.error(Error::MisplacedReceiver(start.until(this.token.span)));
+                    this.error(ErrorKind::MisplacedReceiver, start.until(this.token.span));
                 }
                 return Ok(param);
             }
@@ -269,7 +265,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if let Some(kind) = lit {
             Ok(Some((sign, Box::new(self.fin_parse_lit(kind)))))
         } else if let ast::Sign::Neg = sign {
-            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Lit]))
+            self.unexpected(self.token, frags![Fragment::Lit]);
+            Err(())
         } else {
             Ok(None)
         }
@@ -338,7 +335,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         //        Maybe add another field to `Token`?
         if !abi.starts_with(['r', '"']) {
             // FIXME: Make the diagnostic more specific.
-            self.error(Error::InvalidAbiStr(self.token.span));
+            self.error(ErrorKind::InvalidAbiStr, self.token.span);
         }
         self.advance();
 
@@ -346,7 +343,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         // in types since the qualifier system which would otherwise encounter this
         // token generally emits quite bad placeholder diagnostics at the moment.
         if let TokenKind::LitSuffix = self.token.kind {
-            self.error(Error::AbiStrSuffix(self.token.span));
+            self.error(ErrorKind::AbiStrSuffix, self.token.span);
             self.advance();
         }
 
@@ -368,7 +365,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(match parse(self, ident.name)? {
             Some(value) => value,
             None => {
-                self.error(Error::UnknownBuiltinSyntax(ident.span));
+                self.error(ErrorKind::UnknownBuiltinSyntax, ident.span);
                 let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
                 error(start.until(self.token.span))
             }
@@ -429,7 +426,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if ident.name.contains(pattern) {
             // We could also split at the offending token and
             // generate a fake "unexpected token" diagnostic.
-            self.error(Error::InvalidNumericIdent(ident.span));
+            self.error(ErrorKind::InvalidNumericIdent, ident.span);
         }
     }
 
@@ -440,10 +437,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
         const SEPARATOR: TokenKind = TokenKind::SingleDot;
         loop {
             let (TokenKind::CommonIdent | TokenKind::NumLit) = self.token.kind else {
-                return self.fatal(Error::UnexpectedToken(
-                    self.token,
-                    frags![TokenKind::CommonIdent, TokenKind::NumLit],
-                ));
+                self.unexpected(self.token, frags![TokenKind::CommonIdent, TokenKind::NumLit]);
+                return Err(());
             };
 
             let (ident, extra) = self.split_float_lit();

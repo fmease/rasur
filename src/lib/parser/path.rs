@@ -1,7 +1,7 @@
 use super::{
     Fragment, Parser, Result, TokenKind, TokenPrefix, expr::AttrPolicy, frags, ty::PlusPolicy,
 };
-use crate::{ast, error::Error, feature::Feature, token::PathSegIdent};
+use crate::{ast, feature::Feature, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
@@ -88,7 +88,10 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 Ok(ast::PathSeg { ident, args: M::parse(self)? })
             }
-            _ => self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::PathSegIdent])),
+            _ => {
+                self.unexpected(self.token, frags![Fragment::PathSegIdent]);
+                Err(())
+            }
         }
     }
 
@@ -134,14 +137,15 @@ impl<'src> Parser<'_, '_, 'src> {
                     let expr = this.parse_const_arg()?;
                     ast::AngleGenericArg::Const(expr)
                 } else {
-                    return this.fatal(Error::UnexpectedToken(
+                    this.unexpected(
                         this.token,
                         frags![
                             Fragment::GenericArg,
                             SEPARATOR,
                             /*delimiter*/ TokenKind::SingleGreaterThan
                         ],
-                    ));
+                    );
+                    return Err(());
                 };
 
                 let separator = this.token;
@@ -201,7 +205,8 @@ impl<'src> Parser<'_, '_, 'src> {
             self.feature(Feature::min_generic_const_args, self.token.span);
             Ok(ast::Term::Const(self.parse_const_arg()?))
         } else {
-            self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Term]))
+            self.unexpected(self.token, frags![Fragment::Term]);
+            Err(())
         }
     }
 
@@ -243,7 +248,10 @@ impl<'src> Parser<'_, '_, 'src> {
                 let kind = ast::ExprKind::Block(None, Box::new(block));
                 Ok(ast::Expr { attrs, kind })
             }
-            _ => self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::ConstArg])),
+            _ => {
+                self.unexpected(self.token, frags![Fragment::ConstArg]);
+                Err(())
+            }
         }
     }
 
