@@ -111,7 +111,7 @@ fn bare_trait_object_tys() {
         "[const] A",
         Err([Error::UnexpectedToken(
             Token { kind: TokenKind::CloseSquareBracket, .. },
-            [Fragment::Bound]
+            [Fragment::PathSegIdent]
         )]),
     );
 

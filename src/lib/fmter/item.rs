@@ -470,7 +470,7 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         {
             match polarity {
                 ast::ImplPolarity::Positive => {}
-                ast::ImplPolarity::Negative => fmt!(cx, "!"),
+                ast::ImplPolarity::Negative(_) => fmt!(cx, "!"),
             }
             path.fmt(cx);
             fmt!(cx, " for ");
@@ -589,7 +589,7 @@ impl Fmt for TrailingSpace<ast::TraitItemModifiers<'_>> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(ast::TraitItemModifiers { impl_restriction, const_, safety, auto }) = self;
 
-        if let Some(path) = impl_restriction {
+        if let Some((_, path)) = impl_restriction {
             fmt!(cx, "impl");
             Restriction(path).fmt(cx);
             fmt!(cx, " ");
@@ -814,7 +814,7 @@ impl<X> Fmt for TrailingSpace<ast::Safety<X>> {
         match safety {
             ast::Safety::Inherited => {}
             ast::Safety::Safe(_) => fmt!(cx, "safe "),
-            ast::Safety::Unsafe => fmt!(cx, "unsafe "),
+            ast::Safety::Unsafe(_) => fmt!(cx, "unsafe "),
         }
     }
 }
@@ -836,7 +836,7 @@ impl Fmt for TrailingSpace<ast::Auto> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(auto) = self;
         match auto {
-            ast::Auto::Yes => fmt!(cx, "auto "),
+            ast::Auto::Yes(_) => fmt!(cx, "auto "),
             ast::Auto::No => {}
         }
     }

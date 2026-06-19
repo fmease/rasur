@@ -11,7 +11,7 @@ pub enum Pat<'src> {
     Box(Box<Pat<'src>>),
     Deref(Box<Pat<'src>>),
     Error(Span),
-    Grouped(Box<Pat<'src>>),
+    Grouped(Span, Box<Pat<'src>>),
     Guarded(Box<Pat<'src>>, Box<Expr<'src>>),
     Lit(Sign, Box<Lit<'src>>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),

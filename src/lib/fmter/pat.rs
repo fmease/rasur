@@ -26,7 +26,7 @@ impl Fmt for ast::Pat<'_> {
                 pat.fmt(cx);
             }
             Self::Tuple(pats) => Tup(pats).fmt(cx),
-            Self::Grouped(pat) => {
+            Self::Grouped(_, pat) => {
                 fmt!(cx, "(");
                 pat.fmt(cx);
                 fmt!(cx, ")");

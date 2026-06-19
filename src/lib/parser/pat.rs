@@ -213,10 +213,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     )?;
 
                     if self.token.kind == DELIMITER {
+                        // This is actually a grouped node, not a tuple.
                         if pats.is_empty() && !matches!(pat, ast::Pat::Rest) {
-                            // This is actually a grouped node, not a tuple.
+                            let span = start.to(self.token.span);
                             self.advance();
-                            return Ok(ast::Pat::Grouped(Box::new(pat)));
+                            return Ok(ast::Pat::Grouped(span, Box::new(pat)));
                         }
                     } else {
                         self.parse(SEPARATOR)?;

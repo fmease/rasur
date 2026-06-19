@@ -467,20 +467,23 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(0 if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(
-            ast::Pat::Lit(..),
-            ast::Expr { kind: ast::ExprKind::Lit(..), .. }
-        )))
+        Ok(ast::Pat::Grouped(
+            _,
+            ast::Pat::Guarded(ast::Pat::Lit(..), ast::Expr { kind: ast::ExprKind::Lit(..), .. })
+        ))
     );
 
     t!(
         parse_pat,
         Rust2015,
         "(x if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(
-            ast::Pat::Binding(..),
-            ast::Expr { kind: ast::ExprKind::Lit(..), .. }
-        )))
+        Ok(ast::Pat::Grouped(
+            _,
+            ast::Pat::Guarded(
+                ast::Pat::Binding(..),
+                ast::Expr { kind: ast::ExprKind::Lit(..), .. }
+            )
+        ))
     );
 
     // We once used to accept this due to us treating `if` as a normal operator.
@@ -501,7 +504,7 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(&0 if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(ast::Pat::Borrow(.., ast::Pat::Lit(..)), _)))
+        Ok(ast::Pat::Grouped(_, ast::Pat::Guarded(ast::Pat::Borrow(.., ast::Pat::Lit(..)), _)))
     );
 
     // Obviously, `(..1) if true` over `..(1 if true)`.
@@ -509,20 +512,20 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(..1 if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(
-            ast::Pat::Range(None, Some(ast::RangePatBound::Lit(..)), _),
-            _
-        )))
+        Ok(ast::Pat::Grouped(
+            _,
+            ast::Pat::Guarded(ast::Pat::Range(None, Some(ast::RangePatBound::Lit(..)), _), _)
+        ))
     );
 
     t!(
         parse_pat,
         Rust2015,
         "(0.. if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(
-            ast::Pat::Range(Some(ast::RangePatBound::Lit(..)), None, _),
-            _
-        )))
+        Ok(ast::Pat::Grouped(
+            _,
+            ast::Pat::Guarded(ast::Pat::Range(Some(ast::RangePatBound::Lit(..)), None, _), _)
+        ))
     );
 
     // Obviously, `(box 0) if true` over `box (0 if true)`.
@@ -532,6 +535,6 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(box 0 if true)",
-        Ok(ast::Pat::Grouped(ast::Pat::Guarded(ast::Pat::Box(ast::Pat::Lit(..)), _)))
+        Ok(ast::Pat::Grouped(_, ast::Pat::Guarded(ast::Pat::Box(ast::Pat::Lit(..)), _)))
     );
 }

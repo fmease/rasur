@@ -84,8 +84,8 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
     }
 
     fn parse_cfg_attr(&mut self, attr: &ast::Meta<'src>) -> Result<Cfg<'src>, ()> {
-        if let ast::Safety::Unsafe = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(EarlyAttrName::Cfg));
+        if let ast::Safety::Unsafe(span) = attr.safety {
+            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::Cfg));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
@@ -163,8 +163,8 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
     }
 
     fn parse_cfg_attr_attr(&mut self, attr: &ast::Meta<'src>) -> Result<ControlFlow<()>, ()> {
-        if let ast::Safety::Unsafe = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(EarlyAttrName::CfgAttr));
+        if let ast::Safety::Unsafe(span) = attr.safety {
+            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::CfgAttr));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
@@ -199,8 +199,8 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
     }
 
     fn parse_feature_attr(&mut self, attr: &ast::Meta<'src>) -> Result<(), ()> {
-        if let ast::Safety::Unsafe = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(EarlyAttrName::Feature));
+        if let ast::Safety::Unsafe(span) = attr.safety {
+            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::Feature));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
@@ -280,7 +280,7 @@ impl Cfg<'_> {
 // FIXME: These are placeholder errors, improve them significantly
 #[derive(Debug)]
 pub(super) enum Error<'src> {
-    UnsafeOnSafeAttr(EarlyAttrName),
+    UnsafeOnSafeAttr(Span, EarlyAttrName),
     MalformedAttr(EarlyAttrName),
     UnexpectedToken(Token, List1<Fragment>),
     FeatureAlreadyEnabled(Feature, Span),
@@ -291,8 +291,8 @@ pub(super) enum Error<'src> {
 impl IntoDiag for Error<'_> {
     fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
         match self {
-            Self::UnsafeOnSafeAttr(name) => {
-                Diag::error(format!("`{name}` is not an unsafe attribute"))
+            Self::UnsafeOnSafeAttr(span, name) => {
+                Diag::error(format!("`{name}` is not an unsafe attribute")).highlight(span)
             }
             Self::MalformedAttr(name) => Diag::error(format!("attribute `{name}` is malformed")),
             Self::UnexpectedToken(actual, expected) => {

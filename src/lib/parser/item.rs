@@ -236,7 +236,8 @@ impl<'src> Parser<'_, '_, 'src> {
                     [Qualifier::ImplRestriction(span, path), qualifiers @ ..] => {
                         self.feature(Feature::impl_restriction, *span);
                         let Ok(path) = path else { return Err(()) };
-                        (Some(mem::replace(path, ast::Path { segs: Vec::new() })), qualifiers)
+                        let path = mem::replace(path, ast::Path { segs: Vec::new() });
+                        (Some((*span, path)), qualifiers)
                     }
                     _ => (None, qualifiers),
                 };
@@ -247,7 +248,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.auto, qualifiers) = match qualifiers {
                     [Qualifier::Auto(span), qualifiers @ ..] => {
                         self.feature(Feature::auto_traits, *span);
-                        (ast::Auto::Yes, qualifiers)
+                        (ast::Auto::Yes(*span), qualifiers)
                     }
                     _ => (ast::Auto::No, qualifiers),
                 };
@@ -261,7 +262,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 let (kind, qualifiers) = match qualifiers {
                     [Qualifier::Reuse(span), qualifiers @ ..] => {
                         self.feature(Feature::fn_delegation, *span);
-                        (ImplKind::Delegation, qualifiers)
+                        (ImplKind::Delegation(*span), qualifiers)
                     }
                     _ => (ImplKind::Normal, qualifiers),
                 };
@@ -355,6 +356,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     // interpreted as impl blocks instead.
                     if self.begins_restriction(|kind| kind != TokenKind::OpenCurlyBracket) {
                         let path = self.parse_restriction();
+                        // FIXME: The `span` should contain the entire restriction.
                         yield (Qualifier::ImplRestriction(span, Box::new(path)), self.token.kind);
                         continue;
                     }
@@ -388,7 +390,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Trait => Qualifier::Trait,
                 TokenKind::Type => Qualifier::Type(self.token.span),
                 TokenKind::Unsafe if self.peek(1).kind != TokenKind::OpenCurlyBracket => {
-                    Qualifier::Unsafe
+                    Qualifier::Unsafe(self.token.span)
                 }
                 _ => return,
             };
@@ -496,7 +498,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 && this.consume(TokenKind::Unsafe)
             {
                 this.feature(Feature::unsafe_fields, span);
-                ast::Safety::Unsafe
+                ast::Safety::Unsafe(span)
             } else {
                 ast::Safety::Inherited
             };
@@ -650,9 +652,10 @@ impl<'src> Parser<'_, '_, 'src> {
         let polarity = if self.token.kind == TokenKind::SingleBang
             && self.peek(1).kind != TokenKind::OpenCurlyBracket
         {
-            self.feature(Feature::negative_impls, self.token.span);
+            let span = self.token.span;
+            self.feature(Feature::negative_impls, span);
             self.advance();
-            ast::ImplPolarity::Negative
+            ast::ImplPolarity::Negative(span)
         } else {
             ast::ImplPolarity::Positive
         };
@@ -683,15 +686,15 @@ impl<'src> Parser<'_, '_, 'src> {
         } else {
             match polarity {
                 ast::ImplPolarity::Positive => {}
-                ast::ImplPolarity::Negative => {
-                    self.error(Error::TraitImplModifierInInherentImpl("!"));
+                ast::ImplPolarity::Negative(span) => {
+                    self.error(Error::TraitImplModifierInInherentImpl(span, "!"));
                 }
             }
 
             match safety {
                 ast::Safety::Inherited => {}
-                ast::Safety::Unsafe => {
-                    self.error(Error::TraitImplModifierInInherentImpl("unsafe"));
+                ast::Safety::Unsafe(span) => {
+                    self.error(Error::TraitImplModifierInInherentImpl(span, "unsafe"));
                 }
             }
 
@@ -703,9 +706,9 @@ impl<'src> Parser<'_, '_, 'src> {
                 let items = self.parse_delimited_assoc_items(ItemCx::Boring, attrs)?;
                 ast::ImplBody::Normal(items)
             }
-            ImplKind::Delegation => {
+            ImplKind::Delegation(span) => {
                 if trait_ref.is_none() {
-                    self.error(Error::ReuseInherentImpl);
+                    self.error(Error::ReuseInherentImpl(span));
                 }
 
                 let body = self.parse_delegation_body()?;
@@ -831,17 +834,17 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let ast::TraitItemModifiers { impl_restriction, const_, safety, auto } = modifiers;
 
-        if impl_restriction.is_some() {
-            self.error(Error::ImplRestrictedTraitAlias);
+        if let Some((span, _)) = impl_restriction {
+            self.error(Error::ImplRestrictedTraitAlias(span));
         }
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => self.error(Error::UnsafeTraitAlias),
+            ast::Safety::Unsafe(span) => self.error(Error::UnsafeTraitAlias(span)),
         }
 
         match auto {
-            ast::Auto::Yes => self.error(Error::AutoTraitAlias),
+            ast::Auto::Yes(span) => self.error(Error::AutoTraitAlias(span)),
             ast::Auto::No => {}
         }
 
@@ -1247,7 +1250,7 @@ enum Qualifier<'src> {
     Static,
     Trait,
     Type(Span),
-    Unsafe,
+    Unsafe(Span),
 }
 
 impl<'src> Qualifier<'src> {
@@ -1263,14 +1266,14 @@ impl<'src> Qualifier<'src> {
 
     fn strip_unsafe(qualifiers: &mut [Self]) -> (ast::Safety, &mut [Self]) {
         match qualifiers {
-            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Self::Unsafe(span), qualifiers @ ..] => (ast::Safety::Unsafe(*span), qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
     }
 
     fn strip_safety(qualifiers: &mut [Self]) -> (ast::Safety<()>, &mut [Self]) {
         match qualifiers {
-            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Self::Unsafe(span), qualifiers @ ..] => (ast::Safety::Unsafe(*span), qualifiers),
             [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe(()), qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }
@@ -1287,5 +1290,5 @@ impl<'src> Qualifier<'src> {
 #[derive(Clone, Copy)]
 enum ImplKind {
     Normal,
-    Delegation,
+    Delegation(Span),
 }

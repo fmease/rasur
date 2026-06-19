@@ -481,10 +481,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Pipe] => {
                 let mut modifiers = ast::ClosureExprModifiers::default();
 
-                // FIXME: Register feature.
-                // FEATURE: `closure_lifetime_binder` <https://github.com/rust-lang/rust/issues/97362>
                 let (bound_vars, mut qualifiers) = match qualifiers {
-                    [Qualifier::ForBinder(bound_vars), qualifiers @ ..] => {
+                    [Qualifier::ForBinder(span, bound_vars), qualifiers @ ..] => {
+                        self.feature(Feature::closure_lifetime_binder, *span);
                         (mem::take(bound_vars), &*qualifiers)
                     }
                     _ => (Vec::new(), &*qualifiers),
@@ -765,10 +764,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     break;
                 }
                 TokenKind::For if self.pick_generic_param_list_over_ext_path(1) => {
+                    let span = self.token.span;
                     self.advance();
                     self.parse(TokenPrefix::LessThan)?;
                     let bound_vars = self.fin_parse_generic_param_list()?;
-                    qualifiers.push(Qualifier::ForBinder(bound_vars));
+                    // FIXME: The span should also include the list of parameters.
+                    qualifiers.push(Qualifier::ForBinder(span, bound_vars));
                     continue;
                 }
                 TokenKind::Gen => Qualifier::Gen(self.token.span),
@@ -959,8 +960,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let pat = self.parse_pat(OrPolicy::Parse)?;
 
             let (pat, guard) = match pat {
-                ast::Pat::Grouped(ast::Pat::Guarded(pat, guard)) => {
-                    self.error(Error::ParenthesizedGuardedPatInMatch);
+                ast::Pat::Grouped(span, ast::Pat::Guarded(pat, guard)) => {
+                    self.error(Error::ParenthesizedGuardedPatInMatch(span));
 
                     (*pat, Some(*guard))
                 }
@@ -1121,7 +1122,7 @@ impl ast::Pat<'_> {
             | Self::Borrow(.., pat)
             | Self::Box(pat)
             | Self::Deref(pat)
-            | Self::Grouped(pat)
+            | Self::Grouped(_, pat)
             | Self::Guarded(pat, _)
             | Self::Or(_, pat) => pat.contains_never_or_macro_call(),
             Self::Slice(pats) | Self::Tuple(pats) => {
@@ -1333,7 +1334,7 @@ enum Level {
 enum Qualifier<'src> {
     Async,
     Const(Span),
-    ForBinder(Vec<ast::GenericParam<'src>>),
+    ForBinder(Span, Vec<ast::GenericParam<'src>>),
     Gen(Span),
     Move(Span),
     OpenCurlyBracket,

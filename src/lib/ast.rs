@@ -84,7 +84,7 @@ pub enum Safety<X = !> {
     #[default]
     Inherited,
     Safe(X),
-    Unsafe,
+    Unsafe(Span),
 }
 
 #[derive_const(Default)]

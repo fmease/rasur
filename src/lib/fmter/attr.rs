@@ -38,7 +38,7 @@ impl Fmt for (ast::Meta<'_>, ast::AttrStyle) {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => fmt!(cx, "unsafe("),
+            ast::Safety::Unsafe(_) => fmt!(cx, "unsafe("),
         }
 
         path.fmt(cx);
@@ -58,7 +58,7 @@ impl Fmt for (ast::Meta<'_>, ast::AttrStyle) {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => fmt!(cx, ")"),
+            ast::Safety::Unsafe(_) => fmt!(cx, ")"),
         }
 
         fmt!(cx, "]");

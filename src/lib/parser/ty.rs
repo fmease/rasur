@@ -247,7 +247,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     continue;
                 }
                 TokenKind::Unsafe if self.peek(1).kind != TokenKind::SingleLessThan => {
-                    Qualifier::Unsafe
+                    Qualifier::Unsafe(self.token.span)
                 }
                 _ => break,
             };
@@ -569,14 +569,29 @@ impl<'src> super::Parser<'_, '_, 'src> {
     fn parse_bound(&mut self) -> Result<ast::Bound<'src>> {
         // NOTE: To be kept in sync with `Self::begins_bound`.
 
-        // We parse the trait bound "frontmatter" for all bound kinds to
-        // reject them afterwards with a better diagnostic.
         let grouped = self.consume(TokenKind::OpenRoundBracket);
         let bound_vars = self.parse_for_binder()?;
         let modifiers = self.parse_trait_bound_modifiers(bound_vars.as_ref())?;
 
+        if grouped
+            || bound_vars.is_some()
+            || modifiers != ast::TraitBoundModifiers::NONE
+            || self.begins_path(0)
+        {
+            let path = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
+
+            if grouped {
+                self.parse(TokenKind::CloseRoundBracket)?;
+            }
+
+            return Ok(ast::Bound::Trait {
+                bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
+                modifiers,
+                path,
+            });
+        }
+
         if let Some(lt) = self.parse_lifetime() {
-            self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
             return Ok(ast::Bound::Outlives(lt));
         }
 
@@ -600,50 +615,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     }
                 })?;
 
-            self.reject_trait_bound_frontmatter(grouped, bound_vars, modifiers)?;
-
             return Ok(ast::Bound::Use(captures));
         }
 
-        if self.begins_path(0) {
-            let path = self.parse_path::<ast::UnambiguousGenericArgs>(PathMode::Normal)?;
-
-            if grouped {
-                self.parse(TokenKind::CloseRoundBracket)?;
-            }
-
-            return Ok(ast::Bound::Trait {
-                bound_vars: bound_vars.map_or(Vec::new(), |(vars, _)| vars),
-                modifiers,
-                path,
-            });
-        }
-
         self.fatal(Error::UnexpectedToken(self.token, frags![Fragment::Bound]))
-    }
-
-    #[allow(clippy::needless_pass_by_value)] // the callers want to dispose of the bad binder
-    fn reject_trait_bound_frontmatter(
-        &mut self,
-        grouped: bool,
-        bound_vars: Option<(Vec<ast::GenericParam<'src>>, Span)>,
-        modifiers: ast::TraitBoundModifiers,
-    ) -> Result<()> {
-        if grouped {
-            self.parse(TokenKind::CloseRoundBracket)?;
-            // FIXME: (Multi)Span
-            self.error(Error::InvalidParenthesizedBound);
-        }
-
-        if let Some((_, span)) = bound_vars {
-            self.error(Error::HigherRankedBinderOnInvalidBound(span));
-        }
-
-        if modifiers != ast::TraitBoundModifiers::NONE {
-            self.error(Error::ModifiersOnInvalidBound); // FIXME: span
-        }
-
-        Ok(())
     }
 
     fn begins_bound(&self, offset: usize) -> bool {
@@ -833,13 +808,13 @@ enum Qualifier<'src> {
     Fn,
     ForBinder(Vec<ast::GenericParam<'src>>),
     Safe,
-    Unsafe,
+    Unsafe(Span),
 }
 
 impl<'src> Qualifier<'src> {
     fn strip_safety(qualifiers: &[Self]) -> (ast::Safety<()>, &[Self]) {
         match qualifiers {
-            [Self::Unsafe, qualifiers @ ..] => (ast::Safety::Unsafe, qualifiers),
+            [Self::Unsafe(span), qualifiers @ ..] => (ast::Safety::Unsafe(*span), qualifiers),
             [Self::Safe, qualifiers @ ..] => (ast::Safety::Safe(()), qualifiers),
             _ => (ast::Safety::Inherited, qualifiers),
         }

@@ -243,7 +243,7 @@ pub struct ImplTraitRef<'src> {
 #[derive(Clone, Copy, Debug)]
 pub enum ImplPolarity {
     Positive,
-    Negative,
+    Negative(Span),
 }
 
 #[derive(Debug)]
@@ -295,7 +295,7 @@ pub struct TraitAliasItem<'src> {
 
 #[derive(Default, Debug)]
 pub struct TraitItemModifiers<'src> {
-    pub impl_restriction: Option<Path<'src, NoGenericArgs>>,
+    pub impl_restriction: Option<(Span, Path<'src, NoGenericArgs>)>,
     pub const_: Const,
     pub safety: Safety,
     pub auto: Auto,
@@ -303,7 +303,7 @@ pub struct TraitItemModifiers<'src> {
 
 #[derive(Default, Debug)]
 pub enum Auto {
-    Yes,
+    Yes(Span),
     #[default]
     No,
 }

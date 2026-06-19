@@ -71,9 +71,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     pub fn parse_meta(&mut self) -> Result<ast::Meta<'src>> {
-        let safety = if self.consume(TokenKind::Unsafe) {
+        let safety = if let span = self.token.span
+            && self.consume(TokenKind::Unsafe)
+        {
             self.parse(TokenKind::OpenRoundBracket)?;
-            ast::Safety::Unsafe
+            ast::Safety::Unsafe(span)
         } else {
             ast::Safety::Inherited
         };
@@ -110,7 +112,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         match safety {
             ast::Safety::Inherited => {}
-            ast::Safety::Unsafe => self.parse(TokenKind::CloseRoundBracket)?,
+            ast::Safety::Unsafe(_) => self.parse(TokenKind::CloseRoundBracket)?,
         }
 
         Ok(ast::Meta { safety, path, args })

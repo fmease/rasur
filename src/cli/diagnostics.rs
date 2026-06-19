@@ -15,7 +15,9 @@ impl IntoDiag for Error {
     fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
         match self {
             Self::AmbiguousPlus(span) => Diag::error("ambiguous `+`").highlight(span),
-            Self::AutoTraitAlias => Diag::error("trait aliases cannot be marked `auto`"),
+            Self::AutoTraitAlias(span) => {
+                Diag::error("trait aliases cannot be marked `auto`").highlight(span)
+            }
             Self::DefaultOnInvalidItem(span) => {
                 Diag::error("this item kind may not be marked with `default`").highlight(span)
             }
@@ -45,10 +47,6 @@ impl IntoDiag for Error {
             Self::ExpectedTraitFoundTy(span) => {
                 Diag::error("found type expected trait").highlight(span)
             }
-            Self::ModifiersOnInvalidBound => Diag::error("this bound kind may not have modifiers"),
-            Self::HigherRankedBinderOnInvalidBound(span) => {
-                Diag::error("this bound kind may not have a binder").highlight(span)
-            }
             Self::MisplacedReceiver(span) => Diag::error("misplaced receiver").highlight(span),
             Self::ChainedComparison(span) => {
                 Diag::error("comparison operators cannot be chained").highlight(span)
@@ -68,12 +66,12 @@ impl IntoDiag for Error {
             Self::InvalidExprPrefix(span) => {
                 Diag::error("invalid expression modifiers").highlight(span)
             }
-            Self::TraitImplModifierInInherentImpl(modifier) => {
+            Self::TraitImplModifierInInherentImpl(span, modifier) => {
                 Diag::error(format!("trait impl modifier `{modifier}` in inherent impl"))
+                    .highlight(span)
             }
-            Self::UnsafeTraitAlias => Diag::error("trait aliases cannot be marked `unsafe`"),
-            Self::InvalidParenthesizedBound => {
-                Diag::error("this bound kind may not be parenthesized")
+            Self::UnsafeTraitAlias(span) => {
+                Diag::error("trait aliases cannot be marked `unsafe`").highlight(span)
             }
             Self::VisibilityOnInvalidItem(span) => {
                 Diag::error("this item kind may not be marked with visibility").highlight(span)
@@ -91,7 +89,9 @@ impl IntoDiag for Error {
                 Diag::error("unknown built-in syntax").highlight(span)
             }
             Self::InvalidLetChain(span) => Diag::error("invalid let-chain").highlight(span),
-            Self::ReuseInherentImpl => Diag::error("inherent impls cannot be reused"),
+            Self::ReuseInherentImpl(span) => {
+                Diag::error("inherent impls cannot be reused").highlight(span)
+            }
             Self::InvalidRawIdent(IdentKind::Normal, span) => {
                 Diag::error("invalid raw identifier").highlight(span)
             }
@@ -111,8 +111,8 @@ impl IntoDiag for Error {
                 Diag::error("string literal guard too large").highlight(span)
             }
             Self::ReservedMultiHash(span) => Diag::error("reserved multi-hash").highlight(span),
-            Self::ImplRestrictedTraitAlias => {
-                Diag::error("trait aliases cannot be impl-restricted")
+            Self::ImplRestrictedTraitAlias(span) => {
+                Diag::error("trait aliases cannot be impl-restricted").highlight(span)
             }
             Self::InvalidEscapeSequence(span) => {
                 Diag::error("invalid escape sequence").highlight(span)
@@ -138,8 +138,8 @@ impl IntoDiag for Error {
             Self::InvalidAbiStr(span) => Diag::error("invalid ABI string").highlight(span),
             Self::InvalidLitSuffix(span) => Diag::error("invalid literal suffix").highlight(span),
             Self::NonDecFloatLit(span) => Diag::error("non-decimal float literal").highlight(span),
-            Self::ParenthesizedGuardedPatInMatch => {
-                Diag::error("parenthesized guarded pattern in match expression")
+            Self::ParenthesizedGuardedPatInMatch(span) => {
+                Diag::error("parenthesized guarded pattern in match expression").highlight(span)
             }
             Self::EmptyExponent(span) => Diag::error("empty exponent").highlight(span),
             Self::InvalidFrontmatterInfostring(span) => {
