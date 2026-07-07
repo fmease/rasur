@@ -176,7 +176,6 @@ impl ast::Ty<'_> {
             Self::FnPtr(ty) => ty.output.as_ref().is_none_or(ast::Ty::else_may_follow),
             Self::MacroCall(ty) => ty.bracket.else_may_follow(),
             Self::Ptr(_, ty) | Self::UnsafeBinder(_, ty) => ty.else_may_follow(),
-            // BLOCKED(upstream): FIXME: consider view (presence forces false)
             Self::Ref(ty) => ty.pointee.else_may_follow(),
         }
     }

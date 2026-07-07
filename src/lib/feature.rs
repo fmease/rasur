@@ -80,7 +80,6 @@ features! {
     unnamed_enum_variants #156628,
     unsafe_binders #130516,
     unsafe_fields #132922,
-    view_types #155938,
     where_clause_attrs #115590,
     yeet_expr #96373,
     yield_expr #43122,

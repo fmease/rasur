@@ -115,25 +115,12 @@ impl Fmt for TrailingSpace<ast::FnPtrTyModifiers<'_>> {
 
 impl Fmt for ast::RefTy<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { lt, kind, mut_, pointee, view } = self;
+        let Self { lt, kind, mut_, pointee } = self;
 
         fmt!(cx, "&");
         lt.trailing_space().fmt(cx);
         (kind, mut_).trailing_space().fmt(cx);
         pointee.fmt(cx);
-        if let Some(fields) = view {
-            let non_empty = !fields.is_empty();
-
-            fmt!(cx, ".{{");
-            if non_empty {
-                fmt!(cx, " ");
-            }
-            fields.interleave(", ").fmt(cx);
-            if non_empty {
-                fmt!(cx, " ");
-            }
-            fmt!(cx, "}}");
-        }
     }
 }
 

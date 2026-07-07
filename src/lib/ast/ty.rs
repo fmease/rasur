@@ -59,7 +59,6 @@ pub struct RefTy<'src> {
     pub kind: BorrowKind<!>,
     pub mut_: Mut,
     pub pointee: Ty<'src>,
-    pub view: Option<Vec<Ident<'src>>>,
 }
 
 #[derive(Debug)]

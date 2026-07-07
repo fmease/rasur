@@ -392,13 +392,7 @@ impl Fmt for ast::FnParam<'_> {
                 binder.fmt(cx);
             }
             (
-                ast::Ty::Ref(ast::RefTy {
-                    lt,
-                    mut_,
-                    kind,
-                    pointee: ast::Ty::ImplicitSelf,
-                    view: None,
-                }),
+                ast::Ty::Ref(ast::RefTy { lt, mut_, kind, pointee: ast::Ty::ImplicitSelf }),
                 ast::Pat::Binding(ast::BindingPat { binder, .. }),
             ) => {
                 fmt!(cx, "&");
