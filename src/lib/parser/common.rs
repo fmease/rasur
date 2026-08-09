@@ -210,14 +210,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
             _ => 0,
         };
 
-        if let TokenKind::False | TokenKind::CommonIdent | TokenKind::True | TokenKind::Underscore =
-            self.peek(offset).kind
-            && let TokenKind::SingleColon = self.peek(offset + 1).kind
-        {
-            return true;
+        match self.peek(offset).kind {
+            TokenKind::False
+            | TokenKind::CommonIdent
+            | TokenKind::SelfLower
+            | TokenKind::True
+            | TokenKind::Underscore => self.peek(offset + 1).kind == TokenKind::SingleColon,
+            _ => false,
         }
-
-        false
     }
 
     // FIXME: Rewrite this using "probe2"?

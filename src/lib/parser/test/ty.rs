@@ -650,6 +650,35 @@ fn weak_keyword_dyn() {
 }
 
 #[test]
+fn fn_ptr_tys() {
+    // FIXME: Add historical context about "restricted patterns".
+    // FIXME: Also exercise `true`, `false`, `&&true`, `&x`, ...
+    t!(
+        parse_ty,
+        Rust2015,
+        "fn(&&self: ())",
+        Ok(ast::Ty::FnPtr(ast::FnPtrTy {
+            inputs: [ast::FnParam {
+                pat: ast::Pat::Borrow(
+                    ..,
+                    ast::Pat::Borrow(
+                        ..,
+                        ast::Pat::Binding(ast::BindingPat {
+                            binder: ast::Ident!("self"),
+                            pat: None,
+                            ..
+                        })
+                    )
+                ),
+                ty: ast::Ty::Tuple([]),
+                ..
+            }],
+            ..
+        }))
+    );
+}
+
+#[test]
 fn ty_modifiers() {
     t!(
         parse_ty,
