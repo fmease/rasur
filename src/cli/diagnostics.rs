@@ -13,7 +13,7 @@ use std::{
 
 impl IntoDiag for Error {
     fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
-        let diag = Diag::new(ann::Level::ERROR).span(self.span);
+        let diag = Diag::new(Level::Error).span(self.span);
 
         match self.kind {
             ErrorKind::AbiStrSuffix => diag.title("suffix on ABI string"),
@@ -208,19 +208,19 @@ impl ToDiagStr for Fragment {
 }
 
 pub(super) struct Diag {
-    level: ann::Level<'static>,
+    level: Level,
     title: Option<Cow<'static, str>>,
     span: Option<(Span, Option<Cow<'static, str>>)>,
     subs: Vec<(ann::Level<'static>, Cow<'static, str>)>,
 }
 
 impl Diag {
-    pub(super) fn new(level: ann::Level<'static>) -> Self {
+    pub(super) fn new(level: Level) -> Self {
         Self { level, title: None, span: None, subs: Vec::new() }
     }
 
     pub(super) fn error(title: impl Into<Cow<'static, str>>) -> Self {
-        Self::new(ann::Level::ERROR).title(title)
+        Self::new(Level::Error).title(title)
     }
 
     pub(super) fn title(mut self, title: impl Into<Cow<'static, str>>) -> Self {
@@ -253,9 +253,14 @@ impl Diag {
     }
 
     pub(super) fn render(self, cx: &RenderCx<'_>) {
+        let level = match self.level {
+            Level::Error => ann::Level::ERROR,
+            Level::Warning => ann::Level::WARNING,
+        };
+
         let mut group = match self.title {
-            Some(title) => ann::Group::with_title(self.level.title(title)),
-            None => ann::Group::with_level(self.level),
+            Some(title) => ann::Group::with_title(level.title(title)),
+            None => ann::Group::with_level(level),
         };
 
         let path;
@@ -284,6 +289,21 @@ impl Diag {
         let renderer = if cx.colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
         let diag = renderer.short_message(cx.short).render(&[group]);
         eprintln!("{diag}");
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Level {
+    Error,
+    Warning,
+}
+
+impl Level {
+    pub(crate) fn apply<T>(self, result: &mut Result<T, ()>) {
+        match self {
+            Self::Error => *result = Err(()),
+            Self::Warning => {}
+        }
     }
 }
 

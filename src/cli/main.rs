@@ -12,7 +12,7 @@ mod feature;
 mod interface;
 
 use crate::{
-    diagnostics::{Diag, IntoDiag, SourcePathBuf},
+    diagnostics::{Diag, IntoDiag, Level, SourcePathBuf},
     interface::ArtifactType,
 };
 use Default::default;
@@ -100,25 +100,21 @@ fn try_main() -> Result<(), ()> {
         eprintln!("{file:#?}");
     }
 
-    let enabled_features = if opts.gatekeep
+    let (enabled_features, mut result) = if opts.gatekeep
         && let Ok(file) = &file
     {
-        let (features, errors) = feature::enabled_features(file, source, edition);
-        for error in errors {
-            error.into_diag(&cx).render(&cx);
-        }
-        features
+        feature::enabled_features(file, source, edition, &cx)
     } else {
-        default()
+        (default(), Ok(()))
     };
 
-    let result = report(store, enabled_features, &opts, &cx);
+    result = result.and(report(store, enabled_features, &opts, &cx));
 
     if let Some(ArtifactType::Fmt) = opts.emit
         && let Ok(file) = file
     {
-        let result = fmter::fmt(file, source, shebang, frontmatter, edition, default());
-        println!("{result}");
+        let fmted = fmter::fmt(file, source, shebang, frontmatter, edition, default());
+        println!("{fmted}");
     }
 
     result
@@ -142,18 +138,13 @@ fn report(
             let kind = feature.kind();
 
             if enabled_features.contains(&feature)
-                && (!matches!(kind, FeatureKind::SuperInternal)
-                    || opts.unlock_super_internal_features)
+                && (kind != FeatureKind::SuperInternal || opts.unlock_super_internal_features)
             {
                 continue;
             }
 
-            let level = if feature.protected() {
-                result = Err(());
-                annotate_snippets::Level::ERROR
-            } else {
-                annotate_snippets::Level::WARNING
-            };
+            let level = if feature.protected() { Level::Error } else { Level::Warning };
+            level.apply(&mut result);
 
             let diag = Diag::new(level).title(format!("use of {kind} feature `{feature}`"));
             let diag = if let Some(issue) = feature.tracking_issue() {

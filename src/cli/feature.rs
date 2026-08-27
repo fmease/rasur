@@ -1,7 +1,4 @@
-use crate::{
-    Diag,
-    diagnostics::{IntoDiag, RenderCx, ToDiagStr},
-};
+use crate::diagnostics::{self as diag, IntoDiag, Level, RenderCx, ToDiagStr};
 use rasur::{
     ast::{self, Token, TokenKind},
     edition::Edition,
@@ -13,11 +10,12 @@ use rasur::{
 use std::{borrow::Cow, collections::HashSet, fmt, ops::ControlFlow};
 use utility::{List1, list1};
 
-pub fn enabled_features<'src>(
+pub(crate) fn enabled_features<'src>(
     file: &ast::File<'src>,
     source: &'src str,
     edition: Edition,
-) -> (HashSet<Feature>, Vec<Error<'src>>) {
+    cx: &RenderCx<'_>,
+) -> (HashSet<Feature>, Result<(), ()>) {
     let store = Store::default();
     let mut p = EarlyAttrParser::new(source, edition, &store);
 
@@ -36,18 +34,27 @@ pub fn enabled_features<'src>(
         features.insert(Feature::yield_expr);
     }
 
-    let mut errors = p.errors;
-    errors.extend(store.errors.into_inner().into_iter().map(Error::Parse));
+    let mut result = Ok(());
 
-    // FIXME: This might become reachable in the future, pave the way.
-    debug_assert!(store.features.into_inner().is_empty());
+    for diag in p.diags {
+        diag.level().apply(&mut result);
+        diag.into_diag(cx).render(cx);
+    }
 
-    (features, errors)
+    for error in store.errors.into_inner() {
+        result = Err(());
+        error.into_diag(cx).render(cx);
+    }
+
+    // FIXME: Is this somehow reachable?
+    assert!(store.features.into_inner().is_empty());
+
+    (features, result)
 }
 
 struct EarlyAttrParser<'tok, 'sto, 'src> {
     p: Parser<'tok, 'sto, 'src>,
-    errors: Vec<Error<'src>>,
+    diags: Vec<Diag<'src>>,
     features: HashSet<Feature>,
 }
 
@@ -57,7 +64,7 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
         Self {
             p: Parser::new(tokens, source, edition, store),
-            errors: Vec::new(),
+            diags: Vec::new(),
             features: HashSet::default(),
         }
     }
@@ -85,11 +92,11 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
     fn parse_cfg_attr(&mut self, attr: &ast::Meta<'src>) -> Result<Cfg<'src>, ()> {
         if let ast::Safety::Unsafe(span) = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::Cfg));
+            self.diag(Diag::UnsafeOnSafeAttr(span, EarlyAttrName::Cfg));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
-            self.error(Error::MalformedAttr(EarlyAttrName::Cfg));
+            self.diag(Diag::MalformedAttr(EarlyAttrName::Cfg));
             return Err(());
         };
 
@@ -144,7 +151,7 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
                     }
                 });
             }
-            _ => self.error(Error::UnexpectedToken(self.p.token, list1![Fragment::Configuration])),
+            _ => self.diag(Diag::UnexpectedToken(self.p.token, list1![Fragment::Configuration])),
         })
     }
 
@@ -163,11 +170,11 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
     fn parse_cfg_attr_attr(&mut self, attr: &ast::Meta<'src>) -> Result<ControlFlow<()>, ()> {
         if let ast::Safety::Unsafe(span) = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::CfgAttr));
+            self.diag(Diag::UnsafeOnSafeAttr(span, EarlyAttrName::CfgAttr));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
-            self.error(Error::MalformedAttr(EarlyAttrName::CfgAttr));
+            self.diag(Diag::MalformedAttr(EarlyAttrName::CfgAttr));
             return Err(());
         };
 
@@ -199,11 +206,11 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
     fn parse_feature_attr(&mut self, attr: &ast::Meta<'src>) -> Result<(), ()> {
         if let ast::Safety::Unsafe(span) = attr.safety {
-            self.error(Error::UnsafeOnSafeAttr(span, EarlyAttrName::Feature));
+            self.diag(Diag::UnsafeOnSafeAttr(span, EarlyAttrName::Feature));
         }
 
         let ast::MetaArgs::Call(ast::Bracket::Round, tokens) = &attr.args else {
-            self.error(Error::MalformedAttr(EarlyAttrName::Feature));
+            self.diag(Diag::MalformedAttr(EarlyAttrName::Feature));
             return Ok(());
         };
 
@@ -217,8 +224,8 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
             for ident in idents {
                 match ident.name.parse::<Feature>() {
                     Ok(feature) if this.features.insert(feature) => {}
-                    Ok(feature) => this.error(Error::FeatureAlreadyEnabled(feature, ident.span)),
-                    Err(()) => this.error(Error::UnknownFeature(ident.name)),
+                    Ok(feature) => this.diag(Diag::FeatureAlreadyEnabled(feature, ident.span)),
+                    Err(()) => this.diag(Diag::UnknownFeature(ident)),
                 }
             }
 
@@ -235,20 +242,20 @@ impl<'tok, 'sto, 'src> EarlyAttrParser<'tok, 'sto, 'src> {
 
         let mut this = EarlyAttrParser {
             p,
-            errors: std::mem::take(&mut self.errors),
+            diags: std::mem::take(&mut self.diags),
             features: std::mem::take(&mut self.features),
         };
 
         let result = perform(&mut this);
 
-        self.errors = this.errors;
+        self.diags = this.diags;
         self.features = this.features;
 
         result
     }
 
-    fn error(&mut self, error: Error<'src>) {
-        self.errors.push(error);
+    fn diag(&mut self, error: Diag<'src>) {
+        self.diags.push(error);
     }
 }
 
@@ -275,44 +282,59 @@ impl Cfg<'_> {
     }
 }
 
-// FIXME: All of these need a span
 // FIXME: These are placeholder errors, improve them significantly
 #[derive(Debug)]
-pub(super) enum Error<'src> {
+enum Diag<'src> {
     UnsafeOnSafeAttr(Span, EarlyAttrName),
+    // FIXME: This needs a span.
     MalformedAttr(EarlyAttrName),
     UnexpectedToken(Token, List1<Fragment>),
     FeatureAlreadyEnabled(Feature, Span),
-    UnknownFeature(&'src str),
-    Parse(rasur::error::Error),
+    UnknownFeature(ast::Ident<'src>),
 }
 
-impl IntoDiag for Error<'_> {
-    fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
+impl Diag<'_> {
+    fn level(&self) -> Level {
+        match self {
+            // We only know about features that provide new syntax, so don't hard error.
+            | Self::UnknownFeature(..) => Level::Warning,
+            | Self::UnsafeOnSafeAttr(..)
+            | Self::MalformedAttr(..)
+            | Self::UnexpectedToken(..)
+            | Self::FeatureAlreadyEnabled(..) => Level::Error,
+        }
+    }
+}
+
+impl IntoDiag for Diag<'_> {
+    fn into_diag(self, cx: &RenderCx<'_>) -> diag::Diag {
+        let diag = diag::Diag::new(self.level());
+
         match self {
             Self::UnsafeOnSafeAttr(span, name) => {
-                Diag::error(format!("`{name}` is not an unsafe attribute")).span(span)
+                diag.title(format!("`{name}` is not an unsafe attribute")).span(span)
             }
-            Self::MalformedAttr(name) => Diag::error(format!("attribute `{name}` is malformed")),
+            Self::MalformedAttr(name) => diag.title(format!("attribute `{name}` is malformed")),
             Self::UnexpectedToken(actual, expected) => {
                 let span = actual.span;
                 let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
                 let expected = expected.to_diag_str(());
-                Diag::error(format!("found {actual} but expected {expected}"))
+                diag.title(format!("found {actual} but expected {expected}"))
                     .span(span)
                     .label("unexpected token")
             }
             Self::FeatureAlreadyEnabled(feature, span) => {
-                Diag::error(format!("feature `{feature}` is already enabled")).span(span)
+                diag.title(format!("feature `{feature}` is already enabled")).span(span)
             }
-            Self::UnknownFeature(name) => Diag::error(format!("unknown feature `{name}`")),
-            Self::Parse(error) => error.into_diag(cx),
+            Self::UnknownFeature(ident) => {
+                diag.title(format!("unknown feature `{}`", ident.name)).span(ident.span)
+            }
         }
     }
 }
 
 #[derive(Debug)]
-pub(super) enum Fragment {
+enum Fragment {
     Token(TokenKind),
     Configuration,
 }
@@ -335,7 +357,7 @@ impl From<TokenKind> for Fragment {
 }
 
 #[derive(Debug)]
-pub(super) enum EarlyAttrName {
+enum EarlyAttrName {
     Cfg,
     CfgAttr,
     Feature,

@@ -115,6 +115,7 @@ impl fmt::Display for Feature {
     }
 }
 
+#[derive(PartialEq, Eq)]
 pub enum FeatureKind {
     Experimental,
     Internal,
