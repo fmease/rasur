@@ -53,7 +53,7 @@ pub enum ErrorKind {
     InvalidStrLitDelimiter,
     InvalidTraitBoundModifier,
     InvalidTyPrefix,
-    LifetimeObjectTyWithoutPlus,
+    BareLifetimeInTy,
     MisplacedReceiver,
     MissingClosingDelimiters,
     MultiScalarCharLit,

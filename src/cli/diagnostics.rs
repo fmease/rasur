@@ -19,6 +19,7 @@ impl IntoDiag for Error {
             ErrorKind::AbiStrSuffix => diag.title("suffix on ABI string"),
             ErrorKind::AmbiguousPlus => diag.title("ambiguous `+`"),
             ErrorKind::AutoTraitAlias => diag.title("trait aliases cannot be marked `auto`"),
+            ErrorKind::BareLifetimeInTy => diag.title("bare lifetime in type"),
             ErrorKind::ChainedComparison => diag.title("comparison operators cannot be chained"),
             ErrorKind::DefaultOnInvalidItem => {
                 diag.title("this item kind may not be marked with `default`")
@@ -82,9 +83,6 @@ impl IntoDiag for Error {
             ErrorKind::InvalidStrLitDelimiter => diag.title("invalid string literal delimiter"),
             ErrorKind::InvalidTraitBoundModifier => diag.title("invalid trait bound modifier"),
             ErrorKind::InvalidTyPrefix => diag.title("invalid type modifiers"),
-            ErrorKind::LifetimeObjectTyWithoutPlus => {
-                diag.title("lifetime object type without plus")
-            }
             ErrorKind::MisplacedReceiver => diag.title("misplaced receiver"),
             ErrorKind::MissingClosingDelimiters => {
                 diag.title("missing closing delimiter(s)").label("missing delimiter(s)")

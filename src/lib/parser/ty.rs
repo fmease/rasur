@@ -170,7 +170,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             //     Clearly, this is an upstream bug. Such pluses should be flagged ambiguous.
             TokenKind::TickedIdent => {
                 if !self.matches(TokenPrefix::Plus, self.peek(1)) {
-                    self.error(ErrorKind::LifetimeObjectTyWithoutPlus, start);
+                    self.error(ErrorKind::BareLifetimeInTy, start);
                 }
 
                 let bounds = self.parse_bounds_where(p_policy.maintain())?;

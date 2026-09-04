@@ -204,7 +204,7 @@ fn bare_trait_object_tys() {
 
     t!(parse_ty, Rust2015, "Hold<'a+>", Ok(_));
 
-    t!(parse_ty, Rust2015, "'a", Err([Error { kind: ErrorKind::LifetimeObjectTyWithoutPlus, .. }]));
+    t!(parse_ty, Rust2015, "'a", Err([Error { kind: ErrorKind::BareLifetimeInTy, .. }]));
 
     // It makes sense to reject this since you can't parenthesize lifetimes in "normal" bounds either.
     t!(
@@ -212,7 +212,7 @@ fn bare_trait_object_tys() {
         Rust2015,
         "('a)+",
         Err([
-            Error { kind: ErrorKind::LifetimeObjectTyWithoutPlus, .. },
+            Error { kind: ErrorKind::BareLifetimeInTy, .. },
             Error {
                 kind: ErrorKind::UnexpectedToken(
                     TokenKind::SinglePlus,
