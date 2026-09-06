@@ -4,6 +4,7 @@ mod transformer;
 use crate::{
     edition::Edition,
     error::{Error, ErrorKind, InvalidScalarPlace},
+    feature::Feature,
     span::{At as _, ByteIndex, Span},
     store::Store,
     token::{PathSegKeyword, Token, TokenKind},
@@ -446,33 +447,47 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                     return TokenKind::CharLit;
                 }
                 Some('#') if self.edition >= Edition::Rust2021 => {
-                    if self.source(unticked) != "r" {
-                        self.error(ErrorKind::ReservedPrefix, self.span(unticked));
-                        self.advance(); // `#`
-                        return TokenKind::Error;
-                    }
-                    self.advance();
-
-                    return match self.fin_lex_raw_ident(IdentKind::Ticked, start) {
-                        Some(()) => {
-                            // This is considered to be a 'reservation'.
-                            if let Some('\'') = self.peek() {
-                                self.error(
-                                    ErrorKind::TickFollowingRawTickedIdent,
-                                    self.span(self.index()),
-                                );
-                            }
-
-                            TokenKind::TickedIdent
-                        }
-                        None => {
-                            self.error(
-                                ErrorKind::InvalidRawIdent(IdentKind::Ticked),
-                                self.span(start),
-                            );
-                            TokenKind::Error
+                    let mode = match self.source(unticked) {
+                        "k" => IdentMode::Keyword,
+                        "r" => IdentMode::Raw,
+                        _ => {
+                            self.error(ErrorKind::ReservedPrefix, self.span(unticked));
+                            self.advance(); // `#`
+                            return TokenKind::Error;
                         }
                     };
+                    self.advance();
+
+                    let kind = self.fin_lex_prefixed_ident(
+                        IdentKind::Ticked,
+                        mode,
+                        None,
+                        |ident, mode| match (mode, ident) {
+                            | (IdentMode::Keyword, TokenKind::CommonIdent)
+                            | (IdentMode::Raw, PathSegKeyword!() | TokenKind::Underscore) => false,
+                            _ => true,
+                        },
+                        |_| TokenKind::TickedIdent,
+                        start,
+                    );
+
+                    // FIXME: HACK: checking against error
+                    if kind != TokenKind::Error {
+                        // This is considered to be a 'reservation'.
+                        if let Some('\'') = self.peek() {
+                            // FIXME: Generalize to also include stropped keywords!
+                            self.error(
+                                ErrorKind::TickFollowingRawTickedIdent,
+                                self.span(self.index()),
+                            );
+                        } else {
+                            self.store
+                                .features
+                                .add((Feature::__stropped_keywords, Some(self.span(start))));
+                        }
+                    }
+
+                    return kind;
                 }
                 _ => return TokenKind::TickedIdent,
             }
@@ -593,13 +608,33 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 self.advance();
                 return self.fin_lex_raw_guarded_str_lit(start);
             }
+            ("k", Some('#')) if self.edition >= Edition::Rust2021 => {
+                self.advance();
+
+                let kind = self.fin_lex_prefixed_ident(
+                    IdentKind::Normal,
+                    IdentMode::Keyword,
+                    None,
+                    |ident, _| ident != TokenKind::CommonIdent,
+                    std::convert::identity,
+                    start,
+                );
+
+                self.store.features.add((Feature::__stropped_keywords, Some(self.span(start))));
+
+                return kind;
+            }
             ("r", Some('#')) => {
                 self.advance();
 
-                return match self.fin_lex_raw_ident(IdentKind::Normal, start) {
-                    Some(()) => TokenKind::CommonIdent,
-                    None => self.fin_lex_raw_guarded_str_lit(start),
-                };
+                return self.fin_lex_prefixed_ident(
+                    IdentKind::Normal,
+                    IdentMode::Raw,
+                    Some(|this, start| this.fin_lex_raw_guarded_str_lit(start)),
+                    |ident, _| !matches!(ident, PathSegKeyword!() | TokenKind::Underscore),
+                    |_| TokenKind::CommonIdent,
+                    start,
+                );
             }
             (_, Some(char @ ('"' | '\'' | '#'))) if self.edition >= Edition::Rust2021 => {
                 self.error(ErrorKind::ReservedPrefix, self.span(start));
@@ -614,22 +649,36 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
         self.fin_lex_str_lit(raw, flavor, start)
     }
 
-    fn fin_lex_raw_ident(&mut self, kind: IdentKind, start: ByteIndex) -> Option<()> {
+    fn fin_lex_prefixed_ident(
+        &mut self,
+        kind: IdentKind,
+        mode: IdentMode,
+        fallback: Option<fn(&mut Self, ByteIndex) -> TokenKind>,
+        validate: fn(TokenKind, IdentMode) -> bool,
+        map: fn(TokenKind) -> TokenKind,
+        start: ByteIndex,
+    ) -> TokenKind {
         if !self.peek().is_some_and(is_ident_start) {
-            return None;
+            return match fallback {
+                Some(fallback) => fallback(self, start),
+                None => {
+                    self.error(ErrorKind::InvalidIdent(kind, mode), self.span(start));
+                    TokenKind::Error
+                }
+            };
         }
 
         let unprefixed = self.index();
         self.advance();
         self.advance_while(is_ident_middle);
 
-        if let PathSegKeyword!() | TokenKind::Underscore =
-            lex_ident(self.source(unprefixed), self.edition)
-        {
-            self.error(ErrorKind::InvalidRawIdent(kind), self.span(start));
+        let ident = lex_ident(self.source(unprefixed), self.edition);
+
+        if !validate(ident, mode) {
+            self.error(ErrorKind::InvalidIdent(kind, mode), self.span(start));
         }
 
-        Some(())
+        map(ident)
     }
 
     // FIXME: Consolidate with `fin_lex_str_lit` smh
@@ -786,6 +835,12 @@ impl Iterator for Lexer<'_, '_> {
 pub enum IdentKind {
     Normal,
     Ticked,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum IdentMode {
+    Raw,
+    Keyword,
 }
 
 #[derive(Clone, Copy)]
