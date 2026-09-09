@@ -230,8 +230,6 @@ safe fn f() {}
 safe static X: ();
 static safe: ();
 trait Trait {}
-type const F: ();
-type const safe: (); // [!]
 unsafe auto trait Trait {}
 unsafe extern "C" fn f() {}
 unsafe extern "C" {}
@@ -336,8 +334,6 @@ safe fn f() {} // [+++]
 safe static X: (); // [+++]
 static safe: (); // [!]
 trait Trait {}
-type const F: ();
-type const safe: (); // [!]
 unsafe auto trait Trait {}
 unsafe extern "C" fn f() {}
 unsafe extern "C" {}

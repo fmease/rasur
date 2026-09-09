@@ -59,13 +59,9 @@ impl Fmt for (ast::ItemKind<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
 
 impl Fmt for ast::ConstItem<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { override_policy, type_level: tyness, binder, generics, ty, body } = self;
+        let Self { override_policy, binder, generics, ty, body } = self;
 
         override_policy.trailing_space().fmt(cx);
-        match tyness {
-            ast::TypeLevel::Yes => fmt!(cx, "type "),
-            ast::TypeLevel::No => {}
-        }
         fmt!(cx, "const ");
         binder.fmt(cx);
         if !generics.params.is_empty() {

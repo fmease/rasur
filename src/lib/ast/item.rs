@@ -45,17 +45,10 @@ pub enum ItemKind<'src> {
 #[derive(Debug)]
 pub struct ConstItem<'src> {
     pub override_policy: OverridePolicy,
-    pub type_level: TypeLevel,
     pub binder: Ident<'src>,
     pub generics: Generics<'src>,
     pub ty: Ty<'src>,
     pub body: Option<Expr<'src>>,
-}
-
-#[derive(Debug)]
-pub enum TypeLevel {
-    Yes,
-    No,
 }
 
 #[derive(Debug)]
