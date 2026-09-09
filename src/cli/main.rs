@@ -97,7 +97,7 @@ fn try_main() -> Result<(), ()> {
     if let Ok(file) = &file
         && let Some(ArtifactType::Ast) = opts.emit
     {
-        eprintln!("{file:#?}");
+        println!("{file:#?}");
     }
 
     let (enabled_features, mut result) = if opts.gatekeep
@@ -187,7 +187,7 @@ fn emit_tokens(
     use io::Write as _;
     use painter::{AnsiColor, Effects};
 
-    let mut p = Painter::new(io::stderr(), io::BufWriter::new);
+    let mut p = Painter::new(io::stdout(), io::BufWriter::new);
 
     let render = |p: &mut Painter<_>, span: Span| {
         p.with(AnsiColor::BrightBlack, |p| write!(p, "{span:?} "))?;
