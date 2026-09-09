@@ -86,7 +86,8 @@ impl<'src> Parser<'_, '_, 'src> {
             | TokenKind::Final
             | TokenKind::Macro
             | TokenKind::Struct
-            | TokenKind::Trait => return true,
+            | TokenKind::Trait
+            | TokenKind::Type => return true,
             _ => {}
         }
 
@@ -162,25 +163,12 @@ impl<'src> Parser<'_, '_, 'src> {
         // FIXME: Provide more targeted diagnostics if the qualifiers don't make sense.
         match qualifiers.as_mut_slice() {
             [] => {}
-            [Qualifier::Type(_)] => return self.fin_parse_ty_alias_item(override_policy),
             [Qualifier::Const(span)] if self.consume(TokenKind::OpenCurlyBracket) => {
                 self.feature(Feature::const_block_items, *span);
                 return self.fin_parse_const_block_item();
             }
-            [qualifiers @ .., Qualifier::Const(_)] => {
-                let (type_level, qualifiers) = match qualifiers {
-                    [Qualifier::Type(span), qualifiers @ ..] => {
-                        // FIXME: There's also feature gate `mgca_type_const_syntax`.
-                        self.feature(Feature::min_generic_const_args, *span);
-                        (ast::TypeLevel::Yes, qualifiers)
-                    }
-                    _ => (ast::TypeLevel::No, qualifiers),
-                };
-                if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
-                }
-
-                return self.fin_parse_const_item(override_policy, type_level);
+            [Qualifier::Const(_)] => {
+                return self.fin_parse_const_item(override_policy);
             }
             // `crate` can't be a qualifier itself because it may also begin paths & it's not worth the look-ahead.
             [Qualifier::Extern(None)] if self.consume(TokenKind::Crate) => {
@@ -313,6 +301,10 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_struct_item();
             }
+            TokenKind::Type => {
+                self.advance();
+                return self.fin_parse_ty_alias_item(override_policy);
+            }
             TokenKind::Use => {
                 self.advance();
                 return self.fin_parse_use_item();
@@ -390,7 +382,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 TokenKind::Mod => Qualifier::Mod,
                 TokenKind::Static => Qualifier::Static,
                 TokenKind::Trait => Qualifier::Trait,
-                TokenKind::Type => Qualifier::Type(self.token.span),
                 TokenKind::Unsafe if self.peek(1).kind != TokenKind::OpenCurlyBracket => {
                     Qualifier::Unsafe(self.token.span)
                 }
@@ -405,7 +396,6 @@ impl<'src> Parser<'_, '_, 'src> {
     fn fin_parse_const_item(
         &mut self,
         override_policy: ast::OverridePolicy,
-        type_level: ast::TypeLevel,
     ) -> Result<ast::ItemKind<'src>> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
         let params = self
@@ -422,7 +412,6 @@ impl<'src> Parser<'_, '_, 'src> {
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {
             override_policy,
-            type_level,
             binder,
             generics: ast::Generics { params, preds },
             ty,
@@ -1254,7 +1243,6 @@ enum Qualifier<'src> {
     Safe,
     Static,
     Trait,
-    Type(Span),
     Unsafe(Span),
 }
 
