@@ -1,9 +1,10 @@
+use super::super::Fragment;
 use super::{parse_expr, parse_file, parse_item, parse_pat, parse_ty, t};
 use crate::{
     ast,
     edition::Edition::*,
     error::{Error, ErrorKind},
-    lexer::IdentKind,
+    lexer::{IdentKind, IdentMode},
     token::{Token, TokenKind},
 };
 
@@ -276,8 +277,8 @@ fn raw_idents() {
         Rust2015,
         "K!(r#self r#_);",
         Err([
-            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Normal), .. },
-            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Normal), .. }
+            Error { kind: ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Raw), .. },
+            Error { kind: ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Raw), .. }
         ])
     );
 
@@ -374,12 +375,11 @@ fn raw_ticked_idents() {
             ..
         })
     );
-
     t!(
         parse_item,
         Rust2021,
         "type R = &'r#_ ();",
-        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. }])
     );
 
     // We once used to accept this by mistake!
@@ -389,8 +389,8 @@ fn raw_ticked_idents() {
         Rust2021,
         "seg!('r#self 'r#Self);",
         Err([
-            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
-            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
+            Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. },
+            Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. },
         ])
     );
 
@@ -399,7 +399,7 @@ fn raw_ticked_idents() {
         parse_item,
         Rust2021,
         "W!('r#0);",
-        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. }])
     );
 
     // We once used to accept this by mistake treating it as an empty raw ticked ident!
@@ -407,7 +407,7 @@ fn raw_ticked_idents() {
         parse_item,
         Rust2021,
         "O!('r#);",
-        Err([Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. }])
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. }])
     );
 }
 
@@ -478,7 +478,7 @@ fn char_lits_or_ticked_idents() {
         Rust2021,
         "W!('r#');",
         Err([
-            Error { kind: ErrorKind::InvalidRawIdent(IdentKind::Ticked), .. },
+            Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Raw), .. },
             Error { kind: ErrorKind::UnterminatedCharLit, .. },
             Error { kind: ErrorKind::MissingClosingDelimiters, .. },
         ])
@@ -499,4 +499,110 @@ fn char_lits_or_ticked_idents() {
         "M! { 'r#a'r#a }",
         Err([Error { kind: ErrorKind::TickFollowingRawTickedIdent, .. }])
     );
+}
+
+#[test]
+fn stropped_keywords() {
+    t!(
+        parse_item,
+        Rust2021,
+        "k#fn diverge() -> ! { k#loop {} }",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(ast::FnItem {
+                binder: ast::Ident!("diverge"),
+                body: Some(ast::BlockExpr {
+                    stmts: [ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Loop(..), .. }, _)]
+                }),
+                ..
+            }),
+            ..
+        })
+    );
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2021,
+        "Q![ k# ];",
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Keyword), .. }])
+    );
+    t!(
+        parse_item,
+        Rust2021,
+        "Q![ k#common ];",
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Normal, IdentMode::Keyword), .. }])
+    );
+
+    t!(
+        parse_expr,
+        Rust2018,
+        "k#loop {}",
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::Hash,
+                [Fragment::Token(TokenKind::EndOfInput)]
+            ),
+            ..
+        }])
+    );
+}
+
+#[test]
+fn stropped_ticked_keywords() {
+    // FIXME: Both `'r#static` and `'k#static` are legal. Does that really make sense?
+    //        I'm already confused why `'r#_` is illegal but `'r#static` is not.
+    t!(
+        parse_ty,
+        Rust2021,
+        "&'k#static ()",
+        Ok(ast::Ty::Ref(ast::RefTy { lt: Some(ast::Lifetime(ast::Ident!("static"))), .. }))
+    );
+
+    t!(
+        parse_ty,
+        Rust2021,
+        "&'k#_ ()",
+        Ok(ast::Ty::Ref(ast::RefTy { lt: Some(ast::Lifetime(ast::Ident!("_"))), .. }))
+    );
+
+    // These are lexically accepted despite
+    // * `'static` not being a valid label and
+    // * `'if` not being a valid lifetime or label.
+    // That's fine because non-stropped ticked "keywords" are also lexically allowed.
+    // Only syntactically they may be invalid.
+    t!(parse_item, Rust2021, "T!( 'k#static );", Ok(_));
+    t!(parse_item, Rust2021, "T!( 'k#if );", Ok(_));
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2021,
+        "T!( 'k#common );",
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Keyword), .. }])
+    );
+
+    // Using a macro call to demonstrate that this is a lexical error even!
+    t!(
+        parse_item,
+        Rust2021,
+        "U!( 'k# );",
+        Err([Error { kind: ErrorKind::InvalidIdent(IdentKind::Ticked, IdentMode::Keyword), .. }])
+    );
+
+    t!(
+        parse_ty,
+        Rust2018,
+        "&'k#static ();",
+        Err([Error { kind: ErrorKind::UnexpectedToken(TokenKind::Hash, _), .. }])
+    );
+
+    // While `'k#static` is lexically valid, it's not syntactically valid as a label:
+    t!(
+        parse_expr,
+        Rust2021,
+        "'k#static: loop {}",
+        Err([Error { kind: ErrorKind::ReservedLabel, .. }])
+    );
+
+    t!(parse_expr, Rust2021, "'k#_: loop {}", Err([Error { kind: ErrorKind::ReservedLabel, .. }]));
 }

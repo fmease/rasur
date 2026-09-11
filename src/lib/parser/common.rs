@@ -61,6 +61,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.advance();
 
         let source = &self.source(span)[const { "'".len() }..];
+        let source = source.strip_prefix("k#").unwrap_or(source);
         let ident = lex_ident(source, self.edition);
         if !validate(ident) {
             self.error(error, span);

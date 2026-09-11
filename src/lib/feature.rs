@@ -38,6 +38,7 @@ macro_rules! features {
 }
 
 features! {
+    __stropped_keywords #0, // FIXME: placeholder
     async_for_loop #118898,
     async_trait_bounds #62290,
     auto_traits #13231,
