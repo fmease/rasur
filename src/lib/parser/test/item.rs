@@ -187,10 +187,10 @@ const safe extern fn f() {} // [***]
 const safe fn f() {} // [***]
 const safe: () = (); // [!]
 const trait Trait {}
-const unsafe auto trait Trait {} // [***]
+const unsafe auto trait Trait {}
 const unsafe extern "C" fn f() {}
-const unsafe impl Trait for () {} // [***]
-const unsafe trait Trait {} // [***]
+const unsafe impl Trait for () {}
+const unsafe trait Trait {}
 default const F: ();
 default fn f();
 default type T;
@@ -202,7 +202,6 @@ extern {}
 final fn f();
 final type T;
 fn f() {}
-fn wrap() { safe fn f() {} } // [***]
 gen extern fn f() {}
 gen fn f() {}
 gen unsafe fn f() {}
@@ -252,7 +251,7 @@ use {self::*, self::{}};
 #[test]
 fn item_modifiers_in_stmt_ctxt() {
     // FIXME: Re-audit:
-    // NOTE: Test cases marked `[***]` actually get rejected by rustc
+    // NOTE: Test cases marked `[+++]` actually get rejected by rustc
     //       but they should compile in my opinion.
     //       See also <https://github.com/rust-lang/rust/issues/146122>.
 
@@ -290,14 +289,14 @@ const gen fn f() {}
 const impl !Trait for () {}
 const impl () {}
 const impl Trait for () {}
-const safe extern fn f() {} // [***]
-const safe fn f() {} // [***]
+const safe extern fn f() {} // [+++]
+const safe fn f() {} // [+++]
 const safe: () = (); // [!]
 const trait Trait {}
-const unsafe auto trait Trait {} // [***]
+const unsafe auto trait Trait {} // [+++]
 const unsafe extern "C" fn f() {}
-const unsafe impl Trait for () {} // [***]
-const unsafe trait Trait {} // [***]
+const unsafe impl Trait for () {} // [+++]
+const unsafe trait Trait {} // [+++]
 // default const F: (); // [???]
 // default fn f(); // [???]
 // default type T; // [???]
@@ -309,7 +308,6 @@ extern {}
 final fn f(); // issue: <https://github.com/fmease/rasur/issues/26>
 final type T;
 fn f() {}
-fn wrap() { safe fn f() {} } // [***]
 gen extern fn f() {}
 gen fn f() {}
 gen unsafe fn f() {}
@@ -328,15 +326,15 @@ pub const unsafe fn f() {}
 pub final const async gen unsafe extern "C" fn f();
 pub fn f() {}
 reuse const impl Trait for () {}
-reuse const unsafe impl !Trait for () {} // [***]
+reuse const unsafe impl !Trait for () {} // [+++]
 reuse f;
 reuse impl Trait for () {}
 reuse unsafe impl Trait for () {}
-safe extern "C" fn f() {}
-safe extern fn f() {}
-safe fn f() {}
-safe static X: ();
-static safe: ();
+safe extern "C" fn f() {} // [+++]
+safe extern fn f() {} // [+++]
+safe fn f() {} // [+++]
+safe static X: (); // [+++]
+static safe: (); // [!]
 trait Trait {}
 type const F: ();
 type const safe: (); // [!]
