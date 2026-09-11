@@ -203,17 +203,6 @@ impl<'src> Parser<'_, '_, 'src> {
                 poisoned = true;
             }
 
-            if let ast::Pat::Binding(ast::BindingPat {
-                mut_: _,
-                by_ref: ast::ByRef::No,
-                binder: ast::Ident { name: "self", span },
-                pat: None,
-            }) = pat
-            {
-                self.error(ErrorKind::ForbiddenSelfParams, *span);
-                poisoned = true;
-            }
-
             if !poisoned && !matches!(pat, ast::Pat::Wildcard(ast::WildcardKind::Empty)) {
                 self.feature_no_span_fixme(Feature::named_fn_trait_parameters);
             }

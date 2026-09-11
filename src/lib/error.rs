@@ -29,7 +29,6 @@ pub enum ErrorKind {
     ForbiddenCVariadics,
     ForbiddenInnerAttrs,
     ForbiddenOuterAttrs,
-    ForbiddenSelfParams,
     FrontmatterOpeningTooLarge,
     GenericArgsOnFieldExpr,
     ImplRestrictedTraitAlias,

@@ -40,9 +40,6 @@ impl IntoDiag for Error {
             ErrorKind::ForbiddenOuterAttrs => {
                 diag.title("outer attributes are forbidden in this context")
             }
-            ErrorKind::ForbiddenSelfParams => {
-                diag.title("self parameters are forbidden in this context")
-            }
             ErrorKind::FrontmatterOpeningTooLarge => diag.title("frontmatter opening too large"),
             ErrorKind::GenericArgsOnFieldExpr => diag.title("generic args on field expression"),
             ErrorKind::ImplRestrictedTraitAlias => {
