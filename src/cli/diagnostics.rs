@@ -66,7 +66,6 @@ impl IntoDiag for Error {
             ErrorKind::InvalidOpAfterBoundary => {
                 diag.title("invalid operator following a boundary")
             }
-            ErrorKind::InvalidOpAfterCast => diag.title("invalid operator following a cast"),
             ErrorKind::InvalidRawIdent(IdentKind::Normal) => diag.title("invalid raw identifier"),
             ErrorKind::InvalidRawIdent(IdentKind::Ticked) => {
                 diag.title("invalid raw ticked identifier")

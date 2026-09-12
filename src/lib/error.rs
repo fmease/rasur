@@ -47,7 +47,6 @@ pub enum ErrorKind {
     InvalidLitSuffix,
     InvalidNumericIdent,
     InvalidOpAfterBoundary,
-    InvalidOpAfterCast,
     InvalidRawIdent(IdentKind),
     InvalidScalar(char, InvalidScalarPlace),
     InvalidStrLitDelimiter,
