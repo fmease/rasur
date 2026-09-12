@@ -302,31 +302,22 @@ impl<'src> super::Parser<'_, '_, 'src> {
         inner_ty: &mut ast::Ty<'src>,
         p_policy: PlusPolicy,
     ) -> Result<Option<ast::Ty<'src>>> {
-        const EMPTY<'src>: ast::Path<'src, ast::UnambiguousGenericArgs> =
-            ast::Path { segs: Vec::new() };
-
-        let bound = match inner_ty {
+        let mut bounds = vec![match inner_ty {
             ast::Ty::Path(ast::ExtPath { ext: None, path }) => {
-                ast::Bound::from(mem::replace(path, EMPTY))
+                ast::Bound::from(mem::replace(path, ast::Path { segs: Vec::new() }))
             }
-            ast::Ty::DynTrait(ast::DynKind::Bare, [bound]) => {
-                match bound {
-                    ast::Bound::Outlives(_) => return Ok(None),
-                    // NOTE: I'm not happy about this since use-bounds can't be parenthesized "normally".
-                    ast::Bound::Use(captures) => ast::Bound::Use(mem::take(captures)),
-                    ast::Bound::Trait { bound_vars, modifiers, path } => ast::Bound::Trait {
-                        bound_vars: mem::take(bound_vars),
-                        modifiers: *modifiers,
-                        path: mem::replace(path, EMPTY),
-                    },
-                }
-            }
+            ast::Ty::DynTrait(
+                ast::DynKind::Bare,
+                [ast::Bound::Trait { bound_vars, modifiers, path }],
+            ) => ast::Bound::Trait {
+                bound_vars: mem::take(bound_vars),
+                modifiers: *modifiers,
+                path: mem::replace(path, ast::Path { segs: Vec::new() }),
+            },
             _ => return Ok(None),
-        };
+        }];
 
         self.parse_unchecked(TokenPrefix::Plus);
-
-        let mut bounds = vec![bound];
         self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
 
         Ok(Some(ast::Ty::DynTrait(ast::DynKind::Bare, bounds)))
