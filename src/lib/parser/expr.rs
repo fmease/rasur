@@ -134,7 +134,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
 
             if let Op::Call | Op::Dot | Op::Index | Op::Try = op {
-                if let HigherPostfixOpPolicy::Yield = h_policy {
+                if let ast::ExprKind::Cast(..) = left.kind {
+                    self.error(ErrorKind::InvalidOpAfterCast, self.token.span);
+                } else if let HigherPostfixOpPolicy::Yield = h_policy {
                     break;
                 }
             } else {

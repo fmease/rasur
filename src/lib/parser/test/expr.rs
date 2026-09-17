@@ -1360,68 +1360,47 @@ fn struct_policy() {
 
 #[test]
 fn higher_postfix_op_after_cast() {
-    // Background: "Higher postfix operators" are `Call`, `Dot`, `Index` & `Try` (all of them have `>=Level::Try`).
-    // These are not allowed to follow the target type of `as` cast expressions. Nowadays we achieve that by yielding
-    // when encountering such an operator if the relevant policy says so. We set the policy to "yield" as soon as
-    // we've successfully parsed any operator other than higher postfix ones. So we don't treat casts special in any way.
-    //
-    // Before that (at a time when the parser was pretty incomplete & incorrect) we would special-case casts by
-    // manually emitting an error if it was followed by a higher postfix operator.
-    //
-    // I hope that our current approach of yielding (which can be precarious) is correct in general. I hope that there isn't
-    // an input where we would yield and the parent parser would successfully pick up the higher postfix operator after the
-    // cast. It's been a while, I'd need to reacquaint myself with the deep end of operator parsing to figure that out.
+    // "Higher postfix operators" are `Call`, `Dot`, `Index` & `Try` (all of them have `>=Level::Try`).
+    // These are not allowed to follow the target type of `as` cast expressions.
 
     t!(
         parse_expr,
         Rust2015,
         "x as T()()", // Call
-        Err([Error {
-            kind: ErrorKind::UnexpectedToken(
-                TokenKind::OpenRoundBracket,
-                [Fragment::Token(TokenKind::EndOfInput)]
-            ),
-            ..
-        }])
+        Err([Error { kind: ErrorKind::InvalidOpAfterCast, .. }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "x as T.p", // Dot
-        Err([Error {
-            kind: ErrorKind::UnexpectedToken(
-                TokenKind::SingleDot,
-                [Fragment::Token(TokenKind::EndOfInput)]
-            ),
-            ..
-        }])
+        Err([Error { kind: ErrorKind::InvalidOpAfterCast, .. }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "x as T[0]", // Index
-        Err([Error {
-            kind: ErrorKind::UnexpectedToken(
-                TokenKind::OpenSquareBracket,
-                [Fragment::Token(TokenKind::EndOfInput)]
-            ),
-            ..
-        }])
+        Err([Error { kind: ErrorKind::InvalidOpAfterCast, .. }])
     );
 
     t!(
         parse_expr,
         Rust2015,
         "x as T?", // Try
-        Err([Error {
-            kind: ErrorKind::UnexpectedToken(
-                TokenKind::QuestionMark,
-                [Fragment::Token(TokenKind::EndOfInput)]
-            ),
-            ..
-        }])
+        Err([Error { kind: ErrorKind::InvalidOpAfterCast, .. }])
+    );
+
+    // Context: We once used to accidentally accept this because we would yield before the "invalid op after cast" check.
+    // "Yield" in sense of "break out of the operator parsing loop and giving control back to the caller / parent parser".
+    // We would yield because have higher postfix operator `Index` and the higher postfix operator policy is "yield" as
+    // we've succesfully parsed an operator (here: `Cast`). Consequently we still parse this as `(return (0 as ()))[0]`
+    // except that now we emit the artificial error again.
+    t!(
+        parse_expr,
+        Rust2015,
+        "return 0 as ()[0]",
+        Err([Error { kind: ErrorKind::InvalidOpAfterCast, .. }])
     );
 }
 
