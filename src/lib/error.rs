@@ -1,4 +1,9 @@
-use crate::{lexer::IdentKind, parser::Fragment, span::Span, token::TokenKind};
+use crate::{
+    lexer::{IdentKind, IdentMode},
+    parser::Fragment,
+    span::Span,
+    token::TokenKind,
+};
 pub use utility::List1;
 
 #[derive(Clone, Debug)]
@@ -41,13 +46,13 @@ pub enum ErrorKind {
     InvalidExtraFieldProjections,
     InvalidFrontmatterInfostring,
     InvalidFrontmatterTrailer,
+    InvalidIdent(IdentKind, IdentMode),
     InvalidItemPrefix,
     InvalidLetChain,
     InvalidLitSuffix,
     InvalidNumericIdent,
     InvalidOpAfterBoundary,
     InvalidOpAfterCast,
-    InvalidRawIdent(IdentKind),
     InvalidScalar(char, InvalidScalarPlace),
     InvalidStrLitDelimiter,
     InvalidTraitBoundModifier,
