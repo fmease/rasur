@@ -15,42 +15,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_expr(&mut self) -> Result<ast::Expr<'src>> {
         // NOTE: To be kept in sync with `Self::begins_expr`.
 
-        self.parse_expr_where(StructPolicy::Parse, LetPolicy::YieldOrReject, OpPolicy::Parse)
+        self.parse_expr_where(Policy { .. })
     }
 
-    pub(super) fn parse_expr_where(
-        &mut self,
-        s_policy: StructPolicy,
-        l_policy: LetPolicy,
-        o_policy: OpPolicy,
-    ) -> Result<ast::Expr<'src>> {
-        // NOTE: To be kept in sync with `Self::begins_expr`.
-
+    pub(super) fn parse_expr_where(&mut self, policy: Policy<'src>) -> Result<ast::Expr<'src>> {
         let start = self.token.span;
-        let expr = self.parse_expr_at_level(Level::Initial, s_policy, l_policy, o_policy)?;
+        let expr = self.parse_expr_at_level(Level::Initial, Policy { ..policy })?;
         let span = self.prev_token().map_or(start, |token| start.to(token.span));
-        self.validate_let_chain(&expr, span, l_policy);
-
-        Ok(expr)
-    }
-
-    pub(super) fn parse_expr_given_attrs_where(
-        &mut self,
-        s_policy: StructPolicy,
-        l_policy: LetPolicy,
-        o_policy: OpPolicy,
-        attrs: Vec<ast::Attr<'src>>,
-    ) -> Result<ast::Expr<'src>> {
-        let start = self.token.span;
-        let expr = self.parse_expr_at_level_given_attrs(
-            Level::Initial,
-            s_policy,
-            l_policy,
-            o_policy,
-            attrs,
-        )?;
-        let span = self.prev_token().map_or(start, |token| start.to(token.span));
-        self.validate_let_chain(&expr, span, l_policy);
+        self.validate_let_chain(&expr, span, policy.l);
 
         Ok(expr)
     }
@@ -105,22 +77,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
     fn parse_expr_at_level(
         &mut self,
         level: Level,
-        s_policy: StructPolicy,
-        l_policy: LetPolicy,
-        o_policy: OpPolicy,
+        Policy { s: s_policy, l: l_policy, o: o_policy, attrs }: Policy<'src>,
     ) -> Result<ast::Expr<'src>> {
-        let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
-        self.parse_expr_at_level_given_attrs(level, s_policy, l_policy, o_policy, attrs)
-    }
+        let attrs = match attrs {
+            Some(attrs) => attrs,
+            None => self.parse_attrs(ast::AttrStyle::Outer)?,
+        };
 
-    fn parse_expr_at_level_given_attrs(
-        &mut self,
-        level: Level,
-        s_policy: StructPolicy,
-        l_policy: LetPolicy,
-        o_policy: OpPolicy,
-        attrs: Vec<ast::Attr<'src>>,
-    ) -> Result<ast::Expr<'src>> {
         let mut h_policy = HigherPostfixOpPolicy::Parse;
 
         let mut left = if let Some(op) = self.token.kind.as_prefix_expr_op() {
@@ -209,12 +172,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             Op::SingleBorrow => self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs),
             Op::UnOp(op) => {
-                let right = self.parse_expr_at_level(
-                    right_level,
-                    s_policy,
-                    LetPolicy::YieldOrReject,
-                    o_policy,
-                )?;
+                let right =
+                    self.parse_expr_at_level(right_level, Policy { s: s_policy, o: o_policy, .. })?;
 
                 Ok(ast::Expr { attrs, kind: ast::ExprKind::UnOp(op, Box::new(right)) })
             }
@@ -241,9 +200,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                 let right = self.parse_expr_at_level(
                     right_level.unwrap(),
-                    s_policy,
-                    l_policy,
-                    OpPolicy::Parse,
+                    Policy { s: s_policy, l: l_policy, .. },
                 )?;
 
                 Ok(ast::ExprKind::BinOp(op, Box::new(left), Box::new(right)).into())
@@ -372,7 +329,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     ) -> Result<ast::Expr<'src>> {
         let (kind, mut_) = self.parse_borrow_kind_and_mutability();
         let expr =
-            self.parse_expr_at_level(right_level, s_policy, LetPolicy::YieldOrReject, o_policy)?;
+            self.parse_expr_at_level(right_level, Policy { s: s_policy, o: o_policy, .. })?;
 
         Ok(ast::Expr { attrs, kind: ast::ExprKind::Borrow(kind, mut_, Box::new(expr)) })
     }
@@ -398,12 +355,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 // NB: Indeed, we plain out ignore the level here.
                 && self.begins_expr()
         {
-            Some(self.parse_expr_at_level(
-                right_level,
-                s_policy,
-                LetPolicy::YieldOrReject,
-                o_policy,
-            )?)
+            Some(self.parse_expr_at_level(right_level, Policy { s: s_policy, o: o_policy, .. })?)
         } else {
             None
         };
@@ -614,12 +566,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 self.advance();
                 let pat = self.parse_pat(OrPolicy::Parse)?;
                 self.parse(TokenKind::SingleEquals)?;
-                let body = self.parse_expr_at_level(
-                    Level::AndRight,
-                    s_policy,
-                    LetPolicy::YieldOrReject,
-                    OpPolicy::Parse,
-                )?;
+                let body = self.parse_expr_at_level(Level::AndRight, Policy { s: s_policy, .. })?;
                 return Ok(ast::ExprKind::Let(Box::new(ast::LetExpr { pat, body })));
             }
             TokenKind::Loop => {
@@ -629,11 +576,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             TokenKind::Match => {
                 self.advance();
 
-                let scrutinee = self.parse_expr_where(
-                    StructPolicy::Yield,
-                    LetPolicy::YieldOrReject,
-                    OpPolicy::Parse,
-                )?;
+                let scrutinee = self.parse_expr_where(Policy { s: StructPolicy::Yield, .. })?;
 
                 return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix, attrs);
             }
@@ -906,7 +849,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let block = self.parse_block_expr(AttrPolicy::Parse(&mut attrs))?;
             ast::Expr { attrs, kind: ast::ExprKind::Block(None, Box::new(block)) }
         } else {
-            self.parse_expr_where(s_policy, LetPolicy::YieldOrReject, OpPolicy::Parse)?
+            self.parse_expr_where(Policy { s: s_policy, .. })?
         };
 
         Ok(ast::ExprKind::Closure(Box::new(ast::ClosureExpr {
@@ -933,19 +876,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
         };
         let pat = self.parse_pat(OrPolicy::Parse)?;
         self.parse(TokenKind::In)?;
-        let head =
-            self.parse_expr_where(StructPolicy::Yield, LetPolicy::YieldOrReject, OpPolicy::Parse)?;
+        let head = self.parse_expr_where(Policy { s: StructPolicy::Yield, .. })?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::ForLoop(Box::new(ast::ForLoopExpr { label, await_, pat, head, body })))
     }
 
     fn fin_parse_if_expr(&mut self) -> Result<ast::ExprKind<'src>> {
-        let condition = self.parse_expr_where(
-            StructPolicy::Yield,
-            LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
-            OpPolicy::Parse,
-        )?;
+        let condition = self.parse_expr_where(Policy {
+            s: StructPolicy::Yield,
+            l: LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            ..
+        })?;
         let consequent = self.parse_block_expr(AttrPolicy::Reject)?;
 
         let alternate = if self.consume(TokenKind::Else) {
@@ -1010,11 +952,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 }
                 _ if self.consume(TokenKind::If) => (
                     pat,
-                    Some(self.parse_expr_where(
-                        StructPolicy::Parse,
-                        LetPolicy::Parse(LetAllowance::Unconditional),
-                        OpPolicy::Parse,
-                    )?),
+                    Some(self.parse_expr_where(Policy {
+                        l: LetPolicy::Parse(LetAllowance::Unconditional),
+                        ..
+                    })?),
                 ),
                 _ => (pat, None),
             };
@@ -1030,13 +971,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
             let body = self
                 .consume_or_parse(TokenKind::WideArrow, is_body_optional)?
-                .then(|| {
-                    self.parse_expr_where(
-                        StructPolicy::Parse,
-                        LetPolicy::YieldOrReject,
-                        OpPolicy::YieldOnBoundary(rule),
-                    )
-                })
+                .then(|| self.parse_expr_where(Policy { o: OpPolicy::YieldOnBoundary(rule), .. }))
                 .transpose()?;
 
             if body.is_none() {
@@ -1060,11 +995,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
         label: Option<ast::Ident<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
-        let condition = self.parse_expr_where(
-            StructPolicy::Yield,
-            LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
-            OpPolicy::Parse,
-        )?;
+        let condition = self.parse_expr_where(Policy {
+            s: StructPolicy::Yield,
+            l: LetPolicy::Parse(LetAllowance::AtTopLevelOnlyPriorTo2024),
+            ..
+        })?;
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
@@ -1179,6 +1114,13 @@ impl ast::Pat<'_> {
             Self::TupleStruct(pat) => pat.fields.iter().any(Self::contains_never_or_macro_call),
         }
     }
+}
+
+pub(crate) struct Policy<'src> {
+    pub(crate) s: StructPolicy = StructPolicy::Parse,
+    pub(crate) l: LetPolicy = LetPolicy::YieldOrReject,
+    pub(crate) o: OpPolicy = OpPolicy::Parse,
+    pub(crate) attrs: Option<Vec<ast::Attr<'src>>> = None,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

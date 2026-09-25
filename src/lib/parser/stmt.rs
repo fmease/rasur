@@ -1,6 +1,6 @@
 use super::{
     Fragment, Result, TokenKind,
-    expr::{AttrPolicy, LetPolicy, OpPolicy, StructPolicy},
+    expr::{AttrPolicy, OpPolicy},
     frags,
     item::ItemCx,
     pat::OrPolicy,
@@ -66,12 +66,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if self.begins_expr() {
             let rule = ast::CurlyBracketedMacroCallIsBoundary::Yes;
 
-            let expr = self.parse_expr_given_attrs_where(
-                StructPolicy::Parse,
-                LetPolicy::YieldOrReject,
-                OpPolicy::YieldOnBoundary(rule),
-                attrs,
-            )?;
+            let expr = self.parse_expr_where(super::expr::Policy {
+                o: OpPolicy::YieldOnBoundary(rule),
+                attrs: Some(attrs),
+                ..
+            })?;
 
             let is_boundary = expr.kind.is_boundary(rule);
 
