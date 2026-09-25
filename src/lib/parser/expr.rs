@@ -34,6 +34,27 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(expr)
     }
 
+    pub(super) fn parse_expr_given_attrs_where(
+        &mut self,
+        s_policy: StructPolicy,
+        l_policy: LetPolicy,
+        o_policy: OpPolicy,
+        attrs: Vec<ast::Attr<'src>>,
+    ) -> Result<ast::Expr<'src>> {
+        let start = self.token.span;
+        let expr = self.parse_expr_at_level_given_attrs(
+            Level::Initial,
+            s_policy,
+            l_policy,
+            o_policy,
+            attrs,
+        )?;
+        let span = self.prev_token().map_or(start, |token| start.to(token.span));
+        self.validate_let_chain(&expr, span, l_policy);
+
+        Ok(expr)
+    }
+
     pub(super) fn begins_expr(&self) -> bool {
         // NOTE: To be kept in sync with `Self::parse_expr`.
 
@@ -88,9 +109,19 @@ impl<'src> super::Parser<'_, '_, 'src> {
         l_policy: LetPolicy,
         o_policy: OpPolicy,
     ) -> Result<ast::Expr<'src>> {
-        let mut h_policy = HigherPostfixOpPolicy::Parse;
-
         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+        self.parse_expr_at_level_given_attrs(level, s_policy, l_policy, o_policy, attrs)
+    }
+
+    fn parse_expr_at_level_given_attrs(
+        &mut self,
+        level: Level,
+        s_policy: StructPolicy,
+        l_policy: LetPolicy,
+        o_policy: OpPolicy,
+        attrs: Vec<ast::Attr<'src>>,
+    ) -> Result<ast::Expr<'src>> {
+        let mut h_policy = HigherPostfixOpPolicy::Parse;
 
         let mut left = if let Some(op) = self.token.kind.as_prefix_expr_op() {
             h_policy = HigherPostfixOpPolicy::Yield;

@@ -383,7 +383,6 @@ fn attrs() {
                     ..
                 },
                 ast::Expr { attrs: [], kind: ast::ExprKind::Lit(_), .. },
-                ..
             )
         })
     );

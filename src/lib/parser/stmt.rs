@@ -66,13 +66,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
         if self.begins_expr() {
             let rule = ast::CurlyBracketedMacroCallIsBoundary::Yes;
 
-            let mut expr = self.parse_expr_where(
+            let expr = self.parse_expr_given_attrs_where(
                 StructPolicy::Parse,
                 LetPolicy::YieldOrReject,
                 OpPolicy::YieldOnBoundary(rule),
+                attrs,
             )?;
-            attrs.append(&mut expr.attrs);
-            expr.attrs = attrs;
 
             let is_boundary = expr.kind.is_boundary(rule);
 

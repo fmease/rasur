@@ -28,6 +28,32 @@ fn attrs() {
             _
         ))
     );
+
+    // The attr belongs to the inner left operand expr, not to the operation itself.
+    //
+    // We once used to wrongly associate the attribute with the binary operation because the
+    // stmt parser parses outer attrs itself but didn't pass it to the expr parse but simply
+    // modified the parsed expr afterwards (attaching the attrs) which prevented the expr
+    // parser from passing the attrs to the left operand where they actually belong.
+    t!(
+        parse_stmt,
+        Rust2015,
+        "#[a]0/1",
+        Ok(ast::Stmt::Expr(
+            ast::Expr {
+                attrs: [],
+                kind: ast::ExprKind::BinOp(
+                    ast::BinOp::Div,
+                    ast::Expr {
+                        attrs: [ast::Attr { style: ast::AttrStyle::Outer, .. }],
+                        kind: ast::ExprKind::Lit(_)
+                    },
+                    ast::Expr { attrs: [], kind: ast::ExprKind::Lit(_) },
+                )
+            },
+            ast::Semicolon::No
+        ))
+    );
 }
 
 #[test]
