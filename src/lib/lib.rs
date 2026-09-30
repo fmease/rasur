@@ -13,7 +13,6 @@
 #![feature(macro_metavar_expr)]
 #![feature(mut_ref)]
 #![feature(negative_impls)]
-#![feature(never_type)]
 #![feature(step_trait)]
 #![feature(type_alias_impl_trait)]
 #![feature(type_changing_struct_update)]

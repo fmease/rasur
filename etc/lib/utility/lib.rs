@@ -55,7 +55,7 @@ impl<T> List1<T> {
     }
 }
 
-impl<T> const Default for List1<T> {
+const impl<T> Default for List1<T> {
     fn default() -> Self {
         Self { raw: RawList1::Inline(None) }
     }

@@ -69,7 +69,19 @@ impl std::iter::Step for Edition {
         (start as usize).checked_add(count).and_then(Self::via)
     }
 
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (forward, overflowing) = (start as usize).overflowing_add(count);
+        let adjusted = forward % Self::MAX as usize;
+        (Self::via(adjusted).unwrap(), overflowing || adjusted != forward)
+    }
+
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         (start as usize).checked_sub(count).and_then(Self::via)
+    }
+
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (backward, overflowing) = (start as usize).overflowing_sub(count);
+        let adjusted = backward % Self::MAX as usize;
+        (Self::via(adjusted).unwrap(), overflowing || adjusted != backward)
     }
 }
