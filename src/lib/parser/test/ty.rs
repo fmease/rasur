@@ -231,14 +231,18 @@ fn bare_trait_object_tys() {
         Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Use(_)]))
     );
 
-    // Indeed, even though you can't parenthesize precise-capturing lists
-    // in "normal" bounds, you can do so in bare trait object type bounds.
-    // If find it a bit janky. Might report upstream.
+    // Context: <https://github.com/rust-lang/rust/pull/162652>
     t!(
         parse_ty,
         Rust2015,
         "(use<>)+",
-        Ok(ast::Ty::DynTrait(ast::DynKind::Bare, [ast::Bound::Use(_)]))
+        Err([Error {
+            kind: ErrorKind::UnexpectedToken(
+                TokenKind::SinglePlus,
+                [Fragment::Token(TokenKind::EndOfInput)],
+            ),
+            ..
+        }])
     );
 
     // It's easy to accidentally accept the following code while trying to support the form above.
