@@ -918,15 +918,14 @@ impl<'src> Parser<'_, '_, 'src> {
     fn parse_use_path_tree(&mut self, mode: PathMode) -> Result<ast::UsePathTree<'src>> {
         let mut path = self.parse_path_prefix(mode)?;
 
-        match self.parse_use_path_tree_kind(&mut path)? {
-            ast::UsePathTreeKind::Stump(None) => {}
-            kind => return Ok(ast::UsePathTree { path, kind }),
-        }
-
-        while self.consume(TokenKind::DoubleColon) {
+        loop {
             match self.parse_use_path_tree_kind(&mut path)? {
                 ast::UsePathTreeKind::Stump(None) => {}
                 kind => return Ok(ast::UsePathTree { path, kind }),
+            }
+
+            if !self.consume(TokenKind::DoubleColon) {
+                break;
             }
         }
 
@@ -1038,15 +1037,14 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::DelegationPathTree<'src>> {
         let mut path = self.parse_path_prefix(mode)?;
 
-        match self.parse_delegation_path_tree_kind(&mut path)? {
-            ast::DelegationPathTreeKind::Stump(None) => {}
-            kind => return Ok(ast::DelegationPathTree { path, kind }),
-        }
-
-        while self.consume(TokenKind::DoubleColon) {
+        loop {
             match self.parse_delegation_path_tree_kind(&mut path)? {
                 ast::DelegationPathTreeKind::Stump(None) => {}
                 kind => return Ok(ast::DelegationPathTree { path, kind }),
+            }
+
+            if !self.consume(TokenKind::DoubleColon) {
+                break;
             }
         }
 
