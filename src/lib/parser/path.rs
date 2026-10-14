@@ -204,7 +204,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 poisoned = true;
             }
 
-            if let &ast::Ty::CVariadics(span) = ty {
+            if let &ast::FnParamTy::CVariadics(span) = ty {
                 self.error(ErrorKind::ForbiddenCVariadics, span);
                 poisoned = true;
             }

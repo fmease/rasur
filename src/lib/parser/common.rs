@@ -167,9 +167,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 && let span = this.token.span
                 && this.consume(TokenKind::TripleDot)
             {
-                ast::Ty::CVariadics(span)
+                ast::FnParamTy::CVariadics(span)
             } else {
-                this.parse_ty()?
+                ast::FnParamTy::Ty(this.parse_ty()?)
             };
 
             Ok(ast::FnParam { attrs, const_, pat, ty })
@@ -218,7 +218,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 span,
             };
 
-            let ty = match kind {
+            let ty = ast::FnParamTy::Ty(match kind {
                 ShorthandKind::Ref(lt, kind) => ast::Ty::Ref(Box::new(ast::RefTy {
                     lt,
                     kind,
@@ -230,7 +230,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     true => self.parse_ty()?,
                     false => ast::Ty::ImplicitSelf,
                 },
-            };
+            });
 
             Ok(Some(ast::FnParam { attrs: mem::take(attrs), const_: ast::Const::No, pat, ty }))
         } else {

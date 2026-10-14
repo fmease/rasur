@@ -4,8 +4,6 @@ use crate::{ast, fmter::BuiltinSyntax, lexer::lex_keyword, token::TokenKind};
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
-            Self::All => fmt!(cx, ".."),
-            Self::CVariadics(_) => fmt!(cx, "..."),
             Self::Path(path) => path.fmt(cx),
             Self::Inferred => fmt!(cx, "_"),
             Self::FnPtr(ty) => ty.fmt(cx),

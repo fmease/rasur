@@ -157,9 +157,7 @@ impl ast::ExprKind<'_> {
 impl ast::Ty<'_> {
     fn else_may_follow(&self) -> bool {
         match self {
-            | Self::All
             | Self::Array(..)
-            | Self::CVariadics(_)
             | Self::DynTrait(..)
             | Self::Error(_)
             | Self::FieldOf(..)

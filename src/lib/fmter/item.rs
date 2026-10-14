@@ -400,7 +400,7 @@ impl Fmt for ast::FnParam<'_> {
 
         match (ty, pat) {
             (
-                ast::Ty::ImplicitSelf,
+                ast::FnParamTy::Ty(ast::Ty::ImplicitSelf),
                 ast::Pat {
                     kind: ast::PatKind::Binding(ast::BindingPat { mut_, binder, .. }), ..
                 },
@@ -409,7 +409,12 @@ impl Fmt for ast::FnParam<'_> {
                 binder.fmt(cx);
             }
             (
-                ast::Ty::Ref(ast::RefTy { lt, mut_, kind, pointee: ast::Ty::ImplicitSelf }),
+                ast::FnParamTy::Ty(ast::Ty::Ref(ast::RefTy {
+                    lt,
+                    mut_,
+                    kind,
+                    pointee: ast::Ty::ImplicitSelf,
+                })),
                 ast::Pat { kind: ast::PatKind::Binding(ast::BindingPat { binder, .. }), .. },
             ) => {
                 fmt!(cx, "&");
@@ -427,6 +432,15 @@ impl Fmt for ast::FnParam<'_> {
 
                 ty.fmt(cx);
             }
+        }
+    }
+}
+
+impl Fmt for ast::FnParamTy<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::CVariadics(_) => fmt!(cx, "..."),
+            Self::Ty(ty) => ty.fmt(cx),
         }
     }
 }
@@ -489,6 +503,15 @@ impl Fmt for (ast::ImplItem<'_>, Vec<ast::Attr<'_, ast::InnerAttrStyle>>) {
         self_ty.fmt(cx);
         generics.preds.fmt(cx);
         (body, attrs).fmt(cx);
+    }
+}
+
+impl Fmt for ast::ImplSelfTy<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::All => fmt!(cx, ".."),
+            Self::Ty(ty) => ty.fmt(cx),
+        }
     }
 }
 

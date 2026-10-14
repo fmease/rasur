@@ -208,7 +208,13 @@ pub struct FnParam<'src> {
     pub attrs: Vec<Attr<'src>>,
     pub const_: Const,
     pub pat: Pat<'src>,
-    pub ty: Ty<'src>,
+    pub ty: FnParamTy<'src>,
+}
+
+#[derive(Debug)]
+pub enum FnParamTy<'src> {
+    CVariadics(Span),
+    Ty(Ty<'src>),
 }
 
 #[derive(Debug)]
@@ -222,7 +228,7 @@ pub struct ImplItem<'src> {
     pub generics: Generics<'src>,
     pub const_: Const,
     pub trait_ref: Option<ImplTraitRef<'src>>,
-    pub self_ty: Ty<'src>,
+    pub self_ty: ImplSelfTy<'src>,
     pub body: ImplBody<'src>,
 }
 
@@ -238,6 +244,12 @@ pub struct ImplTraitRef<'src> {
 pub enum ImplPolarity {
     Positive,
     Negative(Span),
+}
+
+#[derive(Debug)]
+pub enum ImplSelfTy<'src> {
+    All,
+    Ty(Ty<'src>),
 }
 
 #[derive(Debug)]

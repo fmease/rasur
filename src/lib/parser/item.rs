@@ -672,14 +672,14 @@ impl<'src> Parser<'_, '_, 'src> {
                 if self.consume(TokenKind::For) =>
             {
                 let self_ty = if self.consume(TokenKind::DoubleDot) {
-                    ast::Ty::All
+                    ast::ImplSelfTy::All
                 } else {
-                    self.parse_ty()?
+                    ast::ImplSelfTy::Ty(self.parse_ty()?)
                 };
 
                 (Some(trait_ref), self_ty)
             }
-            _ => (None, ty),
+            _ => (None, ast::ImplSelfTy::Ty(ty)),
         };
 
         let preds = self.parse_where_clause()?.unwrap_or_default();

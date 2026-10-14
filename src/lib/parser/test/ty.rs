@@ -683,7 +683,7 @@ fn fn_ptr_tys() {
                     ),
                     ..
                 },
-                ty: ast::Ty::Tuple([]),
+                ty: ast::FnParamTy::Ty(ast::Ty::Tuple([])),
                 ..
             }],
             ..
