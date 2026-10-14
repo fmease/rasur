@@ -49,8 +49,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         let kind = self.parse_item_kind(override_policy, cx, &mut attrs)?;
 
-        // FIXME: Find a better way to obtain the span
-        let span = self.prev_token().map_or(start, |token| start.to(token.span));
+        let span = start.to(self.prev_token().span);
 
         if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
             self.error(ErrorKind::VisibilityOnInvalidItem, span);
@@ -404,16 +403,22 @@ impl<'src> Parser<'_, '_, 'src> {
         override_policy: ast::OverridePolicy,
     ) -> Result<ast::ItemKind<'src>> {
         let (binder, _) = self.parse_common_ident_or(TokenKind::Underscore)?;
-        let params = self
-            .parse_generic_param_list()?
-            .inspect(|_| self.feature_no_span_fixme(Feature::generic_const_items))
-            .unwrap_or_default();
+        let params = {
+            let start = self.token.span;
+            self.parse_generic_param_list()?.inspect(|_| {
+                self.feature(Feature::generic_const_items, start.to(self.prev_token().span))
+            })
+        }
+        .unwrap_or_default();
         let ty = self.parse_ty_annotation()?;
         let body = self.consume(TokenKind::SingleEquals).then(|| self.parse_expr()).transpose()?;
-        let preds = self
-            .parse_where_clause()?
-            .inspect(|_| self.feature_no_span_fixme(Feature::generic_const_items))
-            .unwrap_or_default();
+        let preds = {
+            let start = self.token.span;
+            self.parse_where_clause()?.inspect(|_| {
+                self.feature(Feature::generic_const_items, start.to(self.prev_token().span))
+            })
+        }
+        .unwrap_or_default();
         self.parse(TokenKind::Semicolon)?;
 
         Ok(ast::ItemKind::Const(Box::new(ast::ConstItem {

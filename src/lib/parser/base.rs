@@ -112,8 +112,13 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
     }
 
     // FIXME: No longer correct due to existence of `modify_in_place`. Remove altogether
-    pub(super) fn prev_token(&self) -> Option<Token> {
-        Some(self.tokens[self.index.checked_sub(1)?])
+    pub(super) fn prev_token(&self) -> Token {
+        if let Some(index) = self.index.checked_sub(1) {
+            self.tokens[index]
+        } else {
+            let span = self.tokens.first().unwrap().span.start().into();
+            Token::new(TokenKind::EndOfInput, span)
+        }
     }
 
     pub fn snapshot<'tmpsto>(&self, store: &'tmpsto Store) -> Parser<'tok, 'tmpsto, 'src> {

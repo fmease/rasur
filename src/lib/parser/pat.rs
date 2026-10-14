@@ -264,11 +264,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     );
                 }
                 TokenKind::OpenCurlyBracket => {
-                    self.advance();
-
                     if path.ext.is_some() {
-                        self.feature_no_span_fixme(Feature::more_qualified_paths);
+                        let span = start.to(self.prev_token().span);
+                        self.feature(Feature::more_qualified_paths, span);
                     }
+
+                    self.advance();
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     const SEPARATOR: TokenKind = TokenKind::Comma;

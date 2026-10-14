@@ -21,7 +21,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_expr_where(&mut self, policy: Policy<'src>) -> Result<ast::Expr<'src>> {
         let start = self.token.span;
         let expr = self.parse_expr_at_level(Level::Initial, Policy { ..policy })?;
-        let span = self.prev_token().map_or(start, |token| start.to(token.span));
+        let span = start.to(self.prev_token().span);
         self.validate_let_chain(&expr, span, policy.l);
 
         Ok(expr)
@@ -676,11 +676,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     })));
                 }
                 TokenKind::OpenCurlyBracket if let StructPolicy::Parse = s_policy => {
-                    self.advance();
-
                     if path.ext.is_some() {
-                        self.feature_no_span_fixme(Feature::more_qualified_paths);
+                        let span = start.to(self.prev_token().span);
+                        self.feature(Feature::more_qualified_paths, span);
                     }
+
+                    self.advance();
 
                     const DELIMITER: TokenKind = TokenKind::CloseCurlyBracket;
                     const SEPARATOR: TokenKind = TokenKind::Comma;
@@ -969,13 +970,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 || guard.is_some()
                 || pat.contains_never_or_macro_call();
 
-            let body = self
-                .consume_or_parse(TokenKind::WideArrow, is_body_optional)?
-                .then(|| self.parse_expr_where(Policy { o: OpPolicy::YieldOnBoundary(rule), .. }))
-                .transpose()?;
-
-            if body.is_none() {
-                self.feature_no_span_fixme(Feature::never_patterns);
+            let body;
+            {
+                let before = self.prev_token().span.between(self.token.span);
+                body = self
+                    .consume_or_parse(TokenKind::WideArrow, is_body_optional)?
+                    .then(|| {
+                        self.parse_expr_where(Policy { o: OpPolicy::YieldOnBoundary(rule), .. })
+                    })
+                    .transpose()?;
+                if body.is_none() {
+                    self.feature(Feature::never_patterns, before);
+                }
             }
 
             self.consume_or_parse(

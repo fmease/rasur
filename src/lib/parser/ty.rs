@@ -277,8 +277,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
             if self.token.kind == DELIMITER {
                 if tys.is_empty() {
-                    let trailing_plus =
-                        self.prev_token().is_some_and(|t| self.matches(TokenPrefix::Plus, t));
+                    let trailing_plus = self.matches(TokenPrefix::Plus, self.prev_token());
 
                     self.advance();
 

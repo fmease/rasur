@@ -59,6 +59,10 @@ impl Span {
         Self::new(self.start, other.end)
     }
 
+    pub fn between(&self, other: Self) -> Self {
+        Self::new(self.end, other.start)
+    }
+
     pub fn until(self, other: Span) -> Span {
         Self::new(self.start, other.start)
     }
