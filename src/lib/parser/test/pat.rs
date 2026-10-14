@@ -170,7 +170,7 @@ fn structs() {
                         ..
                     }],
                     binder: Some(ast::Ident!("f")),
-                    body: ast::Pat { kind: ast::PatKind::Wildcard(ast::WildcardKind::Normal), .. },
+                    body: ast::Pat { kind: ast::PatKind::Wildcard, .. },
                 }],
                 ..
             }),

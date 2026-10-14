@@ -29,19 +29,13 @@ pub enum PatKind<'src> {
     Struct(Box<StructPat<'src>>),
     Tuple(Vec<Pat<'src>>),
     TupleStruct(Box<TupleStructPat<'src>>),
-    Wildcard(WildcardKind),
+    Wildcard,
 }
 
 #[derive(Debug)]
 pub enum Sign {
     None,
     Neg,
-}
-
-#[derive(Debug)]
-pub enum WildcardKind {
-    Normal,
-    Empty,
 }
 
 #[derive(Debug)]

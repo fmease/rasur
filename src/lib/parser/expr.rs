@@ -1104,7 +1104,7 @@ impl ast::PatKind<'_> {
             | Self::Path(_)
             | Self::Range(..)
             | Self::Rest
-            | Self::Wildcard(_) => false,
+            | Self::Wildcard => false,
             | Self::Borrow(.., pat)
             | Self::Deref(pat)
             | Self::Grouped(_, pat)

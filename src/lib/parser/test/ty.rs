@@ -664,7 +664,7 @@ fn fn_ptr_tys() {
         Ok(ast::Ty::FnPtr(ast::FnPtrTy {
             inputs: [ast::FnParam {
                 kind: ast::FnParamKind::Normal {
-                    pat: ast::Pat {
+                    pat: Some(ast::Pat {
                         kind: ast::PatKind::Borrow(
                             ..,
                             ast::Pat {
@@ -683,7 +683,7 @@ fn fn_ptr_tys() {
                             }
                         ),
                         ..
-                    },
+                    }),
                     ty: ast::FnParamTy::Ty(ast::Ty::Tuple([])),
                 },
                 ..

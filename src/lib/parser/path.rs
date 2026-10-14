@@ -208,10 +208,7 @@ impl<'src> Parser<'_, '_, 'src> {
                         self.error(ErrorKind::ForbiddenCVariadics, span);
                         poisoned = true;
                     }
-
-                    if !poisoned
-                        && !matches!(pat.kind, ast::PatKind::Wildcard(ast::WildcardKind::Empty))
-                    {
+                    if !poisoned && let Some(pat) = pat {
                         self.feature(Feature::named_fn_trait_parameters, pat.span);
                     }
                 }

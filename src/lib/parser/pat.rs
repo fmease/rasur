@@ -259,7 +259,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             TokenKind::Underscore => {
                 self.advance();
-                return Ok(ast::PatKind::Wildcard(ast::WildcardKind::Normal));
+                return Ok(ast::PatKind::Wildcard);
             }
             _ => {}
         }

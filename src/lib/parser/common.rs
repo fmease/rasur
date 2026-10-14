@@ -149,12 +149,9 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 {
                     let pat = this.parse_pat(OrPolicy::Yield)?;
                     this.parse(TokenKind::SingleColon)?;
-                    pat
+                    Some(pat)
                 } else {
-                    ast::Pat {
-                        kind: ast::PatKind::Wildcard(ast::WildcardKind::Empty),
-                        span: this.token.span.start().into(),
-                    }
+                    None
                 };
 
                 let ty = if let start = this.token.span

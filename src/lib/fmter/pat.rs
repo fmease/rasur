@@ -18,8 +18,7 @@ impl Fmt for ast::PatKind<'_> {
             Self::Binding(binding) => binding.fmt(cx),
             Self::Deref(pat) => BuiltinSyntax("deref", |cx| pat.fmt(cx)).fmt(cx),
             Self::Error(span) => fmt!(cx, "{}", cx.source(span)),
-            // If the caller wants to treat `WildcardKind::Empty` special, they should do it themself.
-            Self::Wildcard(_) => fmt!(cx, "_"),
+            Self::Wildcard => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {
                 sign.fmt(cx);
                 lit.fmt(cx);

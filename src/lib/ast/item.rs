@@ -211,7 +211,7 @@ pub struct FnParam<'src> {
 
 #[derive(Debug)]
 pub enum FnParamKind<'src> {
-    Normal { pat: Pat<'src>, ty: FnParamTy<'src> },
+    Normal { pat: Option<Pat<'src>>, ty: FnParamTy<'src> },
     Receiver { binder: Span, kind: ReceiverKind<'src> },
     Const { binder: Ident<'src>, ty: Ty<'src> },
 }

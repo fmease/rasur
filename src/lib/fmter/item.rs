@@ -404,13 +404,10 @@ impl Fmt for ast::FnParamKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Normal { pat, ty } => {
-                if let ast::PatKind::Wildcard(ast::WildcardKind::Empty) = pat.kind {
-                    // do nothing
-                } else {
+                if let Some(pat) = pat {
                     pat.fmt(cx);
                     fmt!(cx, ": ");
                 }
-
                 ty.fmt(cx);
             }
             Self::Receiver { kind: ast::ReceiverKind::Normal(mut_, ty), .. } => {
