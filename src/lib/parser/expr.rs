@@ -1105,13 +1105,14 @@ impl ast::Pat<'_> {
             | Self::Grouped(_, pat)
             | Self::Guarded(pat, _)
             | Self::Or(_, pat) => pat.contains_never_or_macro_call(),
-            Self::Slice(pats) | Self::Tuple(pats) => {
-                pats.iter().any(Self::contains_never_or_macro_call)
-            }
+            Self::Slice(pats) => pats.iter().any(Self::contains_never_or_macro_call),
+            Self::Tuple(fields) => fields.iter().any(|(_, pat)| pat.contains_never_or_macro_call()),
             Self::Struct(pat) => {
-                pat.fields.iter().any(|field| field.body.contains_never_or_macro_call())
+                pat.fields.iter().any(|field| field.pat.contains_never_or_macro_call())
             }
-            Self::TupleStruct(pat) => pat.fields.iter().any(Self::contains_never_or_macro_call),
+            Self::TupleStruct(pat) => {
+                pat.fields.iter().any(|(_, pat)| pat.contains_never_or_macro_call())
+            }
         }
     }
 }

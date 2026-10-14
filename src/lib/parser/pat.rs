@@ -191,20 +191,28 @@ impl<'src> super::Parser<'_, '_, 'src> {
             TokenKind::OpenRoundBracket => {
                 self.advance();
 
-                let mut pats = Vec::new();
+                let mut fields = Vec::new();
 
                 const DELIMITER: TokenKind = TokenKind::CloseRoundBracket;
                 const SEPARATOR: TokenKind = TokenKind::Comma;
                 while !self.consume(DELIMITER) {
+                    let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
+                    if let Some(attr) = attrs.first() {
+                        let span = attr.span.to(attrs.last().unwrap().span);
+                        self.feature(Feature::__rfc3532, span);
+                    }
+
                     let pat = self.parse_pat_where(
                         OrPolicy::Parse,
                         NonLegacyRangePolicy::Parse,
                         GuardPolicy::Parse,
                     )?;
 
-                    if self.token.kind == DELIMITER {
-                        // This is actually a grouped node, not a tuple.
-                        if pats.is_empty() && !matches!(pat, ast::Pat::Rest) {
+                    // FIXME: Simplify somehow.
+                    if self.token.kind == DELIMITER
+                        && (attrs.is_empty() || !fields.is_empty() || matches!(pat, ast::Pat::Rest))
+                    {
+                        if fields.is_empty() && attrs.is_empty() && !matches!(pat, ast::Pat::Rest) {
                             let span = start.to(self.token.span);
                             self.advance();
                             return Ok(ast::Pat::Grouped(span, Box::new(pat)));
@@ -213,10 +221,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         self.parse(SEPARATOR)?;
                     }
 
-                    pats.push(pat);
+                    fields.push((attrs, pat));
                 }
 
-                return Ok(ast::Pat::Tuple(pats));
+                return Ok(ast::Pat::Tuple(fields));
             }
             TokenKind::OpenSquareBracket => {
                 self.advance();
@@ -316,7 +324,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                             (None, body)
                         };
 
-                        fields.push(ast::StructPatField { attrs, binder, body });
+                        fields.push(ast::StructPatField { attrs, binder, pat: body });
 
                         if self.token.kind != DELIMITER {
                             self.parse(SEPARATOR)?;
@@ -332,11 +340,19 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         TokenKind::CloseRoundBracket,
                         TokenKind::Comma,
                         |this| {
-                            this.parse_pat_where(
+                            let attrs = this.parse_attrs(ast::AttrStyle::Outer)?;
+                            if let Some(attr) = attrs.first() {
+                                let span = attr.span.to(attrs.last().unwrap().span);
+                                this.feature(Feature::__rfc3532, span);
+                            }
+
+                            let pat = this.parse_pat_where(
                                 OrPolicy::Parse,
                                 NonLegacyRangePolicy::Parse,
                                 GuardPolicy::Parse,
-                            )
+                            )?;
+
+                            Ok((attrs, pat))
                         },
                     )?;
                     return Ok(ast::Pat::TupleStruct(Box::new(ast::TupleStructPat {

@@ -80,7 +80,7 @@ fn structs() {
             fields: [ast::StructPatField {
                 attrs: [],
                 binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Binding(_),
+                pat: ast::Pat::Binding(_),
             }],
             ..
         }))
@@ -93,7 +93,7 @@ fn structs() {
         Ok(ast::Pat::Struct(ast::StructPat {
             fields: [ast::StructPatField {
                 binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Rest,
+                pat: ast::Pat::Rest,
                 ..
             }],
             rest: false,
@@ -108,7 +108,7 @@ fn structs() {
         Ok(ast::Pat::Struct(ast::StructPat {
             fields: [ast::StructPatField {
                 binder: None,
-                body: ast::Pat::Binding(ast::BindingPat {
+                pat: ast::Pat::Binding(ast::BindingPat {
                     mut_: ast::Mut::No,
                     by_ref: ast::ByRef::No,
                     binder: ast::Ident!("f"),
@@ -146,7 +146,7 @@ fn structs() {
                     ..
                 }],
                 binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Wildcard(ast::WildcardKind::Normal),
+                pat: ast::Pat::Wildcard(ast::WildcardKind::Normal),
             }],
             ..
         }))
@@ -463,7 +463,7 @@ fn ranges_and_rest() {
 
     // We once used to wrongly parse this as `Grouped(Rest)`.
     // Inspired by <https://www.reddit.com/r/rust/comments/1pbbx5a/comment/nrqkwto>.
-    t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple([ast::Pat::Rest])));
+    t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple([([], ast::Pat::Rest)])));
 }
 
 #[test]

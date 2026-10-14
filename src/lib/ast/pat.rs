@@ -21,7 +21,7 @@ pub enum Pat<'src> {
     Range(Option<Box<RangePatBound<'src>>>, Option<Box<RangePatBound<'src>>>, RangePatKind),
     Slice(Vec<Pat<'src>>),
     Struct(Box<StructPat<'src>>),
-    Tuple(Vec<Pat<'src>>),
+    Tuple(Vec<(Vec<Attr<'src>>, Pat<'src>)>),
     TupleStruct(Box<TupleStructPat<'src>>),
     Wildcard(WildcardKind),
 }
@@ -55,7 +55,7 @@ pub enum ByRef {
 #[derive(Debug)]
 pub struct TupleStructPat<'src> {
     pub path: ExtPath<'src, ObligatorilyDisambiguatedGenericArgs>,
-    pub fields: Vec<Pat<'src>>,
+    pub fields: Vec<(Vec<Attr<'src>>, Pat<'src>)>,
 }
 
 #[derive(Debug)]
@@ -69,7 +69,7 @@ pub struct StructPat<'src> {
 pub struct StructPatField<'src> {
     pub attrs: Vec<Attr<'src>>,
     pub binder: Option<Ident<'src>>,
-    pub body: Pat<'src>,
+    pub pat: Pat<'src>,
 }
 
 #[derive(Debug)]
