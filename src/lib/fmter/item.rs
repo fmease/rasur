@@ -389,12 +389,14 @@ impl Fmt for Vec<ast::FnParam<'_>> {
 
 impl Fmt for ast::FnParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, pat, ty } = self;
+        let Self { attrs, const_, pat, ty } = self;
 
         for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
+
+        const_.trailing_space().fmt(cx);
 
         match (ty, pat) {
             (ast::Ty::ImplicitSelf, ast::Pat::Binding(ast::BindingPat { mut_, binder, .. })) => {

@@ -206,6 +206,7 @@ pub enum Gen {
 #[derive(Debug)]
 pub struct FnParam<'src> {
     pub attrs: Vec<Attr<'src>>,
+    pub const_: Const,
     pub pat: Pat<'src>,
     pub ty: Ty<'src>,
 }

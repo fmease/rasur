@@ -56,6 +56,7 @@ features! {
     fn_delegation #118212,
     forced_keywords #153839,
     frontmatter #136889,
+    function_arg_const_generics #163261,
     gen_blocks #117078,
     generic_const_items #113521,
     guard_patterns #129967,

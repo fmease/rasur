@@ -1,5 +1,9 @@
 use super::{
-    Fragment, Result, TokenKind, TokenPrefix, common::FnParamMode, frags, path::PathMode, weak,
+    Fragment, Result, TokenKind, TokenPrefix,
+    common::{ConstFnParamPolicy, EmptyFnParamPatPolicy},
+    frags,
+    path::PathMode,
+    weak,
 };
 use crate::{
     ast,
@@ -364,7 +368,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
         bound_vars: Vec<ast::GenericParam<'src>>,
         modifiers: ast::FnPtrTyModifiers<'src>,
     ) -> Result<ast::Ty<'src>> {
-        let inputs = self.parse_fn_param_list(FnParamMode::Optional)?;
+        let inputs =
+            self.parse_fn_param_list(EmptyFnParamPatPolicy::Parse, ConstFnParamPolicy::Yield)?;
         let output = self
             .consume(TokenKind::ThinArrow)
             .then(|| self.parse_ty_where(PlusPolicy::Yield))

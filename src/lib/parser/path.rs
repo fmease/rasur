@@ -1,5 +1,8 @@
 use super::{
-    Fragment, Parser, Result, TokenKind, TokenPrefix, common::FnParamMode, expr::AttrPolicy, frags,
+    Fragment, Parser, Result, TokenKind, TokenPrefix,
+    common::{ConstFnParamPolicy, EmptyFnParamPatPolicy},
+    expr::AttrPolicy,
+    frags,
     ty::PlusPolicy,
 };
 use crate::{ast, error::ErrorKind, feature::Feature, token::PathSegIdent};
@@ -185,11 +188,14 @@ impl<'src> Parser<'_, '_, 'src> {
             return Ok(ast::GenericArgs::ParenElided);
         }
 
-        let inputs = self.fin_parse_fn_param_list(FnParamMode::Optional)?;
+        let inputs =
+            self.fin_parse_fn_param_list(EmptyFnParamPatPolicy::Parse, ConstFnParamPolicy::Yield)?;
 
         // Ideally, we wouldn't hard-reject attrs, C-variadics and self parameters.
         // See also <https://github.com/rust-lang/rust/issues/160797>.
-        for ast::FnParam { attrs, pat, ty } in &inputs {
+        for ast::FnParam { attrs, const_, pat, ty } in &inputs {
+            std::debug_assert_matches!(const_, ast::Const::No);
+
             let mut poisoned = false;
 
             if let Some(attr) = attrs.first() {

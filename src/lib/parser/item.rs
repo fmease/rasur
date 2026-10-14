@@ -1,6 +1,6 @@
 use super::{
     Fragment, Parser, Result, TokenKind, TokenPrefix,
-    common::FnParamMode,
+    common::{ConstFnParamPolicy, EmptyFnParamPatPolicy},
     expr::AttrPolicy,
     frags,
     path::{GenericArgsMode, PathMode},
@@ -584,10 +584,13 @@ impl<'src> Parser<'_, '_, 'src> {
     ) -> Result<ast::ItemKind<'src>> {
         let binder = self.parse_common_ident()?;
         let gen_params = self.parse_generic_param_list()?.unwrap_or_default();
-        let params = self.parse_fn_param_list(match (cx, self.edition) {
-            (ItemCx::Trait, Edition::Rust2015) => FnParamMode::Optional,
-            _ => FnParamMode::Required,
-        })?;
+        let params = self.parse_fn_param_list(
+            match (cx, self.edition) {
+                (ItemCx::Trait, Edition::Rust2015) => EmptyFnParamPatPolicy::Parse,
+                _ => EmptyFnParamPatPolicy::Yield,
+            },
+            ConstFnParamPolicy::Parse,
+        )?;
         let ret_ty = self.consume(TokenKind::ThinArrow).then(|| self.parse_ty()).transpose()?;
         let contract = self.parse_contract()?;
         let preds = self.parse_where_clause()?.unwrap_or_default();

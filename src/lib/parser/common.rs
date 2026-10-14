@@ -103,16 +103,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a list of function parameters.
     pub(super) fn parse_fn_param_list(
         &mut self,
-        mode: FnParamMode,
+        e_policy: EmptyFnParamPatPolicy,
+        c_policy: ConstFnParamPolicy,
     ) -> Result<Vec<ast::FnParam<'src>>> {
         self.parse(TokenKind::OpenRoundBracket)?;
-        self.fin_parse_fn_param_list(mode)
+        self.fin_parse_fn_param_list(e_policy, c_policy)
     }
 
     /// Finish parsing a list of function parameters assuming the leading `(` has been parsed already.
     pub(super) fn fin_parse_fn_param_list(
         &mut self,
-        mode: FnParamMode,
+        e_policy: EmptyFnParamPatPolicy,
+        c_policy: ConstFnParamPolicy,
     ) -> Result<Vec<ast::FnParam<'src>>> {
         let mut first = true;
         self.fin_parse_delim_seq(TokenKind::CloseRoundBracket, TokenKind::Comma, |this| {
@@ -129,7 +131,27 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(param);
             }
 
-            let pat = if mode == FnParamMode::Required && this.token.kind != TokenKind::TripleDot
+            let mut const_ = ast::Const::No;
+
+            let pat = if let ConstFnParamPolicy::Parse = c_policy
+                && this.token.kind == TokenKind::Const
+                && this.peek(1).kind == TokenKind::CommonIdent
+                && this.peek(2).kind == TokenKind::SingleColon
+            {
+                const_ = ast::Const::Yes;
+                this.feature(Feature::function_arg_const_generics, this.token.span);
+                this.advance();
+                let binder = this.parse_common_ident().unwrap();
+                this.advance();
+
+                ast::Pat::Binding(Box::new(ast::BindingPat {
+                    mut_: ast::Mut::No,
+                    by_ref: ast::ByRef::No,
+                    binder,
+                    pat: None,
+                }))
+            } else if e_policy == EmptyFnParamPatPolicy::Yield
+                && this.token.kind != TokenKind::TripleDot
                 || this.is_restricted_param_pat()
             {
                 let pat = this.parse_pat(OrPolicy::Yield)?;
@@ -140,7 +162,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             };
 
             // FIXME: Better expectation.
-            let ty = if let span = this.token.span
+            let ty = if let ast::Const::No = const_
+                && let span = this.token.span
                 && this.consume(TokenKind::TripleDot)
             {
                 ast::Ty::CVariadics(span)
@@ -148,7 +171,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 this.parse_ty()?
             };
 
-            Ok(ast::FnParam { attrs, pat, ty })
+            Ok(ast::FnParam { attrs, const_, pat, ty })
         })
     }
 
@@ -205,7 +228,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 },
             };
 
-            Ok(Some(ast::FnParam { attrs: mem::take(attrs), pat, ty }))
+            Ok(Some(ast::FnParam { attrs: mem::take(attrs), const_: ast::Const::No, pat, ty }))
         } else {
             Ok(None)
         }
@@ -468,9 +491,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum FnParamMode {
-    Required,
-    Optional,
+pub(super) enum EmptyFnParamPatPolicy {
+    Yield,
+    Parse,
+}
+
+pub(super) enum ConstFnParamPolicy {
+    Yield,
+    Parse,
 }
 
 pub(super) enum ExpInNumIdentPolicy {
