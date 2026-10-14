@@ -126,7 +126,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 && let Some(param) = this.parse_self_param(&mut attrs)?
             {
                 if !first {
-                    this.error(ErrorKind::MisplacedReceiver, start.until(this.token.span));
+                    this.error(ErrorKind::MisplacedReceiver, start.to(this.prev_token().span));
                 }
                 return Ok(param);
             }
@@ -402,7 +402,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             None => {
                 self.error(ErrorKind::UnknownBuiltinSyntax, ident.span);
                 let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                error(start.until(self.token.span))
+                error(start.to(self.prev_token().span))
             }
         })
     }

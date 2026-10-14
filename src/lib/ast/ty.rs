@@ -12,8 +12,10 @@ pub enum Ty<'src> {
     /// Upstream issue that tracks its planned removal: <https://github.com/rust-lang/rust/issues/154045>.
     ///
     /// [^1]: Not to be confused with specialization's default impls `default impl Trait for Type {}`.
+    // FIXME: Throw out of `Ty`
     All,
     Array(Box<Ty<'src>>, Expr<'src>),
+    // FIXME: Throw out of `Ty`
     CVariadics(Span),
     DynTrait(DynKind, Vec<Bound<'src>>),
     Error(Span),

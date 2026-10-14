@@ -63,10 +63,6 @@ impl Span {
         Self::new(self.end, other.start)
     }
 
-    pub fn until(self, other: Span) -> Span {
-        Self::new(self.start, other.start)
-    }
-
     pub fn len(self) -> usize {
         (self.end.raw - self.start.raw) as _
     }

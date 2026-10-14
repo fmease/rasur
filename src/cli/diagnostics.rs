@@ -27,7 +27,6 @@ impl IntoDiag for Error {
             ErrorKind::EmptyCharLit => diag.title("empty char literal"),
             ErrorKind::EmptyExponent => diag.title("empty exponent"),
             ErrorKind::EmptyNumLit => diag.title("empty number literal"),
-            ErrorKind::ExpectedTraitFoundTy => diag.title("found type expected trait"),
             ErrorKind::FinalOnInvalidItem => {
                 diag.title("this item kind may not be marked with `final`")
             }
@@ -105,7 +104,6 @@ impl IntoDiag for Error {
             ErrorKind::TraitImplModifierInInherentImpl(modifier) => {
                 diag.title(format!("trait impl modifier `{modifier}` in inherent impl"))
             }
-            ErrorKind::TyRelMacroCall => diag.title("type-relative macro call"),
             ErrorKind::UnexpectedClosingDelimiter(actual) => {
                 let actual = Token { kind: actual, span: self.span }
                     .to_diag_str(cx.file.as_ref().map(|file| file.source));

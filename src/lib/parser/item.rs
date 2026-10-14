@@ -180,7 +180,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Mod] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_mod_item(safety, attrs);
@@ -188,7 +188,7 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Static] => {
                 let (safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_static_item(safety);
@@ -211,7 +211,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 (modifiers.safety, qualifiers) = Qualifier::strip_safety(qualifiers);
                 (modifiers.extern_, qualifiers) = Qualifier::strip_extern(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_fn_item(modifiers, cx, attrs);
@@ -240,7 +240,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     _ => (ast::Auto::No, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_trait_item(modifiers, attrs);
@@ -258,7 +258,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 });
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_impl_item(override_policy, kind, const_, safety, attrs);
@@ -266,13 +266,13 @@ impl<'src> Parser<'_, '_, 'src> {
             [qualifiers @ .., Qualifier::Extern(abi)] => {
                 let (safety, qualifiers) = Qualifier::strip_unsafe(qualifiers);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_extern_block_item(safety, *abi, attrs);
             }
             _ => {
-                self.error(ErrorKind::InvalidItemPrefix, start.until(self.token.span));
+                self.error(ErrorKind::InvalidItemPrefix, start.to(self.prev_token().span));
                 return Err(());
             }
         }
@@ -665,23 +665,21 @@ impl<'src> Parser<'_, '_, 'src> {
             ast::ImplPolarity::Positive
         };
 
-        // FIXME: HACK: `Ty` should just carry a span.
-        let ty_start = self.token.span;
         let ty = self.parse_ty()?;
-        let ty_span = ty_start.until(self.token.span);
 
-        let (trait_ref, self_ty) = if self.consume(TokenKind::For) {
-            let self_ty =
-                if self.consume(TokenKind::DoubleDot) { ast::Ty::All } else { self.parse_ty()? };
-            let trait_ref = if let ast::Ty::Path(ast::ExtPath { ext: None, path: trait_ref }) = ty {
-                Some(trait_ref)
-            } else {
-                self.error(ErrorKind::ExpectedTraitFoundTy, ty_span);
-                None
-            };
-            (trait_ref, self_ty)
-        } else {
-            (None, ty)
+        let (trait_ref, self_ty) = match ty {
+            ast::Ty::Path(ast::ExtPath { ext: None, path: trait_ref })
+                if self.consume(TokenKind::For) =>
+            {
+                let self_ty = if self.consume(TokenKind::DoubleDot) {
+                    ast::Ty::All
+                } else {
+                    self.parse_ty()?
+                };
+
+                (Some(trait_ref), self_ty)
+            }
+            _ => (None, ty),
         };
 
         let preds = self.parse_where_clause()?.unwrap_or_default();

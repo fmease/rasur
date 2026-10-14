@@ -299,7 +299,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             if gen_args.is_some() {
                 self.error(
                     ErrorKind::GenericArgsOnFieldExpr,
-                    gen_args_start.until(self.token.span),
+                    gen_args_start.to(self.prev_token().span),
                 );
             }
         }
@@ -427,7 +427,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     let (gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                     let (mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                     if !qualifiers.is_empty() {
-                        self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
+                        self.error(ErrorKind::InvalidExprPrefix, start.to(self.prev_token().span));
                     }
                     let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                     let kind = match (async_, gen_) {
@@ -460,7 +460,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     _ => (None, qualifiers),
                 };
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidExprPrefix, start.to(self.prev_token().span));
                 }
                 let block = self.fin_parse_block_expr(AttrPolicy::Parse(attrs))?;
                 return Ok(match kind {
@@ -496,7 +496,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 (modifiers.gen_, qualifiers) = Qualifier::strip_gen(qualifiers, self);
                 (modifiers.mode, qualifiers) = Qualifier::strip_capture_mode(qualifiers, self);
                 if !qualifiers.is_empty() {
-                    self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
+                    self.error(ErrorKind::InvalidExprPrefix, start.to(self.prev_token().span));
                 }
 
                 return self.fin_parse_closure_expr(bound_vars, modifiers, s_policy);
@@ -509,7 +509,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Move(Box::new(expr)));
             }
             _ => {
-                self.error(ErrorKind::InvalidExprPrefix, start.until(self.token.span));
+                self.error(ErrorKind::InvalidExprPrefix, start.to(self.prev_token().span));
                 return Err(());
             }
         }
@@ -661,11 +661,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let path = self.parse_ext_path::<ast::ObligatorilyDisambiguatedGenericArgs>()?;
 
             match self.token.kind {
-                TokenKind::SingleBang => {
-                    if path.ext.is_some() {
-                        self.error(ErrorKind::TyRelMacroCall, start.until(self.token.span));
-                    }
-
+                TokenKind::SingleBang if path.ext.is_none() => {
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 

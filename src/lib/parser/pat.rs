@@ -4,7 +4,7 @@ use super::{
     frags,
     weak::{self, Weak as _},
 };
-use crate::{ast, error::ErrorKind, feature::Feature, parser::TokenPrefix};
+use crate::{ast, feature::Feature, parser::TokenPrefix};
 
 impl<'src> super::Parser<'_, '_, 'src> {
     /// Parse a pattern.
@@ -371,11 +371,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         fields,
                     })));
                 }
-                TokenKind::SingleBang => {
-                    if path.ext.is_some() {
-                        self.error(ErrorKind::TyRelMacroCall, start.until(self.token.span));
-                    }
-
+                TokenKind::SingleBang if path.ext.is_none() => {
                     self.advance();
                     let (bracket, stream) = self.parse_delimited_token_stream()?;
 
