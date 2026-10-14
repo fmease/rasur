@@ -13,12 +13,15 @@ fn mut_ref_mut() {
         parse_pat,
         Rust2015,
         "mut ref mut x",
-        Ok(ast::Pat::Binding(ast::BindingPat {
-            mut_: ast::Mut::Yes,
-            by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mut::Yes),
-            binder: ast::Ident!("x"),
-            pat: None,
-        }))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Binding(ast::BindingPat {
+                mut_: ast::Mut::Yes,
+                by_ref: ast::ByRef::Yes(ast::BorrowKind::Ref, ast::Mut::Yes),
+                binder: ast::Ident!("x"),
+                pat: None,
+            }),
+            ..
+        })
     );
 }
 
@@ -55,70 +58,90 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S {}",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            path: ast::ExtPath {
-                ext: None,
-                path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("S"), args: None }] }
-            },
-            fields: [],
-            rest: false
-        }))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat {
+                path: ast::ExtPath {
+                    ext: None,
+                    path: ast::Path {
+                        segs: [ast::PathSeg { ident: ast::Ident!("S"), args: None }]
+                    }
+                },
+                fields: [],
+                rest: false
+            }),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "S { .. }",
-        Ok(ast::Pat::Struct(ast::StructPat { fields: [], rest: true, .. }))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat { fields: [], rest: true, .. }),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "S { f: x @ Some(_) }",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            fields: [ast::StructPatField {
-                attrs: [],
-                binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Binding(_),
-            }],
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat {
+                fields: [ast::StructPatField {
+                    attrs: [],
+                    binder: Some(ast::Ident!("f")),
+                    body: ast::Pat { kind: ast::PatKind::Binding(_), .. },
+                }],
+                ..
+            }),
             ..
-        }))
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "S { f: .. }",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            fields: [ast::StructPatField {
-                binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Rest,
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat {
+                fields: [ast::StructPatField {
+                    binder: Some(ast::Ident!("f")),
+                    body: ast::Pat { kind: ast::PatKind::Rest, .. },
+                    ..
+                }],
+                rest: false,
                 ..
-            }],
-            rest: false,
+            }),
             ..
-        }))
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "S { f }",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            fields: [ast::StructPatField {
-                binder: None,
-                body: ast::Pat::Binding(ast::BindingPat {
-                    mut_: ast::Mut::No,
-                    by_ref: ast::ByRef::No,
-                    binder: ast::Ident!("f"),
-                    pat: None,
-                }),
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat {
+                fields: [ast::StructPatField {
+                    binder: None,
+                    body: ast::Pat {
+                        kind: ast::PatKind::Binding(ast::BindingPat {
+                            mut_: ast::Mut::No,
+                            by_ref: ast::ByRef::No,
+                            binder: ast::Ident!("f"),
+                            pat: None,
+                        }),
+                        ..
+                    },
+                    ..
+                }],
+                rest: false,
                 ..
-            }],
-            rest: false,
+            }),
             ..
-        }))
+        })
     );
 
     t!(
@@ -138,18 +161,21 @@ fn structs() {
         parse_pat,
         Rust2015,
         "S { #[a] f: _ }",
-        Ok(ast::Pat::Struct(ast::StructPat {
-            fields: [ast::StructPatField {
-                attrs: [ast::Attr {
-                    style: ast::AttrStyle::Outer,
-                    kind: ast::AttrKind::Regular(_),
-                    ..
+        Ok(ast::Pat {
+            kind: ast::PatKind::Struct(ast::StructPat {
+                fields: [ast::StructPatField {
+                    attrs: [ast::Attr {
+                        style: ast::AttrStyle::Outer,
+                        kind: ast::AttrKind::Regular(_),
+                        ..
+                    }],
+                    binder: Some(ast::Ident!("f")),
+                    body: ast::Pat { kind: ast::PatKind::Wildcard(ast::WildcardKind::Normal), .. },
                 }],
-                binder: Some(ast::Ident!("f")),
-                body: ast::Pat::Wildcard(ast::WildcardKind::Normal),
-            }],
+                ..
+            }),
             ..
-        }))
+        })
     );
 
     // Context: rustc once used to accept this accidentally:
@@ -215,51 +241,60 @@ fn structs() {
 #[test]
 fn ranges_and_rest() {
     // Not a range but a rest pattern.
-    t!(parse_pat, Rust2015, "..", Ok(ast::Pat::Rest));
+    t!(parse_pat, Rust2015, "..", Ok(ast::Pat { kind: ast::PatKind::Rest, .. }));
 
     t!(
         parse_pat,
         Rust2015,
         "..1",
-        Ok(ast::Pat::Range(
-            None,
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None }
-            )),
-            ast::RangePatKind::Exclusive
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                None,
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::None,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None }
+                )),
+                ast::RangePatKind::Exclusive
+            ),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "-1..1",
-        Ok(ast::Pat::Range(
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::Neg,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            ast::RangePatKind::Exclusive
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::Neg,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::None,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                ast::RangePatKind::Exclusive
+            ),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "X..",
-        Ok(ast::Pat::Range(
-            Some(ast::RangePatBound::Path(ast::ExtPath {
-                ext: None,
-                path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("X"), .. }] }
-            })),
-            None,
-            ast::RangePatKind::Exclusive
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                Some(ast::RangePatBound::Path(ast::ExtPath {
+                    ext: None,
+                    path: ast::Path { segs: [ast::PathSeg { ident: ast::Ident!("X"), .. }] }
+                })),
+                None,
+                ast::RangePatKind::Exclusive
+            ),
+            ..
+        })
     );
 
     // Inclusive ranges need an explicit upper bound:
@@ -294,31 +329,37 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "..=1",
-        Ok(ast::Pat::Range(
-            None,
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None }
-            )),
-            ast::RangePatKind::Inclusive { legacy: false },
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                None,
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::None,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", suffix: None }
+                )),
+                ast::RangePatKind::Inclusive { legacy: false },
+            ),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "-1..=1",
-        Ok(ast::Pat::Range(
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::Neg,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            ast::RangePatKind::Inclusive { legacy: false },
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::Neg,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::None,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                ast::RangePatKind::Inclusive { legacy: false },
+            ),
+            ..
+        })
     );
 
     // Legacy ranges need an explict lower bound:
@@ -361,17 +402,20 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "-1...1",
-        Ok(ast::Pat::Range(
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::Neg,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            Some(ast::RangePatBound::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
-            )),
-            ast::RangePatKind::Inclusive { legacy: true },
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Range(
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::Neg,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                Some(ast::RangePatBound::Lit(
+                    ast::Sign::None,
+                    ast::Lit { kind: ast::LitKind::Num, value: "1", .. }
+                )),
+                ast::RangePatKind::Inclusive { legacy: true },
+            ),
+            ..
+        })
     );
 
     // We once used to incorrectly accept this.
@@ -434,16 +478,34 @@ fn ranges_and_rest() {
         parse_pat,
         Rust2015,
         "&5...10",
-        Ok(ast::Pat::Borrow(
-            ..,
-            ast::Pat::Range(Some(_), Some(_), ast::RangePatKind::Inclusive { legacy: true })
-        )),
+        Ok(ast::Pat {
+            kind: ast::PatKind::Borrow(
+                ..,
+                ast::Pat {
+                    kind: ast::PatKind::Range(
+                        Some(_),
+                        Some(_),
+                        ast::RangePatKind::Inclusive { legacy: true }
+                    ),
+                    ..
+                }
+            ),
+            ..
+        }),
     );
 
     // This snippet is legal because the `..` isn't
     // interpreted as a range but as a rest pattern.
 
-    t!(parse_pat, Rust2015, "&..", Ok(ast::Pat::Borrow(.., ast::Pat::Rest)));
+    t!(
+        parse_pat,
+        Rust2015,
+        "&..",
+        Ok(ast::Pat {
+            kind: ast::PatKind::Borrow(.., ast::Pat { kind: ast::PatKind::Rest, .. }),
+            ..
+        })
+    );
 
     t!(
         parse_pat,
@@ -459,11 +521,16 @@ fn ranges_and_rest() {
     );
 
     // Leading bar.
-    t!(parse_pat, Rust2015, "|..1", Ok(ast::Pat::Range(..)));
+    t!(parse_pat, Rust2015, "|..1", Ok(ast::Pat { kind: ast::PatKind::Range(..), .. }));
 
     // We once used to wrongly parse this as `Grouped(Rest)`.
     // Inspired by <https://www.reddit.com/r/rust/comments/1pbbx5a/comment/nrqkwto>.
-    t!(parse_pat, Rust2015, "(..)", Ok(ast::Pat::Tuple([ast::Pat::Rest])));
+    t!(
+        parse_pat,
+        Rust2015,
+        "(..)",
+        Ok(ast::Pat { kind: ast::PatKind::Tuple([ast::Pat { kind: ast::PatKind::Rest, .. }]), .. })
+    );
 }
 
 #[test]
@@ -486,23 +553,38 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(0 if true)",
-        Ok(ast::Pat::Grouped(
-            _,
-            ast::Pat::Guarded(ast::Pat::Lit(..), ast::Expr { kind: ast::ExprKind::Lit(..), .. })
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Grouped(
+                _,
+                ast::Pat {
+                    kind: ast::PatKind::Guarded(
+                        ast::Pat { kind: ast::PatKind::Lit(..), .. },
+                        ast::Expr { kind: ast::ExprKind::Lit(..), .. }
+                    ),
+                    ..
+                }
+            ),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "(x if true)",
-        Ok(ast::Pat::Grouped(
-            _,
-            ast::Pat::Guarded(
-                ast::Pat::Binding(..),
-                ast::Expr { kind: ast::ExprKind::Lit(..), .. }
-            )
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Grouped(
+                _,
+                ast::Pat {
+                    kind: ast::PatKind::Guarded(
+                        ast::Pat { kind: ast::PatKind::Binding(..), .. },
+                        ast::Expr { kind: ast::ExprKind::Lit(..), .. }
+                    ),
+                    ..
+                }
+            ),
+            ..
+        })
     );
 
     // We once used to accept this due to us treating `if` as a normal operator.
@@ -523,7 +605,25 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(&0 if true)",
-        Ok(ast::Pat::Grouped(_, ast::Pat::Guarded(ast::Pat::Borrow(.., ast::Pat::Lit(..)), _)))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Grouped(
+                _,
+                ast::Pat {
+                    kind: ast::PatKind::Guarded(
+                        ast::Pat {
+                            kind: ast::PatKind::Borrow(
+                                ..,
+                                ast::Pat { kind: ast::PatKind::Lit(..), .. }
+                            ),
+                            ..
+                        },
+                        _
+                    ),
+                    ..
+                }
+            ),
+            ..
+        })
     );
 
     // Obviously, `(..1) if true` over `..(1 if true)`.
@@ -531,19 +631,43 @@ fn guards() {
         parse_pat,
         Rust2015,
         "(..1 if true)",
-        Ok(ast::Pat::Grouped(
-            _,
-            ast::Pat::Guarded(ast::Pat::Range(None, Some(ast::RangePatBound::Lit(..)), _), _)
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Grouped(
+                _,
+                ast::Pat {
+                    kind: ast::PatKind::Guarded(
+                        ast::Pat {
+                            kind: ast::PatKind::Range(None, Some(ast::RangePatBound::Lit(..)), _),
+                            ..
+                        },
+                        _
+                    ),
+                    ..
+                }
+            ),
+            ..
+        })
     );
 
     t!(
         parse_pat,
         Rust2015,
         "(0.. if true)",
-        Ok(ast::Pat::Grouped(
-            _,
-            ast::Pat::Guarded(ast::Pat::Range(Some(ast::RangePatBound::Lit(..)), None, _), _)
-        ))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Grouped(
+                _,
+                ast::Pat {
+                    kind: ast::PatKind::Guarded(
+                        ast::Pat {
+                            kind: ast::PatKind::Range(Some(ast::RangePatBound::Lit(..)), None, _),
+                            ..
+                        },
+                        _
+                    ),
+                    ..
+                }
+            ),
+            ..
+        })
     );
 }

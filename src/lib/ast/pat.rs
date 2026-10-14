@@ -5,7 +5,13 @@ use super::{
 use crate::span::Span;
 
 #[derive(Debug)]
-pub enum Pat<'src> {
+pub struct Pat<'src> {
+    pub kind: PatKind<'src>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum PatKind<'src> {
     Binding(Box<BindingPat<'src>>),
     Borrow(BorrowKind<!>, Mut, Box<Pat<'src>>),
     Deref(Box<Pat<'src>>),
@@ -40,10 +46,10 @@ pub enum WildcardKind {
 
 #[derive(Debug)]
 pub struct BindingPat<'src> {
-    pub mut_: Mut,
-    pub by_ref: ByRef,
+    pub mut_: Mut = Mut::No,
+    pub by_ref: ByRef = ByRef::No,
     pub binder: Ident<'src>,
-    pub pat: Option<Box<Pat<'src>>>,
+    pub pat: Option<Box<Pat<'src>>> = None,
 }
 
 #[derive(Clone, Copy, Debug)]

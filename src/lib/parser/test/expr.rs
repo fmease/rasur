@@ -1294,26 +1294,35 @@ fn qualified_struct_pat_in_for_loop() {
         "for<Ty as Trait>::AssocTy {} in () {}",
         Ok(ast::Expr {
             kind: ast::ExprKind::ForLoop(ast::ForLoopExpr {
-                pat: ast::Pat::Struct(ast::StructPat {
-                    path: ast::ExtPath {
-                        ext: Some(ast::PathExt {
-                            self_ty: ast::Ty::Path(ast::ExtPath {
-                                ext: None,
-                                path: ast::Path {
-                                    segs: [ast::PathSeg { ident: ast::Ident!("Ty"), args: None }]
-                                },
+                pat: ast::Pat {
+                    kind: ast::PatKind::Struct(ast::StructPat {
+                        path: ast::ExtPath {
+                            ext: Some(ast::PathExt {
+                                self_ty: ast::Ty::Path(ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: [ast::PathSeg {
+                                            ident: ast::Ident!("Ty"),
+                                            args: None
+                                        }]
+                                    },
+                                }),
+                                trait_ref: Some(ast::Path {
+                                    segs: [ast::PathSeg {
+                                        ident: ast::Ident!("Trait"),
+                                        args: None
+                                    }]
+                                })
                             }),
-                            trait_ref: Some(ast::Path {
-                                segs: [ast::PathSeg { ident: ast::Ident!("Trait"), args: None }]
-                            })
-                        }),
-                        path: ast::Path {
-                            segs: [ast::PathSeg { ident: ast::Ident!("AssocTy"), args: None }]
-                        }
-                    },
-                    fields: [],
-                    rest: false
-                }),
+                            path: ast::Path {
+                                segs: [ast::PathSeg { ident: ast::Ident!("AssocTy"), args: None }]
+                            }
+                        },
+                        fields: [],
+                        rest: false
+                    }),
+                    ..
+                },
                 ..
             }),
             ..

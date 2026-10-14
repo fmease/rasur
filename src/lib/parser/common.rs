@@ -144,12 +144,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 let binder = this.parse_common_ident().unwrap();
                 this.advance();
 
-                ast::Pat::Binding(Box::new(ast::BindingPat {
-                    mut_: ast::Mut::No,
-                    by_ref: ast::ByRef::No,
-                    binder,
-                    pat: None,
-                }))
+                ast::Pat {
+                    kind: ast::PatKind::Binding(Box::new(ast::BindingPat { binder, .. })),
+                    span: binder.span,
+                }
             } else if e_policy == EmptyFnParamPatPolicy::Yield
                 && this.token.kind != TokenKind::TripleDot
                 || this.is_restricted_param_pat()
@@ -158,7 +156,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 this.parse(TokenKind::SingleColon)?;
                 pat
             } else {
-                ast::Pat::Wildcard(ast::WildcardKind::Empty)
+                ast::Pat {
+                    kind: ast::PatKind::Wildcard(ast::WildcardKind::Empty),
+                    span: this.token.span.start().into(),
+                }
             };
 
             // FIXME: Better expectation.
@@ -184,7 +185,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
             Bare,
         }
 
-        if let Some((kind, mut_, span)) = self.probe(|this| {
+        if let Some((kind, mut_, binder, span)) = self.probe(|this| {
+            let start = this.token.span;
             let (kind, mut_) = if this.consume(TokenKind::SingleAmpersand) {
                 let lt = this.parse_lifetime();
                 let (kind, mut_) = this.parse_borrow_kind_and_mutability();
@@ -193,26 +195,28 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 (ShorthandKind::Bare, this.parse_mut())
             };
             // FIXME: make `parse` ret the Span
-            let span = this.token.span;
+            let ident = this.token.span;
             this.parse(TokenKind::SelfLower).ok()?;
             // FIXME: HACK
             if let TokenKind::SingleColon | TokenKind::Comma | TokenKind::CloseRoundBracket =
                 this.token.kind
             {
-                Some((kind, mut_, span))
+                Some((kind, mut_, this.ident(ident), start.to(ident)))
             } else {
                 None
             }
         }) {
-            let pat = ast::Pat::Binding(Box::new(ast::BindingPat {
-                mut_: match kind {
-                    ShorthandKind::Ref(..) => ast::Mut::No,
-                    ShorthandKind::Bare => mut_,
-                },
-                by_ref: ast::ByRef::No,
-                binder: ast::Ident::new("self", span),
-                pat: None,
-            }));
+            let pat = ast::Pat {
+                kind: ast::PatKind::Binding(Box::new(ast::BindingPat {
+                    mut_: match kind {
+                        ShorthandKind::Ref(..) => ast::Mut::No,
+                        ShorthandKind::Bare => mut_,
+                    },
+                    binder,
+                    ..
+                })),
+                span,
+            };
 
             let ty = match kind {
                 ShorthandKind::Ref(lt, kind) => ast::Ty::Ref(Box::new(ast::RefTy {

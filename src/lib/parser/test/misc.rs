@@ -221,7 +221,15 @@ fn builtin_syntax() {
         })
     );
 
-    t!(parse_pat, Rust2021, "builtin # deref(0)", Ok(ast::Pat::Deref(ast::Pat::Lit(..))));
+    t!(
+        parse_pat,
+        Rust2021,
+        "builtin # deref(0)",
+        Ok(ast::Pat {
+            kind: ast::PatKind::Deref(ast::Pat { kind: ast::PatKind::Lit(..), .. }),
+            ..
+        })
+    );
 }
 
 #[test]

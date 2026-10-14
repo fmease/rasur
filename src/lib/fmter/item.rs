@@ -399,13 +399,18 @@ impl Fmt for ast::FnParam<'_> {
         const_.trailing_space().fmt(cx);
 
         match (ty, pat) {
-            (ast::Ty::ImplicitSelf, ast::Pat::Binding(ast::BindingPat { mut_, binder, .. })) => {
+            (
+                ast::Ty::ImplicitSelf,
+                ast::Pat {
+                    kind: ast::PatKind::Binding(ast::BindingPat { mut_, binder, .. }), ..
+                },
+            ) => {
                 mut_.trailing_space().fmt(cx);
                 binder.fmt(cx);
             }
             (
                 ast::Ty::Ref(ast::RefTy { lt, mut_, kind, pointee: ast::Ty::ImplicitSelf }),
-                ast::Pat::Binding(ast::BindingPat { binder, .. }),
+                ast::Pat { kind: ast::PatKind::Binding(ast::BindingPat { binder, .. }), .. },
             ) => {
                 fmt!(cx, "&");
                 lt.trailing_space().fmt(cx);
@@ -413,7 +418,7 @@ impl Fmt for ast::FnParam<'_> {
                 binder.fmt(cx);
             }
             (ty, pat) => {
-                if let ast::Pat::Wildcard(ast::WildcardKind::Empty) = pat {
+                if let ast::PatKind::Wildcard(ast::WildcardKind::Empty) = pat.kind {
                     // do nothing
                 } else {
                     pat.fmt(cx);

@@ -209,8 +209,8 @@ impl<'src> Parser<'_, '_, 'src> {
                 poisoned = true;
             }
 
-            if !poisoned && !matches!(pat, ast::Pat::Wildcard(ast::WildcardKind::Empty)) {
-                self.feature_no_span_fixme(Feature::named_fn_trait_parameters);
+            if !poisoned && !matches!(pat.kind, ast::PatKind::Wildcard(ast::WildcardKind::Empty)) {
+                self.feature(Feature::named_fn_trait_parameters, pat.span);
             }
         }
 

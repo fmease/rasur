@@ -158,11 +158,11 @@ fn report(
             } else {
                 String::new()
             };
-            let diag = diag.help(format!(
+            diag.help(format!(
                 "add `#![feature({feature})]` at the top of the file{extra} to enable"
-            ));
-            let diag = if let Some(span) = span { diag.span(span) } else { diag };
-            diag.render(cx);
+            ))
+            .span(span)
+            .render(cx);
         }
     } else if let Some(ArtifactType::Features) = opts.emit {
         let mut stdout = io::BufWriter::new(io::stdout().lock());

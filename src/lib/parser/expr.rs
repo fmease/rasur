@@ -945,8 +945,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
             let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
             let pat = self.parse_pat(OrPolicy::Parse)?;
 
-            let (pat, guard) = match pat {
-                ast::Pat::Grouped(span, ast::Pat::Guarded(pat, guard)) => {
+            let (pat, guard) = match pat.kind {
+                ast::PatKind::Grouped(
+                    span,
+                    ast::Pat { kind: ast::PatKind::Guarded(pat, guard), .. },
+                ) => {
                     self.error(ErrorKind::ParenthesizedGuardedPatInMatch, span);
 
                     (*pat, Some(*guard))
@@ -968,7 +971,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             //       Reported upstream: <https://github.com/rust-lang/rust/issues/153134>.
             let is_body_optional = self.token.kind == DELIMITER
                 || guard.is_some()
-                || pat.contains_never_or_macro_call();
+                || pat.kind.contains_never_or_macro_call();
 
             let body;
             {
@@ -1095,7 +1098,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 }
 
-impl ast::Pat<'_> {
+impl ast::PatKind<'_> {
     fn contains_never_or_macro_call(&self) -> bool {
         match self {
             Self::Never | Self::MacroCall(_) => true,
@@ -1110,14 +1113,16 @@ impl ast::Pat<'_> {
             | Self::Deref(pat)
             | Self::Grouped(_, pat)
             | Self::Guarded(pat, _)
-            | Self::Or(_, pat) => pat.contains_never_or_macro_call(),
+            | Self::Or(_, pat) => pat.kind.contains_never_or_macro_call(),
             Self::Slice(pats) | Self::Tuple(pats) => {
-                pats.iter().any(Self::contains_never_or_macro_call)
+                pats.iter().any(|pat| pat.kind.contains_never_or_macro_call())
             }
             Self::Struct(pat) => {
-                pat.fields.iter().any(|field| field.body.contains_never_or_macro_call())
+                pat.fields.iter().any(|field| field.body.kind.contains_never_or_macro_call())
             }
-            Self::TupleStruct(pat) => pat.fields.iter().any(Self::contains_never_or_macro_call),
+            Self::TupleStruct(pat) => {
+                pat.fields.iter().any(|pat| pat.kind.contains_never_or_macro_call())
+            }
         }
     }
 }

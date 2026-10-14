@@ -603,7 +603,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 self.advance();
                 self.advance_while(is_ident_middle);
 
-                self.store.features.add((Feature::forced_keywords, Some(self.span(start))));
+                self.store.features.add((Feature::forced_keywords, self.span(start)));
 
                 return lex_keyword(self.source(unprefixed), self.edition)
                     .unwrap_or(TokenKind::StroppedKeyword);

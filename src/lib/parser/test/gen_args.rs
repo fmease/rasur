@@ -74,28 +74,37 @@ fn angle_gen_args_pat() {
         parse_pat,
         Rust2015,
         "Some::<i32>(0)",
-        Ok(ast::Pat::TupleStruct(ast::TupleStructPat {
-            path: ast::ExtPath {
-                ext: None,
-                path: ast::Path {
-                    segs: [ast::PathSeg {
-                        ident: ast::Ident!("Some"),
-                        args: Some(ast::GenericArgs::Angle([ast::AngleGenericArg::Ty(
-                            ast::Ty::Path(ast::ExtPath {
-                                ext: None,
-                                path: ast::Path {
-                                    segs: [ast::PathSeg { ident: ast::Ident!("i32"), args: None }],
-                                }
-                            })
-                        )]))
-                    }]
-                }
-            },
-            fields: [ast::Pat::Lit(
-                ast::Sign::None,
-                ast::Lit { kind: ast::LitKind::Num, value: "0", .. },
-            )]
-        })),
+        Ok(ast::Pat {
+            kind: ast::PatKind::TupleStruct(ast::TupleStructPat {
+                path: ast::ExtPath {
+                    ext: None,
+                    path: ast::Path {
+                        segs: [ast::PathSeg {
+                            ident: ast::Ident!("Some"),
+                            args: Some(ast::GenericArgs::Angle([ast::AngleGenericArg::Ty(
+                                ast::Ty::Path(ast::ExtPath {
+                                    ext: None,
+                                    path: ast::Path {
+                                        segs: [ast::PathSeg {
+                                            ident: ast::Ident!("i32"),
+                                            args: None
+                                        }],
+                                    }
+                                })
+                            )]))
+                        }]
+                    }
+                },
+                fields: [ast::Pat {
+                    kind: ast::PatKind::Lit(
+                        ast::Sign::None,
+                        ast::Lit { kind: ast::LitKind::Num, value: "0", .. },
+                    ),
+                    ..
+                }]
+            }),
+            ..
+        }),
     );
 }
 
@@ -189,18 +198,21 @@ fn paren_gen_args_arrow_expr_or_pat() {
         parse_pat,
         Rust2015,
         "x::()->!::X",
-        Ok(ast::Pat::Path(ast::ExtPath {
-            ext: None,
-            path: ast::Path {
-                segs: [
-                    ast::PathSeg {
-                        ident: ast::Ident!("x"),
-                        args: Some(ast::GenericArgs::Paren([], Some(ast::Ty::Never)))
-                    },
-                    ast::PathSeg { ident: ast::Ident!("X"), args: None }
-                ]
-            }
-        }))
+        Ok(ast::Pat {
+            kind: ast::PatKind::Path(ast::ExtPath {
+                ext: None,
+                path: ast::Path {
+                    segs: [
+                        ast::PathSeg {
+                            ident: ast::Ident!("x"),
+                            args: Some(ast::GenericArgs::Paren([], Some(ast::Ty::Never)))
+                        },
+                        ast::PathSeg { ident: ast::Ident!("X"), args: None }
+                    ]
+                }
+            }),
+            ..
+        })
     );
 }
 

@@ -3,8 +3,16 @@ use super::{
 };
 use crate::ast;
 
-// FIXME: Don't print unnecessary parens & properly respect precedence.
 impl Fmt for ast::Pat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { kind, span: _ } = self;
+
+        kind.fmt(cx);
+    }
+}
+
+// FIXME: Respect precedence.
+impl Fmt for ast::PatKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Binding(binding) => binding.fmt(cx),

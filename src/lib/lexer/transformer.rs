@@ -167,7 +167,7 @@ pub fn strip_frontmatter(
         error(ErrorKind::UnterminatedFrontmatter, span);
     }
 
-    store.features.add((Feature::frontmatter, Some(span)));
+    store.features.add((Feature::frontmatter, span));
 
     *offset = cutter.index();
 

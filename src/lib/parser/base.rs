@@ -154,12 +154,7 @@ impl<'tok, 'sto, 'src> Parser<'tok, 'sto, 'src> {
     }
 
     pub(super) fn feature(&self, feature: Feature, span: Span) {
-        self.store.features.add((feature, Some(span)));
-    }
-
-    // FIXME: Gradually get rid of this.
-    pub(super) fn feature_no_span_fixme(&self, feature: Feature) {
-        self.store.features.add((feature, None));
+        self.store.features.add((feature, span));
     }
 }
 
@@ -253,6 +248,7 @@ impl<W: weak::Weak> TokenCategory for W {
 
 #[derive(Clone, Copy)]
 pub(super) enum TokenPrefix {
+    Ampersand,
     GreaterThan,
     LessThan,
     Pipe,
@@ -264,6 +260,7 @@ impl TokenPrefix {
 
     fn single(self) -> TokenKind {
         match self {
+            Self::Ampersand => TokenKind::SingleAmpersand,
             Self::GreaterThan => TokenKind::SingleGreaterThan,
             Self::LessThan => TokenKind::SingleLessThan,
             Self::Pipe => TokenKind::SinglePipe,
@@ -276,6 +273,8 @@ impl TokenPrefix {
 
         #[expect(clippy::match_same_arms)] // leads to more legible code
         Ok(Some(match (self, token) {
+            (Self::Ampersand, TokenKind::SingleAmpersand) => return Ok(None),
+            (Self::Ampersand, TokenKind::DoubleAmpersand) => TokenKind::SingleAmpersand,
             (Self::GreaterThan, TokenKind::DoubleGreaterThan) => TokenKind::SingleGreaterThan,
             (Self::GreaterThan, TokenKind::DoubleGreaterThanEquals) => TokenKind::GreaterThanEquals,
             (Self::GreaterThan, TokenKind::GreaterThanEquals) => TokenKind::SingleEquals,
