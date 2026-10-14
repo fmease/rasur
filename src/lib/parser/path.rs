@@ -193,9 +193,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
         // Ideally, we wouldn't hard-reject attrs, C-variadics and self parameters.
         // See also <https://github.com/rust-lang/rust/issues/160797>.
-        for ast::FnParam { attrs, const_, pat, ty } in &inputs {
-            std::debug_assert_matches!(const_, ast::Const::No);
-
+        for ast::FnParam { attrs, kind } in &inputs {
             let mut poisoned = false;
 
             if let Some(attr) = attrs.first() {
@@ -204,13 +202,25 @@ impl<'src> Parser<'_, '_, 'src> {
                 poisoned = true;
             }
 
-            if let &ast::FnParamTy::CVariadics(span) = ty {
-                self.error(ErrorKind::ForbiddenCVariadics, span);
-                poisoned = true;
-            }
+            match kind {
+                ast::FnParamKind::Normal { pat, ty } => {
+                    if let &ast::FnParamTy::CVariadics(span) = ty {
+                        self.error(ErrorKind::ForbiddenCVariadics, span);
+                        poisoned = true;
+                    }
 
-            if !poisoned && !matches!(pat.kind, ast::PatKind::Wildcard(ast::WildcardKind::Empty)) {
-                self.feature(Feature::named_fn_trait_parameters, pat.span);
+                    if !poisoned
+                        && !matches!(pat.kind, ast::PatKind::Wildcard(ast::WildcardKind::Empty))
+                    {
+                        self.feature(Feature::named_fn_trait_parameters, pat.span);
+                    }
+                }
+                &ast::FnParamKind::Receiver { binder: span, .. } => {
+                    if !poisoned {
+                        self.feature(Feature::named_fn_trait_parameters, span);
+                    }
+                }
+                ast::FnParamKind::Const { .. } => unreachable!(),
             }
         }
 

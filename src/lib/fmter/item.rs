@@ -389,40 +389,21 @@ impl Fmt for Vec<ast::FnParam<'_>> {
 
 impl Fmt for ast::FnParam<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
-        let Self { attrs, const_, pat, ty } = self;
+        let Self { attrs, kind } = self;
 
         for attr in attrs {
             attr.fmt(cx);
             fmt!(cx, " ");
         }
 
-        const_.trailing_space().fmt(cx);
+        kind.fmt(cx);
+    }
+}
 
-        match (ty, pat) {
-            (
-                ast::FnParamTy::Ty(ast::Ty::ImplicitSelf),
-                ast::Pat {
-                    kind: ast::PatKind::Binding(ast::BindingPat { mut_, binder, .. }), ..
-                },
-            ) => {
-                mut_.trailing_space().fmt(cx);
-                binder.fmt(cx);
-            }
-            (
-                ast::FnParamTy::Ty(ast::Ty::Ref(ast::RefTy {
-                    lt,
-                    mut_,
-                    kind,
-                    pointee: ast::Ty::ImplicitSelf,
-                })),
-                ast::Pat { kind: ast::PatKind::Binding(ast::BindingPat { binder, .. }), .. },
-            ) => {
-                fmt!(cx, "&");
-                lt.trailing_space().fmt(cx);
-                (kind, mut_).trailing_space().fmt(cx);
-                binder.fmt(cx);
-            }
-            (ty, pat) => {
+impl Fmt for ast::FnParamKind<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        match self {
+            Self::Normal { pat, ty } => {
                 if let ast::PatKind::Wildcard(ast::WildcardKind::Empty) = pat.kind {
                     // do nothing
                 } else {
@@ -430,6 +411,26 @@ impl Fmt for ast::FnParam<'_> {
                     fmt!(cx, ": ");
                 }
 
+                ty.fmt(cx);
+            }
+            Self::Receiver { kind: ast::ReceiverKind::Normal(mut_, ty), .. } => {
+                mut_.trailing_space().fmt(cx);
+                fmt!(cx, "self");
+                if let Some(ty) = ty {
+                    fmt!(cx, ": ");
+                    ty.fmt(cx);
+                }
+            }
+            Self::Receiver { kind: ast::ReceiverKind::Ref(lt, kind, mut_), .. } => {
+                fmt!(cx, "&");
+                lt.trailing_space().fmt(cx);
+                (kind, mut_).trailing_space().fmt(cx);
+                fmt!(cx, "self");
+            }
+            Self::Const { binder, ty } => {
+                fmt!(cx, "const ");
+                binder.fmt(cx);
+                fmt!(cx, ": ");
                 ty.fmt(cx);
             }
         }

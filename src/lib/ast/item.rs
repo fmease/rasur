@@ -1,7 +1,7 @@
 use super::{
-    Attr, BlockExpr, Bound, Expr, Extern, Generics, Ident, MacroCall, Mut, NoGenericArgs,
-    ObligatorilyDisambiguatedGenericArgs, Pat, Path, PathExt, Safety, Span, TokenStream, Ty,
-    UnambiguousGenericArgs,
+    Attr, BlockExpr, BorrowKind, Bound, Expr, Extern, Generics, Ident, Lifetime, MacroCall, Mut,
+    NoGenericArgs, ObligatorilyDisambiguatedGenericArgs, Pat, Path, PathExt, Safety, Span,
+    TokenStream, Ty, UnambiguousGenericArgs,
 };
 use Default::default;
 
@@ -206,9 +206,20 @@ pub enum Gen {
 #[derive(Debug)]
 pub struct FnParam<'src> {
     pub attrs: Vec<Attr<'src>>,
-    pub const_: Const,
-    pub pat: Pat<'src>,
-    pub ty: FnParamTy<'src>,
+    pub kind: FnParamKind<'src>,
+}
+
+#[derive(Debug)]
+pub enum FnParamKind<'src> {
+    Normal { pat: Pat<'src>, ty: FnParamTy<'src> },
+    Receiver { binder: Span, kind: ReceiverKind<'src> },
+    Const { binder: Ident<'src>, ty: Ty<'src> },
+}
+
+#[derive(Debug)]
+pub enum ReceiverKind<'src> {
+    Normal(Mut, Option<Ty<'src>>),
+    Ref(Option<Lifetime<'src>>, BorrowKind<!>, Mut),
 }
 
 #[derive(Debug)]

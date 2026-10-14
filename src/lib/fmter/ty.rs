@@ -38,8 +38,6 @@ impl Fmt for ast::Ty<'_> {
                 }
                 bounds.fmt(cx);
             }
-            // If the caller wants to treat `ImplicitSelf` special, they should do it themself.
-            Self::ImplicitSelf => fmt!(cx, "Self"),
             Self::Array(ty, expr) => {
                 fmt!(cx, "[");
                 ty.fmt(cx);

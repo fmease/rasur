@@ -663,27 +663,29 @@ fn fn_ptr_tys() {
         "fn(&&self: ())",
         Ok(ast::Ty::FnPtr(ast::FnPtrTy {
             inputs: [ast::FnParam {
-                pat: ast::Pat {
-                    kind: ast::PatKind::Borrow(
-                        ..,
-                        ast::Pat {
-                            kind: ast::PatKind::Borrow(
-                                ..,
-                                ast::Pat {
-                                    kind: ast::PatKind::Binding(ast::BindingPat {
-                                        binder: ast::Ident!("self"),
-                                        pat: None,
+                kind: ast::FnParamKind::Normal {
+                    pat: ast::Pat {
+                        kind: ast::PatKind::Borrow(
+                            ..,
+                            ast::Pat {
+                                kind: ast::PatKind::Borrow(
+                                    ..,
+                                    ast::Pat {
+                                        kind: ast::PatKind::Binding(ast::BindingPat {
+                                            binder: ast::Ident!("self"),
+                                            pat: None,
+                                            ..
+                                        }),
                                         ..
-                                    }),
-                                    ..
-                                }
-                            ),
-                            ..
-                        }
-                    ),
-                    ..
+                                    }
+                                ),
+                                ..
+                            }
+                        ),
+                        ..
+                    },
+                    ty: ast::FnParamTy::Ty(ast::Ty::Tuple([])),
                 },
-                ty: ast::FnParamTy::Ty(ast::Ty::Tuple([])),
                 ..
             }],
             ..

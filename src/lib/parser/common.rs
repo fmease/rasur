@@ -131,48 +131,43 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(param);
             }
 
-            let mut const_ = ast::Const::No;
-
-            let pat = if let ConstFnParamPolicy::Parse = c_policy
-                && this.token.kind == TokenKind::Const
-                && this.peek(1).kind == TokenKind::CommonIdent
-                && this.peek(2).kind == TokenKind::SingleColon
-            {
-                const_ = ast::Const::Yes;
-                this.feature(Feature::function_arg_const_generics, this.token.span);
-                this.advance();
-                let binder = this.parse_common_ident().unwrap();
-                this.advance();
-
-                ast::Pat {
-                    kind: ast::PatKind::Binding(Box::new(ast::BindingPat { binder, .. })),
-                    span: binder.span,
-                }
-            } else if e_policy == EmptyFnParamPatPolicy::Yield
-                && this.token.kind != TokenKind::TripleDot
-                || this.is_restricted_param_pat()
-            {
-                let pat = this.parse_pat(OrPolicy::Yield)?;
-                this.parse(TokenKind::SingleColon)?;
-                pat
+            let kind = if let ConstFnParamPolicy::Parse = c_policy
+                && let Some((start, binder)) = this.probe(|this| {
+                    let start = this.token.span;
+                    this.parse(TokenKind::Const).ok()?;
+                    let binder = this.parse_common_ident().ok()?;
+                    this.parse(TokenKind::SingleColon).ok()?;
+                    Some((start, binder))
+                }) {
+                this.feature(Feature::function_arg_const_generics, start);
+                let ty = this.parse_ty()?;
+                ast::FnParamKind::Const { binder, ty }
             } else {
-                ast::Pat {
-                    kind: ast::PatKind::Wildcard(ast::WildcardKind::Empty),
-                    span: this.token.span.start().into(),
-                }
+                let pat = if e_policy == EmptyFnParamPatPolicy::Yield
+                    && this.token.kind != TokenKind::TripleDot
+                    || this.is_restricted_param_pat()
+                {
+                    let pat = this.parse_pat(OrPolicy::Yield)?;
+                    this.parse(TokenKind::SingleColon)?;
+                    pat
+                } else {
+                    ast::Pat {
+                        kind: ast::PatKind::Wildcard(ast::WildcardKind::Empty),
+                        span: this.token.span.start().into(),
+                    }
+                };
+
+                let ty = if let start = this.token.span
+                    && this.consume(TokenKind::TripleDot)
+                {
+                    ast::FnParamTy::CVariadics(start)
+                } else {
+                    ast::FnParamTy::Ty(this.parse_ty()?) // FIXME: expectation
+                };
+                ast::FnParamKind::Normal { pat, ty }
             };
 
-            // FIXME: Better expectation.
-            let ty = if let ast::Const::No = const_
-                && let span = this.token.span
-                && this.consume(TokenKind::TripleDot)
-            {
-                ast::FnParamTy::CVariadics(span)
-            } else {
-                ast::FnParamTy::Ty(this.parse_ty()?)
-            };
-
-            Ok(ast::FnParam { attrs, const_, pat, ty })
+            Ok(ast::FnParam { attrs, kind })
         })
     }
 
@@ -181,12 +176,11 @@ impl<'src> super::Parser<'_, '_, 'src> {
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<Option<ast::FnParam<'src>>> {
         enum ShorthandKind<'src> {
-            Ref(Option<ast::Lifetime<'src>>, ast::BorrowKind<!>),
             Bare,
+            Ref(Option<ast::Lifetime<'src>>, ast::BorrowKind<!>),
         }
 
-        if let Some((kind, mut_, binder, span)) = self.probe(|this| {
-            let start = this.token.span;
+        let Some((kind, mut_, binder)) = self.probe(|this| {
             let (kind, mut_) = if this.consume(TokenKind::SingleAmpersand) {
                 let lt = this.parse_lifetime();
                 let (kind, mut_) = this.parse_borrow_kind_and_mutability();
@@ -194,48 +188,36 @@ impl<'src> super::Parser<'_, '_, 'src> {
             } else {
                 (ShorthandKind::Bare, this.parse_mut())
             };
-            // FIXME: make `parse` ret the Span
-            let ident = this.token.span;
+            let binder = this.token.span;
             this.parse(TokenKind::SelfLower).ok()?;
             // FIXME: HACK
             if let TokenKind::SingleColon | TokenKind::Comma | TokenKind::CloseRoundBracket =
                 this.token.kind
             {
-                Some((kind, mut_, this.ident(ident), start.to(ident)))
+                Some((kind, mut_, binder))
             } else {
                 None
             }
-        }) {
-            let pat = ast::Pat {
-                kind: ast::PatKind::Binding(Box::new(ast::BindingPat {
-                    mut_: match kind {
-                        ShorthandKind::Ref(..) => ast::Mut::No,
-                        ShorthandKind::Bare => mut_,
-                    },
-                    binder,
-                    ..
-                })),
-                span,
-            };
+        }) else {
+            return Ok(None);
+        };
 
-            let ty = ast::FnParamTy::Ty(match kind {
-                ShorthandKind::Ref(lt, kind) => ast::Ty::Ref(Box::new(ast::RefTy {
-                    lt,
-                    kind,
-                    mut_,
-                    pointee: ast::Ty::ImplicitSelf,
-                })),
-                ShorthandKind::Bare => match self.consume(TokenKind::SingleColon) {
-                    // Indeed, C-variadics are not permitted here.
-                    true => self.parse_ty()?,
-                    false => ast::Ty::ImplicitSelf,
-                },
-            });
+        let kind = match kind {
+            ShorthandKind::Bare => {
+                let ty = if self.consume(TokenKind::SingleColon) {
+                    Some(self.parse_ty()?)
+                } else {
+                    None
+                };
+                ast::ReceiverKind::Normal(mut_, ty)
+            }
+            ShorthandKind::Ref(lt, kind) => ast::ReceiverKind::Ref(lt, kind, mut_),
+        };
 
-            Ok(Some(ast::FnParam { attrs: mem::take(attrs), const_: ast::Const::No, pat, ty }))
-        } else {
-            Ok(None)
-        }
+        Ok(Some(ast::FnParam {
+            attrs: mem::take(attrs),
+            kind: ast::FnParamKind::Receiver { binder, kind },
+        }))
     }
 
     // FIXME: Rewrite this using "probe2"?

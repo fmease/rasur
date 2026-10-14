@@ -163,7 +163,6 @@ impl ast::Ty<'_> {
             | Self::FieldOf(..)
             | Self::Grouped(_)
             | Self::ImplTrait(_)
-            | Self::ImplicitSelf
             | Self::Inferred
             | Self::Never
             | Self::Path(_)

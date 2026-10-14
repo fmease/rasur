@@ -13,7 +13,6 @@ pub enum Ty<'src> {
     FnPtr(Box<FnPtrTy<'src>>),
     Grouped(Box<Ty<'src>>),
     ImplTrait(Vec<Bound<'src>>),
-    ImplicitSelf,
     Inferred,
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Never,
