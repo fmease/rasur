@@ -102,6 +102,7 @@ impl Feature {
         }
     }
 
+    // FIXME: Support "incomplete", too.
     pub const fn kind(self) -> FeatureKind {
         match self {
             Self::builtin_syntax | Self::contract_internals => FeatureKind::Internal,

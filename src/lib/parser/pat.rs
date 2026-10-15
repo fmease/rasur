@@ -67,7 +67,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     fn consume_prefix_pat_op(&mut self) -> Option<Op> {
         match self.token.kind {
-            TokenKind::SingleAmpersand | TokenKind::DoubleAmpersand => {
+            TokenKind::DoubleAmpersand | TokenKind::SingleAmpersand => {
                 self.parse_unchecked(TokenPrefix::Ampersand);
                 Some(Op::Borrow)
             }

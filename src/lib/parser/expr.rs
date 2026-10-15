@@ -86,9 +86,8 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         let mut h_policy = HigherPostfixOpPolicy::Parse;
 
-        let mut left = if let Some(op) = self.token.kind.as_prefix_expr_op() {
+        let mut left = if let Some(op) = self.consume_prefix_expr_op() {
             h_policy = HigherPostfixOpPolicy::Yield;
-            self.advance();
 
             let left = self.fin_parse_prefix_op_expr(op, s_policy, o_policy, attrs)?;
 
@@ -150,6 +149,23 @@ impl<'src> super::Parser<'_, '_, 'src> {
         Ok(left)
     }
 
+    fn consume_prefix_expr_op(&mut self) -> Option<Op> {
+        let op = match self.token.kind {
+            TokenKind::DoubleAmpersand | TokenKind::SingleAmpersand => {
+                self.parse_unchecked(TokenPrefix::Ampersand);
+                return Some(Op::Borrow);
+            }
+            TokenKind::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
+            TokenKind::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
+            TokenKind::SingleAsterisk => Op::UnOp(ast::UnOp::Deref),
+            TokenKind::SingleBang => Op::UnOp(ast::UnOp::Not),
+            TokenKind::SingleHyphen => Op::UnOp(ast::UnOp::Neg),
+            _ => return None,
+        };
+        self.advance();
+        Some(op)
+    }
+
     fn fin_parse_prefix_op_expr(
         &mut self,
         op: Op,
@@ -160,17 +176,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
         let right_level = op.right_level().unwrap();
 
         match op {
-            Op::DoubleBorrow => {
-                let expr =
-                    self.fin_parse_borrow_expr(right_level, s_policy, o_policy, Vec::new())?;
-                let kind =
-                    ast::ExprKind::Borrow(ast::BorrowKind::Ref, ast::Mut::No, Box::new(expr));
-                Ok(ast::Expr { attrs, kind })
-            }
+            Op::Borrow => self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs),
             Op::Range(kind) => {
                 self.fin_parse_range_expr(kind, None, right_level, s_policy, o_policy, attrs)
             }
-            Op::SingleBorrow => self.fin_parse_borrow_expr(right_level, s_policy, o_policy, attrs),
             Op::UnOp(op) => {
                 let right =
                     self.parse_expr_at_level(right_level, Policy { s: s_policy, o: o_policy, .. })?;
@@ -1168,13 +1177,12 @@ pub(crate) enum AttrPolicy<'a, 'src> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Op {
     BinOp(ast::BinOp),
+    Borrow,
     Call,
     Cast,
     Dot,
-    DoubleBorrow,
     Index,
     Range(ast::RangeExprKind),
-    SingleBorrow,
     Try,
     UnOp(ast::UnOp),
 }
@@ -1185,7 +1193,7 @@ impl Op {
             Self::BinOp(op) => op.left_level(),
             Self::Call | Self::Index => Level::Call,
             Self::Cast => Level::Cast,
-            Self::UnOp(_) | Self::SingleBorrow | Self::DoubleBorrow => return None,
+            Self::UnOp(_) | Self::Borrow => return None,
             Self::Dot => Level::Dot,
             Self::Range(_) => Level::Range,
             Self::Try => Level::Try,
@@ -1196,7 +1204,7 @@ impl Op {
         Some(match self {
             Self::BinOp(op) => op.right_level(),
             Self::Call | Self::Cast | Self::Dot | Self::Index | Self::Try => return None,
-            Self::UnOp(_) | Self::SingleBorrow | Self::DoubleBorrow => Level::Prefix,
+            Self::UnOp(_) | Self::Borrow => Level::Prefix,
             Self::Range(_) => Level::Range,
         })
     }
@@ -1239,19 +1247,6 @@ impl ast::BinOp {
 }
 
 impl TokenKind {
-    fn as_prefix_expr_op(self) -> Option<Op> {
-        Some(match self {
-            Self::DoubleAmpersand => Op::DoubleBorrow,
-            Self::DoubleDot => Op::Range(ast::RangeExprKind::Exclusive),
-            Self::DoubleDotEquals => Op::Range(ast::RangeExprKind::Inclusive),
-            Self::SingleAmpersand => Op::SingleBorrow,
-            Self::SingleAsterisk => Op::UnOp(ast::UnOp::Deref),
-            Self::SingleBang => Op::UnOp(ast::UnOp::Not),
-            Self::SingleHyphen => Op::UnOp(ast::UnOp::Neg),
-            _ => return None,
-        })
-    }
-
     fn as_infix_or_postfix_expr_op(self) -> Option<Op> {
         Some(match self {
             Self::AmpersandEquals => Op::BinOp(ast::BinOp::BitAndAssign),

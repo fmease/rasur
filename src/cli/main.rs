@@ -137,6 +137,7 @@ fn report(
         for (feature, span) in store.features {
             let kind = feature.kind();
 
+            // FIXME: Warn on enabled but unused features.
             if enabled_features.contains(&feature)
                 && (kind != FeatureKind::SuperInternal || opts.unlock_super_internal_features)
             {
@@ -168,6 +169,7 @@ fn report(
         let mut stdout = io::BufWriter::new(io::stdout().lock());
         for (feature, _) in store.features {
             if !feature.protected() {
+                // FIXME: Questionable behavior.
                 continue;
             }
             writeln!(stdout, "{feature}").unwrap();
