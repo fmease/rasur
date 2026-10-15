@@ -34,6 +34,10 @@ pub(crate) fn enabled_features<'src>(
         features.insert(Feature::yield_expr);
     }
 
+    if features.contains(&Feature::specialization) {
+        features.insert(Feature::min_specialization);
+    }
+
     let mut result = Ok(());
 
     for diag in p.diags {

@@ -39,7 +39,7 @@ impl<'src> Parser<'_, '_, 'src> {
 
     /// Parse an item.
     pub(super) fn parse_item(&mut self, cx: ItemCx) -> Result<ast::Item<'src>> {
-        // NOTE: To be kept in sync with `Self::begins_final_non_macro_call_item`.
+        // NOTE: To be kept in sync with `Self::begins_restricted_item`.
 
         let start = self.token.span;
 
@@ -48,20 +48,10 @@ impl<'src> Parser<'_, '_, 'src> {
         let override_policy = self.parse_override_policy();
 
         let kind = self.parse_item_kind(override_policy, cx, &mut attrs)?;
-
         let span = start.to(self.prev_token().span);
 
-        if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
-            self.error(ErrorKind::VisibilityOnInvalidItem, span);
-        }
-
-        if !kind.supports_explicit_override_policy() {
-            match override_policy {
-                ast::OverridePolicy::Allowed => self.error(ErrorKind::DefaultOnInvalidItem, span),
-                ast::OverridePolicy::Forbidden => self.error(ErrorKind::FinalOnInvalidItem, span),
-                ast::OverridePolicy::Implicit => {}
-            }
-        }
+        self.validate_visibility(&vis, &kind, span);
+        self.validate_override_policy(override_policy, &kind);
 
         Ok(ast::Item { attrs, vis, kind, span })
     }
@@ -132,17 +122,48 @@ impl<'src> Parser<'_, '_, 'src> {
         qualified
     }
 
+    fn validate_visibility(
+        &self,
+        vis: &ast::Visibility<'src>,
+        kind: &ast::ItemKind<'src>,
+        span: Span,
+    ) {
+        if !matches!(vis, ast::Visibility::Inherited) && !kind.supports_visibility() {
+            self.error(ErrorKind::VisibilityOnInvalidItem, span);
+        }
+    }
+
     fn parse_override_policy(&mut self) -> ast::OverridePolicy {
-        let span = self.token.span;
+        let start = self.token.span;
+
         if self.consume(weak::Default) {
-            // FIXME: replace with `MinSpecialization` if the item ends up being a fn.
-            self.feature(Feature::specialization, span);
-            ast::OverridePolicy::Allowed
+            ast::OverridePolicy::Allowed(start)
         } else if self.consume(TokenKind::Final) {
-            self.feature(Feature::final_associated_functions, span);
-            ast::OverridePolicy::Forbidden
+            ast::OverridePolicy::Forbidden(start)
         } else {
             ast::OverridePolicy::Implicit
+        }
+    }
+
+    fn validate_override_policy(&self, policy: ast::OverridePolicy, kind: &ast::ItemKind<'src>) {
+        match policy {
+            ast::OverridePolicy::Allowed(span) if !kind.supports_explicit_override_policy() => {
+                self.error(ErrorKind::DefaultOnInvalidItem, span)
+            }
+            ast::OverridePolicy::Allowed(span) => {
+                let feature = match kind {
+                    ast::ItemKind::Fn(..) => Feature::min_specialization,
+                    _ => Feature::specialization,
+                };
+                self.feature(feature, span);
+            }
+            ast::OverridePolicy::Forbidden(span) if !kind.supports_explicit_override_policy() => {
+                self.error(ErrorKind::FinalOnInvalidItem, span)
+            }
+            ast::OverridePolicy::Forbidden(span) => {
+                self.feature(Feature::final_associated_functions, span);
+            }
+            ast::OverridePolicy::Implicit => {}
         }
     }
 

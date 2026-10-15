@@ -401,7 +401,7 @@ pub enum Visibility<'src> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum OverridePolicy {
-    Allowed,
-    Forbidden,
+    Allowed(Span),
+    Forbidden(Span),
     Implicit,
 }

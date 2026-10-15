@@ -878,8 +878,8 @@ impl Fmt for TrailingSpace<ast::OverridePolicy> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self(policy) = self;
         match policy {
-            ast::OverridePolicy::Allowed => fmt!(cx, "default "),
-            ast::OverridePolicy::Forbidden => fmt!(cx, "final "),
+            ast::OverridePolicy::Allowed(_) => fmt!(cx, "default "),
+            ast::OverridePolicy::Forbidden(_) => fmt!(cx, "final "),
             ast::OverridePolicy::Implicit => {}
         }
     }
