@@ -89,9 +89,6 @@ impl IntoDiag for Error {
             ErrorKind::ParametrizedWhereClause => {
                 diag.title("generic parameter lists on where-clauses are reserved")
             }
-            ErrorKind::ParenthesizedGuardedPatInMatch => {
-                diag.title("parenthesized guarded pattern in match expression")
-            }
             ErrorKind::ReservedLabel => diag.title("reserved label"),
             ErrorKind::ReservedLifetime => diag.title("reserved lifetime"),
             ErrorKind::ReservedMultiHash => diag.title("reserved multi-hash"),
