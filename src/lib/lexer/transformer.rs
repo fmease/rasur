@@ -11,9 +11,11 @@ use crate::{
 };
 use std::borrow::Cow;
 
-pub fn normalize(source: &str) -> Cow<'_, str> {
-    const BOM: char = '\u{FEFF}';
-    let source = source.strip_prefix(BOM).unwrap_or(source);
+pub fn strip_bom(source: &str) -> &str {
+    source.strip_prefix('\u{FEFF}').unwrap_or(source)
+}
+
+pub fn substitute_crlf(source: &str) -> Cow<'_, str> {
     if source.contains('\r') { source.replace("\r\n", "\n").into() } else { source.into() }
 }
 

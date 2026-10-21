@@ -10,7 +10,7 @@ use crate::{
     token::{PathSegKeyword, Token, TokenKind},
 };
 use cutter::Cutter;
-pub use transformer::{Frontmatter, normalize, strip_frontmatter, strip_shebang};
+pub use transformer::{Frontmatter, strip_bom, strip_frontmatter, strip_shebang, substitute_crlf};
 
 pub type Tokens<'sto, 'src> = impl Iterator<Item = Token>;
 

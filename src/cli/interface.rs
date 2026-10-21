@@ -29,24 +29,26 @@ pub(crate) fn opts() -> Opts {
                 .help("Set the edition of the source file"),
         )
         .arg(
-            Arg::new(id::EMIT)
-                .long("emit")
-                .value_name("TYPE")
-                .value_parser(parse_artifact_type)
-                .help("Emit the given artifact type"),
-        )
-        .arg(
-            Arg::new(id::LEX_ONLY)
-                .long("lex-only")
+            Arg::new(id::NO_STRIP_BOM)
+                .long("no-strip-bom")
                 .action(SetTrue)
-                .help("Halt after lexing the source file"),
+                .help("Don't strip BOMs (byte order marks)"),
         )
         .arg(
-            Arg::new(id::NO_SHEBANG).long("no-shebang").action(SetTrue).help("Don't strip shebang"),
+            Arg::new(id::NO_SUBSTITUTE_CRLF)
+                .long("no-substitute-crlf")
+                .action(SetTrue)
+                .help("Don't substitute CRLFs with LFs"),
         )
         .arg(
-            Arg::new(id::NO_FRONTMATTER)
-                .long("no-frontmatter")
+            Arg::new(id::NO_STRIP_SHEBANG)
+                .long("no-strip-shebang")
+                .action(SetTrue)
+                .help("Don't strip shebang"),
+        )
+        .arg(
+            Arg::new(id::NO_STRIP_FRONTMATTER)
+                .long("no-strip-frontmatter")
                 .action(SetTrue)
                 .help("Don't strip frontmatter"),
         )
@@ -61,7 +63,20 @@ pub(crate) fn opts() -> Opts {
             Arg::new(id::UNLOCK_SUPER_INTERNAL_FEATURES)
                 .long(UNLOCK_SUPER_INTERNAL_FEATURES_OPT)
                 .action(SetTrue)
-                .hide(true),
+                .help("Allow certain internal language features to be enabled"),
+        )
+        .arg(
+            Arg::new(id::LEX_ONLY)
+                .long("lex-only")
+                .action(SetTrue)
+                .help("Halt after lexing the source file"),
+        )
+        .arg(
+            Arg::new(id::EMIT)
+                .long("emit")
+                .value_name("TYPE")
+                .value_parser(parse_artifact_type)
+                .help("Emit the given artifact type"),
         )
         .arg(
             Arg::new(id::SHORT)
@@ -90,8 +105,10 @@ pub(crate) fn opts() -> Opts {
         edition: matches.remove_one(id::EDITION),
         emit: matches.remove_one(id::EMIT),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
-        strip_shebang: !matches.remove_one(id::NO_SHEBANG).unwrap_or(false),
-        strip_frontmatter: !matches.remove_one(id::NO_FRONTMATTER).unwrap_or(false),
+        strip_bom: !matches.remove_one(id::NO_STRIP_BOM).unwrap_or(false),
+        substitute_crlf: !matches.remove_one(id::NO_SUBSTITUTE_CRLF).unwrap_or(false),
+        strip_shebang: !matches.remove_one(id::NO_STRIP_SHEBANG).unwrap_or(false),
+        strip_frontmatter: !matches.remove_one(id::NO_STRIP_FRONTMATTER).unwrap_or(false),
         gatekeep: matches.remove_one(id::GATEKEEP).unwrap_or_default(),
         unlock_super_internal_features: matches
             .remove_one(id::UNLOCK_SUPER_INTERNAL_FEATURES)
@@ -106,6 +123,8 @@ pub(crate) struct Opts {
     pub(crate) edition: Option<Edition>,
     pub(crate) emit: Option<ArtifactType>,
     pub(crate) lex_only: bool,
+    pub(crate) strip_bom: bool,
+    pub(crate) substitute_crlf: bool,
     pub(crate) strip_shebang: bool,
     pub(crate) strip_frontmatter: bool,
     pub(crate) gatekeep: bool,
@@ -168,9 +187,18 @@ macro_rules! ids {
     };
 }
 
-#[rustfmt::skip]
 ids! {
-    COLOR, EDITION, EMIT, GATEKEEP, LEX_ONLY,
-    NO_FRONTMATTER, NO_SHEBANG,
-    PATH, SHORT, SOURCE, UNLOCK_SUPER_INTERNAL_FEATURES,
+    COLOR,
+    EDITION,
+    EMIT,
+    GATEKEEP,
+    LEX_ONLY,
+    NO_STRIP_BOM,
+    NO_STRIP_FRONTMATTER,
+    NO_STRIP_SHEBANG,
+    NO_SUBSTITUTE_CRLF,
+    PATH,
+    SHORT,
+    SOURCE,
+    UNLOCK_SUPER_INTERNAL_FEATURES,
 }

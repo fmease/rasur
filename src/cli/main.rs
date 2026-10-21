@@ -64,7 +64,9 @@ fn try_main() -> Result<(), ()> {
         interface::Source::String(ref mut string) => (mem::take(string), SourcePathBuf::Anon),
     };
 
-    let source = lexer::normalize(&source);
+    let source = source.as_str();
+    let source = if opts.strip_bom { lexer::strip_bom(source) } else { source };
+    let source = if opts.substitute_crlf { lexer::substitute_crlf(source) } else { source.into() };
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();

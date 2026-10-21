@@ -28,7 +28,10 @@ mod normalizer {
     use std::borrow::Cow;
 
     pub(super) fn normalize(source: &str) -> Normalized<Cow<'_, str>> {
-        Normalized { raw: crate::lexer::normalize(source) }
+        let source = crate::lexer::strip_bom(source);
+        let source = crate::lexer::substitute_crlf(source);
+
+        Normalized { raw: source }
     }
 
     #[derive(Clone, Copy)]
