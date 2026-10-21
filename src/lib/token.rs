@@ -161,6 +161,10 @@ impl TokenKind {
         self.is_ident() && self != Self::CommonIdent
     }
 
+    pub fn is_trivia(self) -> bool {
+        matches!(self, Self::Comment | Self::Error | Self::Whitespace)
+    }
+
     #[must_use]
     pub const fn repr(self) -> Repr {
         match self {

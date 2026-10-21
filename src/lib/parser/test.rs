@@ -10,15 +10,13 @@ mod pat;
 mod stmt;
 mod ty;
 
-use super::Parser;
 use crate::{
     ast,
     edition::Edition,
     error::Error,
-    lexer::{self, lex},
+    lexer::{self, Tokens, lex},
     span::{At as _, ByteIndex, Span},
     store::{Buffer, Store},
-    token::TokenKind,
 };
 use normalizer::{Normalized, normalize};
 
@@ -82,7 +80,7 @@ fn parse_file_raw(
     let frontmatter = lexer::strip_frontmatter(source, &mut offset, &store);
 
     let tokens = lex(source, offset, edition, &store);
-    let file = super::parse(tokens, source, edition, &store);
+    let file = super::parse_file(tokens, source, edition, &store);
 
     if let errors = store.errors.into_inner()
         && !errors.is_empty()
@@ -107,42 +105,41 @@ struct Frontmatter<'src> {
     content: &'src str,
 }
 
-fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
-    parse_via(source, edition, |this| this.parse_item(super::item::ItemCx::Boring))
-}
-
-fn parse_ty(source: Normalized<&str>, edition: Edition) -> Result<ast::Ty<'_>> {
-    parse_via(source, edition, |this| this.parse_ty())
-}
-
-fn parse_stmt(source: Normalized<&str>, edition: Edition) -> Result<ast::Stmt<'_>> {
-    parse_via(source, edition, |this| this.parse_stmt(TokenKind::EndOfInput))
-}
-
 fn parse_expr(source: Normalized<&str>, edition: Edition) -> Result<ast::Expr<'_>> {
-    parse_via(source, edition, |this| this.parse_expr())
+    parse_node(source, edition, super::parse_expr)
+}
+
+fn parse_item(source: Normalized<&str>, edition: Edition) -> Result<ast::Item<'_>> {
+    parse_node(source, edition, super::parse_item)
 }
 
 fn parse_pat(source: Normalized<&str>, edition: Edition) -> Result<ast::Pat<'_>> {
-    parse_via(source, edition, |this| this.parse_pat(super::pat::OrPolicy::Parse))
+    parse_node(source, edition, super::parse_pat)
 }
 
-fn parse_via<'src, T>(
+fn parse_stmt(source: Normalized<&str>, edition: Edition) -> Result<ast::Stmt<'_>> {
+    parse_node(source, edition, super::parse_stmt)
+}
+
+fn parse_ty(source: Normalized<&str>, edition: Edition) -> Result<ast::Ty<'_>> {
+    parse_node(source, edition, super::parse_ty)
+}
+
+fn parse_node<'src, T>(
     source: Normalized<&'src str>,
     edition: Edition,
-    parse: impl FnOnce(&mut Parser<'_, '_, 'src>) -> super::Result<T>,
+    parse: impl for<'sto> FnOnce(
+        Tokens<'sto, 'src>,
+        &'src str,
+        Edition,
+        &'sto Store,
+    ) -> super::Result<T>,
 ) -> Result<T> {
     let source = source.into_inner();
     let store = Store { errors: Buffer::default(), features: Buffer::sealed() };
-
     let tokens = lex(source, ByteIndex::default(), edition, &store);
-    let tokens = super::prepare(tokens);
-    let mut p = Parser::new(&tokens, source, edition, &store);
 
-    let node = parse(&mut p).and_then(|r| {
-        p.parse(TokenKind::EndOfInput)?;
-        Ok(r)
-    });
+    let node = parse(tokens, source, edition, &store);
 
     if let errors = store.errors.into_inner()
         && !errors.is_empty()

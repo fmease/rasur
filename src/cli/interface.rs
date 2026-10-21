@@ -29,6 +29,14 @@ pub(crate) fn opts() -> Opts {
                 .help("Set the edition of the source file"),
         )
         .arg(
+            Arg::new(id::KIND)
+                .short('K')
+                .long("kind")
+                .value_parser(parse_fragment_kind)
+                .default_value(FragmentKind::File.to_str())
+                .help("Set the syntax fragment kind of the source file"),
+        )
+        .arg(
             Arg::new(id::NO_STRIP_BOM)
                 .long("no-strip-bom")
                 .action(SetTrue)
@@ -103,6 +111,7 @@ pub(crate) fn opts() -> Opts {
     Opts {
         source,
         edition: matches.remove_one(id::EDITION),
+        kind: matches.remove_one(id::KIND).unwrap(),
         emit: matches.remove_one(id::EMIT),
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
         strip_bom: !matches.remove_one(id::NO_STRIP_BOM).unwrap_or(false),
@@ -121,6 +130,7 @@ pub(crate) fn opts() -> Opts {
 pub(crate) struct Opts {
     pub(crate) source: Source,
     pub(crate) edition: Option<Edition>,
+    pub(crate) kind: FragmentKind,
     pub(crate) emit: Option<ArtifactType>,
     pub(crate) lex_only: bool,
     pub(crate) strip_bom: bool,
@@ -179,6 +189,40 @@ fn parse_artifact_type(source: &str) -> Result<ArtifactType, String> {
     )(source)
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum FragmentKind {
+    Expr,
+    File,
+    Item,
+    Pat,
+    Stmt,
+    Ty,
+}
+
+impl FragmentKind {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Self::Expr => "expr",
+            Self::File => "file",
+            Self::Item => "item",
+            Self::Pat => "pat",
+            Self::Stmt => "stmt",
+            Self::Ty => "ty",
+        }
+    }
+}
+
+fn parse_fragment_kind(source: &str) -> Result<FragmentKind, String> {
+    parse!(
+        "expr" => FragmentKind::Expr,
+        "file" => FragmentKind::File,
+        "item" => FragmentKind::Item,
+        "pat" => FragmentKind::Pat,
+        "stmt" => FragmentKind::Stmt,
+        "ty" => FragmentKind::Ty,
+    )(source)
+}
+
 macro_rules! ids {
     ($($name:ident),+ $(,)?) => {
         mod id {
@@ -192,6 +236,7 @@ ids! {
     EDITION,
     EMIT,
     GATEKEEP,
+    KIND,
     LEX_ONLY,
     NO_STRIP_BOM,
     NO_STRIP_FRONTMATTER,

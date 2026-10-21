@@ -13,13 +13,17 @@ mod interface;
 
 use crate::{
     diagnostics::{Diag, IntoDiag, Level, SourcePathBuf},
-    interface::ArtifactType,
+    interface::{ArtifactType, FragmentKind},
 };
 use Default::default;
 use painter::Painter;
 use rasur::{
+    ast,
+    edition::Edition,
     feature::{Feature, FeatureKind},
-    fmter, lexer, parser,
+    fmter,
+    lexer::{self, Frontmatter, Tokens},
+    parser,
     span::{At as _, ByteIndex, Span},
     store::Store,
 };
@@ -74,6 +78,7 @@ fn try_main() -> Result<(), ()> {
 
     let store = Store::default();
 
+    // FIXME: Don't strip shebang&frontmatter by default for fragment kinds other than file.
     let mut offset = ByteIndex::default();
     let shebang =
         opts.strip_shebang.then(|| lexer::strip_shebang(source, &mut offset, edition)).flatten();
@@ -94,16 +99,16 @@ fn try_main() -> Result<(), ()> {
         return report(store, default(), &opts, &cx);
     }
 
-    let file = parser::parse(tokens, source, edition, &store);
+    let frag = Fragment::parse(opts.kind, tokens, source, edition, &store);
 
-    if let Ok(file) = &file
+    if let Ok(frag) = &frag
         && let Some(ArtifactType::Ast) = opts.emit
     {
-        println!("{file:#?}");
+        println!("{frag:#?}");
     }
 
     let (enabled_features, mut result) = if opts.gatekeep
-        && let Ok(file) = &file
+        && let Ok(Fragment::File(file)) = &frag
     {
         feature::enabled_features(file, source, edition, &cx)
     } else {
@@ -113,10 +118,9 @@ fn try_main() -> Result<(), ()> {
     result = result.and(report(store, enabled_features, &opts, &cx));
 
     if let Some(ArtifactType::Fmt) = opts.emit
-        && let Ok(file) = file
+        && let Ok(frag) = frag
     {
-        let fmted = fmter::fmt(file, source, shebang, frontmatter, edition, default());
-        println!("{fmted}");
+        println!("{}", frag.fmt(source, shebang, frontmatter, edition));
     }
 
     result
@@ -183,9 +187,9 @@ fn report(
 }
 
 fn emit_tokens(
-    tokens: lexer::Tokens<'_, '_>,
+    tokens: Tokens<'_, '_>,
     shebang: Option<Span>,
-    frontmatter: Option<lexer::Frontmatter>,
+    frontmatter: Option<Frontmatter>,
     source: &str,
 ) -> io::Result<()> {
     use io::Write as _;
@@ -215,10 +219,8 @@ fn emit_tokens(
     }
 
     for token in tokens {
-        use rasur::token::TokenKind;
-
         // FIXME: Allow the CLI to dictate if we print all tokens instead of "most".
-        if let TokenKind::Comment | TokenKind::Error | TokenKind::Whitespace = token.kind {
+        if token.kind.is_trivia() {
             continue;
         }
 
@@ -228,4 +230,62 @@ fn emit_tokens(
     }
 
     Ok(())
+}
+
+enum Fragment<'src> {
+    Expr(ast::Expr<'src>),
+    File(ast::File<'src>),
+    Item(ast::Item<'src>),
+    Pat(ast::Pat<'src>),
+    Stmt(ast::Stmt<'src>),
+    Ty(ast::Ty<'src>),
+}
+
+impl<'src> Fragment<'src> {
+    fn parse<'sto>(
+        kind: FragmentKind,
+        tokens: Tokens<'sto, 'src>,
+        source: &'src str,
+        edition: Edition,
+        store: &'sto Store,
+    ) -> Result<Self, ()> {
+        Ok(match kind {
+            FragmentKind::Expr => Self::Expr(parser::parse_expr(tokens, source, edition, &store)?),
+            FragmentKind::File => Self::File(parser::parse_file(tokens, source, edition, &store)?),
+            FragmentKind::Item => Self::Item(parser::parse_item(tokens, source, edition, &store)?),
+            FragmentKind::Pat => Self::Pat(parser::parse_pat(tokens, source, edition, &store)?),
+            FragmentKind::Stmt => Self::Stmt(parser::parse_stmt(tokens, source, edition, &store)?),
+            FragmentKind::Ty => Self::Ty(parser::parse_ty(tokens, source, edition, &store)?),
+        })
+    }
+
+    fn fmt(
+        self,
+        source: &str,
+        shebang: Option<Span>,
+        frontmatter: Option<Frontmatter>,
+        edition: Edition,
+    ) -> String {
+        match self {
+            Self::Expr(expr) => fmter::fmt_expr(expr, source, edition),
+            Self::File(file) => fmter::fmt_file(file, source, shebang, frontmatter, edition),
+            Self::Item(item) => fmter::fmt_item(item, source, edition),
+            Self::Pat(pat) => fmter::fmt_pat(pat, source, edition),
+            Self::Stmt(stmt) => fmter::fmt_stmt(stmt, source, edition),
+            Self::Ty(ty) => fmter::fmt_ty(ty, source, edition),
+        }
+    }
+}
+
+impl std::fmt::Debug for Fragment<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Expr(expr) => expr.fmt(f),
+            Self::File(file) => file.fmt(f),
+            Self::Item(item) => item.fmt(f),
+            Self::Pat(pat) => pat.fmt(f),
+            Self::Stmt(stmt) => stmt.fmt(f),
+            Self::Ty(ty) => ty.fmt(f),
+        }
+    }
 }

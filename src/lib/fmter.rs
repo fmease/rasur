@@ -17,14 +17,8 @@ use std::fmt::Write as _;
 // FIXME: Reproduce comments.
 // FIXME: The indentation setup is busted.
 
-pub struct Cfg {
-    pub indent: usize,
-}
-
-impl Default for Cfg {
-    fn default() -> Self {
-        Self { indent: 4 }
-    }
+struct Cfg {
+    indent: usize = 4,
 }
 
 macro fmt($cx:ident, $($arg:tt)*) {
@@ -32,31 +26,70 @@ macro fmt($cx:ident, $($arg:tt)*) {
 }
 
 #[must_use]
-pub fn fmt(
+pub fn fmt_file(
     file: ast::File<'_>,
     source: &str,
     shebang: Option<Span>,
     frontmatter: Option<Frontmatter>,
     edition: Edition,
-    cfg: Cfg,
 ) -> String {
-    let output = String::with_capacity(source.len()); // FIXME: better heuristic
-    let mut cx = Cx { cfg, source, shebang, frontmatter, edition, indent: 0, output };
+    let mut cx = Cx::new(source, shebang, frontmatter, edition);
     file.fmt(&mut cx);
     cx.output
 }
 
+#[must_use]
+pub fn fmt_expr(expr: ast::Expr<'_>, source: &str, edition: Edition) -> String {
+    fmt_node(expr, source, edition)
+}
+
+#[must_use]
+pub fn fmt_item(item: ast::Item<'_>, source: &str, edition: Edition) -> String {
+    fmt_node(item, source, edition)
+}
+
+#[must_use]
+pub fn fmt_pat(pat: ast::Pat<'_>, source: &str, edition: Edition) -> String {
+    fmt_node(pat, source, edition)
+}
+
+#[must_use]
+pub fn fmt_stmt(stmt: ast::Stmt<'_>, source: &str, edition: Edition) -> String {
+    fmt_node(stmt, source, edition)
+}
+
+#[must_use]
+pub fn fmt_ty(ty: ast::Ty<'_>, source: &str, edition: Edition) -> String {
+    fmt_node(ty, source, edition)
+}
+
+fn fmt_node(node: impl Fmt, source: &str, edition: Edition) -> String {
+    let mut cx = Cx::new(source, None, None, edition);
+    node.fmt(&mut cx);
+    cx.output
+}
+
 struct Cx<'src> {
-    cfg: Cfg,
+    cfg: Cfg = Cfg { .. },
     source: &'src str,
     shebang: Option<Span>,
     frontmatter: Option<Frontmatter>,
     edition: Edition,
-    indent: usize,
+    indent: usize = 0,
     output: String,
 }
 
 impl<'src> Cx<'src> {
+    fn new(
+        source: &'src str,
+        shebang: Option<Span>,
+        frontmatter: Option<Frontmatter>,
+        edition: Edition,
+    ) -> Self {
+        let output = String::with_capacity(source.len()); // FIXME: better heuristic
+        Self { source, shebang, frontmatter, edition, output, .. }
+    }
+
     fn source(&self, span: Span) -> &'src str {
         self.source.at(span)
     }
