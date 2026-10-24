@@ -410,3 +410,38 @@ fn delegation() {
     t!(parse_item, Rust2015, "reuse it<i32>;", Err(_));
     t!(parse_item, Rust2015, "reuse it::f<i32>;", Err(_));
 }
+
+// Regression test for issue <https://github.com/fmease/rasur/issues/44>.
+// See also <https://github.com/rust-lang/rust/issues/148238>.
+#[test]
+fn delegation_lookalike() {
+    t!(
+        parse_item,
+        Rust2015,
+        "fn reuse<T>();",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(ast::FnItem { binder: ast::Ident!("reuse"), .. }),
+            ..
+        })
+    );
+
+    t!(
+        parse_item,
+        Rust2015,
+        "const reuse<T>: ();",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Const(ast::ConstItem { binder: ast::Ident!("reuse"), .. }),
+            ..
+        })
+    );
+
+    t!(
+        parse_item,
+        Rust2015,
+        "trait reuse<T> {}",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Trait(ast::TraitItem { binder: ast::Ident!("reuse"), .. }),
+            ..
+        })
+    );
+}

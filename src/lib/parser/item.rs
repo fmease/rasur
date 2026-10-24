@@ -345,11 +345,14 @@ impl<'src> Parser<'_, '_, 'src> {
     }
 
     gen fn parse_item_qualifiers(&mut self) -> (Qualifier<'src>, TokenKind) {
+        let mut is_empty = true;
+
         loop {
             let qualifier = match self.token.kind {
                 TokenKind::Async => Qualifier::Async,
                 TokenKind::Const => Qualifier::Const(self.token.span),
                 TokenKind::Extern => {
+                    is_empty = false;
                     self.advance();
                     yield (Qualifier::Extern(self.parse_abi_str()), self.token.kind);
                     continue;
@@ -361,7 +364,9 @@ impl<'src> Parser<'_, '_, 'src> {
                         weak::Auto::STR if weak::Auto.qualifies(self) => {
                             Qualifier::Auto(self.token.span)
                         }
-                        weak::Reuse::STR if weak::Reuse.qualifies(self) => {
+                        // HACK: `reuse`'s "qualifies" rules are extremely broken (rust-lang/rust#148238),
+                        //       only ever consider it at the very start to avoid issues like #44.
+                        weak::Reuse::STR if is_empty && weak::Reuse.qualifies(self) => {
                             Qualifier::Reuse(self.token.span)
                         }
                         weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
@@ -369,6 +374,7 @@ impl<'src> Parser<'_, '_, 'src> {
                     }
                 }
                 TokenKind::Impl => {
+                    is_empty = false;
                     let span = self.token.span;
                     self.advance();
 
@@ -413,6 +419,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 _ => return,
             };
+            is_empty = false;
             self.advance();
             yield (qualifier, self.token.kind);
         }
