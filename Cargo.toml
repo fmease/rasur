@@ -10,6 +10,9 @@ autotests = false
 path = "src/lib/lib.rs"
 
 [dependencies]
+# NOTE: The underlying Unicode version of Rust & of this crate is 17. Once the Rust language
+# upgrades Unicode 18, consider using `std`'s `is_xid_{start,continue}` instead.
+# Feature: `char_is_xid`. Tracking issue: <https://github.com/rust-lang/rust/issues/164841>.
 unicode-ident = "=1.0.22"
 utility = { path = "etc/lib/utility" }
 
