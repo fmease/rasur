@@ -1,6 +1,10 @@
 use clap::{Arg, ArgAction::SetTrue, Command, builder::EnumValueParser};
+use painter::AnsiColor;
 use rasur::edition::Edition;
-use std::path::PathBuf;
+use std::{
+    io::{self, Write as _},
+    path::PathBuf,
+};
 
 // FIXME: Ideally, we would be using something more lightweight than `clap`.
 
@@ -10,7 +14,6 @@ pub(crate) fn opts() -> Opts {
         .arg(
             Arg::new(id::PATH)
                 .value_parser(clap::builder::ValueParser::path_buf())
-                .required_unless_present(id::SOURCE)
                 .help("Path to the source file"),
         )
         .arg(
@@ -102,17 +105,37 @@ pub(crate) fn opts() -> Opts {
         )
         .get_matches();
 
+    match matches.remove_one(id::COLOR).unwrap() {
+        clap::ColorChoice::Always => painter::ColorChoice::Always.write_global(),
+        clap::ColorChoice::Never => painter::ColorChoice::Never.write_global(),
+        clap::ColorChoice::Auto => {}
+    }
+
     let source = matches
         .remove_one(id::PATH)
         .map(|path| if &path == "-" { Source::Stdin } else { Source::Path(path) })
-        .xor(matches.remove_one(id::SOURCE).map(Source::String))
-        .unwrap();
+        .xor(matches.remove_one(id::SOURCE).map(Source::String));
+    let emit = matches.remove_one(id::EMIT);
+
+    // FIXME: Style diverges from `clap`. Just get rid of `clap`.
+    if source.is_none() && emit != Some(ArtifactType::UnicodeVersion) {
+        let mut p = painter::Painter::new(io::stderr(), io::BufWriter::new);
+        p.with(AnsiColor::BrightRed.on_default().bold(), |p| write!(p, "error:")).unwrap();
+        write!(p, " missing argument '").unwrap();
+        p.with(AnsiColor::Yellow, |p| write!(p, "[{}]", id::PATH)).unwrap();
+        write!(p, "' or '").unwrap();
+        p.with(AnsiColor::Yellow, |p| write!(p, "--source <{}>", id::SOURCE)).unwrap();
+        writeln!(p, "'").unwrap();
+        p.flush().unwrap();
+
+        std::process::exit(2);
+    };
 
     Opts {
         source,
         edition: matches.remove_one(id::EDITION),
         kind: matches.remove_one(id::KIND).unwrap(),
-        emit: matches.remove_one(id::EMIT),
+        emit,
         lex_only: matches.remove_one(id::LEX_ONLY).unwrap_or_default(),
         strip_bom: !matches.remove_one(id::NO_STRIP_BOM).unwrap_or(false),
         substitute_crlf: !matches.remove_one(id::NO_SUBSTITUTE_CRLF).unwrap_or(false),
@@ -123,12 +146,11 @@ pub(crate) fn opts() -> Opts {
             .remove_one(id::UNLOCK_SUPER_INTERNAL_FEATURES)
             .unwrap_or_default(),
         short: matches.remove_one(id::SHORT).unwrap_or_default(),
-        color: matches.remove_one(id::COLOR).unwrap(),
     }
 }
 
 pub(crate) struct Opts {
-    pub(crate) source: Source,
+    pub(crate) source: Option<Source>,
     pub(crate) edition: Option<Edition>,
     pub(crate) kind: FragmentKind,
     pub(crate) emit: Option<ArtifactType>,
@@ -140,7 +162,6 @@ pub(crate) struct Opts {
     pub(crate) gatekeep: bool,
     pub(crate) unlock_super_internal_features: bool,
     pub(crate) short: bool,
-    pub(crate) color: clap::ColorChoice,
 }
 
 pub(crate) enum Source {
@@ -149,8 +170,9 @@ pub(crate) enum Source {
     Stdin,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ArtifactType {
+    UnicodeVersion,
     Tokens,
     Ast,
     Features,
@@ -182,6 +204,7 @@ fn parse_edition(source: &str) -> Result<Edition, String> {
 
 fn parse_artifact_type(source: &str) -> Result<ArtifactType, String> {
     parse!(
+        "Unicode-version" => ArtifactType::UnicodeVersion,
         "tokens" => ArtifactType::Tokens,
         "ast" => ArtifactType::Ast,
         "features" => ArtifactType::Features,

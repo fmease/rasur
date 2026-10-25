@@ -44,16 +44,17 @@ fn main() -> ExitCode {
 fn try_main() -> Result<(), ()> {
     let mut opts = interface::opts();
 
-    match opts.color {
-        clap::ColorChoice::Always => painter::ColorChoice::Always.write_global(),
-        clap::ColorChoice::Never => painter::ColorChoice::Never.write_global(),
-        clap::ColorChoice::Auto => {}
+    if let Some(ArtifactType::UnicodeVersion) = opts.emit {
+        let (major, minor, patch) = lexer::UNICODE_VERSION;
+        println!("Unicode {major}.{minor}.{patch}");
+        return Ok(());
     }
 
     let cx = diagnostics::RenderCx::new(opts.short);
 
-    let (source, path) = match opts.source {
-        interface::Source::Path(ref mut path) => {
+    // FIXME: unfortunate unwrap
+    let (source, path) = match opts.source.as_mut().unwrap() {
+        interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&*path).map_err(|error| {
                 Diag::error(format!("failed to read `{}`: {error}", path.display())).render(&cx);
             })?;
@@ -65,7 +66,7 @@ fn try_main() -> Result<(), ()> {
             })?,
             SourcePathBuf::Anon,
         ),
-        interface::Source::String(ref mut string) => (mem::take(string), SourcePathBuf::Anon),
+        interface::Source::String(string) => (mem::take(string), SourcePathBuf::Anon),
     };
 
     let source = source.as_str();

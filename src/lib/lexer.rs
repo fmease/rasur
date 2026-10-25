@@ -11,6 +11,7 @@ use crate::{
 };
 use cutter::Cutter;
 pub use transformer::{Frontmatter, strip_bom, strip_frontmatter, strip_shebang, substitute_crlf};
+pub use unicode_ident::UNICODE_VERSION;
 
 pub type Tokens<'sto, 'src> = impl Iterator<Item = Token>;
 
