@@ -30,9 +30,6 @@ impl IntoDiag for Error {
             ErrorKind::FinalOnInvalidItem => {
                 diag.title("this item kind may not be marked with `final`")
             }
-            ErrorKind::ForbiddenCVariadics => {
-                diag.title("C-variadic parameters are forbidden in this context")
-            }
             ErrorKind::ForbiddenInnerAttrs => {
                 diag.title("inner attributes are forbidden in this context")
             }

@@ -25,7 +25,6 @@ pub enum ErrorKind {
     EmptyExponent,
     EmptyNumLit,
     FinalOnInvalidItem,
-    ForbiddenCVariadics,
     ForbiddenInnerAttrs,
     ForbiddenOuterAttrs,
     FrontmatterOpeningTooLarge,

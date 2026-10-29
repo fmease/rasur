@@ -5,7 +5,7 @@ use super::{
     frags,
     ty::PlusPolicy,
 };
-use crate::{ast, error::ErrorKind, feature::Feature, token::PathSegIdent};
+use crate::{ast, feature::Feature, token::PathSegIdent};
 
 impl<'src> Parser<'_, '_, 'src> {
     /// Parse a path.
@@ -204,9 +204,7 @@ impl<'src> Parser<'_, '_, 'src> {
                         feature(pat.span);
                     }
                     if let &ast::FnParamTy::CVariadics(span) = ty {
-                        // Ideally, we wouldn't hard-reject C-variadics.
-                        // See also <https://github.com/rust-lang/rust/issues/160797>.
-                        self.error(ErrorKind::ForbiddenCVariadics, span);
+                        feature(span);
                     }
                 }
                 &ast::FnParamKind::Receiver { binder, .. } => feature(binder),
