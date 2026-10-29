@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = "4.5.58"
-painter = { path = "lib/painter" }
+painter = { path = "../src/painter" }
 ---
 
 use painter::{AnsiColor, Effects, Painter};

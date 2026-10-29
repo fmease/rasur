@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = "4.5.58"
-painter = { path = "lib/painter" }
+painter = { path = "../src/painter" }
 walkdir = "2.5.0"
 ---
 #![feature(exit_status_error)]
