@@ -1,19 +1,16 @@
-use annotate_snippets as ann;
+use diagnostics::{Context, Diag, Severity};
 use rasur::{
     error::{Error, ErrorKind, InvalidScalarPlace, List1},
     lexer::IdentKind,
     parser::Fragment,
-    span::{At as _, Span},
+    span::At as _,
     token::{Repr, Token, TokenKind},
 };
-use std::{
-    borrow::Cow,
-    path::{Path, PathBuf},
-};
+use std::borrow::Cow;
 
 impl IntoDiag for Error {
-    fn into_diag(self, cx: &RenderCx<'_>) -> Diag {
-        let diag = Diag::new(Level::Error).span(self.span);
+    fn into_diag(self, cx: &Context<'_>) -> Diag {
+        let diag = Diag::new(Severity::Error).highlight(self.span.into());
 
         match self.kind {
             ErrorKind::AbiStrSuffix => diag.title("suffix on ABI string"),
@@ -125,7 +122,7 @@ impl IntoDiag for Error {
 }
 
 pub(super) trait IntoDiag {
-    fn into_diag(self, cx: &RenderCx<'_>) -> Diag;
+    fn into_diag(self, cx: &Context<'_>) -> Diag;
 }
 
 pub(super) trait ToDiagStr {
@@ -192,147 +189,5 @@ impl ToDiagStr for Fragment {
             Self::Ty => "type",
         }
         .into()
-    }
-}
-
-pub(super) struct Diag {
-    level: Level,
-    title: Option<Cow<'static, str>>,
-    span: Option<(Span, Option<Cow<'static, str>>)>,
-    subs: Vec<(ann::Level<'static>, Cow<'static, str>)>,
-}
-
-impl Diag {
-    pub(super) fn new(level: Level) -> Self {
-        Self { level, title: None, span: None, subs: Vec::new() }
-    }
-
-    pub(super) fn error(title: impl Into<Cow<'static, str>>) -> Self {
-        Self::new(Level::Error).title(title)
-    }
-
-    pub(super) fn title(mut self, title: impl Into<Cow<'static, str>>) -> Self {
-        self.title = Some(title.into());
-        self
-    }
-
-    pub(super) fn span(mut self, span: Span) -> Self {
-        self.span = Some((span, None));
-        self
-    }
-
-    pub(super) fn label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
-        if let Some((_, label_)) = &mut self.span {
-            *label_ = Some(label.into());
-            self
-        } else {
-            self.note(label)
-        }
-    }
-
-    pub(super) fn note(mut self, note: impl Into<Cow<'static, str>>) -> Self {
-        self.subs.push((ann::Level::NOTE, note.into()));
-        self
-    }
-
-    pub(super) fn help(mut self, message: impl Into<Cow<'static, str>>) -> Self {
-        self.subs.push((ann::Level::HELP, message.into()));
-        self
-    }
-
-    pub(super) fn render(self, cx: &RenderCx<'_>) {
-        let level = match self.level {
-            Level::Error => ann::Level::ERROR,
-            Level::Warning => ann::Level::WARNING,
-        };
-
-        let mut group = match self.title {
-            Some(title) => ann::Group::with_title(level.title(title)),
-            None => ann::Group::with_level(level),
-        };
-
-        let path;
-        if let Some((span, label)) = self.span {
-            let file = cx.file.as_ref().expect("highlight requested but no source provided");
-
-            path = match file.path {
-                // FIXME: Being forced to use to_string_lossy is sad :(
-                SourcePath::Real(path) => path.to_string_lossy(),
-                SourcePath::Anon => "<anon>".into(),
-            };
-
-            let annotation = ann::AnnotationKind::Primary.span(span.into());
-            let annotation = match label {
-                Some(label) => annotation.label(label),
-                None => annotation,
-            };
-            group =
-                group.element(ann::Snippet::source(file.source).path(&path).annotation(annotation));
-        }
-
-        for (level, message) in self.subs {
-            group = group.element(level.message(message));
-        }
-
-        let renderer = if cx.colorize { ann::Renderer::styled() } else { ann::Renderer::plain() };
-        let diag = renderer.short_message(cx.short).render(&[group]);
-        eprintln!("{diag}");
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum Level {
-    Error,
-    Warning,
-}
-
-impl Level {
-    pub(crate) fn apply<T>(self, result: &mut Result<T, ()>) {
-        match self {
-            Self::Error => *result = Err(()),
-            Self::Warning => {}
-        }
-    }
-}
-
-pub(crate) struct RenderCx<'a> {
-    colorize: bool,
-    short: bool,
-    pub(crate) file: Option<SourceFile<'a>>,
-}
-
-impl<'a> RenderCx<'a> {
-    pub(crate) fn new(short: bool) -> Self {
-        let colorize = painter::colorize(&std::io::stderr());
-
-        Self { colorize, short, file: None }
-    }
-
-    pub(crate) fn file(self, path: SourcePath<'a>, source: &'a str) -> Self {
-        Self { file: Some(SourceFile { path, source }), ..self }
-    }
-}
-
-pub struct SourceFile<'a> {
-    path: SourcePath<'a>,
-    pub(crate) source: &'a str,
-}
-
-pub(crate) enum SourcePath<'a> {
-    Real(&'a Path),
-    Anon,
-}
-
-pub(crate) enum SourcePathBuf {
-    Real(PathBuf),
-    Anon,
-}
-
-impl SourcePathBuf {
-    pub(super) fn as_ref(&self) -> SourcePath<'_> {
-        match self {
-            Self::Real(path) => SourcePath::Real(path),
-            Self::Anon => SourcePath::Anon,
-        }
     }
 }

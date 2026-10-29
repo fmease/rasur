@@ -1,0 +1,9 @@
+[package]
+name = "diagnostics"
+edition.workspace = true
+publish = false
+
+[dependencies]
+painter = { path = "../painter" }
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.3"

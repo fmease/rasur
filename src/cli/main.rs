@@ -4,6 +4,7 @@
 #![feature(deref_patterns)]
 #![feature(import_trait_associated_functions)]
 #![feature(iter_intersperse)]
+#![feature(super_let)]
 // Lints
 #![deny(unused_must_use, rust_2018_idioms)]
 
@@ -12,9 +13,10 @@ mod feature;
 mod interface;
 
 use crate::{
-    diagnostics::{Diag, IntoDiag, Level, SourcePathBuf},
+    diagnostics::IntoDiag,
     interface::{ArtifactType, FragmentKind},
 };
+use ::diagnostics::{Diag, Severity, SourceFile, SourcePath};
 use Default::default;
 use painter::Painter;
 use rasur::{
@@ -50,23 +52,23 @@ fn try_main() -> Result<(), ()> {
         return Ok(());
     }
 
-    let cx = diagnostics::RenderCx::new(opts.short);
+    let mut cx = ::diagnostics::Context { short: opts.short, file: None };
 
     // FIXME: unfortunate unwrap
     let (source, path) = match opts.source.as_mut().unwrap() {
         interface::Source::Path(path) => {
             let source = std::fs::read_to_string(&*path).map_err(|error| {
-                Diag::error(format!("failed to read `{}`: {error}", path.display())).render(&cx);
+                Diag::error(format!("failed to read `{}`: {error}", path.display())).emit(&cx);
             })?;
-            (source, SourcePathBuf::Real(mem::take(path)))
+            super let path = mem::take(path);
+            (source, SourcePath::Real(&path))
         }
         interface::Source::Stdin => (
-            io::read_to_string(io::stdin()).map_err(|error| {
-                Diag::error(format!("failed to read stdin: {error}")).render(&cx)
-            })?,
-            SourcePathBuf::Anon,
+            io::read_to_string(io::stdin())
+                .map_err(|error| Diag::error(format!("failed to read stdin: {error}")).emit(&cx))?,
+            SourcePath::Anon,
         ),
-        interface::Source::String(string) => (mem::take(string), SourcePathBuf::Anon),
+        interface::Source::String(string) => (mem::take(string), SourcePath::Anon),
     };
 
     let source = source.as_str();
@@ -75,7 +77,7 @@ fn try_main() -> Result<(), ()> {
     let source = source.as_ref();
 
     let edition = opts.edition.unwrap_or_default();
-    let cx = cx.file(path.as_ref(), source);
+    cx.file = Some(SourceFile { path, source });
 
     let store = Store::default();
 
@@ -131,13 +133,13 @@ fn report(
     store: Store,
     enabled_features: HashSet<Feature>,
     opts: &interface::Opts,
-    cx: &diagnostics::RenderCx<'_>,
+    cx: &::diagnostics::Context<'_>,
 ) -> Result<(), ()> {
     let mut result = Ok(());
 
     for error in store.errors {
         result = Err(());
-        error.into_diag(cx).render(cx);
+        error.into_diag(cx).emit(cx);
     }
 
     if opts.gatekeep {
@@ -151,8 +153,12 @@ fn report(
                 continue;
             }
 
-            let level = if feature.protected() { Level::Error } else { Level::Warning };
-            level.apply(&mut result);
+            let level = if feature.protected() {
+                result = Err(());
+                Severity::Error
+            } else {
+                Severity::Warning
+            };
 
             let diag = Diag::new(level).title(format!("use of {kind} feature `{feature}`"));
             let diag = if let Some(issue) = feature.tracking_issue() {
@@ -169,8 +175,8 @@ fn report(
             diag.help(format!(
                 "add `#![feature({feature})]` at the top of the file{extra} to enable"
             ))
-            .span(span)
-            .render(cx);
+            .highlight(span.into())
+            .emit(cx);
         }
     } else if let Some(ArtifactType::Features) = opts.emit {
         let mut stdout = io::BufWriter::new(io::stdout().lock());

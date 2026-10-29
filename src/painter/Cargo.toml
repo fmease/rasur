@@ -1,5 +1,8 @@
 [package]
 name = "painter"
+# NOTE: This doesn't inherit the edition from the workspace because that would break Cargo scripts
+#       that use this crate. That's probably a Cargo bug.
+#       Maybe <https://github.com/rust-lang/cargo/issues/16995>?
 edition = "2024"
 publish = false
 

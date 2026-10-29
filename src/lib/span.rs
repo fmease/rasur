@@ -92,9 +92,10 @@ impl fmt::Debug for Span {
     }
 }
 
-impl From<Span> for std::ops::Range<usize> {
+impl From<Span> for std::range::Range<usize> {
     fn from(span: Span) -> Self {
-        span.start.raw as usize..span.end.raw as usize
+        let Span { start, end } = span;
+        std::range::Range { start: start.raw as usize, end: end.raw as usize }
     }
 }
 
@@ -121,6 +122,6 @@ pub trait At {
 
 impl At for str {
     fn at(&self, span: Span) -> &Self {
-        &self[std::ops::Range::from(span)]
+        &self[std::range::Range::from(span)]
     }
 }

@@ -1,4 +1,5 @@
-use crate::diagnostics::{self as diag, IntoDiag, Level, RenderCx, ToDiagStr};
+use crate::diagnostics::{IntoDiag, ToDiagStr};
+use diagnostics::Severity;
 use rasur::{
     ast::{self, Token, TokenKind},
     edition::Edition,
@@ -14,7 +15,7 @@ pub(crate) fn enabled_features<'src>(
     file: &ast::File<'src>,
     source: &'src str,
     edition: Edition,
-    cx: &RenderCx<'_>,
+    cx: &diagnostics::Context<'_>,
 ) -> (HashSet<Feature>, Result<(), ()>) {
     let store = Store::default();
     let mut p = EarlyAttrParser::new(source, edition, &store);
@@ -41,13 +42,15 @@ pub(crate) fn enabled_features<'src>(
     let mut result = Ok(());
 
     for diag in p.diags {
-        diag.level().apply(&mut result);
-        diag.into_diag(cx).render(cx);
+        if let Severity::Error = diag.severity() {
+            result = Err(());
+        }
+        diag.into_diag(cx).emit(cx);
     }
 
     for error in store.errors.into_inner() {
         result = Err(());
-        error.into_diag(cx).render(cx);
+        error.into_diag(cx).emit(cx);
     }
 
     // FIXME: Is this somehow reachable?
@@ -298,25 +301,25 @@ enum Diag<'src> {
 }
 
 impl Diag<'_> {
-    fn level(&self) -> Level {
+    fn severity(&self) -> Severity {
         match self {
             // We only know about features that provide new syntax, so don't hard error.
-            | Self::UnknownFeature(..) => Level::Warning,
+            | Self::UnknownFeature(..) => Severity::Warning,
             | Self::UnsafeOnSafeAttr(..)
             | Self::MalformedAttr(..)
             | Self::UnexpectedToken(..)
-            | Self::FeatureAlreadyEnabled(..) => Level::Error,
+            | Self::FeatureAlreadyEnabled(..) => Severity::Error,
         }
     }
 }
 
 impl IntoDiag for Diag<'_> {
-    fn into_diag(self, cx: &RenderCx<'_>) -> diag::Diag {
-        let diag = diag::Diag::new(self.level());
+    fn into_diag(self, cx: &diagnostics::Context<'_>) -> diagnostics::Diag {
+        let diag = diagnostics::Diag::new(self.severity());
 
         match self {
             Self::UnsafeOnSafeAttr(span, name) => {
-                diag.title(format!("`{name}` is not an unsafe attribute")).span(span)
+                diag.title(format!("`{name}` is not an unsafe attribute")).highlight(span.into())
             }
             Self::MalformedAttr(name) => diag.title(format!("attribute `{name}` is malformed")),
             Self::UnexpectedToken(actual, expected) => {
@@ -324,14 +327,14 @@ impl IntoDiag for Diag<'_> {
                 let actual = actual.to_diag_str(cx.file.as_ref().map(|file| file.source));
                 let expected = expected.to_diag_str(());
                 diag.title(format!("found {actual} but expected {expected}"))
-                    .span(span)
+                    .highlight(span.into())
                     .label("unexpected token")
             }
             Self::FeatureAlreadyEnabled(feature, span) => {
-                diag.title(format!("feature `{feature}` is already enabled")).span(span)
+                diag.title(format!("feature `{feature}` is already enabled")).highlight(span.into())
             }
             Self::UnknownFeature(ident) => {
-                diag.title(format!("unknown feature `{}`", ident.name)).span(ident.span)
+                diag.title(format!("unknown feature `{}`", ident.name)).highlight(ident.span.into())
             }
         }
     }
