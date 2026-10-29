@@ -191,20 +191,25 @@ impl<'src> Parser<'_, '_, 'src> {
         let inputs =
             self.fin_parse_fn_param_list(EmptyFnParamPatPolicy::Parse, ConstFnParamPolicy::Yield)?;
 
-        for ast::FnParam { attrs: _, kind } in &inputs {
+        for ast::FnParam { attrs, kind } in &inputs {
+            let feature = |span| self.feature(Feature::named_fn_trait_parameters, span);
+
+            if let Some(attr) = attrs.first() {
+                feature(attr.span.to(attrs.last().unwrap().span));
+            }
+
             match kind {
                 ast::FnParamKind::Normal { pat, ty } => {
+                    if let Some(pat) = pat {
+                        feature(pat.span);
+                    }
                     if let &ast::FnParamTy::CVariadics(span) = ty {
                         // Ideally, we wouldn't hard-reject C-variadics.
                         // See also <https://github.com/rust-lang/rust/issues/160797>.
                         self.error(ErrorKind::ForbiddenCVariadics, span);
-                    } else if let Some(pat) = pat {
-                        self.feature(Feature::named_fn_trait_parameters, pat.span);
                     }
                 }
-                &ast::FnParamKind::Receiver { binder: span, .. } => {
-                    self.feature(Feature::named_fn_trait_parameters, span);
-                }
+                &ast::FnParamKind::Receiver { binder, .. } => feature(binder),
                 ast::FnParamKind::Const { .. } => unreachable!(),
             }
         }
