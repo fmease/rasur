@@ -43,7 +43,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
             self.parse_lower_pat(r_policy)?
         };
 
-        while let Some(op) = self.token.kind.as_infix_or_postfix_pat_op(o_policy, g_policy) {
+        while let Some(op) = self.as_infix_or_postfix_pat_op(o_policy, g_policy) {
             if op.left_level().unwrap() <= level {
                 break;
             }
@@ -87,6 +87,17 @@ impl<'src> super::Parser<'_, '_, 'src> {
             Op::Borrow => self.fin_parse_borrow_pat(right_level, o_policy, g_policy),
             _ => unreachable!(),
         }
+    }
+
+    fn as_infix_or_postfix_pat_op(&self, o_policy: OrPolicy, g_policy: GuardPolicy) -> Option<Op> {
+        Some(match self.token.kind {
+            TokenKind::If if let GuardPolicy::Parse = g_policy => {
+                self.feature(Feature::guard_patterns, self.token.span);
+                Op::Guard
+            }
+            TokenKind::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
+            _ => return None,
+        })
     }
 
     fn fin_parse_infix_or_postfix_op_pat(
@@ -543,18 +554,6 @@ impl Op {
             Self::Borrow => Level::Prefix,
             Self::Guard => return None,
             Self::Or => Level::OrRight,
-        })
-    }
-}
-
-impl TokenKind {
-    fn as_infix_or_postfix_pat_op(self, o_policy: OrPolicy, g_policy: GuardPolicy) -> Option<Op> {
-        Some(match self {
-            // FIXME: Register feature w/o triggering on stable match guards.
-            // FEATURE: `guard_patterns` <https://github.com/rust-lang/rust/issues/129967>
-            Self::If if let GuardPolicy::Parse = g_policy => Op::Guard,
-            Self::SinglePipe if let OrPolicy::Parse = o_policy => Op::Or,
-            _ => return None,
         })
     }
 }

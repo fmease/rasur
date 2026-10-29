@@ -949,24 +949,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
         while !self.consume(DELIMITER) {
             let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
             let pat = self.parse_pat(OrPolicy::Parse)?;
-
-            let (pat, guard) = match pat.kind {
-                ast::PatKind::Grouped(
-                    span,
-                    ast::Pat { kind: ast::PatKind::Guarded(pat, guard), .. },
-                ) => {
-                    self.error(ErrorKind::ParenthesizedGuardedPatInMatch, span);
-
-                    (*pat, Some(*guard))
-                }
-                _ if self.consume(TokenKind::If) => (
-                    pat,
-                    Some(self.parse_expr_where(Policy {
-                        l: LetPolicy::Parse(LetAllowance::Unconditional),
-                        ..
-                    })?),
-                ),
-                _ => (pat, None),
+            let guard = if self.consume(TokenKind::If) {
+                Some(self.parse_expr_where(Policy {
+                    l: LetPolicy::Parse(LetAllowance::Unconditional),
+                    ..
+                })?)
+            } else {
+                None
             };
 
             let rule = ast::CurlyBracketedMacroCallIsBoundary::No;
