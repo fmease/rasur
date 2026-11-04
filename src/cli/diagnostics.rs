@@ -114,7 +114,6 @@ impl IntoDiag for Error {
                 diag.title(format!("found {actual} but expected {expected}"))
                     .label("unexpected token")
             }
-            ErrorKind::UnknownBuiltinSyntax => diag.title("unknown built-in syntax"),
             ErrorKind::UnsafeTraitAlias => diag.title("trait aliases cannot be marked `unsafe`"),
             ErrorKind::UnterminatedBlockComment => diag.title("unterminated block comment"),
             ErrorKind::UnterminatedCharLit => diag.title("unterminated char literal"),

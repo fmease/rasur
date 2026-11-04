@@ -24,8 +24,8 @@ fn num_lit_suffixes_invalid_places() {
 
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0suffix)",
+        Rust2021,
+        "k#offset_of(T, 0suffix)",
         Err([Error {
             kind: ErrorKind::UnexpectedToken(
                 TokenKind::LitSuffix,
@@ -37,8 +37,8 @@ fn num_lit_suffixes_invalid_places() {
 
     t!(
         parse_ty,
-        Rust2015,
-        "builtin#field_of(T, 0suffix)",
+        Rust2021,
+        "k#field_of(T, 0suffix)",
         Err([Error {
             kind: ErrorKind::UnexpectedToken(
                 TokenKind::LitSuffix,
@@ -139,14 +139,14 @@ fn num_lit_exponents_invalid_places() {
     // Similarly, in OffsetOf/FieldOf exprs, "exponents" in the numeric are legal...
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0e1)",
+        Rust2021,
+        "k#offset_of(T, 0e1)",
         Ok(ast::Expr { kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0e1")]), .. }),
     );
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0.1e2)", // exercise float lit splitting
+        Rust2021,
+        "k#offset_of(T, 0.1e2)", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0"), ast::Ident!("1e2")]),
             ..
@@ -154,8 +154,8 @@ fn num_lit_exponents_invalid_places() {
     );
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0. 1e2)", // exercise float lit splitting
+        Rust2021,
+        "k#offset_of(T, 0. 1e2)", // exercise float lit splitting
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(_, [ast::Ident!("0"), ast::Ident!("1e2")]),
             ..
@@ -165,26 +165,26 @@ fn num_lit_exponents_invalid_places() {
     // ...unless the "exponent" contains an explicit sign:
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0e+1)",
+        Rust2021,
+        "k#offset_of(T, 0e+1)",
         Err([Error { kind: ErrorKind::InvalidNumericIdent, .. }])
     );
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0e-1)",
+        Rust2021,
+        "k#offset_of(T, 0e-1)",
         Err([Error { kind: ErrorKind::InvalidNumericIdent, .. }])
     );
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0.1e+2)", // exercise float lit splitting
+        Rust2021,
+        "k#offset_of(T, 0.1e+2)", // exercise float lit splitting
         Err([Error { kind: ErrorKind::InvalidNumericIdent, .. }])
     );
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, 0. 1e-2)", // exercise float lit splitting
+        Rust2021,
+        "k#offset_of(T, 0. 1e-2)", // exercise float lit splitting
         Err([Error { kind: ErrorKind::InvalidNumericIdent, .. }])
     );
 

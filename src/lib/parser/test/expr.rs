@@ -630,8 +630,8 @@ fn numeric_field() {
     // ...similarly, we need to split the number lit `0.1` here.
     t!(
         parse_expr,
-        Rust2015,
-        "builtin#offset_of(T, x.0.1)",
+        Rust2021,
+        "k#offset_of(T, x.0.1)",
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
                 _,

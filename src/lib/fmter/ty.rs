@@ -1,5 +1,9 @@
 use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
-use crate::{ast, fmter::BuiltinSyntax, lexer::lex_keyword, token::TokenKind};
+use crate::{
+    ast,
+    lexer::{Stropped, lex_keyword},
+    token::TokenKind,
+};
 
 impl Fmt for ast::Ty<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
@@ -64,7 +68,8 @@ impl Fmt for ast::Ty<'_> {
                 fmt!(cx, " ");
                 ty.fmt(cx);
             }
-            Self::FieldOf(ty, variant, field) => BuiltinSyntax("field_of", |cx| {
+            Self::FieldOf(ty, variant, field) => {
+                fmt!(cx, "k#field_of(");
                 ty.fmt(cx);
                 fmt!(cx, ", ");
                 if let Some(variant) = variant {
@@ -72,8 +77,8 @@ impl Fmt for ast::Ty<'_> {
                     fmt!(cx, ".");
                 }
                 field.fmt(cx);
-            })
-            .fmt(cx),
+                fmt!(cx, ")");
+            }
         }
     }
 }
@@ -294,8 +299,8 @@ impl Fmt for ast::Lifetime<'_> {
         let Self(ast::Ident { name, span: _ }) = self;
 
         fmt!(cx, "'");
-        match lex_keyword(name, cx.edition) {
-            None | Some(TokenKind::Static | TokenKind::Underscore) => {}
+        match lex_keyword(name, Stropped::No, cx.edition) {
+            TokenKind::CommonIdent | TokenKind::Static | TokenKind::Underscore => {}
             _ => fmt!(cx, "r#"),
         }
         name.fmt(cx);

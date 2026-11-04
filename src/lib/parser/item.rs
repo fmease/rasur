@@ -303,7 +303,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_enum_item();
             }
-            TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+            TokenKind::CommonIdent | TokenKind::StroppedIdent => {
                 match self.keyword(self.token.span) {
                     weak::MacroRules::STR if weak::MacroRules.qualifies(self) => {
                         self.advance();
@@ -359,7 +359,7 @@ impl<'src> Parser<'_, '_, 'src> {
                 }
                 TokenKind::Fn => Qualifier::Fn,
                 TokenKind::Gen => Qualifier::Gen(self.token.span),
-                TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+                TokenKind::CommonIdent | TokenKind::StroppedIdent => {
                     match self.keyword(self.token.span) {
                         weak::Auto::STR if weak::Auto.qualifies(self) => {
                             Qualifier::Auto(self.token.span)

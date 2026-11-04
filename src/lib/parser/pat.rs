@@ -1,9 +1,4 @@
-use super::{
-    Fragment, Result, TokenKind,
-    common::ExpInNumIdentPolicy,
-    frags,
-    weak::{self, Weak as _},
-};
+use super::{Fragment, Result, TokenKind, common::ExpInNumIdentPolicy, frags};
 use crate::{ast, feature::Feature, parser::TokenPrefix};
 
 impl<'src> super::Parser<'_, '_, 'src> {
@@ -194,18 +189,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            TokenKind::CommonIdent | TokenKind::StroppedKeyword if self.check(weak::Builtin) => {
+            TokenKind::Deref => {
                 self.advance();
-                return self.fin_parse_builtin_syntax(start, ast::PatKind::Error, |this, name| {
-                    match name {
-                        weak::Deref::STR => {
-                            let pat = this.parse_pat(OrPolicy::Parse)?;
-                            this.parse(TokenKind::CloseRoundBracket)?;
-                            Ok(Some(ast::PatKind::Deref(Box::new(pat))))
-                        }
-                        _ => Ok(None),
-                    }
-                });
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let pat = self.parse_pat(OrPolicy::Parse)?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::PatKind::Deref(Box::new(pat)));
             }
             TokenKind::OpenRoundBracket => {
                 self.advance();

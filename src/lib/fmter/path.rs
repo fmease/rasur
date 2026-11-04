@@ -1,7 +1,7 @@
 use super::{Cx, Fmt, InterleaveExt as _, fmt};
 use crate::{
     ast,
-    lexer::lex_keyword,
+    lexer::{Stropped, lex_keyword},
     token::{PathSegIdent, TokenKind},
 };
 
@@ -26,7 +26,7 @@ impl Fmt for ast::Ident<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { name, span: _ } = self;
 
-        match lex_keyword(name, cx.edition).unwrap_or(TokenKind::CommonIdent) {
+        match lex_keyword(name, Stropped::No, cx.edition) {
             PathSegIdent!() | TokenKind::Underscore => {}
             _ => fmt!(cx, "r#"),
         }

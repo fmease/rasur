@@ -93,17 +93,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         match self.token.kind {
-            TokenKind::CommonIdent => match () {
-                () if self.check(weak::Builtin) => {
-                    self.advance();
-                    return self.fin_parse_builtin_ty(start);
-                }
-                () if self.check(weak::Dyn) => {
-                    self.advance();
-                    return self.fin_parse_dyn_trait_object_ty(p_policy);
-                }
-                () => {}
-            },
+            TokenKind::CommonIdent if self.check(weak::Dyn) => {
+                self.advance();
+                return self.fin_parse_dyn_trait_object_ty(p_policy);
+            }
             TokenKind::DoubleAmpersand => {
                 self.advance();
                 let pointee = self.fin_parse_ref_ty()?;
@@ -117,6 +110,33 @@ impl<'src> super::Parser<'_, '_, 'src> {
             TokenKind::Dyn => {
                 self.advance();
                 return self.fin_parse_dyn_trait_object_ty(p_policy);
+            }
+            TokenKind::FieldOf => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::Comma)?;
+                let fields = self.fin_parse_delimited_field_seq()?;
+
+                let (variant, field) = match *fields {
+                    [] => unreachable!(),
+                    [field] => (None, field),
+                    [variant, field, ref extra @ ..] => {
+                        let extra = match extra {
+                            [] => None,
+                            [single] => Some(single.span),
+                            [first, .., last] => Some(first.span.to(last.span)),
+                        };
+                        if let Some(span) = extra {
+                            self.error(ErrorKind::InvalidExtraFieldProjections, span);
+                        }
+
+                        (Some(variant), field)
+                    }
+                };
+
+                return Ok(ast::Ty::FieldOf(Box::new(ty), variant, field));
             }
             TokenKind::Impl => {
                 self.advance();
@@ -234,7 +254,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         loop {
             let qualifier = match self.token.kind {
-                TokenKind::CommonIdent | TokenKind::StroppedKeyword => {
+                TokenKind::CommonIdent | TokenKind::StroppedIdent => {
                     match self.keyword(self.token.span) {
                         weak::Safe::STR if weak::Safe.qualifies(self) => Qualifier::Safe,
                         _ => break,
@@ -327,36 +347,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.parse_bounds_into(p_policy.maintain(), &mut bounds)?;
 
         Ok(Some(ast::Ty::DynTrait(ast::DynKind::Bare, bounds)))
-    }
-
-    fn fin_parse_builtin_ty(&mut self, start: Span) -> Result<ast::Ty<'src>> {
-        self.fin_parse_builtin_syntax(start, ast::Ty::Error, |this, name| match name {
-            weak::FieldOf::STR => {
-                let ty = this.parse_ty()?;
-                this.parse(TokenKind::Comma)?;
-                let fields = this.fin_parse_delimited_field_seq()?;
-
-                let (variant, field) = match *fields {
-                    [] => unreachable!(),
-                    [field] => (None, field),
-                    [variant, field, ref extra @ ..] => {
-                        let extra = match extra {
-                            [] => None,
-                            [single] => Some(single.span),
-                            [first, .., last] => Some(first.span.to(last.span)),
-                        };
-                        if let Some(span) = extra {
-                            this.error(ErrorKind::InvalidExtraFieldProjections, span);
-                        }
-
-                        (Some(variant), field)
-                    }
-                };
-
-                Ok(Some(ast::Ty::FieldOf(Box::new(ty), variant, field)))
-            }
-            _ => Ok(None),
-        })
     }
 
     fn fin_parse_dyn_trait_object_ty(&mut self, p_policy: PlusPolicy) -> Result<ast::Ty<'src>> {

@@ -1,11 +1,6 @@
 use super::{
-    Fragment, Result, TokenKind, TokenPrefix,
-    common::ExpInNumIdentPolicy,
-    frags,
-    pat::OrPolicy,
-    path::GenericArgsMode,
-    ty::PlusPolicy,
-    weak::{self, Weak as _},
+    Fragment, Result, TokenKind, TokenPrefix, common::ExpInNumIdentPolicy, frags, pat::OrPolicy,
+    path::GenericArgsMode, ty::PlusPolicy, weak,
 };
 use crate::{ast, edition::Edition, error::ErrorKind, feature::Feature, span::Span};
 use std::mem;
@@ -525,7 +520,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
         match self.token.kind {
             TokenKind::Become => {
-                self.feature(Feature::explicit_tail_calls, self.token.span);
+                self.feature(Feature::explicit_tail_calls, start);
                 self.advance();
                 return Ok(ast::ExprKind::Become(Box::new(self.parse_expr()?)));
             }
@@ -546,17 +541,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 return Ok(ast::ExprKind::Break(label, expr));
             }
             TokenKind::CharLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Char)),
-            TokenKind::CommonIdent if self.check(weak::Builtin) => {
-                self.advance();
-                return self.fin_parse_builtin_expr(start);
-            }
             TokenKind::Continue => {
                 self.advance();
                 return Ok(ast::ExprKind::Continue(self.parse_label()));
             }
             TokenKind::Do if self.matches(weak::Yeet, self.peek(1)) => {
-                self.feature(Feature::yeet_expr, self.token.span);
                 self.advance();
+                self.feature(Feature::yeet_expr, start.to(self.token.span));
                 self.advance();
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
@@ -584,12 +575,19 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             TokenKind::Match => {
                 self.advance();
-
                 let scrutinee = self.parse_expr_where(Policy { s: StructPolicy::Yield, .. })?;
-
                 return self.fin_parse_match_expr(scrutinee, ast::MatchKind::Prefix, attrs);
             }
             TokenKind::NumLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Num)),
+            TokenKind::OffsetOf => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::Comma)?;
+                let fields = self.fin_parse_delimited_field_seq()?;
+                return Ok(ast::ExprKind::OffsetOf(Box::new(ty), fields));
+            }
             TokenKind::OpenRoundBracket => {
                 self.advance();
 
@@ -648,17 +646,37 @@ impl<'src> super::Parser<'_, '_, 'src> {
             }
             TokenKind::StrLit => return Ok(self.fin_parse_lit_expr(ast::LitKind::Str)),
             TokenKind::True => return Ok(self.fin_parse_lit_expr(ast::LitKind::Bool)),
+            TokenKind::TypeAscribe => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::Comma)?;
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::ExprKind::TypeAscribe(Box::new(expr), Box::new(ty)));
+            }
             TokenKind::Underscore => {
                 self.advance();
                 return Ok(ast::ExprKind::Wildcard);
+            }
+            TokenKind::UnwrapBinder => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                return self.fin_parse_unsafe_binder_cast(ast::UnsafeBinderCastKind::Unwrap);
             }
             TokenKind::While => {
                 self.advance();
                 return self.fin_parse_while_loop_expr(None, attrs);
             }
-            TokenKind::Yield => {
-                self.feature(Feature::yield_expr, self.token.span);
+            TokenKind::WrapBinder => {
                 self.advance();
+                self.feature(Feature::internal_syntax, start);
+                return self.fin_parse_unsafe_binder_cast(ast::UnsafeBinderCastKind::Wrap);
+            }
+            TokenKind::Yield => {
+                self.advance();
+                self.feature(Feature::yield_expr, start);
                 let expr =
                     self.begins_expr().then(|| self.parse_expr().map(Box::new)).transpose()?;
                 return Ok(ast::ExprKind::Yield(ast::YieldExpr::Prefix(expr)));
@@ -796,6 +814,18 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         Ok(qualifiers)
+    }
+
+    fn fin_parse_unsafe_binder_cast(
+        &mut self,
+        kind: ast::UnsafeBinderCastKind,
+    ) -> Result<ast::ExprKind<'src>> {
+        self.parse(TokenKind::OpenRoundBracket)?;
+        let expr = self.parse_expr()?;
+        let ty =
+            if self.consume(TokenKind::Comma) { Some(Box::new(self.parse_ty()?)) } else { None };
+        self.parse(TokenKind::CloseRoundBracket)?;
+        Ok(ast::ExprKind::UnsafeBinderCast(kind, Box::new(expr), ty))
     }
 
     fn fin_parse_lit_expr(&mut self, kind: ast::LitKind) -> ast::ExprKind<'src> {
@@ -1017,44 +1047,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
         let body = self.parse_block_expr(AttrPolicy::Parse(attrs))?;
 
         Ok(ast::ExprKind::WhileLoop(Box::new(ast::WhileLoopExpr { label, condition, body })))
-    }
-
-    fn fin_parse_builtin_expr(&mut self, start: Span) -> Result<ast::ExprKind<'src>> {
-        self.fin_parse_builtin_syntax(start, ast::ExprKind::Error, |this, name| {
-            Ok(match name {
-                weak::OffsetOf::STR => {
-                    let ty = this.parse_ty()?;
-                    this.parse(TokenKind::Comma)?;
-                    let fields = this.fin_parse_delimited_field_seq()?;
-
-                    Some(ast::ExprKind::OffsetOf(Box::new(ty), fields))
-                }
-                weak::TypeAscribe::STR => {
-                    let expr = this.parse_expr()?;
-                    this.parse(TokenKind::Comma)?;
-                    let ty = this.parse_ty()?;
-                    this.parse(TokenKind::CloseRoundBracket)?;
-                    Some(ast::ExprKind::Ascription(Box::new(expr), Box::new(ty)))
-                }
-                weak::UnwrapBinder::STR => {
-                    let expr = this.parse_expr()?;
-                    this.parse(TokenKind::CloseRoundBracket)?;
-                    Some(ast::ExprKind::UnsafeBinderCast(
-                        ast::UnsafeBinderCastKind::Unwrap,
-                        Box::new(expr),
-                    ))
-                }
-                weak::WrapBinder::STR => {
-                    let expr = this.parse_expr()?;
-                    this.parse(TokenKind::CloseRoundBracket)?;
-                    Some(ast::ExprKind::UnsafeBinderCast(
-                        ast::UnsafeBinderCastKind::Wrap,
-                        Box::new(expr),
-                    ))
-                }
-                _ => None,
-            })
-        })
     }
 
     fn validate_let_chain(&self, expr: &ast::Expr<'src>, span: Span, l_policy: LetPolicy) {

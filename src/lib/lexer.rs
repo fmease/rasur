@@ -606,8 +606,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
 
                 self.store.features.add((Feature::forced_keywords, self.span(start)));
 
-                return lex_keyword(self.source(unprefixed), self.edition)
-                    .unwrap_or(TokenKind::StroppedKeyword);
+                return lex_keyword(self.source(unprefixed), Stropped::Yes, self.edition);
             }
             ("r", Some('#')) => {
                 self.advance();
@@ -631,7 +630,7 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
                 }
                 return TokenKind::Error;
             }
-            _ => return lex_keyword(ident, self.edition).unwrap_or(TokenKind::CommonIdent),
+            _ => return lex_keyword(ident, Stropped::No, self.edition),
         };
         self.advance();
         self.fin_lex_str_lit(raw, flavor, start)
@@ -751,8 +750,8 @@ impl<'sto, 'src> Lexer<'sto, 'src> {
     }
 
     fn validate_raw_ident(&self, start: ByteIndex, kind: IdentKind) {
-        if let Some(PathSegKeyword!() | TokenKind::Underscore) =
-            lex_keyword(self.source(start), self.edition)
+        if let PathSegKeyword!() | TokenKind::Underscore =
+            lex_keyword(self.source(start), Stropped::No, self.edition)
         {
             self.error(ErrorKind::InvalidRawIdent(kind), self.span(start));
         }
@@ -862,8 +861,14 @@ fn is_hex_digit(char: char) -> bool {
     matches!(char, '0'..='9' | 'a'..='f' | 'A'..='F')
 }
 
-pub(crate) fn lex_keyword(source: &str, edition: Edition) -> Option<TokenKind> {
-    Some(match source {
+pub(crate) enum Stropped {
+    Yes,
+    No,
+}
+
+pub(crate) fn lex_keyword(source: &str, stropped: Stropped, edition: Edition) -> TokenKind {
+    let stropped = matches!(stropped, Stropped::Yes);
+    match source {
         "Self" => TokenKind::SelfUpper,
         "_" => TokenKind::Underscore,
         "abstract" => TokenKind::Abstract,
@@ -876,12 +881,14 @@ pub(crate) fn lex_keyword(source: &str, edition: Edition) -> Option<TokenKind> {
         "const" => TokenKind::Const,
         "continue" => TokenKind::Continue,
         "crate" => TokenKind::Crate,
+        "deref" if stropped => TokenKind::Deref,
         "do" => TokenKind::Do,
         "dyn" if edition >= Edition::Rust2018 => TokenKind::Dyn,
         "else" => TokenKind::Else,
         "enum" => TokenKind::Enum,
         "extern" => TokenKind::Extern,
         "false" => TokenKind::False,
+        "field_of" if stropped => TokenKind::FieldOf,
         "final" => TokenKind::Final,
         "fn" => TokenKind::Fn,
         "for" => TokenKind::For,
@@ -896,6 +903,7 @@ pub(crate) fn lex_keyword(source: &str, edition: Edition) -> Option<TokenKind> {
         "mod" => TokenKind::Mod,
         "move" => TokenKind::Move,
         "mut" => TokenKind::Mut,
+        "offset_of" if stropped => TokenKind::OffsetOf,
         "override" => TokenKind::Override,
         "priv" => TokenKind::Priv,
         "pub" => TokenKind::Pub,
@@ -909,13 +917,17 @@ pub(crate) fn lex_keyword(source: &str, edition: Edition) -> Option<TokenKind> {
         "true" => TokenKind::True,
         "try" if edition >= Edition::Rust2018 => TokenKind::Try,
         "type" => TokenKind::Type,
+        "type_ascribe" if stropped => TokenKind::TypeAscribe,
         "typeof" => TokenKind::Typeof,
         "unsafe" => TokenKind::Unsafe,
+        "unwrap_binder" if stropped => TokenKind::UnwrapBinder,
         "use" => TokenKind::Use,
         "virtual" => TokenKind::Virtual,
         "where" => TokenKind::Where,
         "while" => TokenKind::While,
+        "wrap_binder" if stropped => TokenKind::WrapBinder,
         "yield" => TokenKind::Yield,
-        _ => return None,
-    })
+        _ if stropped => TokenKind::StroppedIdent,
+        _ => TokenKind::CommonIdent,
+    }
 }

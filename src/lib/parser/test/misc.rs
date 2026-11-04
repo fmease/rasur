@@ -141,37 +141,13 @@ fn const_block_const_item_modifier() {
 }
 
 #[test]
-fn builtin_syntax() {
-    t!(
-        parse_expr,
-        Rust2015,
-        "builtin#unknown(1 + 2 @)",
-        Err([Error { kind: ErrorKind::UnknownBuiltinSyntax, .. }]),
-    );
-
+fn internal_syntax() {
     t!(
         parse_expr,
         Rust2021,
-        "builtin#unknown(1 + 2 @)",
-        Err([
-            Error { kind: ErrorKind::ReservedPrefix, .. },
-            Error { kind: ErrorKind::UnexpectedToken(TokenKind::At, _), .. }
-        ]),
-    );
-
-    t!(
-        parse_expr,
-        Rust2021,
-        "builtin # unknown(1 + 2 @)",
-        Err([Error { kind: ErrorKind::UnknownBuiltinSyntax, .. }]),
-    );
-
-    t!(
-        parse_expr,
-        Rust2021,
-        "builtin # type_ascribe(0,i32)",
+        "k#type_ascribe(0,i32)",
         Ok(ast::Expr {
-            kind: ast::ExprKind::Ascription(
+            kind: ast::ExprKind::TypeAscribe(
                 ast::Expr { kind: ast::ExprKind::Lit(_), .. },
                 ast::Ty::Path(_)
             ),
@@ -182,7 +158,7 @@ fn builtin_syntax() {
     t!(
         parse_expr,
         Rust2021,
-        "builtin # offset_of(X,0.x.y.1)",
+        "k#offset_of(X,0.x.y.1)",
         Ok(ast::Expr {
             kind: ast::ExprKind::OffsetOf(
                 ast::Ty::Path(ast::ExtPath {
@@ -198,11 +174,12 @@ fn builtin_syntax() {
     t!(
         parse_expr,
         Rust2021,
-        "builtin # wrap_binder(&0)",
+        "k#wrap_binder(&0)",
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Wrap,
                 ast::Expr { .. },
+                None,
             ),
             ..
         })
@@ -211,11 +188,12 @@ fn builtin_syntax() {
     t!(
         parse_expr,
         Rust2021,
-        "builtin # unwrap_binder(x)",
+        "k#unwrap_binder(x)",
         Ok(ast::Expr {
             kind: ast::ExprKind::UnsafeBinderCast(
                 ast::UnsafeBinderCastKind::Unwrap,
                 ast::Expr { .. },
+                None,
             ),
             ..
         })
@@ -224,7 +202,7 @@ fn builtin_syntax() {
     t!(
         parse_pat,
         Rust2021,
-        "builtin # deref(0)",
+        "k#deref(0)",
         Ok(ast::Pat {
             kind: ast::PatKind::Deref(ast::Pat { kind: ast::PatKind::Lit(..), .. }),
             ..
@@ -542,7 +520,7 @@ fn stropped_keywords() {
         Ok(ast::Item {
             kind: ast::ItemKind::MacroCall(ast::MacroCall {
                 stream: [
-                    Token { kind: TokenKind::StroppedKeyword, .. },
+                    Token { kind: TokenKind::StroppedIdent, .. },
                     Token { kind: TokenKind::EndOfInput, .. }
                 ],
                 ..

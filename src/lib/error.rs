@@ -67,7 +67,6 @@ pub enum ErrorKind {
     TraitImplModifierInInherentImpl(&'static str),
     UnexpectedClosingDelimiter(TokenKind),
     UnexpectedToken(TokenKind, List1<Fragment>),
-    UnknownBuiltinSyntax,
     UnsafeTraitAlias,
     UnterminatedBlockComment,
     UnterminatedCharLit,

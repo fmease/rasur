@@ -19,7 +19,7 @@ impl<'src> From<ExprKind<'src>> for Expr<'src> {
 #[derive(Debug)]
 pub enum ExprKind<'src> {
     Array(Vec<Expr<'src>>),
-    Ascription(Box<Expr<'src>>, Box<Ty<'src>>),
+    TypeAscribe(Box<Expr<'src>>, Box<Ty<'src>>),
     Await(Box<Expr<'src>>),
     Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
@@ -53,7 +53,7 @@ pub enum ExprKind<'src> {
     Try(Box<Expr<'src>>),
     Tuple(Vec<Expr<'src>>),
     UnOp(UnOp, Box<Expr<'src>>),
-    UnsafeBinderCast(UnsafeBinderCastKind, Box<Expr<'src>>),
+    UnsafeBinderCast(UnsafeBinderCastKind, Box<Expr<'src>>, Option<Box<Ty<'src>>>),
     Use(Box<Expr<'src>>),
     WhileLoop(Box<WhileLoopExpr<'src>>),
     Wildcard,
@@ -80,7 +80,7 @@ impl ExprKind<'_> {
                 CurlyBracketedMacroCallIsBoundary::No => false,
             },
             | Self::Array(_)
-            | Self::Ascription(..)
+            | Self::TypeAscribe(..)
             | Self::Await(_)
             | Self::Become(_)
             | Self::BinOp(..)

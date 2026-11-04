@@ -361,27 +361,6 @@ impl<T: Fmt> Fmt for Tup<T> {
     }
 }
 
-struct BuiltinSyntax<F: FnOnce(&mut Cx<'_>)>(&'static str, F);
-
-impl<F: FnOnce(&mut Cx<'_>)> Fmt for BuiltinSyntax<F> {
-    fn fmt(self, cx: &mut Cx<'_>) {
-        let Self(name, content) = self;
-
-        fmt!(cx, "builtin");
-        if cx.edition >= Edition::Rust2021 {
-            fmt!(cx, " ");
-        }
-        fmt!(cx, "#");
-        if cx.edition >= Edition::Rust2021 {
-            fmt!(cx, " ");
-        }
-        name.fmt(cx);
-        fmt!(cx, "(");
-        content(cx);
-        fmt!(cx, ")");
-    }
-}
-
 impl<T: Fmt> Fmt for Box<T> {
     fn fmt(self, cx: &mut Cx<'_>) {
         (*self).fmt(cx);

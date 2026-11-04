@@ -10,7 +10,7 @@ pub(super) trait Weak: Copy {
     const STR: &str;
 
     fn check(self, p: &Parser<'_, '_, '_>) -> bool {
-        matches!(p.token.kind, TokenKind::CommonIdent | TokenKind::StroppedKeyword)
+        matches!(p.token.kind, TokenKind::CommonIdent | TokenKind::StroppedIdent)
             && p.keyword(p.token.span) == Self::STR
             && self.qualifies(p)
     }
@@ -19,7 +19,7 @@ pub(super) trait Weak: Copy {
     where
         Self: MatchAgainstArbitraryToken,
     {
-        matches!(token.kind, TokenKind::CommonIdent | TokenKind::StroppedKeyword)
+        matches!(token.kind, TokenKind::CommonIdent | TokenKind::StroppedIdent)
             && p.keyword(token.span) == Self::STR
     }
 
@@ -51,17 +51,13 @@ weak! {
     // Alternatively, we could check `$kind.is_ident() && $kind != TokenKind::As`
     Auto "auto" |p| matches!(p.peek(1).kind, TokenKind::Trait | TokenKind::Impl),
     Bikeshed "bikeshed",
-    Builtin "builtin" |p| p.peek(1).kind == TokenKind::Hash,
     ContractEnsures "contract_ensures",
     ContractRequires "contract_requires",
     Default "default" |p| p.peek(1).kind.is_ident(),
-    Deref "deref",
     Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.begins_2015_dyn_bound(p.peek(1)),
-    FieldOf "field_of",
     MacroRules "macro_rules" |p|
         p.peek(1).kind == TokenKind::SingleBang
             && p.peek(2).kind == TokenKind::CommonIdent,
-    OffsetOf "offset_of",
     Pin "pin",
     Raw "raw",
     // NOTE: This check isn't precise enough. See upstream issue:
@@ -74,9 +70,6 @@ weak! {
     },
     // Alternatively, we could check `$kind.is_ident() && $kind != TokenKind::As`
     Safe "safe" |p| matches!(p.peek(1).kind, TokenKind::Extern | TokenKind::Fn | TokenKind::Static),
-    TypeAscribe "type_ascribe",
     Union "union" |p| p.peek(1).kind == TokenKind::CommonIdent,
-    UnwrapBinder "unwrap_binder",
-    WrapBinder "wrap_binder",
     Yeet "yeet",
 }

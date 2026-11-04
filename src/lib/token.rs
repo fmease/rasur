@@ -39,12 +39,14 @@ pub enum TokenKind {
     Const,
     Continue,
     Crate,
+    Deref,
     Do,
     Dyn,
     Else,
     Enum,
     Extern,
     False,
+    FieldOf,
     Final,
     Fn,
     For,
@@ -59,6 +61,7 @@ pub enum TokenKind {
     Mod,
     Move,
     Mut,
+    OffsetOf,
     Override,
     Priv,
     Pub,
@@ -67,19 +70,23 @@ pub enum TokenKind {
     SelfLower,
     SelfUpper,
     Static,
+    StroppedIdent,
     Struct,
     Super,
     Trait,
     True,
     Try,
     Type,
+    TypeAscribe,
     Typeof,
     Underscore,
     Unsafe,
+    UnwrapBinder,
     Use,
     Virtual,
     Where,
     While,
+    WrapBinder,
     // NOTE: Update `Self::is_ident` if you add a variant below this one!
     Yield,
     //
@@ -142,7 +149,6 @@ pub enum TokenKind {
     SingleSlash,
     SlashEquals,
     StrLit,
-    StroppedKeyword,
     ThinArrow,
     ThinBackArrow,
     TickedIdent,
@@ -155,10 +161,6 @@ pub enum TokenKind {
 impl TokenKind {
     pub const fn is_ident(self) -> bool {
         Self::Abstract as u8 <= self as u8 && self as u8 <= Self::Yield as u8
-    }
-
-    pub const fn is_keyword(self) -> bool {
-        self.is_ident() && self != Self::CommonIdent
     }
 
     pub fn is_trivia(self) -> bool {
@@ -190,6 +192,7 @@ impl TokenKind {
             Self::Const => Repr::Src("const"),
             Self::Continue => Repr::Src("continue"),
             Self::Crate => Repr::Src("crate"),
+            Self::Deref => Repr::Src("k#deref"),
             Self::Do => Repr::Src("do"),
             Self::Dollar => Repr::Src("$"),
             Self::DoubleAmpersand => Repr::Src("&&"),
@@ -209,6 +212,7 @@ impl TokenKind {
             Self::Error => Repr::Tag("error"),
             Self::Extern => Repr::Src("extern"),
             Self::False => Repr::Src("false"),
+            Self::FieldOf => Repr::Src("k#field_of"),
             Self::Final => Repr::Src("final"),
             Self::Fn => Repr::Src("fn"),
             Self::For => Repr::Src("for"),
@@ -231,6 +235,7 @@ impl TokenKind {
             Self::Move => Repr::Src("move"),
             Self::Mut => Repr::Src("mut"),
             Self::NumLit => Repr::Tag("number literal"),
+            Self::OffsetOf => Repr::Src("k#offset_of"),
             Self::OpenCurlyBracket => Repr::Src("{"),
             Self::OpenRoundBracket => Repr::Src("("),
             Self::OpenSquareBracket => Repr::Src("["),
@@ -264,7 +269,7 @@ impl TokenKind {
             Self::SlashEquals => Repr::Src("/="),
             Self::Static => Repr::Src("static"),
             Self::StrLit => Repr::Tag("string literal"),
-            Self::StroppedKeyword => Repr::Tag("stropped keyword"),
+            Self::StroppedIdent => Repr::Tag("stropped identifier"),
             Self::Struct => Repr::Src("struct"),
             Self::Super => Repr::Src("super"),
             Self::ThinArrow => Repr::Src("->"),
@@ -276,15 +281,18 @@ impl TokenKind {
             Self::True => Repr::Src("true"),
             Self::Try => Repr::Src("try"),
             Self::Type => Repr::Src("type"),
+            Self::TypeAscribe => Repr::Src("k#type_ascribe"),
             Self::Typeof => Repr::Src("typeof"),
             Self::Underscore => Repr::Src("_"),
             Self::Unsafe => Repr::Src("unsafe"),
+            Self::UnwrapBinder => Repr::Src("k#unwrap_binder"),
             Self::Use => Repr::Src("use"),
             Self::Virtual => Repr::Src("virtual"),
             Self::Where => Repr::Src("where"),
             Self::While => Repr::Src("while"),
             Self::Whitespace => Repr::Tag("whitespace"),
             Self::WideArrow => Repr::Src("=>"),
+            Self::WrapBinder => Repr::Src("k#wrap_binder"),
             Self::Yield => Repr::Src("yield"),
         }
     }

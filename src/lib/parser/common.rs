@@ -7,9 +7,9 @@ use crate::{
     ast,
     error::ErrorKind,
     feature::Feature,
-    lexer::lex_keyword,
+    lexer::{Stropped, lex_keyword},
     parser::{MatchAgainstArbitraryToken, TokenCategory},
-    span::{ByteIndex, Span},
+    span::ByteIndex,
     token::Token,
 };
 use std::mem;
@@ -61,7 +61,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
         self.advance();
 
         let source = &self.source(span)[const { "'".len() }..];
-        let ident = lex_keyword(source, self.edition).unwrap_or(TokenKind::CommonIdent);
+        let ident = lex_keyword(source, Stropped::No, self.edition);
         if !validate(ident) {
             self.error(error, span);
         }
@@ -318,7 +318,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
     pub(super) fn parse_borrow_kind_and_mutability<X: ParseBorrowKind + std::fmt::Debug>(
         &mut self,
     ) -> (ast::BorrowKind<X>, ast::Mut) {
-        if let TokenKind::CommonIdent | TokenKind::StroppedKeyword = self.token.kind
+        if let TokenKind::CommonIdent | TokenKind::StroppedIdent = self.token.kind
             && let Some(mut_) = match self.peek(1).kind {
                 TokenKind::Mut => Some(ast::Mut::Yes),
                 TokenKind::Const => Some(ast::Mut::No),
@@ -361,29 +361,6 @@ impl<'src> super::Parser<'_, '_, 'src> {
         }
 
         Some(abi)
-    }
-
-    pub(super) fn fin_parse_builtin_syntax<T>(
-        &mut self,
-        start: Span,
-        error: impl FnOnce(Span) -> T,
-        parse: impl FnOnce(&mut Self, &'src str) -> Result<Option<T>>,
-    ) -> Result<T> {
-        self.feature(Feature::builtin_syntax, start);
-        self.parse(TokenKind::Hash)?;
-
-        // FIXME: rustc actually doesn't accept raw identifiers here.
-        let ident = self.parse_common_ident()?;
-        self.parse(TokenKind::OpenRoundBracket)?;
-
-        Ok(match parse(self, ident.name)? {
-            Some(value) => value,
-            None => {
-                self.error(ErrorKind::UnknownBuiltinSyntax, ident.span);
-                let _stream = self.fin_parse_delimited_token_stream(ast::Bracket::Round)?;
-                error(start.to(self.prev_token().span))
-            }
-        })
     }
 
     pub(super) fn split_float_lit(&mut self) -> (ast::Ident<'src>, Option<ast::Ident<'src>>) {

@@ -41,7 +41,6 @@ features! {
     async_for_loop #118898,
     async_trait_bounds #62290,
     auto_traits #13231,
-    builtin_syntax #110680,
     closure_lifetime_binder #97362,
     const_block_items #149226,
     const_closures #106003,
@@ -61,6 +60,7 @@ features! {
     generic_const_items #113521,
     guard_patterns #129967,
     impl_restriction #105077,
+    internal_syntax #110680,
     min_generic_const_args #132980,
     min_specialization #31844,
     more_qualified_paths #86935,
@@ -105,7 +105,7 @@ impl Feature {
     // FIXME: Support "incomplete", too.
     pub const fn kind(self) -> FeatureKind {
         match self {
-            Self::builtin_syntax | Self::contract_internals => FeatureKind::Internal,
+            Self::contract_internals | Self::internal_syntax => FeatureKind::Internal,
             Self::negative_bounds => FeatureKind::SuperInternal,
             _ => FeatureKind::Experimental,
         }

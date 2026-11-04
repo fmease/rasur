@@ -1,6 +1,4 @@
-use super::{
-    BuiltinSyntax, Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
-};
+use super::{Cx, Fmt, InterleaveExt as _, TrailingSpace, TrailingSpaceExt as _, Tup, fmt};
 use crate::ast;
 
 impl Fmt for ast::Pat<'_> {
@@ -16,7 +14,11 @@ impl Fmt for ast::PatKind<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         match self {
             Self::Binding(binding) => binding.fmt(cx),
-            Self::Deref(pat) => BuiltinSyntax("deref", |cx| pat.fmt(cx)).fmt(cx),
+            Self::Deref(pat) => {
+                fmt!(cx, "k#deref(");
+                pat.fmt(cx);
+                fmt!(cx, ")");
+            }
             Self::Error(span) => fmt!(cx, "{}", cx.source(span)),
             Self::Wildcard => fmt!(cx, "_"),
             Self::Lit(sign, lit) => {
