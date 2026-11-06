@@ -57,7 +57,6 @@ pub enum ErrorKind {
     MultiScalarCharLit,
     NonDecFloatLit,
     ParametrizedWhereClause,
-    ParenthesizedGuardedPatInMatch,
     ReservedLabel,
     ReservedLifetime,
     ReservedMultiHash,
