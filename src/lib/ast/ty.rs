@@ -22,6 +22,7 @@ pub enum Ty<'src> {
     Slice(Box<Ty<'src>>),
     Tuple(Vec<Ty<'src>>),
     UnsafeBinder(Vec<GenericParam<'src>>, Box<Ty<'src>>),
+    View(Box<Ty<'src>>, Vec<Ident<'src>>),
 }
 
 #[derive(Debug)]

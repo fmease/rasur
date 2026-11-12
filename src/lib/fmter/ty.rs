@@ -79,6 +79,17 @@ impl Fmt for ast::Ty<'_> {
                 field.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::View(ty, fields) => {
+                fmt!(cx, "k#view_type(");
+                ty.fmt(cx);
+                fmt!(cx, ".{{");
+                if !fields.is_empty() {
+                    fmt!(cx, " ");
+                    fields.interleave(", ").fmt(cx);
+                    fmt!(cx, " ");
+                }
+                fmt!(cx, "}})");
+            }
         }
     }
 }

@@ -212,6 +212,25 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 let ty = self.parse_ty()?;
                 return Ok(ast::Ty::UnsafeBinder(bound_vars, Box::new(ty)));
             }
+            TokenKind::ViewType => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let ty = self.parse_ty()?;
+                self.parse(TokenKind::SingleDot)?;
+                self.parse(TokenKind::OpenCurlyBracket)?;
+                let fields = self.fin_parse_delim_seq(
+                    TokenKind::CloseCurlyBracket,
+                    TokenKind::Comma,
+                    |this| {
+                        let (binder, _numeric) = this.parse_common_or_numeric_ident()?;
+                        Ok(binder)
+                    },
+                )?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+
+                return Ok(ast::Ty::View(Box::new(ty), fields));
+            }
             _ => {}
         }
 

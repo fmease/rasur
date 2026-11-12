@@ -1,4 +1,4 @@
-use super::{Fragment, Result, TokenKind, common::ExpInNumIdentPolicy, frags};
+use super::{Fragment, Result, TokenKind, frags};
 use crate::{ast, feature::Feature, parser::TokenPrefix};
 
 impl<'src> super::Parser<'_, '_, 'src> {
@@ -299,13 +299,10 @@ impl<'src> super::Parser<'_, '_, 'src> {
                         let unmarked = matches!((mut_, by_ref), (ast::Mut::No, ast::ByRef::No));
 
                         let (binder, numeric) = if unmarked {
-                            self.parse_common_ident_or(TokenKind::NumLit)?
+                            self.parse_common_or_numeric_ident()?
                         } else {
                             (self.parse_common_ident()?, false)
                         };
-                        if numeric {
-                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
-                        }
 
                         let (binder, body) = if unmarked
                             && self.consume_or_parse(TokenKind::SingleColon, !numeric)?

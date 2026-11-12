@@ -405,6 +405,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
         (ident, extra)
     }
 
+    pub(super) fn parse_common_or_numeric_ident(&mut self) -> Result<(ast::Ident<'src>, bool)> {
+        let pair @ (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
+        if numeric {
+            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
+        }
+        Ok(pair)
+    }
+
     pub(super) fn validate_numeric_ident(
         &self,
         ident: ast::Ident<'src>,

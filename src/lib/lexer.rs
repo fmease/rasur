@@ -922,6 +922,7 @@ pub(crate) fn lex_keyword(source: &str, stropped: Stropped, edition: Edition) ->
         "unsafe" => TokenKind::Unsafe,
         "unwrap_binder" if stropped => TokenKind::UnwrapBinder,
         "use" => TokenKind::Use,
+        "view_type" if stropped => TokenKind::ViewType,
         "virtual" => TokenKind::Virtual,
         "where" => TokenKind::Where,
         "while" => TokenKind::While,

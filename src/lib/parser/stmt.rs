@@ -167,7 +167,8 @@ impl ast::Ty<'_> {
             | Self::Never
             | Self::Path(_)
             | Self::Slice(_)
-            | Self::Tuple(_) => true,
+            | Self::Tuple(_)
+            | Self::View(..) => true,
             Self::FnPtr(ty) => ty.output.as_ref().is_none_or(ast::Ty::else_may_follow),
             Self::MacroCall(ty) => ty.bracket.else_may_follow(),
             Self::Ptr(_, ty) | Self::UnsafeBinder(_, ty) => ty.else_may_follow(),

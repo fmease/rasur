@@ -1,6 +1,6 @@
 use super::{
-    Fragment, Result, TokenKind, TokenPrefix, common::ExpInNumIdentPolicy, frags, pat::OrPolicy,
-    path::GenericArgsMode, ty::PlusPolicy, weak,
+    Fragment, Result, TokenKind, TokenPrefix, frags, pat::OrPolicy, path::GenericArgsMode,
+    ty::PlusPolicy, weak,
 };
 use crate::{ast, edition::Edition, error::ErrorKind, feature::Feature, span::Span};
 use std::mem;
@@ -724,10 +724,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                         let attrs = self.parse_attrs(ast::AttrStyle::Outer)?;
 
-                        let (binder, numeric) = self.parse_common_ident_or(TokenKind::NumLit)?;
-                        if numeric {
-                            self.validate_numeric_ident(binder, ExpInNumIdentPolicy::Reject);
-                        }
+                        let (binder, numeric) = self.parse_common_or_numeric_ident()?;
 
                         let body = if self.consume_or_parse(TokenKind::SingleColon, !numeric)? {
                             Some(self.parse_expr()?)
