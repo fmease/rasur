@@ -1,6 +1,6 @@
 use super::{
-    Attr, BorrowKind, Expr, ExtPath, Extern, FnParam, Ident, MacroCall, Mut, Path, Safety,
-    UnambiguousGenericArgs,
+    Attr, BorrowKind, Expr, ExtPath, Extern, FnParam, Ident, MacroCall, Mut, Path, RangePatBound,
+    RangePatKind, Safety, UnambiguousGenericArgs,
 };
 use crate::span::Span;
 
@@ -16,6 +16,7 @@ pub enum Ty<'src> {
     Inferred,
     MacroCall(MacroCall<'src, UnambiguousGenericArgs>),
     Never,
+    Pat(Box<Ty<'src>>, Box<TyPat<'src>>),
     Path(Box<ExtPath<'src, UnambiguousGenericArgs>>),
     Ptr(Mut, Box<Ty<'src>>),
     Ref(Box<RefTy<'src>>),
@@ -162,3 +163,16 @@ pub enum BoundPolarity {
 
 #[derive(Debug)]
 pub struct Lifetime<'src>(pub Ident<'src>);
+
+#[derive(Debug)]
+pub struct TyPat<'src> {
+    pub span: Span,
+    pub kind: TyPatKind<'src>,
+}
+
+#[derive(Debug)]
+pub enum TyPatKind<'src> {
+    NonNull,
+    Or(Box<TyPat<'src>>, Box<TyPat<'src>>),
+    Range(Option<Box<RangePatBound<'src>>>, Option<Box<RangePatBound<'src>>>, RangePatKind),
+}

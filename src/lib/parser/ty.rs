@@ -2,6 +2,7 @@ use super::{
     Fragment, Result, TokenKind, TokenPrefix,
     common::{ConstFnParamPolicy, EmptyFnParamPatPolicy},
     frags,
+    pat::OrPolicy,
     path::PathMode,
     weak,
 };
@@ -157,6 +158,16 @@ impl<'src> super::Parser<'_, '_, 'src> {
                     Some(len) => ast::Ty::Array(Box::new(ty), len),
                     None => ast::Ty::Slice(Box::new(ty)),
                 });
+            }
+            TokenKind::PatternType => {
+                self.advance();
+                self.feature(Feature::internal_syntax, start);
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let ty = self.parse_ty()?;
+                self.parse(weak::Is)?;
+                let pat = self.parse_ty_pat()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::Ty::Pat(Box::new(ty), Box::new(pat)));
             }
             TokenKind::SingleAmpersand => {
                 self.advance();
@@ -770,6 +781,20 @@ impl<'src> super::Parser<'_, '_, 'src> {
             ErrorKind::ReservedLifetime,
         )?))
     }
+
+    fn parse_ty_pat(&mut self) -> Result<ast::TyPat<'src>> {
+        if self.token.kind == TokenKind::SingleBang && self.matches(weak::Null, self.peek(1)) {
+            let start = self.token.span;
+            self.advance();
+            let span = start.to(self.token.span);
+            self.advance();
+            Ok(ast::TyPat { span, kind: ast::TyPatKind::NonNull })
+        } else {
+            self.parse_pat(OrPolicy::Parse)?
+                .to_ty_pat()
+                .map_err(|span| self.error(ErrorKind::InvalidTyPat, span))
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -817,5 +842,21 @@ impl<'src> Qualifier<'src> {
             [Qualifier::Extern(abi), qualifiers @ ..] => (ast::Extern::Yes(*abi), qualifiers),
             _ => (ast::Extern::No, qualifiers),
         }
+    }
+}
+
+impl<'src> ast::Pat<'src> {
+    fn to_ty_pat(self) -> Result<ast::TyPat<'src>, Span> {
+        let kind = match self.kind {
+            ast::PatKind::Grouped(_, pat) => return pat.to_ty_pat(),
+            ast::PatKind::Or(left, right) => {
+                let left = left.to_ty_pat()?;
+                let right = right.to_ty_pat()?;
+                ast::TyPatKind::Or(Box::new(left), Box::new(right))
+            }
+            ast::PatKind::Range(left, right, kind) => ast::TyPatKind::Range(left, right, kind),
+            _ => return Err(self.span),
+        };
+        Ok(ast::TyPat { span: self.span, kind })
     }
 }

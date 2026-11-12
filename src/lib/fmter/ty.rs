@@ -90,6 +90,13 @@ impl Fmt for ast::Ty<'_> {
                 }
                 fmt!(cx, "}})");
             }
+            Self::Pat(ty, pat) => {
+                fmt!(cx, "k#pattern_type(");
+                ty.fmt(cx);
+                fmt!(cx, " is ");
+                pat.fmt(cx);
+                fmt!(cx, ")");
+            }
         }
     }
 }
@@ -315,5 +322,25 @@ impl Fmt for ast::Lifetime<'_> {
             _ => fmt!(cx, "r#"),
         }
         name.fmt(cx);
+    }
+}
+
+impl Fmt for ast::TyPat<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self { span: _, kind } = self;
+
+        match kind {
+            ast::TyPatKind::NonNull => fmt!(cx, "!null"),
+            ast::TyPatKind::Or(left, right) => {
+                left.fmt(cx);
+                fmt!(cx, " | ");
+                right.fmt(cx);
+            }
+            ast::TyPatKind::Range(left, right, kind) => {
+                left.fmt(cx);
+                kind.fmt(cx);
+                right.fmt(cx);
+            }
+        }
     }
 }

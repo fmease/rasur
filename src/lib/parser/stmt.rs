@@ -165,6 +165,7 @@ impl ast::Ty<'_> {
             | Self::ImplTrait(_)
             | Self::Inferred
             | Self::Never
+            | Self::Pat(..)
             | Self::Path(_)
             | Self::Slice(_)
             | Self::Tuple(_)

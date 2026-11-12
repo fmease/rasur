@@ -45,7 +45,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
             self.advance();
 
-            let start = self.token.span;
+            let start = left.span;
             left = ast::Pat {
                 kind: self
                     .fin_parse_infix_or_postfix_op_pat(op, left, o_policy, r_policy, g_policy)?,

@@ -76,6 +76,7 @@ impl IntoDiag for Error {
             ErrorKind::InvalidStrLitDelimiter => diag.title("invalid string literal delimiter"),
             ErrorKind::InvalidStroppedKeyword => diag.title("invalid stropped keyword"),
             ErrorKind::InvalidTraitBoundModifier => diag.title("invalid trait bound modifier"),
+            ErrorKind::InvalidTyPat => diag.title("invalid type pattern"),
             ErrorKind::InvalidTyPrefix => diag.title("invalid type modifiers"),
             ErrorKind::MisplacedReceiver => diag.title("misplaced receiver"),
             ErrorKind::MissingClosingDelimiters => {

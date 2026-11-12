@@ -905,6 +905,7 @@ pub(crate) fn lex_keyword(source: &str, stropped: Stropped, edition: Edition) ->
         "mut" => TokenKind::Mut,
         "offset_of" if stropped => TokenKind::OffsetOf,
         "override" => TokenKind::Override,
+        "pattern_type" if stropped => TokenKind::PatternType,
         "priv" => TokenKind::Priv,
         "pub" => TokenKind::Pub,
         "ref" => TokenKind::Ref,

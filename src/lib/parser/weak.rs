@@ -55,9 +55,11 @@ weak! {
     ContractRequires "contract_requires",
     Default "default" |p| p.peek(1).kind.is_ident(),
     Dyn "dyn" |p| p.edition == Edition::Rust2015 && p.begins_2015_dyn_bound(p.peek(1)),
+    Is "is",
     MacroRules "macro_rules" |p|
         p.peek(1).kind == TokenKind::SingleBang
             && p.peek(2).kind == TokenKind::CommonIdent,
+    Null "null",
     Pin "pin",
     Raw "raw",
     // NOTE: This check isn't precise enough. See upstream issue:

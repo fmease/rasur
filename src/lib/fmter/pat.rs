@@ -54,12 +54,7 @@ impl Fmt for ast::PatKind<'_> {
             }
             Self::Range(left, right, kind) => {
                 left.fmt(cx);
-                let symbol = match kind {
-                    ast::RangePatKind::Exclusive => "..",
-                    ast::RangePatKind::Inclusive { legacy: false } => "..=",
-                    ast::RangePatKind::Inclusive { legacy: true } => "...",
-                };
-                fmt!(cx, "{symbol}");
+                kind.fmt(cx);
                 right.fmt(cx);
             }
             Self::Rest => fmt!(cx, ".."),
@@ -70,6 +65,17 @@ impl Fmt for ast::PatKind<'_> {
             }
             Self::Never => fmt!(cx, "!"),
         }
+    }
+}
+
+impl Fmt for ast::RangePatKind {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let symbol = match self {
+            Self::Exclusive => "..",
+            Self::Inclusive { legacy: false } => "..=",
+            Self::Inclusive { legacy: true } => "...",
+        };
+        fmt!(cx, "{symbol}");
     }
 }
 

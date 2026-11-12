@@ -19,6 +19,7 @@ pub enum ErrorKind {
     AbiStrSuffix,
     AmbiguousPlus,
     AutoTraitAlias,
+    BareLifetimeInTy,
     ChainedComparison,
     DefaultOnInvalidItem,
     EmptyCharLit,
@@ -50,8 +51,8 @@ pub enum ErrorKind {
     InvalidStrLitDelimiter,
     InvalidStroppedKeyword,
     InvalidTraitBoundModifier,
+    InvalidTyPat,
     InvalidTyPrefix,
-    BareLifetimeInTy,
     MisplacedReceiver,
     MissingClosingDelimiters,
     MultiScalarCharLit,
@@ -64,6 +65,7 @@ pub enum ErrorKind {
     ReservedPrefix,
     ReuseInherentImpl,
     StrLitGuardTooLarge,
+    TickFollowingRawTickedIdent,
     TraitImplModifierInInherentImpl(&'static str),
     UnexpectedClosingDelimiter(TokenKind),
     UnexpectedToken(TokenKind, List1<Fragment>),
@@ -73,7 +75,6 @@ pub enum ErrorKind {
     UnterminatedFrontmatter,
     UnterminatedStrLit,
     VisibilityOnInvalidItem,
-    TickFollowingRawTickedIdent,
 }
 
 #[derive(Clone, Copy, Debug)]
