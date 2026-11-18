@@ -896,7 +896,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     fn fin_parse_for_loop_expr(
         &mut self,
-        label: Option<ast::Ident<'src>>,
+        label: Option<ast::Label<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         let await_ = if let span = self.token.span
@@ -954,7 +954,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     fn fin_parse_loop_expr(
         &mut self,
-        label: Option<ast::Ident<'src>>,
+        label: Option<ast::Label<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         Ok(ast::ExprKind::Loop(label, Box::new(self.parse_block_expr(AttrPolicy::Parse(attrs))?)))
@@ -1022,7 +1022,7 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     fn fin_parse_while_loop_expr(
         &mut self,
-        label: Option<ast::Ident<'src>>,
+        label: Option<ast::Label<'src>>,
         attrs: &mut Vec<ast::Attr<'src>>,
     ) -> Result<ast::ExprKind<'src>> {
         let condition = self.parse_expr_where(Policy {
@@ -1073,11 +1073,12 @@ impl<'src> super::Parser<'_, '_, 'src> {
     }
 
     /// Optionally parse a label.
-    fn parse_label(&mut self) -> Option<ast::Ident<'src>> {
+    fn parse_label(&mut self) -> Option<ast::Label<'src>> {
         self.parse_ticked_ident(
             |kind| matches!(kind, TokenKind::CommonIdent),
             ErrorKind::ReservedLabel,
         )
+        .map(ast::Label)
     }
 }
 

@@ -774,12 +774,13 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
     /// Optionally parse a lifetime.
     pub(super) fn parse_lifetime(&mut self) -> Option<ast::Lifetime<'src>> {
-        Some(ast::Lifetime(self.parse_ticked_ident(
+        self.parse_ticked_ident(
             |kind| {
                 matches!(kind, TokenKind::CommonIdent | TokenKind::Underscore | TokenKind::Static)
             },
             ErrorKind::ReservedLifetime,
-        )?))
+        )
+        .map(ast::Lifetime)
     }
 
     fn parse_ty_pat(&mut self) -> Result<ast::TyPat<'src>> {

@@ -1,7 +1,11 @@
 use super::{
     Cluster, Cx, Fmt, InterleaveExt as _, LineBreak, TrailingSpace, TrailingSpaceExt as _, Tup, fmt,
 };
-use crate::ast::{self, AttrsExt as _};
+use crate::{
+    ast::{self, AttrsExt as _},
+    lexer::{Stropped, lex_keyword},
+    token::TokenKind,
+};
 
 // FIXME: Account for precedence.
 
@@ -504,7 +508,20 @@ impl Fmt for ast::LetExpr<'_> {
     }
 }
 
-struct LoopLabel<'src>(ast::Ident<'src>);
+impl Fmt for ast::Label<'_> {
+    fn fmt(self, cx: &mut Cx<'_>) {
+        let Self(ast::Ident { name, span: _ }) = self;
+
+        fmt!(cx, "'");
+        match lex_keyword(name, Stropped::No, cx.edition) {
+            TokenKind::CommonIdent => {}
+            _ => fmt!(cx, "r#"),
+        }
+        name.fmt(cx);
+    }
+}
+
+struct LoopLabel<'src>(ast::Label<'src>);
 
 impl Fmt for LoopLabel<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {

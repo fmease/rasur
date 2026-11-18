@@ -23,13 +23,13 @@ pub enum ExprKind<'src> {
     Await(Box<Expr<'src>>),
     Become(Box<Expr<'src>>),
     BinOp(BinOp, Box<Expr<'src>>, Box<Expr<'src>>),
-    Block(Option<Ident<'src>>, Box<BlockExpr<'src>>),
+    Block(Option<Label<'src>>, Box<BlockExpr<'src>>),
     Borrow(BorrowKind, Mut, Box<Expr<'src>>),
-    Break(Option<Ident<'src>>, Option<Box<Expr<'src>>>),
+    Break(Option<Label<'src>>, Option<Box<Expr<'src>>>),
     Call(Box<Expr<'src>>, Vec<Expr<'src>>),
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Closure(Box<ClosureExpr<'src>>),
-    Continue(Option<Ident<'src>>),
+    Continue(Option<Label<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     ForLoop(Box<ForLoopExpr<'src>>),
     GenBlock(GenBlockKind, CaptureMode, Box<BlockExpr<'src>>),
@@ -38,7 +38,7 @@ pub enum ExprKind<'src> {
     Index(Box<Expr<'src>>, Box<Expr<'src>>),
     Let(Box<LetExpr<'src>>),
     Lit(Box<Lit<'src>>),
-    Loop(Option<Ident<'src>>, Box<BlockExpr<'src>>),
+    Loop(Option<Label<'src>>, Box<BlockExpr<'src>>),
     MacroCall(Box<MacroCall<'src, ObligatorilyDisambiguatedGenericArgs>>),
     Match(Box<MatchExpr<'src>>),
     MethodCall(Box<MethodCallExpr<'src>>),
@@ -240,7 +240,7 @@ pub struct MatchArm<'src> {
 
 #[derive(Debug)]
 pub struct WhileLoopExpr<'src> {
-    pub label: Option<Ident<'src>>,
+    pub label: Option<Label<'src>>,
     pub condition: Expr<'src>,
     pub body: BlockExpr<'src>,
 }
@@ -334,7 +334,7 @@ pub struct LetExpr<'src> {
 
 #[derive(Debug)]
 pub struct ForLoopExpr<'src> {
-    pub label: Option<Ident<'src>>,
+    pub label: Option<Label<'src>>,
     pub await_: Await,
     pub pat: Pat<'src>,
     pub head: Expr<'src>,
@@ -364,3 +364,6 @@ pub enum UnsafeBinderCastKind {
     Wrap,
     Unwrap,
 }
+
+#[derive(Debug)]
+pub struct Label<'src>(pub Ident<'src>);
