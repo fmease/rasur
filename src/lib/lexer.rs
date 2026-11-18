@@ -10,8 +10,8 @@ use crate::{
     token::{PathSegKeyword, Token, TokenKind},
 };
 use cutter::Cutter;
+pub use std::char::UNICODE_VERSION;
 pub use transformer::{Frontmatter, strip_bom, strip_frontmatter, strip_shebang, substitute_crlf};
-pub use unicode_ident::UNICODE_VERSION;
 
 pub type Tokens<'sto, 'src> = impl Iterator<Item = Token>;
 
@@ -836,11 +836,11 @@ fn is_horizontal_whitespace(char: char) -> bool {
 }
 
 fn is_ident_start(char: char) -> bool {
-    char == '_' || unicode_ident::is_xid_start(char)
+    char == '_' || char.is_xid_start()
 }
 
 fn is_ident_middle(char: char) -> bool {
-    unicode_ident::is_xid_continue(char)
+    char.is_xid_continue()
 }
 
 fn is_bin_digit(char: char) -> bool {

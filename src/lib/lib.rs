@@ -1,4 +1,5 @@
 // Features
+#![feature(char_is_xid)]
 #![feature(const_cmp)]
 #![feature(const_clone)]
 #![feature(const_default)]

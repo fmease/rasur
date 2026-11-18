@@ -240,6 +240,35 @@ fn unicode_17() {
 }
 
 #[test]
+fn unicode_18() {
+    // See also:
+    // <https://util.unicode.org/UnicodeJsps/list-unicodeset.jsp?a=%5B%3AU18%3AXID_Start%3A%5D+-+%5B%3AU17%3AXID_Start%3A%5D&g=&i=idstatus>
+    // <https://util.unicode.org/UnicodeJsps/list-unicodeset.jsp?a=%5B%3AU18%3AXID_Continue%3A%5D+-+%5B%3AU17%3AXID_Continue%3A%5D+-+%5B%3AXID_Start%3A%5D&g=&i=idstatus>
+
+    // Since Unicode 18, U+A7DD is included in XID_Start.
+    t!(
+        parse_item,
+        Rust2015,
+        "fn \u{a7dd}();",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(ast::FnItem { binder: ast::Ident!("\u{a7dd}"), .. }),
+            ..
+        })
+    );
+
+    // Since Unicode 18, U+1ADF is included in XID_Continue.
+    t!(
+        parse_item,
+        Rust2015,
+        "fn f\u{1adf}();",
+        Ok(ast::Item {
+            kind: ast::ItemKind::Fn(ast::FnItem { binder: ast::Ident!("f\u{1adf}"), .. }),
+            ..
+        })
+    );
+}
+
+#[test]
 fn raw_idents() {
     t!(
         parse_expr,
