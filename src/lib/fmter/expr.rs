@@ -3,6 +3,8 @@ use super::{
 };
 use crate::ast::{self, AttrsExt as _};
 
+// FIXME: Account for precedence.
+
 impl Fmt for ast::Expr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { attrs, kind } = self;
@@ -19,7 +21,6 @@ impl Fmt for ast::Expr<'_> {
     }
 }
 
-// FIXME: Don't render unnecessary parentheses!
 impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle>>) {
     fn fmt(self, cx: &mut Cx<'_>) {
         // FIXME: Assert inner attrs for most expr kinds.
@@ -34,18 +35,16 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 fmt!(cx, ")");
             }
             ast::ExprKind::Await(expr) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ").await");
+                fmt!(cx, ".await");
             }
             ast::ExprKind::Become(expr) => {
                 fmt!(cx, "become ");
                 expr.fmt(cx);
             }
             ast::ExprKind::UnOp(op, expr) => {
-                fmt!(cx, "{}(", op.symbol());
+                fmt!(cx, "{}", op.symbol());
                 expr.fmt(cx);
-                fmt!(cx, ")");
             }
             ast::ExprKind::Cast(expr, ty) => {
                 expr.fmt(cx);
@@ -53,28 +52,18 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 ty.fmt(cx);
             }
             ast::ExprKind::BinOp(op, left, right) => {
-                fmt!(cx, "(");
                 left.fmt(cx);
-                fmt!(cx, ") {} (", op.symbol());
+                fmt!(cx, " {} ", op.symbol());
                 right.fmt(cx);
-                fmt!(cx, ")");
             }
             ast::ExprKind::Range(left, right, kind) => {
-                if let Some(left) = left {
-                    fmt!(cx, "(");
-                    left.fmt(cx);
-                    fmt!(cx, ")");
-                }
+                left.fmt(cx);
                 let symbol = match kind {
                     ast::RangeExprKind::Exclusive => "..",
                     ast::RangeExprKind::Inclusive => "..=",
                 };
-                fmt!(cx, "{symbol}");
-                if let Some(right) = right {
-                    fmt!(cx, "(");
-                    right.fmt(cx);
-                    fmt!(cx, ")");
-                }
+                symbol.fmt(cx);
+                right.fmt(cx);
             }
             ast::ExprKind::Wildcard => fmt!(cx, "_"),
             ast::ExprKind::Continue(label) => {
@@ -127,33 +116,27 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
             ast::ExprKind::Borrow(kind, mut_, expr) => {
                 fmt!(cx, "&");
                 (kind, mut_).trailing_space().fmt(cx);
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ")");
             }
             ast::ExprKind::Try(expr) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ")?");
+                fmt!(cx, "?");
             }
             ast::ExprKind::Field(expr, field) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ").");
+                fmt!(cx, ".");
                 field.fmt(cx);
             }
             ast::ExprKind::Call(expr, args) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ")(");
+                fmt!(cx, "(");
                 args.interleave(", ").fmt(cx);
                 fmt!(cx, ")");
             }
             ast::ExprKind::MethodCall(call) => call.fmt(cx),
             ast::ExprKind::Index(expr, index) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ")[");
+                fmt!(cx, "[");
                 index.fmt(cx);
                 fmt!(cx, "]");
             }
@@ -207,9 +190,8 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 fmt!(cx, ")");
             }
             ast::ExprKind::Use(expr) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ").use");
+                fmt!(cx, ".use");
             }
             ast::ExprKind::Yeet(expr) => {
                 fmt!(cx, "do yeet");
@@ -226,9 +208,8 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 }
             }
             ast::ExprKind::Yield(ast::YieldExpr::Postfix(expr)) => {
-                fmt!(cx, "(");
                 expr.fmt(cx);
-                fmt!(cx, ").yield");
+                fmt!(cx, ".yield");
             }
             ast::ExprKind::Error(span) => fmt!(cx, "{}", cx.source(span)),
         }
@@ -361,10 +342,8 @@ impl Fmt for ast::MethodCallExpr<'_> {
     fn fmt(self, cx: &mut Cx<'_>) {
         let Self { receiver, seg, args } = self;
 
-        // FIXME: Fewer parens
-        fmt!(cx, "(");
         receiver.fmt(cx);
-        fmt!(cx, ").");
+        fmt!(cx, ".");
         seg.fmt(cx);
         fmt!(cx, "(");
         args.interleave(", ").fmt(cx);
