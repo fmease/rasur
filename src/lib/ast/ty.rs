@@ -7,6 +7,7 @@ use crate::span::Span;
 #[derive(Debug)]
 pub enum Ty<'src> {
     Array(Box<Ty<'src>>, Expr<'src>),
+    DirectConst(Box<Expr<'src>>),
     DynTrait(DynKind, Vec<Bound<'src>>),
     Error(Span),
     FieldOf(Box<Ty<'src>>, Option<Ident<'src>>, Ident<'src>),

@@ -892,6 +892,7 @@ pub(crate) fn lex_keyword(source: &str, stropped: Stropped, edition: Edition) ->
         "final" => TokenKind::Final,
         "fn" => TokenKind::Fn,
         "for" => TokenKind::For,
+        "gca" if stropped => TokenKind::Gca,
         "gen" if edition >= Edition::Rust2024 => TokenKind::Gen,
         "if" => TokenKind::If,
         "impl" => TokenKind::Impl,

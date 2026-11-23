@@ -109,6 +109,7 @@ impl ast::ExprKind<'_> {
             | Self::Await(_)
             | Self::Call(..)
             | Self::Continue(_)
+            | Self::DirectConst(_)
             | Self::Field(..)
             | Self::GenBlock(..)
             | Self::Grouped(_)
@@ -124,8 +125,7 @@ impl ast::ExprKind<'_> {
             | Self::UnsafeBinderCast(..)
             | Self::Use(_)
             | Self::Wildcard
-            | Self::Yield(ast::YieldExpr::Postfix(_))
-            | Self::Error(_) => true,
+            | Self::Yield(ast::YieldExpr::Postfix(_)) => true,
             | Self::BinOp(ast::BinOp::And | ast::BinOp::Or, ..)
             | Self::Block(..)
             | Self::ForLoop(_)
@@ -158,6 +158,7 @@ impl ast::Ty<'_> {
     fn else_may_follow(&self) -> bool {
         match self {
             | Self::Array(..)
+            | Self::DirectConst(_)
             | Self::DynTrait(..)
             | Self::Error(_)
             | Self::FieldOf(..)

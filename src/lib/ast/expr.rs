@@ -2,7 +2,6 @@ use super::{
     Async, Attr, BorrowKind, Bracket, Const, ExtPath, Gen, GenericParam, Ident, Lit, MacroCall,
     Mut, ObligatorilyDisambiguatedGenericArgs, Pat, PathSeg, Stmt, Ty,
 };
-use crate::span::Span;
 
 #[derive(Debug)]
 pub struct Expr<'src> {
@@ -30,6 +29,7 @@ pub enum ExprKind<'src> {
     Cast(Box<Expr<'src>>, Box<Ty<'src>>),
     Closure(Box<ClosureExpr<'src>>),
     Continue(Option<Label<'src>>),
+    DirectConst(Box<Expr<'src>>),
     Field(Box<Expr<'src>>, Ident<'src>),
     ForLoop(Box<ForLoopExpr<'src>>),
     GenBlock(GenBlockKind, CaptureMode, Box<BlockExpr<'src>>),
@@ -59,8 +59,6 @@ pub enum ExprKind<'src> {
     Wildcard,
     Yeet(Option<Box<Expr<'src>>>),
     Yield(YieldExpr<'src>),
-    // FIXME: Obviously, `Expr` should carry a span. Once it does, remove this payload.
-    Error(Span),
 }
 
 impl ExprKind<'_> {
@@ -72,9 +70,7 @@ impl ExprKind<'_> {
             | Self::Loop(..)
             | Self::Match(_)
             | Self::WhileLoop(_)
-            | Self::ForLoop(_)
-            // NOTE: Not so sure about this one. What is better for recovery?
-            | Self::Error(_) => true,
+            | Self::ForLoop(_) => true,
             Self::MacroCall(MacroCall { bracket: Bracket::Curly, .. }) => match extra {
                 CurlyBracketedMacroCallIsBoundary::Yes => true,
                 CurlyBracketedMacroCallIsBoundary::No => false,
@@ -90,6 +86,7 @@ impl ExprKind<'_> {
             | Self::Cast(..)
             | Self::Closure(_)
             | Self::Continue(_)
+            | Self::DirectConst(_)
             | Self::Field(..)
             | Self::GenBlock(..) // indeed
             | Self::Grouped(_)

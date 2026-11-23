@@ -558,6 +558,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
                 self.advance();
                 return self.fin_parse_for_loop_expr(None, attrs);
             }
+            TokenKind::Gca => {
+                self.feature(Feature::internal_syntax, start);
+                self.advance();
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::ExprKind::DirectConst(Box::new(expr)));
+            }
             TokenKind::If => {
                 self.advance();
                 return self.fin_parse_if_expr();

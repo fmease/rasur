@@ -215,7 +215,11 @@ impl<'src> Fmt for (ast::ExprKind<'src>, Vec<ast::Attr<'src, ast::InnerAttrStyle
                 expr.fmt(cx);
                 fmt!(cx, ".yield");
             }
-            ast::ExprKind::Error(span) => fmt!(cx, "{}", cx.source(span)),
+            ast::ExprKind::DirectConst(expr) => {
+                fmt!(cx, "k#gca(");
+                expr.fmt(cx);
+                fmt!(cx, ")");
+            }
         }
     }
 }

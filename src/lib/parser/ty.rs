@@ -139,6 +139,14 @@ impl<'src> super::Parser<'_, '_, 'src> {
 
                 return Ok(ast::Ty::FieldOf(Box::new(ty), variant, field));
             }
+            TokenKind::Gca => {
+                self.feature(Feature::internal_syntax, start);
+                self.advance();
+                self.parse(TokenKind::OpenRoundBracket)?;
+                let expr = self.parse_expr()?;
+                self.parse(TokenKind::CloseRoundBracket)?;
+                return Ok(ast::Ty::DirectConst(Box::new(expr)));
+            }
             TokenKind::Impl => {
                 self.advance();
                 let bounds = self.parse_bounds_where(p_policy.elevate())?;

@@ -97,6 +97,11 @@ impl Fmt for ast::Ty<'_> {
                 pat.fmt(cx);
                 fmt!(cx, ")");
             }
+            Self::DirectConst(expr) => {
+                fmt!(cx, "k#gca(");
+                expr.fmt(cx);
+                fmt!(cx, ")");
+            }
         }
     }
 }
